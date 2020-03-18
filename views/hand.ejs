@@ -6,31 +6,64 @@
     </head>
     <body>
         <script src="node_modules/deck-of-cards/dist/deck.js"></script>
+        <script src="node_modules/jquery/dist/jquery.js"></script>
 
         <div id="container"></div>
+        <div id="topbar"></div>
 
         <script>
             var $container = document.getElementById('container');
+            var $topbar = document.getElementById('topbar');
+
+            var $sort = document.createElement('button')
+            var $gethand = document.createElement('button')
+            var $bysuit = document.createElement('button')
+            var $fan = document.createElement('button')
+            var $poker = document.createElement('button')
+            var $flip = document.createElement('button')
+
+            $gethand.textContent = 'GetHand'
+            $sort.textContent = 'Sort'
+            $bysuit.textContent = 'By suit'
+            $fan.textContent = 'Fan'
+            $poker.textContent = 'Poker'
+            $flip.textContent = 'Flip'
+
+            $topbar.appendChild($flip)
+            $topbar.appendChild($gethand)
+            $topbar.appendChild($bysuit)
+            $topbar.appendChild($fan)
+            $topbar.appendChild($poker)
+            $topbar.appendChild($sort)
 
             // create Deck
-            var deck = Deck(true);
+            
 
             // add to DOM
-            deck.mount($container);
+            
 
-            /*deck.cards.forEach(function (card, i) {
-                card.setSide(Math.random() < 0.5 ? 'front' : 'back');
+
+            var player = 2;
+            var deck = Deck(true);
+
+            $.getJSON('/player/'+player+'/hand', function( data ) {
                 
-                // explode
-                card.animateTo({
-                    delay: 1000 + i * 2, // wait 1 second + i * 2 ms
-                    duration: 500,
-                    ease: 'quartOut',
-
-                    x: Math.random() * window.innerWidth - window.innerWidth / 2,
-                    y: Math.random() * window.innerHeight - window.innerHeight / 2
-                });
-            });*/
+                deck.mount($container);
+                for (var i = 54; i >= 0; i--) {
+                    var card = deck.cards[i];
+                    if (data.includes(i)){
+                        card.setSide('front');
+                    }
+                    else {
+                        card.unmount();
+                        deck.cards.splice(i, 1);
+                    }
+                }
+                //deck.sort();
+                deck.fan();
+            });
+            /*
+            deck.mount($container);
 
             // Remove the 4th card from deck
             var removedCards = deck.cards.splice(13, 39);
@@ -38,9 +71,16 @@
             removedCards.forEach(function (removedCard) {
                 removedCard.unmount();
             });
+            */
+            $bysuit.addEventListener('click', function () {
+                deck.sort(true) // sort reversed
+                deck.bysuit()
+            });
 
-            deck.flip();
-            deck.fan();
+            $fan.addEventListener('click', function () {
+                deck.fan()
+            });
+
         </script>
     </body>
 </html>
