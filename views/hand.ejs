@@ -1,0 +1,46 @@
+<html>
+    <head>
+        <title>Cards</title>
+
+        <link rel="stylesheet" href="node_modules/deck-of-cards/example/example.css">
+    </head>
+    <body>
+        <script src="node_modules/deck-of-cards/dist/deck.js"></script>
+
+        <div id="container"></div>
+
+        <script>
+            var $container = document.getElementById('container');
+
+            // create Deck
+            var deck = Deck(true);
+
+            // add to DOM
+            deck.mount($container);
+
+            /*deck.cards.forEach(function (card, i) {
+                card.setSide(Math.random() < 0.5 ? 'front' : 'back');
+                
+                // explode
+                card.animateTo({
+                    delay: 1000 + i * 2, // wait 1 second + i * 2 ms
+                    duration: 500,
+                    ease: 'quartOut',
+
+                    x: Math.random() * window.innerWidth - window.innerWidth / 2,
+                    y: Math.random() * window.innerHeight - window.innerHeight / 2
+                });
+            });*/
+
+            // Remove the 4th card from deck
+            var removedCards = deck.cards.splice(13, 39);
+
+            removedCards.forEach(function (removedCard) {
+                removedCard.unmount();
+            });
+
+            deck.flip();
+            deck.fan();
+        </script>
+    </body>
+</html>
