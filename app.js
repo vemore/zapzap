@@ -7,6 +7,36 @@ const deck = new decks.StandardDeck({ jokers: 2 });
 const nb_player = 4;
 const nb_cards_in_hand = 7;
 const player_hands = [];
+const party = {
+    "nb_players": nb_player,
+    "current_turn": 5,
+    "current_partie": 1,
+    "card_in_deck": 32,
+    "last_card_played": [41,25,2],
+    "players": [
+        {
+            name: "Vincent",
+            nb_cards: 4,
+            score: 45
+        }, {
+            name: "Thib",
+            nb_cards: 3,
+            score: 42
+        }, {
+            name: "Simon",
+            nb_cards: 5,
+            score: 30
+        }, {
+            name: "Lyo",
+            nb_cards: 3,
+            score: 50
+        }, {
+            name: "Laurent",
+            nb_cards: 5,
+            score: 20
+        }
+    ]
+};
 
 function print_hand(hand) {
     var str_hand = "";
@@ -67,36 +97,12 @@ for (p=1;p<=nb_player;p++){
 // print partie status
 print_players_hands(player_hands);
 
-/*
-var http = require('http');
-var url = require('url');
-var querystring = require('querystring');
-
-var server = http.createServer(function(req, res) {
-    var page = url.parse(req.url).pathname;
-    var params = querystring.parse(url.parse(req.url).query);
-    var player = undefined;
-    if ('player' in params)
-        player = params['player'];
-    
-    console.log(page);
-
-    if (page == '/get_hand' && player!=undefined) {
-        res.writeHead(200, {"Content-Type": "text/json"});
-        res.write(JSON.stringify(player_hands[player]));
-    }
-    else {
-        res.writeHead(404);
-    }
-    res.end();
-});
-server.listen(8080);
-*/
 
 var express = require('express');
 var app = express();
 app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-cards'));
 app.use('/node_modules/jquery/dist', express.static('node_modules/jquery/dist'));
+app.use('/public', express.static('public'));
 
 
 app.get('/', function(req, res) {
@@ -106,6 +112,11 @@ app.get('/', function(req, res) {
 app.get('/player/:id/hand', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify(json_hand(player_hands[req.params.id])));
+});
+
+app.get('/party', function(req, res) {
+    res.setHeader('Content-Type', 'text/json');
+    res.send(JSON.stringify(party));
 });
 
 app.use(function(req, res, next){

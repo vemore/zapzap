@@ -1,19 +1,25 @@
 <html>
     <head>
         <title>Cards</title>
-
         <link rel="stylesheet" href="node_modules/deck-of-cards/example/example.css">
+        <link rel="stylesheet" href="public/app.css">
     </head>
     <body>
         <script src="node_modules/deck-of-cards/dist/deck.js"></script>
         <script src="node_modules/jquery/dist/jquery.js"></script>
 
+        
+        <div id="players"></div>
+
+        <div id="player1"></div>
         <div id="container"></div>
         <div id="topbar"></div>
 
         <script>
             var $container = document.getElementById('container');
             var $topbar = document.getElementById('topbar');
+            var $players = document.getElementById('players');
+            var $player1 = document.getElementById('player1');
 
             var $sort = document.createElement('button')
             var $gethand = document.createElement('button')
@@ -36,8 +42,39 @@
             $topbar.appendChild($poker)
             $topbar.appendChild($sort)
 
-            // create Deck
-            
+            $.getJSON('/party', function( data ) {
+                var $players = document.getElementById('players');
+                var $table = document.createElement('table');
+                $players.appendChild($table);
+                
+                for (i=0; i<data.players.length; i++) {
+                    $table.insertRow($table.rows.length);
+                    $table.rows[i].insertCell($table.rows[i].cells.length);
+                    $table.rows[i].insertCell($table.rows[i].cells.length);
+                    $table.rows[i].cells[0].textContent = data.players[i].name;
+                    $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
+                }
+            });
+
+            /*
+            var nb_players = 1;
+            var players_div = []
+            var players_deck = []
+
+            // create players
+            for (var i = 0; i < nb_players; i++) {
+                players_div[i] = document.createElement('div');
+                players_div[i].classList.add("player");
+                $players.appendChild(players_div[i]);
+                players_deck[i] = Deck(true);
+                players_deck[i].mount(players_div[i]);
+                var removedCards = players_deck[i].cards.splice(5, 54-5);
+                removedCards.forEach(function (removedCard) {
+                    removedCard.unmount();
+                });
+                players_deck[i].fan();
+            };
+            */
 
             // add to DOM
             
