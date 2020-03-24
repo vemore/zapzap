@@ -7,116 +7,26 @@
     <body>
         <script src="node_modules/deck-of-cards/dist/deck.js"></script>
         <script src="node_modules/jquery/dist/jquery.js"></script>
+        <script src="public/app_view.js"></script>
 
         
-        <div id="players"></div>
-
-        <div id="player1"></div>
-        <div id="container"></div>
+        <div id="players_table"></div>
+        <div id="player_hand"></div>
         <div id="topbar"></div>
+        <div id="game"></div>
 
         <script>
-            var $container = document.getElementById('container');
+            var id_player = <%= player; %>;
+
+            var $player_hand = document.getElementById('player_hand');
             var $topbar = document.getElementById('topbar');
-            var $players = document.getElementById('players');
-            var $player1 = document.getElementById('player1');
+            var $players = document.getElementById('players_table');
+            var $game = document.getElementById('game');
 
-            var $sort = document.createElement('button')
-            var $gethand = document.createElement('button')
-            var $bysuit = document.createElement('button')
-            var $fan = document.createElement('button')
-            var $poker = document.createElement('button')
-            var $flip = document.createElement('button')
-
-            $gethand.textContent = 'GetHand'
-            $sort.textContent = 'Sort'
-            $bysuit.textContent = 'By suit'
-            $fan.textContent = 'Fan'
-            $poker.textContent = 'Poker'
-            $flip.textContent = 'Flip'
-
-            $topbar.appendChild($flip)
-            $topbar.appendChild($gethand)
-            $topbar.appendChild($bysuit)
-            $topbar.appendChild($fan)
-            $topbar.appendChild($poker)
-            $topbar.appendChild($sort)
-
-            $.getJSON('/party', function( data ) {
-                var $players = document.getElementById('players');
-                var $table = document.createElement('table');
-                $players.appendChild($table);
-                
-                for (i=0; i<data.players.length; i++) {
-                    $table.insertRow($table.rows.length);
-                    $table.rows[i].insertCell($table.rows[i].cells.length);
-                    $table.rows[i].insertCell($table.rows[i].cells.length);
-                    $table.rows[i].cells[0].textContent = data.players[i].name;
-                    $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
-                }
-            });
-
-            /*
-            var nb_players = 1;
-            var players_div = []
-            var players_deck = []
-
-            // create players
-            for (var i = 0; i < nb_players; i++) {
-                players_div[i] = document.createElement('div');
-                players_div[i].classList.add("player");
-                $players.appendChild(players_div[i]);
-                players_deck[i] = Deck(true);
-                players_deck[i].mount(players_div[i]);
-                var removedCards = players_deck[i].cards.splice(5, 54-5);
-                removedCards.forEach(function (removedCard) {
-                    removedCard.unmount();
-                });
-                players_deck[i].fan();
-            };
-            */
-
-            // add to DOM
-            
-
-
-            var player = 2;
-            var deck = Deck(true);
-
-            $.getJSON('/player/'+player+'/hand', function( data ) {
-                
-                deck.mount($container);
-                for (var i = 54; i >= 0; i--) {
-                    var card = deck.cards[i];
-                    if (data.includes(i)){
-                        card.setSide('front');
-                    }
-                    else {
-                        card.unmount();
-                        deck.cards.splice(i, 1);
-                    }
-                }
-                //deck.sort();
-                deck.fan();
-            });
-            /*
-            deck.mount($container);
-
-            // Remove the 4th card from deck
-            var removedCards = deck.cards.splice(13, 39);
-
-            removedCards.forEach(function (removedCard) {
-                removedCard.unmount();
-            });
-            */
-            $bysuit.addEventListener('click', function () {
-                deck.sort(true) // sort reversed
-                deck.bysuit()
-            });
-
-            $fan.addEventListener('click', function () {
-                deck.fan()
-            });
+            build_player_table($players);
+            var game_deck = build_game($game);
+            var player_deck = build_player_hand($player_hand, id_player);
+            build_topbar($topbar, player_deck);
 
         </script>
     </body>

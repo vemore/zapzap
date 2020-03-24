@@ -5,7 +5,7 @@ const { decks } = require('cards');
 const deck = new decks.StandardDeck({ jokers: 2 });
 
 const nb_player = 4;
-const nb_cards_in_hand = 7;
+const nb_cards_in_hand = 5;
 const player_hands = [];
 const party = {
     "nb_players": nb_player,
@@ -104,9 +104,19 @@ app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-card
 app.use('/node_modules/jquery/dist', express.static('node_modules/jquery/dist'));
 app.use('/public', express.static('public'));
 
+game_round = 1;
+
+app.get('/game', function(req, res) {
+    res.setHeader('Content-Type', 'text/json');
+    var draw_card = deck.draw()[0];
+    var draw_len = deck.remainingLength;
+    res.send(JSON.stringify({nb_card_back: draw_len, cards_front: [get_card_id(draw_card)]}));
+    game_round++;
+});
+
 
 app.get('/', function(req, res) {
-    res.render('hand.ejs', {});
+    res.render('hand.ejs', {"player": req.query.id});
 });
 
 app.get('/player/:id/hand', function(req, res) {
