@@ -1,102 +1,28 @@
 
 const { decks } = require('cards');
+const { Party } = require('./party.js');
+//const { player } = require('./player.js');
+const { print_players_hands, json_hand, parse_cards_arg } = require('./utils.js');
 
 // Create a standard 52 card deck + 2 jokers
 const deck = new decks.StandardDeck({ jokers: 2 });
 
-const nb_player = 4;
-const nb_cards_in_hand = 5;
-const player_hands = [];
-const party = {
-    "nb_players": nb_player,
-    "current_turn": 5,
-    "current_partie": 1,
-    "card_in_deck": 32,
-    "last_card_played": [41,25,2],
-    "players": [
-        {
-            name: "Vincent",
-            nb_cards: 4,
-            score: 45
-        }, {
-            name: "Thib",
-            nb_cards: 3,
-            score: 42
-        }, {
-            name: "Simon",
-            nb_cards: 5,
-            score: 30
-        }, {
-            name: "Lyo",
-            nb_cards: 3,
-            score: 50
-        }, {
-            name: "Laurent",
-            nb_cards: 5,
-            score: 20
-        }
-    ]
-};
+// Create party
+const party = new Party(deck);
 
-function print_hand(hand) {
-    var str_hand = "";
-    hand.forEach(function(card){
-        str_hand += card.rank.shortName + (card.suit.unicode!=null?card.suit.unicode:"") + "\t";
-    });
-    return str_hand;
-}
+// Add players
+party.add_player("Vincent");
+party.add_player("Thibaut");
+party.add_player("Simon  ");
+party.add_player("Lyo    ");
+party.add_player("Laurent");
 
-function print_players_hands(player_hands) {
+// Start new round with 5 cards
+var round = party.start_round(5, party.players[0]);
 
-    player_hands.forEach(function(hand, index){
-        console.log("Player " + index + " : " + print_hand(hand));
-    });
-    return;
-}
-
-function get_card_id(card) {
-    var card_id = 0;
-    switch (card.suit.unicode) {
-        case '♠': card_id = 0; break;
-        case '♥': card_id = 13; break;
-        case '♣': card_id = 2*13; break;
-        case '♦': card_id = 3*13; break;
-        default : card_id = 4*13; 
-    }
-    switch (card.rank.shortName) {
-        case 'A': card_id += 0; break;
-        case 'J': card_id += 10; break;
-        case 'Q': card_id += 11; break;
-        case 'K': card_id += 12; break;
-        case 'Jocker': card_id += 1; break;
-        default : card_id += card.rank.shortName-1; 
-    }
-    return card_id;
-}
-
-function json_hand(hand) {
-    var json_ret = []
-    hand.forEach(function(card){
-        json_ret.push(get_card_id(card));
-    });
-    console.log(json_ret);
-    return json_ret;
-}
-
-
-
-
-// Shuffle the deck
-deck.shuffleAll();
-
-// Draw a hand of nb_cards_in_hand cards from the deck for each player
-for (p=1;p<=nb_player;p++){
-    player_hands[p] = deck.draw(nb_cards_in_hand);
-}
-
-// print partie status
-print_players_hands(player_hands);
-
+// print party status
+print_players_hands(party.players);
+console.log("Turn : "+ party.current_round.turn);
 
 var express = require('express');
 var app = express();
@@ -104,14 +30,14 @@ app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-card
 app.use('/node_modules/jquery/dist', express.static('node_modules/jquery/dist'));
 app.use('/public', express.static('public'));
 
-game_round = 1;
+
 
 app.get('/game', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
-    var draw_card = deck.draw()[0];
+    //var draw_card = deck.draw()[0];
     var draw_len = deck.remainingLength;
-    res.send(JSON.stringify({nb_card_back: draw_len, cards_front: [get_card_id(draw_card)]}));
-    game_round++;
+    res.send(JSON.stringify({"nb_card_back": draw_len, "cards_front": json_hand(round.last_cards_played)}));
+    round.next_turn();
 });
 
 
@@ -121,12 +47,27 @@ app.get('/', function(req, res) {
 
 app.get('/player/:id/hand', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify(json_hand(player_hands[req.params.id])));
+    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
+});
+
+app.get('/player/:id/play', function(req, res) {
+    var ret = true;
+    var cards = parse_cards_arg(req.query.cards);
+    var player = party.players[req.params.id];
+    if (!check_play(cards)) {
+        last_card_played = player.play(cards);
+    } else {
+        ret = false;
+    }
+
+
+    res.setHeader('Content-Type', 'text/json');
+    res.send(JSON.stringify({"ret" : ret}));
 });
 
 app.get('/party', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify(party));
+    res.send(party.json_string);
 });
 
 app.use(function(req, res, next){
@@ -135,3 +76,4 @@ app.use(function(req, res, next){
 });
 
 app.listen(8080);
+console.log("Play here : http://localhost:8080/?id=2");
