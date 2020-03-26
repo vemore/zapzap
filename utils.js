@@ -16,6 +16,9 @@ print_players_hands = function(players) {
 exports.print_players_hands = print_players_hands;
 
 get_card_id = function(card) {
+    if (card == undefined) {
+        return -1;
+    }
     var card_id = 0;
     switch (card.suit.unicode) {
         case '♠': card_id = 0; break;
@@ -46,6 +49,10 @@ exports.json_hand = function(hand) {
 }
 
 exports.get_card_from_id = function(card_id) {
+    if (card_id==-1) {
+        return undefined;
+    }
+
     var suit = undefined;
     var rank = undefined;
     switch (card_id/13) {
@@ -74,17 +81,10 @@ exports.get_card_from_id = function(card_id) {
     return new Card(suit, rank);
 }
 
-exports.parse_cards_arg = function(cards_arg) {
-    var cards = [];
-    cards_arg.split("-").forEach(function(card_id, index){
-        cards.push(get_card_from_id(card_id));
-    });
-    return json_ret;
-}
 
-exports.check_play = function(cards) {
+exports.check_play = function(cards, player) {
     // check size
-    if (cards.length<1 || cards.length>nb_cards_in_hand) {
+    if (cards.length<1 || cards.length>player.hand.length) {
         return false;
     } 
     // TODO check in cards belong to the player hand

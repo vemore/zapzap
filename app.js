@@ -2,7 +2,7 @@
 const { decks } = require('cards');
 const { Party } = require('./party.js');
 //const { player } = require('./player.js');
-const { print_players_hands, json_hand, parse_cards_arg } = require('./utils.js');
+const { print_players_hands, json_hand, check_play, get_card_from_id, get_card_id } = require('./utils.js');
 
 // Create a standard 52 card deck + 2 jokers
 const deck = new decks.StandardDeck({ jokers: 2 });
@@ -50,20 +50,47 @@ app.get('/player/:id/hand', function(req, res) {
     res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
 });
 
+// PLAY
 app.get('/player/:id/play', function(req, res) {
     var ret = true;
-    var cards = parse_cards_arg(req.query.cards);
+
+    // parse request
+    var cards = req.query.cards;
     var player = party.players[req.params.id];
-    if (!check_play(cards)) {
-        last_card_played = player.play(cards);
+
+    // check played cards
+    if (!check_play(cards, player)) {
+        // remove cards from player hand
+        player.play(cards);
+        // play card on discard pile
+        party.current_round.play_cards(cards);
     } else {
         ret = false;
     }
 
-
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify({"ret" : ret}));
 });
+
+
+// DRAW
+app.get('/player/:id/draw', function(req, res) {
+    var ret = true;
+
+    // parse request
+    var card = undefined;
+    if (req.query.card!="deck")
+        card = get_card_from_id(req.query.card);
+    var player = party.players[req.params.id];
+
+    card = party.current_round.draw(card);
+    player.draw(card);
+
+    res.setHeader('Content-Type', 'text/json');
+    res.send(JSON.stringify({draw: get_card_id(card), hand: json_hand(party.players[req.params.id].hand)}));
+});
+
+
 
 app.get('/party', function(req, res) {
     res.setHeader('Content-Type', 'text/json');

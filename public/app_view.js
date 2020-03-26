@@ -15,6 +15,10 @@ function build_player_table($container) {
 
 var game_deck = undefined;
 var game_container;
+var hand_deck;
+var hand_container;
+var hand_cards_id;
+var player_id;
 
 function build_game($container) {
     game_container = $container;
@@ -58,49 +62,57 @@ function update_game() {
     return game_deck;
 }
 
+function update_player_hand(cards_id) {
+    hand_deck.mount(hand_container);
+    hand_cards_id = Array.from(cards_id);
+    for (var i = 54; i >= 0; i--) {
+        var card = hand_deck.cards[i];
+        if (cards_id.includes(i)){
+            card.setSide('front');
+        }
+        else {
+            card.unmount();
+            hand_deck.cards.splice(i, 1);
+        }
+    }
+}
+
 function build_player_hand($container, id_player) {
-    var deck = Deck(true);
+    hand_deck = Deck(true);
+    hand_container = $container;
+    player_id = id_player;
 
     $.getJSON('/player/'+id_player+'/hand', function( data ) {
-        
-        deck.mount($container);
-        for (var i = 54; i >= 0; i--) {
-            var card = deck.cards[i];
-            if (data.includes(i)){
-                card.setSide('front');
-            }
-            else {
-                card.unmount();
-                deck.cards.splice(i, 1);
-            }
-        }
+        update_player_hand(data);
         //deck.sort();
-        deck.fan();
+        hand_deck.fan();
     });
-    return deck;
+    return hand_deck;
 }
 
 function build_topbar($topbar, player_deck) {
-    var $sort = document.createElement('button')
-    var $gethand = document.createElement('button')
+    var $draw = document.createElement('button')
+    var $play = document.createElement('button')
     var $bysuit = document.createElement('button')
     var $fan = document.createElement('button')
     var $poker = document.createElement('button')
-    var $flip = document.createElement('button')
+    var $update = document.createElement('button')
 
-    $gethand.textContent = 'GetHand'
-    $sort.textContent = 'Sort'
+    $play.textContent = 'Play'
+    $draw.textContent = 'Draw'
+
     $bysuit.textContent = 'By suit'
     $fan.textContent = 'Fan'
-    $poker.textContent = 'Poker'
-    $flip.textContent = 'Flip'
 
-    $topbar.appendChild($flip)
-    $topbar.appendChild($gethand)
+    $poker.textContent = 'Poker'
+    $update.textContent = 'Update'
+
+    $topbar.appendChild($update)
+    $topbar.appendChild($play)
     $topbar.appendChild($bysuit)
     $topbar.appendChild($fan)
     $topbar.appendChild($poker)
-    $topbar.appendChild($sort)
+    $topbar.appendChild($draw)
 
 
     $bysuit.addEventListener('click', function () {
@@ -112,7 +124,26 @@ function build_topbar($topbar, player_deck) {
         player_deck.fan()
     });
 
-    $flip.addEventListener('click', function () {
+
+
+    $update.addEventListener('click', function () {
         update_game()
     });
+
+    $play.addEventListener('click', function () {
+        $.getJSON('/player/'+ player_id + '/play', { cards: [hand_cards_id[0]] })
+        .done(function( json ) {
+            update_player_hand(json);
+        });
+    });
+
+    $draw.addEventListener('click', function () {
+        $.getJSON('/player/'+ player_id + '/draw', { card: "deck" })
+        .done(function( json ) {
+            console.log("Draw : "+ json.draw);
+            update_player_hand(json.hand);
+        });
+    });
+
+
 }
