@@ -22,6 +22,10 @@ class Party {
         return this._players;
     }
 
+    get deck() {
+        return this._deck;
+    }
+
     get nb_players() {
         return this._players.length;
     }

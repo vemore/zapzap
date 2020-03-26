@@ -55,7 +55,7 @@ app.get('/player/:id/play', function(req, res) {
     var ret = true;
 
     // parse request
-    var cards = get_cards_from_ids(req.query.cards);
+    var cards = get_cards_from_ids(req.query.cards, party.deck);
     var player = party.players[req.params.id];
 
     // check played cards

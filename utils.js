@@ -52,14 +52,14 @@ exports.json_hand = function(hand) {
     return json_ret;
 }
 
-get_card_from_id = function(card_id) {
+get_card_from_id = function(card_id, deck) {
     if (card_id==-1) {
         return undefined;
     }
-
     var suit = undefined;
     var rank = undefined;
-    switch (card_id/13) {
+    //console.log("card_id: "+card_id+", card_id/13:"+(card_id/13));
+    switch (Math.trunc(card_id/13)) {
         case 0: suit = suits.spades; break;
         case 1: suit = suits.hearts; break;
         case 2: suit = suits.diamonds; break;
@@ -82,14 +82,21 @@ get_card_from_id = function(card_id) {
         case 12: rank = ranks.king; break;
         default : rank = ranks.joker; break;
     }
-    return new Card(suit, rank);
+    // TODO manage Jockers
+
+    return deck.findCards((card) => card.rank===rank && card.suit===suit)[0];
 }
 exports.get_card_from_id = get_card_from_id;
+ /*   
+    return new Card(suit, rank);
+*/
 
-get_cards_from_ids = function(ids) {
+
+
+get_cards_from_ids = function(ids, deck) {
     var cards = [];
     ids.forEach(id => {
-        cards.push(get_card_from_id(id));
+        cards.push(get_card_from_id(parseInt(id,10), deck));
     });
     return cards;
 }
