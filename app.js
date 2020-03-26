@@ -2,7 +2,7 @@
 const { decks } = require('cards');
 const { Party } = require('./party.js');
 //const { player } = require('./player.js');
-const { print_players_hands, json_hand, check_play, get_card_from_id, get_card_id } = require('./utils.js');
+const { print_players_hands, json_hand, check_play, get_card_from_id, get_card_id, get_cards_from_ids } = require('./utils.js');
 
 // Create a standard 52 card deck + 2 jokers
 const deck = new decks.StandardDeck({ jokers: 2 });
@@ -55,11 +55,11 @@ app.get('/player/:id/play', function(req, res) {
     var ret = true;
 
     // parse request
-    var cards = req.query.cards;
+    var cards = get_cards_from_ids(req.query.cards);
     var player = party.players[req.params.id];
 
     // check played cards
-    if (!check_play(cards, player)) {
+    if (check_play(cards, player)) {
         // remove cards from player hand
         player.play(cards);
         // play card on discard pile
@@ -69,7 +69,7 @@ app.get('/player/:id/play', function(req, res) {
     }
 
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify({"ret" : ret}));
+    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
 });
 
 

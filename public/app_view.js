@@ -63,6 +63,10 @@ function update_game() {
 }
 
 function update_player_hand(cards_id) {
+    if (hand_deck!=undefined) {
+        hand_deck.unmount();
+    }
+    hand_deck = Deck(true);
     hand_deck.mount(hand_container);
     hand_cards_id = Array.from(cards_id);
     for (var i = 54; i >= 0; i--) {
@@ -75,17 +79,18 @@ function update_player_hand(cards_id) {
             hand_deck.cards.splice(i, 1);
         }
     }
+    hand_deck.fan();
 }
 
 function build_player_hand($container, id_player) {
-    hand_deck = Deck(true);
+    //hand_deck = Deck(true);
     hand_container = $container;
     player_id = id_player;
 
     $.getJSON('/player/'+id_player+'/hand', function( data ) {
         update_player_hand(data);
         //deck.sort();
-        hand_deck.fan();
+        
     });
     return hand_deck;
 }
@@ -116,12 +121,12 @@ function build_topbar($topbar, player_deck) {
 
 
     $bysuit.addEventListener('click', function () {
-        player_deck.sort(true) // sort reversed
-        player_deck.bysuit()
+        hand_deck.sort(true) // sort reversed
+        hand_deck.bysuit()
     });
 
     $fan.addEventListener('click', function () {
-        player_deck.fan()
+        hand_deck.fan()
     });
 
 

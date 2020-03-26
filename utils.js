@@ -1,3 +1,7 @@
+//const { Card } = require('./node_modules/cards/src/card/card.js');
+//const { ace, two, three, four, five, six, seven, eight, nine, ten, jack, queen, king, joker } = require('./node_modules/cards/src/ranks/standard.js');
+//const { spades, hearts, diamonds, clubs, none } = require('./node_modules/cards/src/suits.js');
+const { ranks, suits, Card } = require('cards');
 
 print_hand = function(hand) {
     var str_hand = "";
@@ -48,7 +52,7 @@ exports.json_hand = function(hand) {
     return json_ret;
 }
 
-exports.get_card_from_id = function(card_id) {
+get_card_from_id = function(card_id) {
     if (card_id==-1) {
         return undefined;
     }
@@ -80,7 +84,16 @@ exports.get_card_from_id = function(card_id) {
     }
     return new Card(suit, rank);
 }
+exports.get_card_from_id = get_card_from_id;
 
+get_cards_from_ids = function(ids) {
+    var cards = [];
+    ids.forEach(id => {
+        cards.push(get_card_from_id(id));
+    });
+    return cards;
+}
+exports.get_cards_from_ids = get_cards_from_ids;
 
 exports.check_play = function(cards, player) {
     // check size

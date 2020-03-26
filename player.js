@@ -20,11 +20,11 @@ class Player {
 
     play(cards) {
         cards.forEach(card => {
-            const index = array.indexOf(card);
+            const index = this._hand.indexOf(card);
             if (index > -1) {
                 this._hand.splice(index, 1)
             } else {
-                console.log("ERROR : play card which is not in player hand")
+                console.log("ERROR : play card " + card.rank.shortName + (card.suit.unicode!=null?card.suit.unicode:"") + " which is not in player hand")
             }
         });
     }
