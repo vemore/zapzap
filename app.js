@@ -2,10 +2,12 @@
 const { decks } = require('cards');
 const { Party } = require('./party.js');
 //const { player } = require('./player.js');
-const { print_players_hands, json_hand, check_play, get_card_from_id, get_card_id, get_cards_from_ids } = require('./utils.js');
+const { set_jokers, print_players_hands, str_cards, json_hand, check_play, get_card_from_id, get_card_id, get_cards_from_ids } = require('./utils.js');
 
 // Create a standard 52 card deck + 2 jokers
 const deck = new decks.StandardDeck({ jokers: 2 });
+
+set_jokers(deck);
 
 // Create party
 const party = new Party(deck);
@@ -63,6 +65,9 @@ app.get('/player/:id/play', function(req, res) {
         ret = false;
     }
 
+    console.log(player.name + " play " + str_cards(cards));
+    print_players_hands(party.players);
+
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
 });
@@ -81,8 +86,11 @@ app.get('/player/:id/draw', function(req, res) {
     card = party.current_round.draw(card);
     player.draw(card);
 
+    console.log(player.name + " draw " + str_cards([card]));
+    print_players_hands(party.players);
+
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify({draw: get_card_id(card), hand: json_hand(party.players[req.params.id].hand)}));
+    res.send(JSON.stringify({draw: get_card_id(card, party.deck), hand: json_hand(party.players[req.params.id].hand)}));
 });
 
 

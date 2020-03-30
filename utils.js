@@ -3,29 +3,47 @@
 //const { spades, hearts, diamonds, clubs, none } = require('./node_modules/cards/src/suits.js');
 const { ranks, suits, Card } = require('cards');
 
-print_hand = function(hand) {
+var joker1 = null;
+var joker2 = null;
+
+set_jokers = function(deck) {
+    var jokers = deck.findCards((card) => card.rank==="Joker");
+    joker1 = jokers[0];
+    joker2 = jokers[1];
+}
+exports.set_jokers = set_jokers;
+
+str_cards = function(hand) {
     var str_hand = "";
     hand.forEach(card => {
         str_hand += card.rank.shortName + (card.suit.unicode!=null?card.suit.unicode:"") + "\t";
     });
     return str_hand;
 }
-exports.print_hand = print_hand;
+exports.str_cards = str_cards;
 
 print_players_hands = function(players) {
     players.forEach(player => {
-        console.log("Player " + player.name + " : " + print_hand(player.hand));
+        console.log("Player " + player.name + " : " + str_cards(player.hand));
     });
 }
 exports.print_players_hands = print_players_hands;
 
-get_card_id = function(card) {
+get_card_id = function(card, deck=null) {
     if (card == undefined) {
         return -1;
     }
     if (card.rank.shortName=='Joker') {
-        // TODO manage second jocker
-        return 52;
+        if (deck==null)
+            return 54;
+        var jokers = deck.findCards((card) => card.rank.shortName==="Joker");
+        if (card==jokers[0])
+            return 52;
+        else if (card==jokers[1])
+            return 53;
+        else
+            console.log("ERROR : unknown joker");
+            return -1;
     }
     var card_id = 0;
     switch (card.suit.unicode) {
@@ -33,7 +51,7 @@ get_card_id = function(card) {
         case '♥': card_id = 13; break;
         case '♣': card_id = 2*13; break;
         case '♦': card_id = 3*13; break;
-        default : console.log("ERROR : bad suit : " + card.suit.unicode); 
+        default : console.log("ERROR : bad suit : " + card.suit.unicode); return -1;
     }
     switch (card.rank.shortName) {
         case 'A': card_id += 0; break;
@@ -51,7 +69,7 @@ json_hand = function(hand) {
     hand.forEach(card => {
         json_ret.push(get_card_id(card));
     });
-    console.log(json_ret);
+    //console.log(json_ret);
     return json_ret;
 }
 exports.json_hand = json_hand;
@@ -60,14 +78,19 @@ get_card_from_id = function(card_id, deck) {
     if (card_id==-1) {
         return undefined;
     }
+    if (card_id>=52) {
+        var jokers = deck.findCards((card) => card.rank.shortName==="Joker");
+        return jokers[card_id-52];
+    }
+
     var suit = undefined;
     var rank = undefined;
     //console.log("card_id: "+card_id+", card_id/13:"+(card_id/13));
     switch (Math.trunc(card_id/13)) {
         case 0: suit = suits.spades; break;
         case 1: suit = suits.hearts; break;
-        case 2: suit = suits.diamonds; break;
-        case 3: suit = suits.clubs; break;
+        case 2: suit = suits.clubs; break;
+        case 3: suit = suits.diamonds; break;
         default: suit = suits.none;
     }
     switch (card_id%13) {
@@ -86,7 +109,6 @@ get_card_from_id = function(card_id, deck) {
         case 12: rank = ranks.king; break;
         default : rank = ranks.joker; break;
     }
-    // TODO manage Jockers
 
     return deck.findCards((card) => card.rank===rank && card.suit===suit)[0];
 }

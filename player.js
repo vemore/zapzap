@@ -1,3 +1,4 @@
+const { str_cards, get_card_id } = require('./utils.js');
 
 class Player {
     constructor(name, id) {
@@ -24,7 +25,9 @@ class Player {
             if (index > -1) {
                 this._hand.splice(index, 1)
             } else {
-                console.log("ERROR : play card " + card.rank.shortName + (card.suit.unicode!=null?card.suit.unicode:"") + " which is not in player hand")
+                console.log(
+                    "ERROR : play card " + str_cards([card]) + " (" + get_card_id(card)+
+                    ") which is not in player hand");
             }
         });
     }
