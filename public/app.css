@@ -25,6 +25,19 @@
   
 #players_table tr:nth-child(even) {background-color: #f2f2f2;}
 
+.current_turn {
+    background-color: rgb(111, 167, 86) !important;
+}
+
+.selected {
+    border: 1px solid #f0f;
+}
+
+.draw_select {
+    border: 2px solid #f0f;
+}
+
+
 #player_hand {
     position: fixed;
     top: 66%;

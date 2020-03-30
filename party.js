@@ -31,15 +31,16 @@ class Party {
     }
 
     start_round(nb_cards_in_hand, first_player) {
+        // start the new round
+        var round = new Round(nb_cards_in_hand, first_player, this._deck);
+        this._rounds.push(round);
+
         // draw new hand for each player
         this._players.forEach(player => {
             var cards = this._deck.draw(nb_cards_in_hand);
             console.log()
             player.sethand(cards);
         });
-        // start the new round
-        var round = new Round(nb_cards_in_hand, first_player, this._deck);
-        this._rounds.push(round);
 
         return round;
     }

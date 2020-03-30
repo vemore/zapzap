@@ -3,16 +3,6 @@
 //const { spades, hearts, diamonds, clubs, none } = require('./node_modules/cards/src/suits.js');
 const { ranks, suits, Card } = require('cards');
 
-var joker1 = null;
-var joker2 = null;
-
-set_jokers = function(deck) {
-    var jokers = deck.findCards((card) => card.rank==="Joker");
-    joker1 = jokers[0];
-    joker2 = jokers[1];
-}
-exports.set_jokers = set_jokers;
-
 str_cards = function(hand) {
     var str_hand = "";
     hand.forEach(card => {
@@ -64,10 +54,10 @@ get_card_id = function(card, deck=null) {
 }
 exports.get_card_id = get_card_id;
 
-json_hand = function(hand) {
+json_hand = function(hand, deck) {
     var json_ret = [];
     hand.forEach(card => {
-        json_ret.push(get_card_id(card));
+        json_ret.push(get_card_id(card, deck));
     });
     //console.log(json_ret);
     return json_ret;

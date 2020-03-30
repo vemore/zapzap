@@ -2,12 +2,10 @@
 const { decks } = require('cards');
 const { Party } = require('./party.js');
 //const { player } = require('./player.js');
-const { set_jokers, print_players_hands, str_cards, json_hand, check_play, get_card_from_id, get_card_id, get_cards_from_ids } = require('./utils.js');
+const { print_players_hands, str_cards, json_hand, check_play, get_card_from_id, get_card_id, get_cards_from_ids } = require('./utils.js');
 
 // Create a standard 52 card deck + 2 jokers
 const deck = new decks.StandardDeck({ jokers: 2 });
-
-set_jokers(deck);
 
 // Create party
 const party = new Party(deck);
@@ -20,7 +18,7 @@ party.add_player("Lyo    ");
 party.add_player("Laurent");
 
 // Start new round with 5 cards
-var round = party.start_round(5, party.players[0]);
+var round = party.start_round(5, 0);
 
 // print party status
 print_players_hands(party.players);
@@ -44,7 +42,7 @@ app.get('/', function(req, res) {
 // HAND
 app.get('/player/:id/hand', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
+    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand, party.deck)));
 });
 
 // PLAY
@@ -65,11 +63,11 @@ app.get('/player/:id/play', function(req, res) {
         ret = false;
     }
 
-    console.log(player.name + " play " + str_cards(cards));
-    print_players_hands(party.players);
+    console.log("Turn "+ party.current_round.turn + " : "+player.name + " play " + str_cards(cards));
+    //print_players_hands(party.players);
 
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));
+    res.send(JSON.stringify(json_hand(party.players[req.params.id].hand, party.deck)));
 });
 
 
@@ -80,17 +78,19 @@ app.get('/player/:id/draw', function(req, res) {
     // parse request
     var card = undefined;
     if (req.query.card!="deck")
-        card = get_card_from_id(req.query.card);
+        card = get_card_from_id(req.query.card, party.deck);
     var player = party.players[req.params.id];
 
     card = party.current_round.draw(card);
     player.draw(card);
-
-    console.log(player.name + " draw " + str_cards([card]));
+    
+    console.log("Turn "+ party.current_round.turn + " : "+ player.name + " draw " + str_cards([card]));
     print_players_hands(party.players);
 
+    party.current_round.next_turn();
+
     res.setHeader('Content-Type', 'text/json');
-    res.send(JSON.stringify({draw: get_card_id(card, party.deck), hand: json_hand(party.players[req.params.id].hand)}));
+    res.send(JSON.stringify({draw: get_card_id(card, party.deck), hand: json_hand(party.players[req.params.id].hand, party.deck)}));
 });
 
 

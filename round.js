@@ -1,13 +1,14 @@
 
 class Round {
     constructor(nb_cards_in_hand, first_player, deck) {
-        deck.shuffleAll();
+        console.log("Create a new round : shuffle the deck");
         this._nb_cards_in_hand = nb_cards_in_hand;
-        this._last_cards_played = deck.draw();
         this._selected_card = undefined;
-        this._cards_played = [];
         this._deck = deck;
         this._turn = first_player;
+        this._deck.shuffleAll();
+        this._last_cards_played = this._deck.draw();
+        this._cards_played = [];
     }
 
     get turn() {
@@ -31,23 +32,33 @@ class Round {
     }
 
     draw(card=undefined) {
+        var draw_card;
+
         // case draw from deck
         if (card==undefined) {
-            return this._deck.draw()[0];
-        }
-        // case draw from last cards played
-        const index = array.indexOf(card);
-        if (index > -1) {
-            this._last_cards_played.splice(index, 1)[0];
+            draw_card = this._deck.draw()[0];
         } else {
-            console.log("ERROR : drawn card is not in last played cards");
-            return undefined;
+            // case draw from last cards played
+            const index = this._last_cards_played.indexOf(card);
+            if (index > -1) {
+                this._last_cards_played.splice(index, 1)[0];
+                draw_card = card;
+            } else {
+                console.log("ERROR : drawn card is not in last played cards");
+                return undefined;
+            }
         }
-        return card;
+        
+        this._last_cards_played.forEach(discarded_card => {
+            this._deck.discard(discarded_card);
+        });
+        this._last_cards_played = this._cards_played;
+        this._cards_played = [];
+        return draw_card;
     }
 
     play_cards(cards) {
-        this._last_cards_played = this._cards_played;
+        //this._last_cards_played = this._cards_played;
         this._cards_played = cards;
     }
 
