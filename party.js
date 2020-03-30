@@ -59,7 +59,8 @@ class Party {
             "nb_players": this.nb_players,
             "current_turn": this.current_round.turn,
             "card_in_deck": this._deck.remainingLength,
-            "last_card_played": json_hand(this.current_round.last_cards_played),
+            "last_cards_played": json_hand(this.current_round.last_cards_played),
+            "cards_played": json_hand(this.current_round.cards_played),
             "players": players_array
         }
         return JSON.stringify(json);

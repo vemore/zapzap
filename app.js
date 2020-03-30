@@ -32,19 +32,14 @@ app.use('/public', express.static('public'));
 
 
 
-app.get('/game', function(req, res) {
-    res.setHeader('Content-Type', 'text/json');
-    //var draw_card = deck.draw()[0];
-    var draw_len = deck.remainingLength;
-    res.send(JSON.stringify({"nb_card_back": draw_len, "cards_front": json_hand(round.last_cards_played)}));
-    round.next_turn();
-});
-
-
+// VIEW
 app.get('/', function(req, res) {
     res.render('hand.ejs', {"player": req.query.id});
 });
 
+
+
+// HAND
 app.get('/player/:id/hand', function(req, res) {
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify(json_hand(party.players[req.params.id].hand)));

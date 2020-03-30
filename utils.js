@@ -23,34 +23,38 @@ get_card_id = function(card) {
     if (card == undefined) {
         return -1;
     }
+    if (card.rank.shortName=='Joker') {
+        // TODO manage second jocker
+        return 52;
+    }
     var card_id = 0;
     switch (card.suit.unicode) {
         case '♠': card_id = 0; break;
         case '♥': card_id = 13; break;
         case '♣': card_id = 2*13; break;
         case '♦': card_id = 3*13; break;
-        default : card_id = 4*13; 
+        default : console.log("ERROR : bad suit : " + card.suit.unicode); 
     }
     switch (card.rank.shortName) {
         case 'A': card_id += 0; break;
         case 'J': card_id += 10; break;
         case 'Q': card_id += 11; break;
         case 'K': card_id += 12; break;
-        case 'Jocker': card_id += 1; break;
-        default : card_id += card.rank.shortName-1; 
+        default : card_id += parseInt(card.rank.shortName,10)-1; 
     }
     return card_id;
 }
 exports.get_card_id = get_card_id;
 
-exports.json_hand = function(hand) {
-    var json_ret = []
+json_hand = function(hand) {
+    var json_ret = [];
     hand.forEach(card => {
         json_ret.push(get_card_id(card));
     });
     console.log(json_ret);
     return json_ret;
 }
+exports.json_hand = json_hand;
 
 get_card_from_id = function(card_id, deck) {
     if (card_id==-1) {

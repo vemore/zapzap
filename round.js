@@ -5,7 +5,7 @@ class Round {
         this._nb_cards_in_hand = nb_cards_in_hand;
         this._last_cards_played = deck.draw();
         this._selected_card = undefined;
-        this._cards_played = undefined;
+        this._cards_played = [];
         this._deck = deck;
         this._turn = first_player;
     }
@@ -48,7 +48,7 @@ class Round {
 
     play_cards(cards) {
         this._last_cards_played = this._cards_played;
-        this._cards_played = [];
+        this._cards_played = cards;
     }
 
     next_turn() {

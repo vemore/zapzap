@@ -1,6 +1,7 @@
 function build_player_table($container) {
     $.getJSON('/party', function( data ) {
         var $table = document.createElement('table');
+        $table.id = "player_table"
         $container.appendChild($table);
         
         for (i=0; i<data.players.length; i++) {
@@ -11,6 +12,14 @@ function build_player_table($container) {
             $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
         }
     });
+}
+
+function update_player_table(data) {
+    var $table = document.getElementById('player_table');
+    for (i=0; i<data.players.length; i++) {
+        $table.rows[i].cells[0].textContent = data.players[i].name;
+        $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
+    }
 }
 
 var game_deck = undefined;
@@ -31,20 +40,29 @@ function update_game() {
         game_deck.unmount();
     game_deck = Deck(true);
     
-    $.getJSON('/game', function( data ) {
+    $.getJSON('/party', function( data ) {
         var index_cards_back = 0;
-        var nb_cards_front = 0;
+        var nb_last_cards_played = 0;
+        var nb_cards_played = 0;
+        // Update deck, play, and last play
         for (var i = 54; i >= 0; i--) {
             var card = game_deck.cards[i];
-            if (data.cards_front.includes(i)){
+            if (data.last_cards_played.includes(i)){
                 card.setSide('front');
-                card.x = 40 + nb_cards_front*20;
+                card.x = 40 + nb_last_cards_played*20;
                 card.y = 0;
                 card.$el.style.display = '';
                 card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', '0');
-                nb_cards_front += 1;
+                nb_last_cards_played += 1;
                 //console.log("Card "+i+" : front");
-            } else if (index_cards_back<data.nb_card_back) {
+            } else if (data.cards_played.includes(i)) {
+                card.setSide('front');
+                card.x = 40 + nb_cards_played*20;
+                card.y = 120;
+                card.$el.style.display = '';
+                card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
+                nb_cards_played += 1;
+            } else if (index_cards_back<data.card_in_deck) {
                 card.setSide('back');
                 card.x = -40 -index_cards_back/2;
                 card.y = -index_cards_back/2;
@@ -57,6 +75,9 @@ function update_game() {
                 //console.log("Card "+i+" : remove");
             }
         }
+        // Update table
+        update_player_table(data);
+
     });
     game_deck.mount(game_container);
     return game_deck;
@@ -139,6 +160,7 @@ function build_topbar($topbar, player_deck) {
         $.getJSON('/player/'+ player_id + '/play', { cards: [hand_cards_id[0]] })
         .done(function( json ) {
             update_player_hand(json);
+            update_game();
         });
     });
 
@@ -147,6 +169,7 @@ function build_topbar($topbar, player_deck) {
         .done(function( json ) {
             console.log("Draw : "+ json.draw);
             update_player_hand(json.hand);
+            update_game();
         });
     });
 
