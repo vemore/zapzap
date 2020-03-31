@@ -1,0 +1,27 @@
+{
+  "name": "zapzap",
+  "version": "1.0.0",
+  "description": "zapzap card game",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vemore/zapzap.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vemore/zapzap/issues"
+  },
+  "homepage": "https://github.com/vemore/zapzap#readme",
+  "dependencies": {
+    "cards": "^1.0.1",
+    "deck-of-cards": "^0.1.8",
+    "ejs": "^3.0.2",
+    "express": "^4.17.1",
+    "jquery": "^3.4.1"
+  }
+}
