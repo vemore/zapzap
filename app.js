@@ -24,13 +24,42 @@ var round = party.start_round(5, 0);
 print_players_hands(party.players);
 console.log("Turn : "+ party.current_round.turn);
 
-var express = require('express');
+const express = require('express');
+const events = require('events');
+var emitter = new events.EventEmitter();
 var app = express();
 app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-cards'));
 app.use('/node_modules/jquery/dist', express.static('node_modules/jquery/dist'));
 app.use('/public', express.static('public'));
 
 
+app.get('/suscribeupdate', function(req, res){
+	res.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Cache-Control': 'no-cache',
+		Connection: 'keep-alive'
+	});
+
+	// Heartbeat
+	const nln = function() {
+		res.write('\n');
+	};
+    const hbt = setInterval(nln, 15000);
+    
+    var onEvent = function(data) {
+        res.write('retry: 500\n');
+		res.write('event: event\n');
+		res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+
+    emitter.on('event', onEvent);
+    
+    // Clear heartbeat and listener
+    req.on('close', function() {
+		clearInterval(hbt);
+		emitter.removeListener('event', onEvent);
+	});
+});
 
 // VIEW
 app.get('/', function(req, res) {
@@ -61,6 +90,8 @@ app.get('/player/:id/play', function(req, res) {
             player.play(cards);
             // play card on discard pile
             party.current_round.play_cards(cards);
+
+            emitter.emit('event', {id: req.params.id});
         } else {
             ret = false;
         }
@@ -96,6 +127,8 @@ app.get('/player/:id/draw', function(req, res) {
 
     party.current_round.next_turn();
 
+    emitter.emit('event', {id: req.params.id});
+
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify({draw: get_card_id(card, party.deck), hand: json_hand(party.players[req.params.id].hand, party.deck)}));
 });
@@ -114,6 +147,8 @@ app.get('/player/:id/zapzap', function(req, res) {
         
         console.log("Turn "+ party.current_round.turn + " : "+ player.name + " zapzap ");
         print_players_hands(party.players);
+
+        emitter.emit('event', {id: req.params.id});
     }
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify({ret}));

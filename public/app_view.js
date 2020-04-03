@@ -202,6 +202,11 @@ function build_topbar($topbar) {
     $topbar.appendChild($zapzap)
     $topbar.appendChild($draw)
 
+    const evtSource = new EventSource('/suscribeupdate');
+    evtSource.addEventListener('event', function(evt) {
+        update_game();
+    },false);
+
 
     $bysuit.addEventListener('click', function () {
         hand_deck.sort(true) // sort reversed
