@@ -235,7 +235,7 @@ function build_topbar($topbar) {
         $.getJSON('/player/'+ player_id + '/play', { cards: play })
         .done(function( json ) {
             update_player_hand(json);
-            update_game();
+            //update_game();
         });
     });
 
@@ -245,7 +245,7 @@ function build_topbar($topbar) {
         .done(function( json ) {
             console.log("Draw : "+ json.draw);
             update_player_hand(json.hand);
-            update_game();
+            //update_game();
         });
     });
 
@@ -254,8 +254,8 @@ function build_topbar($topbar) {
         $.getJSON('/player/'+ player_id + '/zapzap', {})
         .done(function( json ) {
             console.log("Draw : "+ json.draw);
-            update_player_hand(json.hand);
-            update_game();
+            //update_player_hand(json.hand);
+            //update_game();
         });
     });
 
