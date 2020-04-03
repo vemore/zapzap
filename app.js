@@ -93,6 +93,25 @@ app.get('/player/:id/draw', function(req, res) {
     res.send(JSON.stringify({draw: get_card_id(card, party.deck), hand: json_hand(party.players[req.params.id].hand, party.deck)}));
 });
 
+// ZAPZAP
+app.get('/player/:id/zapzap', function(req, res) {
+    var ret = true;
+
+    // parse request
+    var player = party.players[req.params.id];
+
+    if (player.hand_points>5) {
+        ret = false;
+    } else {      
+        party.current_round.zapzap(party.players, req.params.id);
+        
+        console.log("Turn "+ party.current_round.turn + " : "+ player.name + " zapzap ");
+        print_players_hands(party.players);
+    }
+    res.setHeader('Content-Type', 'text/json');
+    res.send(JSON.stringify({ret}));
+});
+
 
 
 app.get('/party', function(req, res) {

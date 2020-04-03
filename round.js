@@ -9,10 +9,24 @@ class Round {
         this._deck.shuffleAll();
         this._last_cards_played = this._deck.draw();
         this._cards_played = [];
+        this._player_action = PLAYER_PLAY;
+        this._score = [];
     }
+
+    ACTION_DRAW = "draw";
+    ACTION_PLAY = "play";
+    ACTION_ZAPZAP = "zapzap";
 
     get turn() {
         return this._turn;
+    }
+
+    get action() {
+        return this._player_action;
+    }
+
+    get score() {
+        return this._score;
     }
 
     get last_cards_played() {
@@ -54,12 +68,42 @@ class Round {
         });
         this._last_cards_played = this._cards_played;
         this._cards_played = [];
+        this._player_action = ACTION_DRAW;
         return draw_card;
     }
 
     play_cards(cards) {
         //this._last_cards_played = this._cards_played;
         this._cards_played = cards;
+        this._player_action = ACTION_PLAY;
+    }
+
+    zapzap(players, id_zapzap) {
+        this._player_action = ACTION_ZAPZAP;
+        this._score = [];
+
+        var zapzap_score = players[id_zapzap].hand_points;
+        var counteract = false;
+
+        // Test zapzap counteract
+        players.forEach(player => {
+            if (player.hand_points <= zapzap_score && player.id != id_zapzap) {
+                zapzap_score = player.hand_points;
+                counteract = true;
+            }
+        });
+
+        // Compute scores
+        players.forEach(player => {
+            if (player.hand_points == zapzap_score) {
+                this._score[player.id] == 0;
+            } else {
+                this._score[player.id] = player.hand_points_with_joker;
+            }
+        });
+        if (counteract) {
+            this._score[id_zapzap] = player[id_zapzap].hand_points_with_joker + (players.length*4);
+        }
     }
 
     next_turn() {

@@ -54,7 +54,11 @@ class Party {
     get json_string() {
         var players_array = [];
         this._players.forEach(player => {
-            players_array.push({"name": player.name, "nb_cards": player.hand.length});
+            json_player = {name: player.name, nb_cards: player.hand.length};
+            if (this.current_round.action==Round.ACTION_ZAPZAP) {
+                json_player.hand = json_hand(player.hand);
+            }
+            players_array.push(json_player);
         });
         var json = {
             "nb_players": this.nb_players,
@@ -62,8 +66,11 @@ class Party {
             "card_in_deck": this._deck.remainingLength,
             "last_cards_played": json_hand(this.current_round.last_cards_played),
             "cards_played": json_hand(this.current_round.cards_played),
-            "players": players_array
+            "players": players_array,
+            "action": this.current_round.action
         }
+
+
         return JSON.stringify(json);
     }
 }

@@ -146,6 +146,18 @@ exports.check_play = function(cards, player) {
     return suit_check || rank_check;
 }
 
-exports.get_cards_from_player_hand = function(player, cards) {
-
+exports.get_card_points = function(card, withJoker) {
+    if (card.rank.shortName=='Joker') {
+        if (withJoker)
+            return 25;
+        else
+            return 0;
+    }
+    switch (card.rank.shortName) {
+        case 'A': return 1;
+        case 'J': return 11;
+        case 'Q': return 12;
+        case 'K': return 13;
+        default : return parseInt(card.rank.shortName,10); 
+    }
 }
