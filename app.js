@@ -49,22 +49,29 @@ app.get('/player/:id/hand', function(req, res) {
 app.get('/player/:id/play', function(req, res) {
     var ret = true;
 
-    // parse request
-    var cards = get_cards_from_ids(req.query.cards, party.deck);
-    var player = party.players[req.params.id];
+    if (req.query.cards) {
 
-    // check played cards
-    if (check_play(cards, player)) {
-        // remove cards from player hand
-        player.play(cards);
-        // play card on discard pile
-        party.current_round.play_cards(cards);
-    } else {
+        // parse request
+        var cards = get_cards_from_ids(req.query.cards, party.deck);
+        var player = party.players[req.params.id];
+
+        // check played cards
+        if (check_play(cards, player)) {
+            // remove cards from player hand
+            player.play(cards);
+            // play card on discard pile
+            party.current_round.play_cards(cards);
+        } else {
+            ret = false;
+        }
+
+        console.log("Turn "+ party.current_round.turn + " : "+player.name + " play " + str_cards(cards));
+        //print_players_hands(party.players);
+    }
+    else {
+        console.log("Turn "+ party.current_round.turn + " : "+player.name + " play undefined");
         ret = false;
     }
-
-    console.log("Turn "+ party.current_round.turn + " : "+player.name + " play " + str_cards(cards));
-    //print_players_hands(party.players);
 
     res.setHeader('Content-Type', 'text/json');
     res.send(JSON.stringify(json_hand(party.players[req.params.id].hand, party.deck)));

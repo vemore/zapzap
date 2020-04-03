@@ -46,6 +46,10 @@ function update_game() {
     if (game_deck!=undefined)
         game_deck.unmount();
     game_deck = Deck(true);
+
+    // disable all button
+    $(':button').prop('disabled', true);
+
     
     $.getJSON('/party', function( data ) {
         var index_cards_back = 0;
@@ -108,8 +112,20 @@ function update_game() {
         // Update table
         update_player_table(data);
 
+        // Enable Button for current player
+        if (data.current_turn%data.nb_players==player_id) {
+            switch(data.action) {
+                case "draw" : $play.disabled = ''; $zapzap.disabled = ''; break;
+                case "play" : $draw.disabled = ''; break;
+            }
+        }
+
+
     });
     game_deck.mount(game_container);
+
+
+
     return game_deck;
 }
 
@@ -155,13 +171,20 @@ function build_player_hand($container, id_player) {
     return hand_deck;
 }
 
-function build_topbar($topbar, player_deck) {
-    var $draw = document.createElement('button')
-    var $play = document.createElement('button')
-    var $bysuit = document.createElement('button')
-    var $fan = document.createElement('button')
-    var $poker = document.createElement('button')
-    var $update = document.createElement('button')
+var $draw = null;
+var $play = null;
+var $bysuit = null;
+var $fan = null;
+var $zapzap = null;
+var $update = null;
+
+function build_topbar($topbar) {
+    $draw = document.createElement('button')
+    $play = document.createElement('button')
+    $bysuit = document.createElement('button')
+    $fan = document.createElement('button')
+    $zapzap = document.createElement('button')
+    $update = document.createElement('button')
 
     $play.textContent = 'Play'
     $draw.textContent = 'Draw'
@@ -169,14 +192,14 @@ function build_topbar($topbar, player_deck) {
     $bysuit.textContent = 'By suit'
     $fan.textContent = 'Fan'
 
-    $poker.textContent = 'Poker'
+    $zapzap.textContent = 'ZapZap'
     $update.textContent = 'Update'
 
     $topbar.appendChild($update)
     $topbar.appendChild($play)
     $topbar.appendChild($bysuit)
     $topbar.appendChild($fan)
-    $topbar.appendChild($poker)
+    $topbar.appendChild($zapzap)
     $topbar.appendChild($draw)
 
 
@@ -214,6 +237,16 @@ function build_topbar($topbar, player_deck) {
     $draw.addEventListener('click', function () {
         elements = game_container.getElementsByClassName("draw_select");
         $.getJSON('/player/'+ player_id + '/draw', { card: elements[0].dataset.id })
+        .done(function( json ) {
+            console.log("Draw : "+ json.draw);
+            update_player_hand(json.hand);
+            update_game();
+        });
+    });
+
+    $zapzap.addEventListener('click', function () {
+        elements = game_container.getElementsByClassName("draw_select");
+        $.getJSON('/player/'+ player_id + '/zapzap', {})
         .done(function( json ) {
             console.log("Draw : "+ json.draw);
             update_player_hand(json.hand);

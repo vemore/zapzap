@@ -23,11 +23,11 @@
             var $players = document.getElementById('players_table');
             var $game = document.getElementById('game');
 
+            build_topbar($topbar);
             build_player_table($players);
             var game_deck = build_game($game);
             var player_deck = build_player_hand($player_hand, id_player);
-            build_topbar($topbar, player_deck);
-
+            
         </script>
     </body>
 </html>

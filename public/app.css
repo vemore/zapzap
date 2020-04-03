@@ -37,6 +37,9 @@
     border: 2px solid #f0f;
 }
 
+#topbar button:disabled {
+    background-color: #dddddd;
+}
 
 #player_hand {
     position: fixed;

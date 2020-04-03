@@ -54,7 +54,7 @@ class Party {
     get json_string() {
         var players_array = [];
         this._players.forEach(player => {
-            json_player = {name: player.name, nb_cards: player.hand.length};
+            var json_player = {name: player.name, nb_cards: player.hand.length};
             if (this.current_round.action==Round.ACTION_ZAPZAP) {
                 json_player.hand = json_hand(player.hand);
             }

@@ -2,6 +2,7 @@
 class Round {
     constructor(nb_cards_in_hand, first_player, deck) {
         console.log("Create a new round : shuffle the deck");
+
         this._nb_cards_in_hand = nb_cards_in_hand;
         this._selected_card = undefined;
         this._deck = deck;
@@ -9,13 +10,11 @@ class Round {
         this._deck.shuffleAll();
         this._last_cards_played = this._deck.draw();
         this._cards_played = [];
-        this._player_action = PLAYER_PLAY;
+        this._player_action = Round.ACTION_DRAW;
         this._score = [];
     }
 
-    ACTION_DRAW = "draw";
-    ACTION_PLAY = "play";
-    ACTION_ZAPZAP = "zapzap";
+
 
     get turn() {
         return this._turn;
@@ -68,18 +67,18 @@ class Round {
         });
         this._last_cards_played = this._cards_played;
         this._cards_played = [];
-        this._player_action = ACTION_DRAW;
+        this._player_action = Round.ACTION_DRAW;
         return draw_card;
     }
 
     play_cards(cards) {
         //this._last_cards_played = this._cards_played;
         this._cards_played = cards;
-        this._player_action = ACTION_PLAY;
+        this._player_action = Round.ACTION_PLAY;
     }
 
     zapzap(players, id_zapzap) {
-        this._player_action = ACTION_ZAPZAP;
+        this._player_action = Round.ACTION_ZAPZAP;
         this._score = [];
 
         var zapzap_score = players[id_zapzap].hand_points;
@@ -110,5 +109,10 @@ class Round {
         this._turn++;
     }
 }
+
+
+Round.ACTION_DRAW = "draw";
+Round.ACTION_PLAY = "play";
+Round.ACTION_ZAPZAP = "zapzap";
 
 exports.Round = Round;
