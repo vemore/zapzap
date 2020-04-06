@@ -29,6 +29,94 @@ function update_player_table(data) {
     }
 }
 
+function update_common_deck(data) {
+    var index_cards_back = 0;
+    var nb_last_cards_played = 0;
+    var nb_cards_played = 0;
+    var last_of_deck = null;
+    // Update deck, play, and last play
+    for (var i = 54; i >= 0; i--) {
+        var card = game_deck.cards[i];
+        card.$el.dataset.id = i;
+        if (data.last_cards_played.includes(i)){
+            card.setSide('front');
+            card.x = 40 + nb_last_cards_played*20;
+            card.y = 0;
+            card.$el.style.display = '';
+            card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', '0');
+            nb_last_cards_played += 1;
+            //console.log("Card "+i+" : front");
+        } else if (data.cards_played.includes(i)) {
+            card.setSide('front');
+            card.x = 40 + nb_cards_played*20;
+            card.y = 90;
+            card.$el.style.display = '';
+            card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
+            nb_cards_played += 1;
+        } else if (index_cards_back<data.card_in_deck) {
+            card.setSide('back');
+            card.x = -40 -index_cards_back/2;
+            card.y = -index_cards_back/2;
+            card.$el.style.display = '';
+            card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
+            index_cards_back += 1;
+            last_of_deck = card;
+            card.$el.dataset.id = -1;
+            //console.log("Card "+i+" : back");
+        } else {
+            card.unmount();
+            //console.log("Card "+i+" : remove");
+        }
+    }
+
+    last_of_deck.$el.addEventListener("click", function(){
+        elements = game_container.getElementsByClassName("draw_select");
+        while(elements.length > 0){
+            elements[0].classList.remove('draw_select');
+        }
+        last_of_deck.$el.classList.add("draw_select");
+    });
+
+    data.last_cards_played.forEach( card_id => {
+        game_deck.cards[card_id].$el.addEventListener("click", function(){
+            elements = game_container.getElementsByClassName("draw_select");
+            while(elements.length > 0){
+                elements[0].classList.remove('draw_select');
+            }
+            game_deck.cards[card_id].$el.classList.add("draw_select");
+        });
+    });
+}
+
+function show_players_hand(data) {
+    var show_cards = [];
+    for (i=0; i<data.players.length; i++) {
+        for (j=0; j<data.players[i].hand.length; j++) {
+            var card = game_deck.cards[data.players[i].hand[j]];
+            card.setSide('front');
+            card.x = 160*i - 80*data.players.length + 20*j;
+            card.y = 0;
+            card.$el.style.display = '';
+            card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
+
+            show_cards.push(data.players[i].hand[j]);
+        }
+        var $message = document.createElement('div')
+        $message.classList.add('player_name')
+        $message.textContent = data.players[i].name + ' : ' + data.players[i].score;
+        $message.style[Deck.prefix('transform')] = Deck.translate(160*i -40 - 80*data.players.length+'px', 60+'px');
+        game_container.appendChild($message)
+    }
+    console.log("Show cards : "+show_cards);
+    for (var i = 54; i >= 0; i--) {
+        if (!show_cards.includes(i)) {
+            //game_deck.cards[i].$el.style.display = 'none';
+            game_deck.cards[i].unmount();
+            console.log("Hide card "+i);
+        }
+    }
+}
+
 var game_deck = undefined;
 var game_container;
 var hand_deck;
@@ -46,81 +134,28 @@ function update_game() {
     if (game_deck!=undefined)
         game_deck.unmount();
     game_deck = Deck(true);
-
-    // disable all button
-    $(':button').prop('disabled', true);
-
     
-    $.getJSON('/party', function( data ) {
-        var index_cards_back = 0;
-        var nb_last_cards_played = 0;
-        var nb_cards_played = 0;
-        var last_of_deck = null;
+    $.getJSON('/party', function( data ) {    
         // Update deck, play, and last play
-        for (var i = 54; i >= 0; i--) {
-            var card = game_deck.cards[i];
-            if (data.last_cards_played.includes(i)){
-                card.setSide('front');
-                card.x = 40 + nb_last_cards_played*20;
-                card.y = 0;
-                card.$el.style.display = '';
-                card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', '0');
-                nb_last_cards_played += 1;
-                card.$el.dataset.id = i;
-                //console.log("Card "+i+" : front");
-            } else if (data.cards_played.includes(i)) {
-                card.setSide('front');
-                card.x = 40 + nb_cards_played*20;
-                card.y = 90;
-                card.$el.style.display = '';
-                card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
-                nb_cards_played += 1;
-                card.$el.dataset.id = i;
-            } else if (index_cards_back<data.card_in_deck) {
-                card.setSide('back');
-                card.x = -40 -index_cards_back/2;
-                card.y = -index_cards_back/2;
-                card.$el.style.display = '';
-                card.$el.style[Deck.prefix('transform')] = Deck.translate(card.x+'px', card.y+'px');
-                index_cards_back += 1;
-                last_of_deck = card
-                card.$el.dataset.id = -1;
-                //console.log("Card "+i+" : back");
-            } else {
-                card.unmount();
-                //console.log("Card "+i+" : remove");
-            }
+        if (data.action=="zapzap") {
+            show_players_hand(data);
+        } else {
+            update_common_deck(data);
         }
-
-        last_of_deck.$el.addEventListener("click", function(){
-            elements = game_container.getElementsByClassName("draw_select");
-            while(elements.length > 0){
-                elements[0].classList.remove('draw_select');
-            }
-            last_of_deck.$el.classList.add("draw_select");
-        });
-        data.last_cards_played.forEach( card_id => {
-            game_deck.cards[card_id].$el.addEventListener("click", function(){
-                elements = game_container.getElementsByClassName("draw_select");
-                while(elements.length > 0){
-                    elements[0].classList.remove('draw_select');
-                }
-                game_deck.cards[card_id].$el.classList.add("draw_select");
-            });
-        });
 
         // Update table
         update_player_table(data);
 
-        // Enable Button for current player
+        // disable all buttons
+        $(':button').prop('disabled', true);
+
+        // Enable Buttons for current player
         if (data.current_turn%data.nb_players==player_id) {
             switch(data.action) {
                 case "draw" : $play.disabled = ''; $zapzap.disabled = ''; break;
                 case "play" : $draw.disabled = ''; break;
             }
         }
-
-
     });
     game_deck.mount(game_container);
 

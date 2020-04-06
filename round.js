@@ -95,13 +95,13 @@ class Round {
         // Compute scores
         players.forEach(player => {
             if (player.hand_points == zapzap_score) {
-                this._score[player.id] == 0;
+                this._score[player.id] = 0;
             } else {
                 this._score[player.id] = player.hand_points_with_joker;
             }
         });
         if (counteract) {
-            this._score[id_zapzap] = player[id_zapzap].hand_points_with_joker + (players.length*4);
+            this._score[id_zapzap] = players[id_zapzap].hand_points_with_joker + (players.length*4);
         }
     }
 

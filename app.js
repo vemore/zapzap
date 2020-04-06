@@ -18,7 +18,7 @@ party.add_player("Lyo    ");
 party.add_player("Laurent");
 
 // Start new round with 5 cards
-var round = party.start_round(5, 0);
+var round = party.start_round(2, 0);
 
 // print party status
 print_players_hands(party.players);
@@ -93,6 +93,7 @@ app.get('/player/:id/play', function(req, res) {
 
             emitter.emit('event', {id: req.params.id});
         } else {
+            console.log("Turn "+ party.current_round.turn + " : "+player.name + " incorrect play");
             ret = false;
         }
 

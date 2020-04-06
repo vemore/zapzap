@@ -57,6 +57,7 @@ class Party {
             var json_player = {name: player.name, nb_cards: player.hand.length};
             if (this.current_round.action==Round.ACTION_ZAPZAP) {
                 json_player.hand = json_hand(player.hand);
+                json_player.score = this.current_round.score[player.id];
             }
             players_array.push(json_player);
         });

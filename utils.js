@@ -135,9 +135,9 @@ exports.check_play = function(cards, player) {
     var suit = cards[0].suit;
     var rank = cards[0].rank;
     cards.forEach(function(card){
-        if (card.rank!=rank && card.rank!=ranks.jocker)
+        if (card.rank!=rank && card.rank!=ranks.joker)
             rank_check = false;
-        if (card.suit!=suit && card.rank!=ranks.jocker)
+        if (card.suit!=suit && card.rank!=ranks.joker)
             suit_check = false;
     });
 

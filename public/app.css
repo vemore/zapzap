@@ -7,6 +7,12 @@
     border: 1px solid #fff;
 }
 
+.player_name {
+    position: absolute;
+    display: inline-block;
+    width: 140px;
+}
+
 #players_table  {
     position: fixed;
     top: 2.5rem;
