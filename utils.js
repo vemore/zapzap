@@ -118,35 +118,7 @@ get_cards_from_ids = function(ids, deck) {
 }
 exports.get_cards_from_ids = get_cards_from_ids;
 
-exports.check_play = function(cards, player) {
-    // check size
-    if (cards.length<1 || cards.length>player.hand.length) {
-        return false;
-    } 
-    // TODO check in cards belong to the player hand
-    
-    if (cards.length<1) {
-        return true;
-    }
-
-    // check suit and rank
-    var suit_check = true;
-    var rank_check = true;
-    var suit = cards[0].suit;
-    var rank = cards[0].rank;
-    cards.forEach(function(card){
-        if (card.rank!=rank && card.rank!=ranks.joker)
-            rank_check = false;
-        if (card.suit!=suit && card.rank!=ranks.joker)
-            suit_check = false;
-    });
-
-    // TODO check suit
-
-    return suit_check || rank_check;
-}
-
-exports.get_card_points = function(card, withJoker) {
+get_card_points = function(card, withJoker) {
     if (card.rank.shortName=='Joker') {
         if (withJoker)
             return 25;
@@ -161,3 +133,74 @@ exports.get_card_points = function(card, withJoker) {
         default : return parseInt(card.rank.shortName,10); 
     }
 }
+exports.get_card_points = get_card_points;
+
+exports.check_play = function(cards, player) {
+    // check size
+    if (cards.length<1 || cards.length>player.hand.length) {
+        console.log("check_play: bad card number "+cards.length);
+        return false;
+    } 
+    // TODO check in cards belong to the player hand
+    
+    if (cards.length==1) {
+        console.log("check_play: ok only one card");
+        return true;
+    }
+
+    // check suit and rank
+    var suit_check = true;
+    if (cards.length<3) {
+        suit_check = false;
+    }
+    var rank_check = true;
+    var suit = undefined;
+    var rank = undefined;
+    
+    cards.forEach(function(card){
+        console.log("check card: rank="+card.rank+", suit="+card.suit);
+        if (card.rank.shortName!="Joker") {
+            if (suit == undefined) {
+                suit = card.suit;
+                rank = card.rank;
+            } else {
+                if (card.rank!=rank)
+                    rank_check = false;
+                if (card.suit!=suit)
+                    suit_check = false;
+            }
+        }
+    });
+
+    // Check suit
+    if (suit_check) {
+        
+        var card_value_list = [];
+        var nb_joker = 0;
+        cards.forEach(function(card){
+            if (card.rank.shortName!="Joker") {
+                card_value_list.push(get_card_points(card));
+            } else {
+                nb_joker++;
+            }
+        });
+        card_value_list.sort((a, b) => (a - b));
+        console.log("Check suit "+nb_joker+" Jokers, "+card_value_list);
+        var value = card_value_list[0];
+        for (var i = 1; i < card_value_list.length; i++) {
+            value++;
+            if (card_value_list[i]!=value) {
+                if (nb_joker>0) {
+                    nb_joker--;
+                } else {
+                    suit_check = false;
+                    break;
+                }
+            }
+        }
+    }
+    
+    console.log("check_play: suit_check="+suit_check+", rank_check="+rank_check);
+    return suit_check || rank_check;
+}
+

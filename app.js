@@ -1,4 +1,5 @@
 
+var logger = require('morgan');
 const { decks } = require('cards');
 const { Party } = require('./party.js');
 //const { player } = require('./player.js');
@@ -18,7 +19,7 @@ party.add_player("Lyo    ");
 party.add_player("Laurent");
 
 // Start new round with 5 cards
-var round = party.start_round(2, 0);
+var round = party.start_round(10, 0);
 
 // print party status
 print_players_hands(party.players);
@@ -31,7 +32,7 @@ var app = express();
 app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-cards'));
 app.use('/node_modules/jquery/dist', express.static('node_modules/jquery/dist'));
 app.use('/public', express.static('public'));
-
+app.use(logger('dev')); // Use morgan logger
 
 app.get('/suscribeupdate', function(req, res){
 	res.writeHead(200, {
@@ -77,12 +78,12 @@ app.get('/player/:id/hand', function(req, res) {
 // PLAY
 app.get('/player/:id/play', function(req, res) {
     var ret = true;
+    var player = party.players[req.params.id];
 
     if (req.query.cards) {
 
         // parse request
         var cards = get_cards_from_ids(req.query.cards, party.deck);
-        var player = party.players[req.params.id];
 
         // check played cards
         if (check_play(cards, player)) {
