@@ -123,6 +123,8 @@ app.get('/player/:id/draw', function(req, res) {
 
     card = party.current_round.draw(card);
     player.draw(card);
+    if (party.deck.remainingLength<1)
+        party.deck.shuffleDiscard();
     
     console.log("Turn "+ party.current_round.turn + " : "+ player.name + " draw " + str_cards([card]));
     print_players_hands(party.players);

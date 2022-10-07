@@ -70,6 +70,7 @@ get_card_from_id = function(card_id, deck) {
     }
     if (card_id>=52) {
         var jokers = deck.findCards((card) => card.rank.shortName==="Joker");
+        //console.log("jokers: "+jokers+", "+(card_id-52));
         return jokers[card_id-52];
     }
 
@@ -189,9 +190,11 @@ exports.check_play = function(cards, player) {
         var value = card_value_list[0];
         for (var i = 1; i < card_value_list.length; i++) {
             value++;
+            console.log("card_value_list["+i+"] =? "+value + " nbj="+nb_joker);
             if (card_value_list[i]!=value) {
                 if (nb_joker>0) {
                     nb_joker--;
+                    i--;
                 } else {
                     suit_check = false;
                     break;

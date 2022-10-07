@@ -56,7 +56,7 @@ class Party {
         this._players.forEach(player => {
             var json_player = {name: player.name, nb_cards: player.hand.length};
             if (this.current_round.action==Round.ACTION_ZAPZAP) {
-                json_player.hand = json_hand(player.hand);
+                json_player.hand = json_hand(player.hand, this._deck);
                 json_player.score = this.current_round.score[player.id];
             }
             players_array.push(json_player);
@@ -65,8 +65,8 @@ class Party {
             "nb_players": this.nb_players,
             "current_turn": this.current_round.turn,
             "card_in_deck": this._deck.remainingLength,
-            "last_cards_played": json_hand(this.current_round.last_cards_played),
-            "cards_played": json_hand(this.current_round.cards_played),
+            "last_cards_played": json_hand(this.current_round.last_cards_played, this._deck),
+            "cards_played": json_hand(this.current_round.cards_played, this._deck),
             "players": players_array,
             "action": this.current_round.action
         }

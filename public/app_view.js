@@ -276,6 +276,7 @@ function build_topbar($topbar) {
 
     $draw.addEventListener('click', function () {
         elements = game_container.getElementsByClassName("draw_select");
+        console.log("elements : "+ elements);
         $.getJSON('/player/'+ player_id + '/draw', { card: elements[0].dataset.id })
         .done(function( json ) {
             console.log("Draw : "+ json.draw);
