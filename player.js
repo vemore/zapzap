@@ -2,6 +2,9 @@ const { str_cards, get_card_id, get_card_points } = require('./utils.js');
 
 class Player {
     constructor(name, id) {
+        if (name === null || name.trim() === '') {
+            throw new Error('Name cannot be empty or null');
+        }
         this._name = name;
         this._id = id;
         this._hand = [];
