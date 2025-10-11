@@ -1,7 +1,9 @@
 
+const { InvalidGameStateError, InvalidPlayError, ErrorCodes } = require('./gameError');
+const logger = require('./logger');
+
 class Round {
     constructor(nb_cards_in_hand, first_player, deck) {
-        const logger = require('./logger');
         logger.info('Creating new round and shuffling deck');
 
         this._nb_cards_in_hand = nb_cards_in_hand;
@@ -50,6 +52,13 @@ class Round {
 
         // case draw from deck
         if (card==undefined) {
+            if (this._deck.remainingLength === 0) {
+                throw new InvalidGameStateError('Cannot draw from empty deck', {
+                    code: ErrorCodes.INVALID_DECK_STATE,
+                    action: 'draw',
+                    deckSize: this._deck.remainingLength
+                });
+            }
             draw_card = this._deck.draw()[0];
         } else {
             // case draw from last cards played
@@ -58,8 +67,11 @@ class Round {
                 this._last_cards_played.splice(index, 1)[0];
                 draw_card = card;
             } else {
-                console.log("ERROR : drawn card is not in last played cards");
-                return undefined;
+                throw new InvalidPlayError('Selected card is not in last played cards', {
+                    code: ErrorCodes.INVALID_PLAY_CARDS,
+                    selectedCard: card,
+                    lastCardsPlayed: this._last_cards_played
+                });
             }
         }
         
@@ -73,36 +85,61 @@ class Round {
     }
 
     play_cards(cards) {
-        //this._last_cards_played = this._cards_played;
+        if (!Array.isArray(cards) || cards.length === 0) {
+            throw new InvalidPlayError('Invalid cards played', {
+                code: ErrorCodes.INVALID_PLAY_CARDS,
+                cards: cards,
+                expected: 'non-empty array of cards'
+            });
+        }
         this._cards_played = cards;
         this._player_action = Round.ACTION_PLAY;
     }
 
     zapzap(players, id_zapzap) {
+        if (!Array.isArray(players) || players.length === 0) {
+            throw new InvalidGameStateError('Invalid players array', {
+                code: ErrorCodes.INVALID_GAME_STATE,
+                playersLength: players?.length
+            });
+        }
+
+        if (id_zapzap < 0 || id_zapzap >= players.length) {
+            throw new InvalidPlayError('Invalid zapzap player id', {
+                code: ErrorCodes.INVALID_PLAY_CARDS,
+                id: id_zapzap,
+                validRange: `0-${players.length - 1}`
+            });
+        }
+
         this._player_action = Round.ACTION_ZAPZAP;
         this._score = [];
 
         var zapzap_score = players[id_zapzap].hand_points;
         var counteract = false;
-        var lowest_score = zapzap_score;
+        var lowest_score = Infinity;
 
         // Find lowest score and check for counteract
         players.forEach(player => {
             if (player.hand_points < lowest_score) {
                 lowest_score = player.hand_points;
-                if (player.id != id_zapzap) {
-                    counteract = true;
-                }
             }
         });
 
+        // Check if someone has a lower score than zapzap player
+        counteract = players.some(player => 
+            player.id !== id_zapzap && player.hand_points <= zapzap_score
+        );
+
         // Compute scores
         players.forEach(player => {
-            if (player.hand_points == lowest_score) {
+            if (player.hand_points === lowest_score) {
                 this._score[player.id] = 0;
-            } else if (player.id == id_zapzap && counteract) {
+            } else if (player.id === id_zapzap && counteract) {
+                // If counteracted, zapzap player gets penalty points
                 this._score[player.id] = player.hand_points_with_joker + (players.length * 4);
             } else {
+                // Other players just get their hand points
                 this._score[player.id] = player.hand_points_with_joker;
             }
         });

@@ -1,6 +1,7 @@
 const { Round } = require('./round.js');
 const { decks } = require('cards');
 const { Player } = require('./player.js');
+const { InvalidGameStateError, InvalidPlayError } = require('./gameError');
 
 describe('Round', () => {
     let deck;
@@ -38,6 +39,19 @@ describe('Round', () => {
             expect(drawnCard).toBe(targetCard);
             expect(round.last_cards_played).not.toContain(targetCard);
         });
+
+        it('should throw error when drawing from empty deck', () => {
+            // Draw all cards from deck
+            while(deck.remainingLength > 0) {
+                deck.draw();
+            }
+            expect(() => round.draw()).toThrow(InvalidGameStateError);
+        });
+
+        it('should throw error when drawing invalid card from last_cards_played', () => {
+            const invalidCard = deck.draw()[0];
+            expect(() => round.draw(invalidCard)).toThrow(InvalidPlayError);
+        });
     });
 
     describe('#play_cards', () => {
@@ -47,31 +61,49 @@ describe('Round', () => {
             expect(round.cards_played).toEqual(cards);
             expect(round.action).toBe(Round.ACTION_PLAY);
         });
+
+        it('should throw error when playing no cards', () => {
+            expect(() => round.play_cards([])).toThrow(InvalidPlayError);
+        });
+
+        it('should throw error when playing undefined cards', () => {
+            expect(() => round.play_cards(undefined)).toThrow(InvalidPlayError);
+        });
     });
 
     describe('#zapzap', () => {
         it('should calculate correct scores when player calls zapzap', () => {
             const players = [player1, player2];
-            player1.sethand(deck.draw(2)); // Draw some cards for testing
-            player2.sethand(deck.draw(2));
+            player1.sethand(deck.draw(2));
+            player2.sethand(deck.draw(3)); // More points than player1
             
             round.zapzap(players, 0);
             expect(round.action).toBe(Round.ACTION_ZAPZAP);
             expect(round.score).toBeDefined();
+            expect(round.score[0]).toBe(0); // Player calling zapzap has lowest score
+            expect(round.score[1]).toBeGreaterThan(0); // Other player has penalty
         });
 
         it('should handle counteract when another player has lower points', () => {
-            // Setup players with specific hands for testing
-            const cards1 = deck.draw(2);
-            const cards2 = deck.draw(1); // Less points than player1
+            const cards1 = deck.draw(2); // Higher points
+            const cards2 = deck.draw(1); // Lower points
             player1.sethand(cards1);
             player2.sethand(cards2);
 
             const players = [player1, player2];
             round.zapzap(players, 0);
             
-            expect(round.score[0]).toBeGreaterThan(0); // Player1 should get penalty
-            expect(round.score[1]).toBe(0); // Player2 should get 0 points
+            expect(round.score[0]).toBeGreaterThan(0); // Player1 gets penalty for wrong zapzap
+            expect(round.score[1]).toBe(0); // Player2 has lowest score
+        });
+
+        it('should throw error when zapzap with no players', () => {
+            expect(() => round.zapzap([], 0)).toThrow(InvalidGameStateError);
+        });
+
+        it('should throw error when zapzap with invalid player id', () => {
+            const players = [player1, player2];
+            expect(() => round.zapzap(players, 99)).toThrow(InvalidPlayError);
         });
     });
 

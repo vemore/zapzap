@@ -1,5 +1,6 @@
 const { Party } = require('./party.js');
 const { decks } = require('cards');
+const { InvalidGameStateError, InvalidPlayerError } = require('./gameError');
 
 describe('Party', () => {
     let deck;
@@ -63,32 +64,35 @@ describe('Party', () => {
             expect(round.turn).toBe(1);
         });
 
-        it('should handle invalid number of cards', () => {
-            const round = party.start_round(-1, 0);
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('Invalid number of cards'),
-                expect.any(Object)
-            );
+        it('should throw InvalidGameStateError for invalid number of cards', () => {
+            expect(() => {
+                party.start_round(-1, 0);
+            }).toThrow('Invalid number of cards in hand');
+            expect(() => {
+                party.start_round(-1, 0);
+            }).toThrow(InvalidGameStateError);
         });
 
-        it('should handle invalid first player', () => {
-            const round = party.start_round(5, 99);
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('Invalid first player'),
-                expect.any(Object)
-            );
+        it('should throw InvalidPlayerError for invalid first player', () => {
+            expect(() => {
+                party.start_round(5, 99);
+            }).toThrow('Invalid first player index');
+            expect(() => {
+                party.start_round(5, 99);
+            }).toThrow(InvalidPlayerError);
         });
 
-        it('should handle empty deck', () => {
+        it('should throw InvalidGameStateError for empty deck', () => {
             // Draw all cards from deck
             while(deck.remainingLength > 0) {
                 deck.draw();
             }
-            const round = party.start_round(5, 0);
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('Not enough cards in deck'),
-                expect.any(Object)
-            );
+            expect(() => {
+                party.start_round(5, 0);
+            }).toThrow('Not enough cards in deck');
+            expect(() => {
+                party.start_round(5, 0);
+            }).toThrow(InvalidGameStateError);
         });
     });
 

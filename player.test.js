@@ -1,4 +1,5 @@
 const { Player } = require('./player.js');
+const { InvalidPlayerError, InvalidPlayError } = require('./gameError');
 
 describe('Player', () => {
   describe('#constructor()', () => {
@@ -8,9 +9,16 @@ describe('Player', () => {
       expect(player.id).toBe(1);
     });
 
-    it('should throw an error if name is empty or null', () => {
-      expect(() => new Player('', 1)).toThrowError();
-      expect(() => new Player(null, 1)).toThrowError();
+    it('should throw InvalidPlayerError if name is empty or null', () => {
+      expect(() => new Player('', 1)).toThrow(InvalidPlayerError);
+      expect(() => new Player(null, 1)).toThrow(InvalidPlayerError);
+      expect(() => new Player(undefined, 1)).toThrow(InvalidPlayerError);
+    });
+
+    it('should throw InvalidPlayerError if id is invalid', () => {
+      expect(() => new Player('John', -1)).toThrow(InvalidPlayerError);
+      expect(() => new Player('John', 'invalid')).toThrow(InvalidPlayerError);
+      expect(() => new Player('John', null)).toThrow(InvalidPlayerError);
     });
   });
 
@@ -20,6 +28,13 @@ describe('Player', () => {
       const card = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
       player.draw(card);
       expect(player.hand).toEqual([card]);
+    });
+
+    it('should throw InvalidPlayError when drawing undefined card', () => {
+      const player = new Player('John Doe', 1);
+      expect(() => player.draw()).toThrow(InvalidPlayError);
+      expect(() => player.draw(null)).toThrow(InvalidPlayError);
+      expect(() => player.draw(undefined)).toThrow(InvalidPlayError);
     });
   });
 
@@ -34,6 +49,23 @@ describe('Player', () => {
       player.play([card1]);
 
       expect(player.hand).toEqual([card2]);
+    });
+
+    it('should throw InvalidPlayError when playing invalid cards', () => {
+      const player = new Player('John Doe', 1);
+      expect(() => player.play()).toThrow(InvalidPlayError);
+      expect(() => player.play([])).toThrow(InvalidPlayError);
+      expect(() => player.play(null)).toThrow(InvalidPlayError);
+    });
+
+    it('should throw InvalidPlayError when playing cards not in hand', () => {
+      const player = new Player('John Doe', 1);
+      const card1 = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
+      const card2 = { rank: { shortName: 'K' }, suit: { unicode: '♦' } };
+      
+      player.draw(card1);
+      expect(() => player.play([card2])).toThrow(InvalidPlayError);
+      expect(() => player.play([card1, card2])).toThrow(InvalidPlayError);
     });
   });
 
@@ -83,6 +115,27 @@ describe('Player', () => {
       
       player.sethand(cards);
       expect(player.hand).toEqual(cards);
+    });
+
+    it('should throw InvalidPlayError when setting invalid hand', () => {
+      const player = new Player('John Doe', 1);
+      expect(() => player.sethand()).toThrow(InvalidPlayError);
+      expect(() => player.sethand(null)).toThrow(InvalidPlayError);
+      expect(() => player.sethand('invalid')).toThrow(InvalidPlayError);
+    });
+  });
+
+  describe('#zapzap()', () => {
+    it('should throw InvalidPlayError when calling zapzap with empty hand', () => {
+      const player = new Player('John Doe', 1);
+      expect(() => player.zapzap()).toThrow(InvalidPlayError);
+    });
+
+    it('should not throw when calling zapzap with cards in hand', () => {
+      const player = new Player('John Doe', 1);
+      const card = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
+      player.draw(card);
+      expect(() => player.zapzap()).not.toThrow();
     });
   });
 });

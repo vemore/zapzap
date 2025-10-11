@@ -58,15 +58,14 @@ function get_card_id(card, deck) {
             return -1;
         }
 
-        // Get rank index (0-12)
-        const rankNames = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-        const rankIndex = rankNames.indexOf(card.rank.shortName);
-
-        // Handle jokers
+        // Handle jokers specially
         if (card.rank.shortName === 'Joker') {
-            // When no deck is provided, assume it's the first joker
             if (!deck || !deck.findCards) {
-                return 52;
+                logger.error('No jokers in deck', {
+                    code: ErrorCodes.INVALID_CARD_JOKER,
+                    card
+                });
+                return -1;
             }
             const jokers = deck.findCards(c => c.rank.shortName === 'Joker');
             if (!jokers || jokers.length === 0) {
@@ -76,50 +75,21 @@ function get_card_id(card, deck) {
                 });
                 return -1;
             }
-            const jokerIndex = jokers.indexOf(card);
+            // Return either 52 or 53 depending on position in jokers array
+            const jokerIndex = jokers.findIndex(j => j === card);
             if (jokerIndex === -1) {
-                // When joker is not found in deck but is a valid joker card, assume it's the first joker
-                return 52;
+                logger.error('Unknown joker', {
+                    code: ErrorCodes.INVALID_CARD_JOKER,
+                    card,
+                    availableJokers: jokers.length
+                });
+                return -1;
             }
             return 52 + jokerIndex;
         }
-        
-        if (rankIndex === -1) {
-            logger.error('Invalid card rank', {
-                code: ErrorCodes.INVALID_CARD_RANK,
-                rank: card.rank.shortName,
-                validRanks: rankNames
-            });
-            return -1;
-        }
 
-        // Get suit index (0-3)
-        let card_id = 0;
-        switch (card.suit.unicode) {
-            case '♠': break;
-            case '♥': card_id += 13; break;
-            case '♣': card_id += 26; break;
-            case '♦': card_id += 39; break;
-            default:
-                logger.error('Invalid card suit', {
-                    code: ErrorCodes.INVALID_CARD_SUIT,
-                    suit: card.suit.unicode,
-                    validSuits: ['♠', '♥', '♣', '♦']
-                });
-                return -1;
-        }
-        
-        card_id += rankIndex;
-        return card_id;
-    } catch (error) {
-        logger.error('Error in get_card_id', {
-            code: ErrorCodes.INVALID_CARD_RANK,
-            error: error.message,
-            card
-        });
-        return -1;
-    }
-}
+        // Get rank index (0-12)
+        const rankNames = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
 function json_hand(hand, deck) {
     if (!Array.isArray(hand)) {
@@ -143,6 +113,14 @@ function json_hand(hand, deck) {
 
         const id = get_card_id(card, deck);
         if (id === -1) {
+            // Special case for jokers - verify deck can handle them
+            if (card.rank.shortName === 'Joker' && (!deck || !deck.findCards)) {
+                throw new InvalidCardError('Cannot resolve joker without a valid deck', {
+                    code: ErrorCodes.INVALID_CARD_JOKER,
+                    index: i,
+                    card
+                });
+            }
             throw new InvalidCardError('Invalid card in hand', {
                 code: ErrorCodes.INVALID_CARD_SUIT,
                 index: i,

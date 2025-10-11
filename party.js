@@ -2,6 +2,8 @@
 const { Player } = require('./player.js');
 const { Round } = require('./round.js');
 const { json_hand } = require('./utils.js');
+const { InvalidGameStateError, InvalidPlayerError, ErrorCodes } = require('./gameError');
+const logger = require('./logger');
 
 class Party {
     constructor(deck) {
@@ -31,25 +33,32 @@ class Party {
     }
 
     start_round(nb_cards_in_hand, first_player) {
-        const logger = require('./logger');
-
         // Validate input parameters
         if (nb_cards_in_hand < 1) {
-            logger.error('Invalid number of cards', { nb_cards_in_hand });
-            return null;
+            throw new InvalidGameStateError('Invalid number of cards in hand', {
+                code: ErrorCodes.INVALID_GAME_STATE,
+                nb_cards_in_hand,
+                minimum_required: 1
+            });
         }
 
         if (first_player < 0 || first_player >= this._players.length) {
-            logger.error('Invalid first player', { first_player, nb_players: this._players.length });
-            return null;
+            throw new InvalidPlayerError('Invalid first player index', {
+                code: ErrorCodes.INVALID_PLAYER_COUNT,
+                first_player,
+                nb_players: this._players.length,
+                valid_range: `0-${this._players.length - 1}`
+            });
         }
 
-        if (this._deck.remainingLength < nb_cards_in_hand * this._players.length) {
-            logger.error('Not enough cards in deck', { 
-                needed: nb_cards_in_hand * this._players.length,
-                available: this._deck.remainingLength 
+        const neededCards = nb_cards_in_hand * this._players.length;
+        if (this._deck.remainingLength < neededCards) {
+            throw new InvalidGameStateError('Not enough cards in deck', {
+                code: ErrorCodes.INVALID_DECK_STATE,
+                needed: neededCards,
+                available: this._deck.remainingLength,
+                missing: neededCards - this._deck.remainingLength
             });
-            return null;
         }
 
         // start the new round
