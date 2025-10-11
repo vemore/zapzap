@@ -48,9 +48,13 @@ class Player {
             if (index > -1) {
                 this._hand.splice(index, 1)
             } else {
-                console.log(
-                    "ERROR : play card " + str_cards([card]) + " (" + get_card_id(card)+
-                    ") which is not in player hand");
+                const logger = require('./logger');
+                logger.error('Attempted to play card not in hand', {
+                    card: str_cards([card]),
+                    cardId: get_card_id(card),
+                    playerName: this._name,
+                    playerId: this._id
+                });
             }
         });
     }

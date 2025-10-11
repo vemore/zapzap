@@ -31,6 +31,27 @@ class Party {
     }
 
     start_round(nb_cards_in_hand, first_player) {
+        const logger = require('./logger');
+
+        // Validate input parameters
+        if (nb_cards_in_hand < 1) {
+            logger.error('Invalid number of cards', { nb_cards_in_hand });
+            return null;
+        }
+
+        if (first_player < 0 || first_player >= this._players.length) {
+            logger.error('Invalid first player', { first_player, nb_players: this._players.length });
+            return null;
+        }
+
+        if (this._deck.remainingLength < nb_cards_in_hand * this._players.length) {
+            logger.error('Not enough cards in deck', { 
+                needed: nb_cards_in_hand * this._players.length,
+                available: this._deck.remainingLength 
+            });
+            return null;
+        }
+
         // start the new round
         var round = new Round(nb_cards_in_hand, first_player, this._deck);
         this._rounds.push(round);
@@ -38,7 +59,10 @@ class Party {
         // draw new hand for each player
         this._players.forEach(player => {
             var cards = this._deck.draw(nb_cards_in_hand);
-            console.log()
+            logger.debug('Drawing cards for player', { 
+                player: player.name,
+                nb_cards: cards.length 
+            });
             player.sethand(cards);
         });
 

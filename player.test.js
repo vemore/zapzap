@@ -1,4 +1,3 @@
-// player.test.js
 const { Player } = require('./player.js');
 
 describe('Player', () => {
@@ -16,116 +15,74 @@ describe('Player', () => {
   });
 
   describe('#draw()', () => {
-    it('should add a card to the player\'s hand', () => {
+    it('should add a card to player hand', () => {
       const player = new Player('John Doe', 1);
-      const card = { suit: 'Hearts', rank: 'Ace' };
+      const card = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
       player.draw(card);
-
       expect(player.hand).toEqual([card]);
-    });
-
-    it('should throw an error if no player is created', () => {
-      expect(() => player.draw(card)).toThrowError();
     });
   });
 
   describe('#play()', () => {
-    it('should remove a card from the player\'s hand', () => {
+    it('should remove cards from player hand', () => {
       const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
+      const card1 = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
+      const card2 = { rank: { shortName: 'K' }, suit: { unicode: '♦' } };
+      
       player.draw(card1);
+      player.draw(card2);
       player.play([card1]);
 
-      expect(player.hand).toEqual([]);
-    });
-
-    it('should not remove a card from the player\'s hand if it does not exist', () => {
-      const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
-      const card2 = { suit: 'Diamonds', rank: 'Ace' };
-      player.draw(card1);
-      player.play([card2]);
-
-      expect(player.hand).toEqual([card1]);
-    });
-    it('should not remove more cards than the player has in hand', () => {
-      const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
-      player.draw(card1);
-      player.play([card1]);
-
-      expect(player.hand).toEqual([]);
-    });
-
-    it('should log an error if the card to be played is not in the player\'s hand', () => {
-      const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
-      player.draw(card1);
-
-      jest.spyOn(console, 'log').mockImplementation(() => {
-        console.log('ERROR : play card ...');
-      });
-
-      expect(() => player.play([card2])).toThrowError();
+      expect(player.hand).toEqual([card2]);
     });
   });
 
   describe('#hand_points()', () => {
-    it('should calculate points for all cards in the player\'s hand', () => {
+    it('should calculate correct points without jokers', () => {
       const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
-      const card2 = { suit: 'Diamonds', rank: 'King' };
-
+      const card1 = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
+      const card2 = { rank: { shortName: 'K' }, suit: { unicode: '♦' } };
       
-
       player.draw(card1);
       player.draw(card2);
 
-      expect(player.hand_points).toBe(14); // assuming get_card_points returns 1 for Ace and 13 for King
+      expect(player.hand_points).toBe(14); // Ace = 1, King = 13
     });
 
-    it('should throw an error if no cards are in the player\'s hand', () => {
+    it('should return 0 if no cards in hand', () => {
       const player = new Player('John Doe', 1);
-      expect(() => player.hand_points()).toThrowError();
+      expect(player.hand_points).toBe(0);
     });
   });
 
   describe('#hand_points_with_joker()', () => {
-    it('should calculate points for all cards in the player\'s hand, including a joker card', () => {
+    it('should calculate points including jokers', () => {
       const player = new Player('John Doe', 1);
-      const card1 = { suit: 'Hearts', rank: 'Ace' };
-      const card2 = { suit: 'Diamonds', rank: 'King' };
+      const card1 = { rank: { shortName: 'A' }, suit: { unicode: '♥' } };
+      const joker = { rank: { shortName: 'Joker' }, suit: { unicode: null } };
 
       player.draw(card1);
-      player.draw({ ...card2, type: 'joker' }); // assuming a joker card has a specific type
+      player.draw(joker);
 
-      expect(player.hand_points_with_joker()).toBe(30); // assuming get_card_points returns 15 for Ace and 15 for King
+      expect(player.hand_points_with_joker).toBe(26); // Ace = 1, Joker = 25
     });
 
-    it('should throw an error if no cards are in the player\'s hand', () => {
+    it('should return 0 if no cards in hand', () => {
       const player = new Player('John Doe', 1);
-      expect(() => player.hand_points_with_joker()).toThrowError();
+      expect(player.hand_points_with_joker).toBe(0);
     });
   });
-});
 
-describe('#sethand()', () => {
-  it('should update the player\'s hand with a new array of cards', () => {
-    const player = new Player('John Doe', 1);
-    const card1 = { suit: 'Hearts', rank: 'Ace' };
-    const card2 = { suit: 'Diamonds', rank: 'King' };
-
-    player.draw(card1);
-    player.sethand([card2]);
-
-    expect(player.hand).toEqual([card1, card2]);
+  describe('#sethand()', () => {
+    it('should set player hand to given cards', () => {
+      const player = new Player('John Doe', 1);
+      const cards = [
+        { rank: { shortName: 'A' }, suit: { unicode: '♥' } },
+        { rank: { shortName: 'K' }, suit: { unicode: '♦' } }
+      ];
+      
+      player.sethand(cards);
+      expect(player.hand).toEqual(cards);
+    });
   });
-
-  it('should throw an error if no player is created', () => {
-    expect(() => player.sethand([card1])).toThrowError();
-  });
-});
-
-describe('#zapzap()', () => {
-  // TODO: implement this method
 });

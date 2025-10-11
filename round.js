@@ -1,7 +1,8 @@
 
 class Round {
     constructor(nb_cards_in_hand, first_player, deck) {
-        console.log("Create a new round : shuffle the deck");
+        const logger = require('./logger');
+        logger.info('Creating new round and shuffling deck');
 
         this._nb_cards_in_hand = nb_cards_in_hand;
         this._selected_card = undefined;
@@ -83,26 +84,28 @@ class Round {
 
         var zapzap_score = players[id_zapzap].hand_points;
         var counteract = false;
+        var lowest_score = zapzap_score;
 
-        // Test zapzap counteract
+        // Find lowest score and check for counteract
         players.forEach(player => {
-            if (player.hand_points <= zapzap_score && player.id != id_zapzap) {
-                zapzap_score = player.hand_points;
-                counteract = true;
+            if (player.hand_points < lowest_score) {
+                lowest_score = player.hand_points;
+                if (player.id != id_zapzap) {
+                    counteract = true;
+                }
             }
         });
 
         // Compute scores
         players.forEach(player => {
-            if (player.hand_points == zapzap_score) {
+            if (player.hand_points == lowest_score) {
                 this._score[player.id] = 0;
+            } else if (player.id == id_zapzap && counteract) {
+                this._score[player.id] = player.hand_points_with_joker + (players.length * 4);
             } else {
                 this._score[player.id] = player.hand_points_with_joker;
             }
         });
-        if (counteract) {
-            this._score[id_zapzap] = players[id_zapzap].hand_points_with_joker + (players.length*4);
-        }
     }
 
     next_turn() {
