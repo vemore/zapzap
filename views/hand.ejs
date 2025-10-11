@@ -1,13 +1,13 @@
 <html>
     <head>
         <title>Cards</title>
-        <link rel="stylesheet" href="node_modules/deck-of-cards/example/example.css">
-        <link rel="stylesheet" href="public/app.css">
+        <link rel="stylesheet" href="/node_modules/deck-of-cards/example/example.css">
+        <link rel="stylesheet" href="/public/app.css">
     </head>
     <body>
-        <script src="node_modules/deck-of-cards/dist/deck.js"></script>
-        <script src="node_modules/jquery/dist/jquery.js"></script>
-        <script src="public/app_view.js"></script>
+        <script src="/node_modules/deck-of-cards/dist/deck.min.js"></script>
+        <script src="/node_modules/jquery/dist/jquery.min.js"></script>
+        <script src="/public/app_view.js"></script>
 
         
         <div id="players_table"></div>
@@ -16,7 +16,7 @@
         <div id="game"></div>
 
         <script>
-            var id_player = <%= player; %>;
+            var id_player = <%- player %>;
 
             var $player_hand = document.getElementById('player_hand');
             var $topbar = document.getElementById('topbar');
