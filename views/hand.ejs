@@ -16,7 +16,8 @@
         <div id="game"></div>
 
         <script>
-            var id_player = <%- player %>;
+            // Player ID is validated server-side before rendering
+            var id_player = <%= player %>;
 
             var $player_hand = document.getElementById('player_hand');
             var $topbar = document.getElementById('topbar');
@@ -27,7 +28,7 @@
             build_player_table($players);
             var game_deck = build_game($game);
             var player_deck = build_player_hand($player_hand, id_player);
-            
+
         </script>
     </body>
 </html>

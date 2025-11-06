@@ -1,17 +1,112 @@
-function build_player_table($container) {
-    $.getJSON('/party', function( data ) {
-        var $table = document.createElement('table');
-        $table.id = "player_table"
-        $container.appendChild($table);
-        
-        for (i=0; i<data.players.length; i++) {
-            $table.insertRow($table.rows.length);
-            $table.rows[i].insertCell($table.rows[i].cells.length);
-            $table.rows[i].insertCell($table.rows[i].cells.length);
-            $table.rows[i].cells[0].textContent = data.players[i].name;
-            $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
-        }
+// =============================================================================
+// ERROR HANDLING
+// =============================================================================
+
+/**
+ * Show error message to user
+ * @param {string} message - Error message
+ * @param {number} duration - Duration to show message (ms)
+ */
+function showError(message, duration) {
+    duration = duration || 3000;
+
+    // Remove existing error toasts
+    $('.error-toast').remove();
+
+    // Create error toast
+    var $error = $('<div class="error-toast">')
+        .text(message)
+        .css({
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            background: '#f44336',
+            color: 'white',
+            padding: '15px 20px',
+            borderRadius: '4px',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+            zIndex: 10000,
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '14px',
+            maxWidth: '300px'
+        })
+        .appendTo('body');
+
+    // Auto-remove after duration
+    setTimeout(function() {
+        $error.fadeOut(300, function() {
+            $(this).remove();
+        });
+    }, duration);
+}
+
+/**
+ * Handle AJAX errors with user-friendly messages
+ * @param {object} jqXHR - jQuery XHR object
+ * @param {string} textStatus - Status text
+ * @param {string} errorThrown - Error description
+ * @param {string} context - Context of the error for logging
+ */
+function handleAjaxError(jqXHR, textStatus, errorThrown, context) {
+    console.error('API call failed:', {
+        context: context,
+        status: jqXHR.status,
+        statusText: jqXHR.statusText,
+        textStatus: textStatus,
+        error: errorThrown,
+        response: jqXHR.responseJSON
     });
+
+    // Extract error message from response
+    var errorMessage = 'Network error';
+
+    if (jqXHR.responseJSON && jqXHR.responseJSON.error) {
+        errorMessage = jqXHR.responseJSON.error;
+    } else if (jqXHR.status === 403) {
+        errorMessage = 'Not your turn or invalid action';
+    } else if (jqXHR.status === 400) {
+        errorMessage = 'Invalid request';
+    } else if (jqXHR.status === 404) {
+        errorMessage = 'Endpoint not found';
+    } else if (jqXHR.status >= 500) {
+        errorMessage = 'Server error';
+    } else if (textStatus === 'timeout') {
+        errorMessage = 'Request timed out';
+    } else if (textStatus === 'abort') {
+        errorMessage = 'Request aborted';
+    }
+
+    showError(errorMessage);
+
+    // Retry logic for server errors
+    if (jqXHR.status >= 500 || textStatus === 'timeout') {
+        console.log('Retrying in 2 seconds...');
+        // Note: Retry logic would go here if needed
+    }
+}
+
+// =============================================================================
+// GAME STATE FUNCTIONS
+// =============================================================================
+
+function build_player_table($container) {
+    $.getJSON('/party')
+        .done(function( data ) {
+            var $table = document.createElement('table');
+            $table.id = "player_table"
+            $container.appendChild($table);
+
+            for (i=0; i<data.players.length; i++) {
+                $table.insertRow($table.rows.length);
+                $table.rows[i].insertCell($table.rows[i].cells.length);
+                $table.rows[i].insertCell($table.rows[i].cells.length);
+                $table.rows[i].cells[0].textContent = data.players[i].name;
+                $table.rows[i].cells[1].textContent = data.players[i].nb_cards;
+            }
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'build_player_table');
+        });
 }
 
 function update_player_table(data) {
@@ -134,29 +229,33 @@ function update_game() {
     if (game_deck!=undefined)
         game_deck.unmount();
     game_deck = Deck(true);
-    
-    $.getJSON('/party', function( data ) {    
-        // Update deck, play, and last play
-        if (data.action=="zapzap") {
-            show_players_hand(data);
-        } else {
-            update_common_deck(data);
-        }
 
-        // Update table
-        update_player_table(data);
-
-        // disable all buttons
-        $(':button').prop('disabled', true);
-
-        // Enable Buttons for current player
-        if (data.current_turn%data.nb_players==player_id) {
-            switch(data.action) {
-                case "draw" : $play.disabled = ''; $zapzap.disabled = ''; break;
-                case "play" : $draw.disabled = ''; break;
+    $.getJSON('/party')
+        .done(function( data ) {
+            // Update deck, play, and last play
+            if (data.action=="zapzap") {
+                show_players_hand(data);
+            } else {
+                update_common_deck(data);
             }
-        }
-    });
+
+            // Update table
+            update_player_table(data);
+
+            // disable all buttons
+            $(':button').prop('disabled', true);
+
+            // Enable Buttons for current player
+            if (data.current_turn%data.nb_players==player_id) {
+                switch(data.action) {
+                    case "draw" : $play.disabled = ''; $zapzap.disabled = ''; break;
+                    case "play" : $draw.disabled = ''; break;
+                }
+            }
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'update_game');
+        });
     game_deck.mount(game_container);
 
 
@@ -198,11 +297,14 @@ function build_player_hand($container, id_player) {
     hand_container = $container;
     player_id = id_player;
 
-    $.getJSON('/player/'+id_player+'/hand', function( data ) {
-        update_player_hand(data);
-        //deck.sort();
-        
-    });
+    $.getJSON('/player/'+id_player+'/hand')
+        .done(function( data ) {
+            update_player_hand(data);
+            //deck.sort();
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'build_player_hand');
+        });
     return hand_deck;
 }
 
@@ -269,8 +371,13 @@ function build_topbar($topbar) {
 
         $.getJSON('/player/'+ player_id + '/play', { cards: play })
         .done(function( json ) {
-            update_player_hand(json);
+            // Handle both old format (array) and new format (object with hand)
+            const hand = json.hand || json;
+            update_player_hand(hand);
             //update_game();
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'play_cards');
         });
     });
 
@@ -282,6 +389,9 @@ function build_topbar($topbar) {
             console.log("Draw : "+ json.draw);
             update_player_hand(json.hand);
             //update_game();
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'draw_card');
         });
     });
 
@@ -289,9 +399,13 @@ function build_topbar($topbar) {
         elements = game_container.getElementsByClassName("draw_select");
         $.getJSON('/player/'+ player_id + '/zapzap', {})
         .done(function( json ) {
-            console.log("Draw : "+ json.draw);
+            console.log("ZapZap called successfully");
+            // Game state will update via SSE event
             //update_player_hand(json.hand);
             //update_game();
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            handleAjaxError(jqXHR, textStatus, errorThrown, 'zapzap');
         });
     });
 
