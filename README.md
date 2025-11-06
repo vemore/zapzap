@@ -1,21 +1,30 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game built with Node.js, Express, and vanilla JavaScript. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game built with clean architecture, Node.js, Express, and vanilla JavaScript. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Test Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)](coverage/)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
+[![API Version](https://img.shields.io/badge/API-v2.0-blue.svg)](BACKEND_API.md)
 
 ---
 
 ## ✨ Features
 
-- 🎮 **Real-time Multiplayer**: 5-player game with Server-Sent Events (SSE)
+### Game Features
+- 🎮 **Real-time Multiplayer**: 3-8 players with Server-Sent Events (SSE)
 - 🃏 **Rummy-Style Gameplay**: Play sequences, pairs, and strategic card combinations
 - ⚡ **ZapZap Mechanic**: Call ZapZap when your hand is ≤5 points to win the round
 - 🎭 **Counteract System**: Opponents can counteract your ZapZap if they have equal/lower points
 - 🎨 **Visual Card Interface**: Beautiful card animations using deck-of-cards library
 - 📊 **Live Updates**: Real-time game state synchronization across all players
+
+### Technical Features (v2.0)
+- 🏗️ **Clean Architecture**: Domain-driven design with clear layer separation
+- 🔐 **JWT Authentication**: Secure token-based user management
+- 💾 **Database Persistence**: SQLite for game state and user data
+- 🎪 **Multi-Party Support**: Multiple concurrent games
+- 📡 **RESTful API**: Well-designed API with proper HTTP methods
+- ✅ **Comprehensive Testing**: Unit and integration tests included
 
 ---
 
@@ -35,37 +44,41 @@ cd zapzap
 
 # Install dependencies
 npm install
+
+# Initialize demo data (5 users + 1 party)
+npm run init-demo
 ```
 
 ### Running the Game
 
 ```bash
-# Development mode (with auto-reload)
+# Development mode with auto-reload (v2 Clean Architecture)
 npm start
 
-# Production mode
-node app.js
+# Legacy version (v1)
+npm start:legacy
 ```
 
 The server will start on **port 9999** by default.
 
-### Accessing the Game
+### Demo Login Credentials
 
-Open **5 browser tabs/windows** with the following URLs (one per player):
+After running `npm run init-demo`, you can login with:
+- **Usernames**: Vincent, Thibaut, Simon, Lyo, Laurent
+- **Password**: `demo123` (for all users)
 
+### Quick Test
+
+```bash
+# Test the API
+node scripts/test-api.js
+
+# Expected output: All API tests passed! ✓
 ```
-Player 0: http://localhost:9999/?id=0
-Player 1: http://localhost:9999/?id=1
-Player 2: http://localhost:9999/?id=2
-Player 3: http://localhost:9999/?id=3
-Player 4: http://localhost:9999/?id=4
-```
-
-> **Note:** All 5 players must be present to start playing. The game uses hardcoded player names (see [Known Limitations](#-known-limitations)).
 
 ---
 
-## 🎮 How to Play
+## 📖 How to Play (Quick Guide)
 
 ### Objective
 
@@ -73,22 +86,10 @@ Be the first player to call **"ZapZap"** when your hand value is **5 points or l
 
 ### Game Setup
 
-- **Players:** 3 to 8 players (5 hardcode for now)
+- **Players:** 3 to 8 players
 - **Deck:** Standard 52-card deck + 2 Jokers (54 cards total)
-- **Starting Hand:** 5 to 7 cards per player. No limit when there is only 2 player alive. The first player to play choose number.
-- **Turn Order:** Players take turns in sequence (Player 0 → 1 → 2 → 3 → 4 → 0...)
-
-### Card Values
-
-| Card | Points |
-|------|--------|
-| Ace (A) | 1 |
-| 2-10 | Face value |
-| Jack (J) | 11 |
-| Queen (Q) | 12 |
-| King (K) | 13 |
-| Joker (in play) | 0 |
-| Joker (penalty) | 25 |
+- **Starting Hand:** 5 to 7 cards per player (configurable)
+- **Turn Order:** Players take turns in sequence
 
 ### Turn Structure
 
@@ -100,11 +101,231 @@ Each turn has two phases:
      - **Single card**: Any card
      - **Pair/Triple/etc.**: 2+ cards of the same rank (e.g., 3 Kings)
      - **Sequence**: 3+ cards of the same suit in order (e.g., 5♠ 6♠ 7♠)
-     - **Jokers**: Can substitute any card in sequences
+     - **Jokers**: Can substitute any card in sequences or pairs
 
 2. **DRAW Phase** (required)
    - Draw a card from the **deck** (unknown card), OR
    - Draw a specific card from the **last cards played** (visible cards from previous player)
+
+### ZapZap Rules
+
+When your hand value is **5 points or less**, you can call **"ZapZap"** at the beginning of your turn:
+
+1. **Click the "ZapZap" button**
+2. **All hands are revealed**
+3. **Scoring occurs:**
+   - If you have the **lowest** hand → You score **0 points** ✅
+   - If someone has **equal or lower** → **Counteract!** You get **penalized** ⚠️
+
+### Scoring System
+
+```
+Standard Scoring:
+  - Player with lowest hand: 0 points (Jokers = 0)
+  - All other players: Sum of their hand values (Jokers = 25)
+
+Counteract Penalty:
+  - If counteracted: Your hand value + (number of players × 5)
+  - Example with 5 players: Your hand (5) + 20 = 25 points
+```
+
+For complete rules, see the [Game Rules](#-complete-game-rules) section below.
+
+---
+
+## 🏗️ Architecture
+
+### Clean Architecture (v2.0)
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   API Layer                          │
+│  Express Routes + Middleware (JWT Auth)              │
+└────────────────────┬─────────────────────────────────┘
+                     │
+┌────────────────────▼─────────────────────────────────┐
+│                 Use Cases Layer                      │
+│  Business Logic (Register, Login, CreateParty, etc)  │
+└────────────────────┬─────────────────────────────────┘
+                     │
+┌────────────────────▼─────────────────────────────────┐
+│              Infrastructure Layer                    │
+│  Repositories (UserRepo, PartyRepo)                  │
+│  Services (JWT, Database)                            │
+└────────────────────┬─────────────────────────────────┘
+                     │
+┌────────────────────▼─────────────────────────────────┐
+│                 Domain Layer                         │
+│  Entities (User, Party, Round)                       │
+│  Value Objects (GameState, PartySettings)            │
+└──────────────────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```
+zapzap/
+├── src/                        # New Clean Architecture
+│   ├── domain/                 # Domain entities & value objects
+│   │   ├── entities/           # User, Party, Round
+│   │   └── value-objects/      # GameState, PartySettings
+│   ├── use-cases/              # Business logic
+│   │   ├── auth/               # Authentication use cases
+│   │   ├── party/              # Party management use cases
+│   │   └── game/               # Game action use cases
+│   ├── infrastructure/         # Infrastructure implementations
+│   │   ├── database/           # SQLite repositories
+│   │   ├── services/           # JWT, etc.
+│   │   └── di/                 # Dependency injection
+│   └── api/                    # API layer
+│       ├── server.js           # Express app
+│       ├── bootstrap.js        # DI container setup
+│       ├── middleware/         # Auth middleware
+│       └── routes/             # API route handlers
+│
+├── scripts/                    # Utility scripts
+│   ├── init-demo-data.js      # Initialize demo users/party
+│   └── test-api.js            # API integration tests
+│
+├── data/                       # SQLite database
+│   └── zapzap.db              # Game state & users
+│
+├── public/                     # Frontend assets
+│   ├── app_view.js            # UI logic & DOM manipulation
+│   └── app.css                # Styles
+│
+├── views/                      # EJS templates
+│   └── hand.ejs               # Player view template
+│
+├── tests/                      # Jest tests
+│   ├── player.test.js         # Legacy player tests
+│   └── [...]                  # More tests
+│
+├── app.js                      # New entry point (v2)
+├── app.legacy.js              # Legacy implementation (v1)
+│
+├── BACKEND_API.md             # API documentation (v2)
+├── BACKEND_API.legacy.md      # Legacy API docs (v1)
+├── MIGRATION_GUIDE.md         # v1 → v2 migration guide
+├── CLAUDE.md                  # Developer guide
+└── README.md                  # This file
+```
+
+---
+
+## 🛠️ Development
+
+### Available Scripts
+
+```bash
+# Start development server (v2 clean architecture)
+npm start
+
+# Start legacy server (v1)
+npm start:legacy
+
+# Initialize demo data
+npm run init-demo
+
+# Run tests
+npm test
+
+# Test API integration
+node scripts/test-api.js
+```
+
+### API Endpoints (v2)
+
+**Authentication:**
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login and get JWT token
+
+**Party Management:**
+- `POST /api/party` - Create new party
+- `GET /api/party` - List public parties
+- `GET /api/party/:id` - Get party details
+- `POST /api/party/:id/join` - Join party
+- `POST /api/party/:id/start` - Start game
+
+**Game Actions:**
+- `GET /api/game/:partyId/state` - Get game state
+- `POST /api/game/:partyId/play` - Play cards
+- `POST /api/game/:partyId/draw` - Draw card
+- `POST /api/game/:partyId/zapzap` - Call ZapZap
+
+**Real-time:**
+- `GET /suscribeupdate` - SSE event stream
+
+See [BACKEND_API.md](BACKEND_API.md) for complete API documentation.
+
+### Running Tests
+
+```bash
+# Run all tests with coverage
+npm test
+
+# Run specific test file
+npx jest player.test.js
+
+# Run API integration tests (server must be running)
+node scripts/test-api.js
+```
+
+### Demo Data
+
+```bash
+# Initialize 5 demo users and 1 party
+npm run init-demo
+
+# Output:
+# Demo Users (username / password):
+#   - Vincent / demo123
+#   - Thibaut / demo123
+#   - Simon / demo123
+#   - Lyo / demo123
+#   - Laurent / demo123
+#
+# Demo Party:
+#   - Party ID: <uuid>
+#   - Invite Code: <code>
+#   - Name: Demo Game
+```
+
+### Environment Variables
+
+Create a `.env` file (optional):
+
+```env
+# Server Configuration
+PORT=9999
+NODE_ENV=development
+
+# Database
+DB_PATH=./data/zapzap.db
+
+# JWT
+JWT_SECRET=your-secret-key-change-in-production
+
+# Logging
+LOG_LEVEL=info
+LOG_DIR=./logs
+```
+
+---
+
+## 🎮 Complete Game Rules
+
+### Card Values
+
+| Card | Points | Notes |
+|------|--------|-------|
+| Ace (A) | 1 | Lowest value |
+| 2-10 | Face value | |
+| Jack (J) | 11 | Face card |
+| Queen (Q) | 12 | Face card |
+| King (K) | 13 | Highest value |
+| **Joker (in play)** | **0** | **For ZapZap eligibility** |
+| **Joker (penalty)** | **25** | **For final scoring** |
 
 ### Valid Card Combinations
 
@@ -117,7 +338,7 @@ Single Card:
 Pairs (Same Rank):
   K♠ K♥
   A♠ A♥ A♣ A♦
-  6♠ 6♠ 🃏
+  6♠ 6♥ 🃏 (Joker as third 6)
 
 Sequences (Same Suit, 3+ consecutive):
   5♠ 6♠ 7♠
@@ -142,296 +363,152 @@ Sequence with Only 2 Cards:
   5♠ 6♠ (need minimum 3 cards)
 ```
 
-### ZapZap Rules
+### ZapZap Eligibility
 
-When your hand value is **5 points or less**, you can call **"ZapZap"** at any time during your turn:
+Your hand must be **5 points or less** (calculated **without** Joker penalty):
 
-1. **Click the "ZapZap" button**
-2. **All hands are revealed**
-3. **Scoring occurs:**
-   - If you have the **lowest** hand → You score **0 points** ✅
-   - If someone has **equal or lower** → **Counteract!** You get **penalized** ⚠️
+| Hand | Calculation | Eligible? |
+|------|-------------|-----------|
+| A♠, 2♥, 2♣ | 1 + 2 + 2 = 5 | ✅ Yes |
+| Joker, 3♦, 2♠ | 0 + 3 + 2 = 5 | ✅ Yes |
+| A♠, A♥, A♣, A♦, Joker | 1+1+1+1+0 = 4 | ✅ Yes |
+| 3♠, 3♥ | 3 + 3 = 6 | ❌ No |
 
-### Scoring System
+### Final Scoring
 
-At the end of each round:
+```javascript
+// Standard scoring
+if (player has lowest hand) {
+  score = 0
+} else {
+  score = hand_points_with_joker  // Jokers = 25
+}
+
+// Counteract penalty
+if (zapzap_called && someone_has_lower_or_equal) {
+  zapzap_caller_score = hand_points_with_joker + (num_players × 5)
+}
+```
+
+**Example Scoring:**
 
 ```
-Standard Scoring:
-  - Player with lowest hand: 0 points
-  - All other players: Sum of their hand values
+Game with 5 players:
+Player 0: A♠, 2♥, 3♣ = 6 points
+Player 1: Joker, A♦ = 1 point (0 + 1)
+Player 2: A♥, A♣, 2♠ = 4 points → Calls ZapZap!
+Player 3: K♠, Q♥ = 25 points
+Player 4: 5♦, 5♣ = 10 points
 
-Counteract Penalty:
-  - If counteracted: Your hand value + (number of other players × 5)
-  - Example with 5 players: Your hand (e.g., 5) + 20 = 25 points
+Result:
+- Player 1 has lowest (1 point)
+- Player 2 called ZapZap but Player 1 is lower → Counteracted!
+
+Final Scores:
+Player 0: 6 points
+Player 1: 0 points (lowest, but note: Joker now worth 25 if counted)
+Player 2: 29 points (4 + (5 × 5) = 29 points penalty!)
+Player 3: 25 points
+Player 4: 10 points
 ```
+
+### Game Elimination
+
+- Players above **100 points** are eliminated (dead)
+- Last 2 players alive: "Golden Score" final round
+- Winner: Last player alive (≤100 points)
 
 ### Strategy Tips
 
 - 💡 **Balance risk and reward**: Don't ZapZap too early!
 - 🎯 **Watch the discard pile**: Draw strategically from last played cards
 - 🃏 **Save Jokers**: They're worth 0 points until you get caught
-- 📊 **Count cards**: Track what others have played to estimate their hands
-- ⚡ **Timing matters**: ZapZap when you're confident you have the lowest hand
+- 📊 **Count cards**: Track what others have played
+- ⚡ **Timing matters**: ZapZap when confident you have the lowest hand
 
 ---
 
-## 🛠️ Development
+## 📚 Documentation
 
-### Project Structure
-
-```
-zapzap/
-├── app.js                 # Express server & API routes
-├── party.js               # Game party management (players, rounds, deck)
-├── round.js               # Round state & turn mechanics
-├── player.js              # Player hand & point calculation
-├── utils.js               # Card utilities & validation logic
-├── logger.js              # Winston logger configuration
-├── gameError.js           # Custom error classes
-├── public/                # Frontend assets
-│   ├── app_view.js        # UI logic & DOM manipulation
-│   └── app.css            # Styles
-├── views/                 # EJS templates
-│   └── hand.ejs           # Player view template
-├── tests/                 # Jest tests
-│   ├── player.test.js     # Player class tests
-│   ├── party.test.js      # Party class tests
-│   ├── round.test.js      # Round class tests
-│   └── utils.test.js      # Utility function tests
-├── coverage/              # Test coverage reports
-├── logs/                  # Application logs (gitignored)
-├── CLAUDE.md              # Claude Code developer guide
-├── BACKEND_API.md         # Complete API documentation
-└── AUDIT_REPORT.md        # Project quality audit
-
-Architecture: 3-tier
-  Game State (Party/Round/Player) → Express API → Client View Updates
-```
-
-### Running Tests
-
-```bash
-# Run all tests with coverage
-npm test
-
-# Run specific test file
-npx jest player.test.js
-
-# Run tests in watch mode
-npx jest --watch
-
-# View coverage report
-open coverage/lcov-report/index.html
-```
-
-**Current Test Coverage:** 93% overall
-
-| File | Statements | Branches | Functions | Lines |
-|------|-----------|----------|-----------|-------|
-| party.js | 100% | 100% | 100% | 100% |
-| player.js | 100% | 100% | 100% | 100% |
-| round.js | 97.46% | 94.44% | 100% | 97.46% |
-| utils.js | 86.87% | 82.61% | 90.48% | 86.87% |
-| app.js | ⚠️ 0% | ⚠️ 0% | ⚠️ 0% | ⚠️ 0% |
-
-> **Note:** API integration tests are planned (see [AUDIT_REPORT.md](AUDIT_REPORT.md))
-
-### Code Quality
-
-```bash
-# Check for eslint errors (requires eslint setup)
-npm run lint
-
-# Auto-fix linting issues
-npm run lint:fix
-
-# Format code with Prettier (requires prettier setup)
-npm run format
-```
-
-### Environment Variables
-
-Create a `.env` file in the project root (optional):
-
-```env
-# Server Configuration
-PORT=9999
-NODE_ENV=development
-
-# Logging
-LOG_LEVEL=info
-LOG_DIR=./logs
-
-# Game Configuration
-INITIAL_HAND_SIZE=10
-SSE_HEARTBEAT_INTERVAL=15000
-```
-
-### Development Workflow
-
-1. **Start development server:**
-   ```bash
-   npm start
-   ```
-
-2. **Make your changes** to backend (`.js` files) or frontend (`public/*.js`, `views/*.ejs`)
-
-3. **Run tests:**
-   ```bash
-   npm test
-   ```
-
-4. **Check code quality** (when linting is configured)
-
-5. **Commit your changes:**
-   ```bash
-   git add .
-   git commit -m "feat: your feature description"
-   ```
-
-### Architecture Overview
-
-**Game State Flow:**
-```
-┌─────────┐     ┌─────────┐     ┌────────┐
-│  Party  │────▶│  Round  │────▶│ Player │
-│ (deck)  │     │ (turn)  │     │ (hand) │
-└────┬────┘     └────┬────┘     └────┬───┘
-     │               │               │
-     └───────────────┴───────────────┘
-                     │
-              ┌──────▼───────┐
-              │  Express API │
-              └──────┬───────┘
-                     │
-              ┌──────▼───────┐
-              │   SSE Events │
-              └──────┬───────┘
-                     │
-              ┌──────▼───────┐
-              │  Client View │
-              └──────────────┘
-```
-
-**Key Design Patterns:**
-- **State Machine**: Round manages game state (DRAW → PLAY → ZAPZAP)
-- **Observer Pattern**: EventEmitter for SSE updates
-- **Factory Pattern**: Deck creation and card generation
-- **Value Objects**: Card IDs (0-53) for serialization
-
-### Card ID System
-
-The application uses numeric IDs (0-53) for frontend/backend communication:
-
-| Range | Suit | Cards |
-|-------|------|-------|
-| 0-12 | Spades ♠ | A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K |
-| 13-25 | Hearts ♥ | A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K |
-| 26-38 | Clubs ♣ | A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K |
-| 39-51 | Diamonds ♦ | A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K |
-| 52-53 | Jokers 🃏 | Joker 1, Joker 2 |
-
-**Conversion Utilities:**
-- `get_card_id(card, deck)`: Card object → ID
-- `get_card_from_id(id, deck)`: ID → Card object
-- `json_hand(cards, deck)`: Card array → ID array
-
----
-
-## 📚 API Documentation
-
-See **[BACKEND_API.md](BACKEND_API.md)** for complete API documentation including:
-- All endpoints with request/response examples
-- Error codes and handling
-- Game state machine
-- Card ID system reference
-- WebSocket/SSE event structure
+- **[BACKEND_API.md](BACKEND_API.md)** - Complete API reference (v2.0)
+- **[BACKEND_API.legacy.md](BACKEND_API.legacy.md)** - Legacy API reference (v1.0)
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - Migrate from v1 to v2
+- **[CLAUDE.md](CLAUDE.md)** - Developer guide for Claude Code
+- **[README.legacy.md](README.legacy.md)** - Original v1.0 README
 
 ---
 
 ## 🐛 Known Issues & Limitations
 
-### Current Limitations
+### Current (v2.0)
 
-1. **Fixed Player List**
-   - 5 players are hardcoded in `app.js`
-   - Player names: Vincent, Thibaut, Simon, Lyo, Laurent
-   - Cannot add/remove players dynamically
+1. **Single Server Instance**
+   - No horizontal scaling support
+   - SQLite not suitable for high concurrency
+   - Consider PostgreSQL for production
 
-2. **No Authentication**
-   - No player authentication or session management
-   - Anyone with the URL can join any player slot
-   - No turn enforcement on client side
+2. **Basic Authentication**
+   - No refresh tokens
+   - No password reset flow
+   - No email verification
 
-3. **In-Memory State Only**
-   - Game state is stored in memory
-   - Restarting server resets the game
-   - No game persistence or recovery
+3. **Frontend Not Updated**
+   - Frontend still uses legacy API (v1)
+   - Requires update to use new v2 endpoints
+   - See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
 
-4. **Single Game Instance**
-   - Only one game can run per server
-   - No support for multiple concurrent games
-   - No room/lobby system
-
-5. **No Mobile Optimization**
+4. **No Mobile Optimization**
    - UI designed for desktop browsers
    - Touch interactions may be awkward
 
-### Known Bugs
+5. **Limited Game Features**
+   - No spectator mode
+   - No game replay/history
+   - No AI opponents
 
-See [GitHub Issues](https://github.com/vemore/zapzap/issues) for current bugs and feature requests.
+### Security Notes
+
+⚠️ **Current Implementation**:
+- Basic JWT authentication
+- Bcrypt password hashing
+- Input validation
+- SQL injection protection via parameterized queries
+
+⚠️ **Production Improvements Needed**:
+- Rate limiting
+- HTTPS enforcement
+- CORS configuration
+- Security headers
+- Session management improvements
 
 ---
 
-## 🧪 Testing
+## 🗺️ Roadmap
 
-The project uses **Jest** for testing with **93% code coverage**.
+### v2.1 (In Progress)
+- [x] Clean architecture implementation
+- [x] JWT authentication
+- [x] Database persistence
+- [x] API documentation
+- [ ] Update frontend for v2 API
+- [ ] Integration tests for all endpoints
+- [ ] API rate limiting
 
-### Test Categories
+### v2.2 (Planned)
+- [ ] WebSocket support (replace SSE)
+- [ ] Refresh tokens
+- [ ] Password reset flow
+- [ ] Email verification
+- [ ] Mobile-responsive UI
 
-1. **Unit Tests**
-   - Player class (`player.test.js`)
-   - Party class (`party.test.js`)
-   - Round class (`round.test.js`)
-   - Utility functions (`utils.test.js`)
-   - Error classes (`gameError.test.js`)
-
-2. **Integration Tests** (planned)
-   - API endpoints
-   - Game flow scenarios
-   - Multi-player interactions
-
-### Writing Tests
-
-```javascript
-// Example: Testing player actions
-describe('Player', () => {
-  it('should draw a card', () => {
-    const player = new Player('Alice', 0);
-    const card = { rank: { shortName: 'A' }, suit: { unicode: '♠' } };
-
-    player.draw(card);
-
-    expect(player.hand).toContain(card);
-    expect(player.hand.length).toBe(1);
-  });
-});
-```
-
-### Mocking Cards
-
-```javascript
-// Mock card object structure
-const mockCard = {
-  rank: {
-    shortName: 'A',  // 'A', '2'-'10', 'J', 'Q', 'K', 'Joker'
-  },
-  suit: {
-    unicode: '♠'     // '♠', '♥', '♣', '♦', null (for Joker)
-  }
-};
-```
+### v3.0 (Future)
+- [ ] PostgreSQL support
+- [ ] Horizontal scaling
+- [ ] Spectator mode
+- [ ] Game replay/history
+- [ ] AI opponents
+- [ ] Tournament mode
+- [ ] Achievements & stats
 
 ---
 
@@ -440,41 +517,20 @@ const mockCard = {
 Contributions are welcome! Please follow these steps:
 
 1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes**
-   - Follow existing code style
-   - Add tests for new functionality
-   - Update documentation as needed
-
-4. **Run tests**
-   ```bash
-   npm test
-   ```
-
-5. **Commit your changes**
-   ```bash
-   git commit -m "feat: add your feature description"
-   ```
-
-6. **Push to your fork**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-7. **Create a Pull Request**
+2. **Create a feature branch**: `git checkout -b feature/your-feature`
+3. **Make your changes** with tests
+4. **Run tests**: `npm test`
+5. **Commit**: `git commit -m "feat: add feature"`
+6. **Push**: `git push origin feature/your-feature`
+7. **Create Pull Request**
 
 ### Development Guidelines
 
-- ✅ Write tests for all new features
-- ✅ Maintain test coverage above 90%
-- ✅ Follow existing naming conventions
-- ✅ Add JSDoc comments for public APIs
-- ✅ Update documentation for user-facing changes
+- ✅ Write tests for new features
+- ✅ Follow clean architecture principles
 - ✅ Use meaningful commit messages ([Conventional Commits](https://www.conventionalcommits.org/))
+- ✅ Add JSDoc comments for public APIs
+- ✅ Update documentation
 
 ---
 
@@ -490,37 +546,33 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 - **[deck-of-cards](https://www.npmjs.com/package/deck-of-cards)** - Visual card animations
 - **[Express](https://expressjs.com/)** - Web framework
 - **[Jest](https://jestjs.io/)** - Testing framework
+- **[SQLite](https://www.sqlite.org/)** - Embedded database
 
 ---
 
 ## 📞 Support
 
 - **Issues:** [GitHub Issues](https://github.com/vemore/zapzap/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/vemore/zapzap/discussions)
+- **Documentation:** [BACKEND_API.md](BACKEND_API.md), [CLAUDE.md](CLAUDE.md)
+- **Migration Help:** [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
 
 ---
 
-## 🗺️ Roadmap
+## 🆚 Version Comparison
 
-### v1.1 (In Progress)
-- [ ] API integration tests
-- [ ] Security hardening (turn validation, input sanitization)
-- [ ] Proper error handling and responses
-
-### v2.0 (Planned)
-- [ ] Player authentication
-- [ ] Multiple game rooms
-- [ ] Game state persistence (database)
-- [ ] Mobile-responsive UI
-
-### v3.0 (Future)
-- [ ] Spectator mode
-- [ ] Replay/history system
-- [ ] AI opponents
-- [ ] Tournament mode
+| Feature | v1.0 (Legacy) | v2.0 (Clean Arch) |
+|---------|---------------|-------------------|
+| Architecture | Monolithic | Clean Architecture |
+| Authentication | None | JWT Tokens |
+| Database | In-memory | SQLite |
+| API Design | GET-only | RESTful |
+| Multi-party | No | Yes |
+| Error Handling | Basic | Structured |
+| Testing | Unit only | Unit + Integration |
+| Documentation | Basic | Comprehensive |
 
 ---
 
-**Made with ❤️ by the ZapZap Team**
+**Made with ❤️ and Clean Architecture**
 
 *Happy ZapZapping! 🃏⚡*

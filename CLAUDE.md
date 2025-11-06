@@ -6,79 +6,292 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ZapZap is a multiplayer card game web application built with Node.js/Express backend and vanilla JavaScript frontend. The game implements a rummy-style card game where players can draw, play, and "zapzap" when their hand value is low enough.
 
+**Architecture:** Clean Architecture with Domain-Driven Design
+- Domain Layer (entities, value objects)
+- Use Cases (business logic)
+- Infrastructure (database, services, repositories)
+- API Layer (Express routes, middleware)
+
 ## Development Commands
 
 ### Running the Application
+
 ```bash
-# Development mode with auto-reload
+# Development mode with auto-reload (new clean architecture)
 npm start
+
+# Legacy server (old implementation)
+npm start:legacy
+
+# Initialize demo data (5 users, 1 party)
+npm run init-demo
 
 # Production mode
 node app.js
 ```
 
-The server runs on port 9999. Access the game at `http://localhost:9999/?id=<player_id>` where player_id is 0-4 for the 5 hardcoded players.
+The server runs on port 9999. The new API is accessible at `http://localhost:9999/api/`.
 
 ### Testing
+
 ```bash
 # Run tests with coverage
 npm test
 
 # Run specific test file
 npx jest player.test.js
+
+# Test API integration
+node scripts/test-api.js
 ```
 
 Tests are configured with coverage reporting (see `jest.config.js`). Coverage reports are generated in the `coverage/` directory.
 
 ## Architecture
 
-### Core Game Flow
+### Clean Architecture Structure
 
-The application follows a **3-tier architecture**: Game State (Party/Round/Player) → Express API → Client View Updates
+```
+src/
+├── domain/                      # Domain Layer (business entities)
+│   ├── entities/
+│   │   ├── User.js             # User entity with authentication
+│   │   ├── Party.js            # Game party entity
+│   │   ├── Round.js            # Round state management
+│   │   └── Player.js           # Player within a party
+│   └── value-objects/
+│       ├── GameState.js        # Immutable game state
+│       └── PartySettings.js    # Party configuration
+│
+├── use-cases/                   # Application Business Logic
+│   ├── auth/
+│   │   ├── RegisterUser.js     # User registration
+│   │   ├── LoginUser.js        # User authentication
+│   │   └── ValidateToken.js    # JWT validation
+│   ├── party/
+│   │   ├── CreateParty.js      # Create new party
+│   │   ├── JoinParty.js        # Join existing party
+│   │   ├── LeaveParty.js       # Leave party
+│   │   ├── StartParty.js       # Start game and deal cards
+│   │   ├── ListPublicParties.js # List available parties
+│   │   └── GetPartyDetails.js  # Get party information
+│   └── game/
+│       ├── PlayCards.js        # Play card combinations
+│       ├── DrawCard.js         # Draw from deck/discard
+│       ├── CallZapZap.js       # Call ZapZap to end round
+│       └── GetGameState.js     # Get current game state
+│
+├── infrastructure/              # Infrastructure Layer
+│   ├── database/
+│   │   └── sqlite/
+│   │       ├── DatabaseConnection.js  # SQLite wrapper
+│   │       └── repositories/
+│   │           ├── UserRepository.js  # User data access
+│   │           └── PartyRepository.js # Party data access
+│   ├── services/
+│   │   └── JwtService.js       # JWT signing/verification
+│   └── di/
+│       └── DIContainer.js      # Dependency injection
+│
+└── api/                         # API Layer
+    ├── server.js               # Express server setup
+    ├── bootstrap.js            # DI container initialization
+    ├── middleware/
+    │   └── authMiddleware.js   # JWT authentication
+    └── routes/
+        ├── index.js            # Main API router
+        ├── authRoutes.js       # Authentication endpoints
+        ├── partyRoutes.js      # Party management endpoints
+        └── gameRoutes.js       # Game action endpoints
 
-**Game State Management:**
-- `party.js` - Top-level game container managing players, rounds, and deck
-- `round.js` - Manages single round state including turn order, played cards, and scoring
-- `player.js` - Represents individual players with hand management and point calculation
-- `utils.js` - Card manipulation utilities (ID conversion, validation, point calculation)
+Legacy Files:
+├── app.js                      # New entry point (uses clean architecture)
+├── app.legacy.js               # Old monolithic implementation
+├── party.js                    # Legacy party management
+├── round.js                    # Legacy round state
+├── player.js                   # Legacy player class
+└── utils.js                    # Legacy card utilities
+```
 
-**Key Game Concepts:**
-- Each `Party` can have multiple `Round` instances but only one is active (`current_round`)
-- Each `Round` tracks `last_cards_played` (drawable cards) vs `cards_played` (just played this turn)
-- Card validation in `utils.js:check_play()` enforces either same rank (2+ cards) or suit sequences (3+ cards with consecutive values, jokers as wildcards)
-- ZapZap mechanic: Player with ≤5 points can call "zapzap" to end round. Counteract occurs if any other player has equal/lower points.
+### Database Schema
 
-### API Endpoints
+**SQLite Database** (`data/zapzap.db`):
 
-**State Queries:**
-- `GET /party` - Full game state JSON (players, deck, cards played, current turn, action state)
-- `GET /player/:id/hand` - Specific player's hand as card ID array
+```sql
+-- Users table
+users (
+  id TEXT PRIMARY KEY,          -- UUID
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
 
-**Player Actions:**
-- `GET /player/:id/play?cards=[ids]` - Play cards from hand (validated via `check_play()`)
-- `GET /player/:id/draw?card=<id|"deck">` - Draw from deck or last played cards
-- `GET /player/:id/zapzap` - Declare zapzap (only valid if hand_points ≤ 5)
+-- Parties table
+parties (
+  id TEXT PRIMARY KEY,          -- UUID
+  name TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  invite_code TEXT UNIQUE NOT NULL,
+  visibility TEXT NOT NULL,     -- 'public' or 'private'
+  status TEXT NOT NULL,         -- 'waiting', 'playing', 'finished'
+  settings TEXT NOT NULL,       -- JSON
+  current_round_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (owner_id) REFERENCES users(id)
+)
+
+-- Party players join table
+party_players (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  party_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  player_index INTEGER NOT NULL,
+  joined_at TEXT NOT NULL,
+  FOREIGN KEY (party_id) REFERENCES parties(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)
+
+-- Rounds table
+rounds (
+  id TEXT PRIMARY KEY,          -- UUID
+  party_id TEXT NOT NULL,
+  round_number INTEGER NOT NULL,
+  status TEXT NOT NULL,         -- 'active', 'finished'
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  FOREIGN KEY (party_id) REFERENCES parties(id)
+)
+
+-- Game state table
+game_state (
+  party_id TEXT PRIMARY KEY,
+  state TEXT NOT NULL,          -- JSON game state
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (party_id) REFERENCES parties(id)
+)
+```
+
+### API Endpoints (v2 - Clean Architecture)
+
+**Authentication:**
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login and get JWT token
+
+**Party Management:**
+- `POST /api/party` - Create new party (authenticated)
+- `GET /api/party` - List public parties
+- `GET /api/party/:partyId` - Get party details (authenticated)
+- `POST /api/party/:partyId/join` - Join party (authenticated)
+- `POST /api/party/:partyId/leave` - Leave party (authenticated)
+- `POST /api/party/:partyId/start` - Start game (owner only)
+
+**Game Actions:**
+- `GET /api/game/:partyId/state` - Get current game state (authenticated)
+- `POST /api/game/:partyId/play` - Play cards (authenticated)
+- `POST /api/game/:partyId/draw` - Draw card (authenticated)
+- `POST /api/game/:partyId/zapzap` - Call ZapZap (authenticated)
 
 **Real-time Updates:**
-- `GET /suscribeupdate` - Server-Sent Events (SSE) endpoint for live game updates
+- `GET /suscribeupdate` - Server-Sent Events for live updates
 
-All actions emit `event` via EventEmitter which triggers SSE updates to all connected clients.
+**Health:**
+- `GET /api/health` - Health check
 
-### Frontend Structure
+### Key Domain Concepts
 
-**Card Rendering:**
-Uses `deck-of-cards` library for visual card manipulation. Cards are indexed 0-51 (standard deck) + 52-53 (jokers).
+**User Entity** (`src/domain/entities/User.js`):
+- Represents authenticated users
+- Password hashing with bcrypt
+- UUID-based identification
+- Public object serialization (no password exposure)
 
-**Key Functions in `public/app_view.js`:**
-- `build_game()` / `update_game()` - Renders common deck area with draw pile and played cards
-- `build_player_hand()` / `update_player_hand()` - Renders player's personal hand as fanned cards
-- `update_common_deck()` - Positions cards in three zones: deck (back), cards_played (y:90), last_cards_played (y:0)
-- `show_players_hand()` - ZapZap end-of-round reveal showing all players' cards with scores
+**Party Entity** (`src/domain/entities/Party.js`):
+- Manages game parties
+- Tracks owner, players, visibility, status
+- Generates unique invite codes
+- Lifecycle: waiting → playing → finished
 
-**Turn Management:**
-Buttons (`$play`, `$draw`, `$zapzap`) are dynamically enabled/disabled based on:
-- Current player turn (`data.current_turn % data.nb_players == player_id`)
-- Round action state (`Round.ACTION_DRAW`, `Round.ACTION_PLAY`, `Round.ACTION_ZAPZAP`)
+**Round Entity** (`src/domain/entities/Round.js`):
+- Manages individual game rounds
+- Tracks round number and status
+- Links to parent party
+
+**GameState Value Object** (`src/domain/value-objects/GameState.js`):
+- Immutable game state representation
+- Tracks deck, hands, turn, action, cards played
+- Pure functional updates via `with()` method
+
+**PartySettings Value Object** (`src/domain/value-objects/PartySettings.js`):
+- Party configuration (player count, hand size, spectators, time limits)
+- Validation rules (3-8 players, 5-7 card hand size)
+
+### Use Case Pattern
+
+All use cases follow this pattern:
+
+```javascript
+class UseCase {
+  constructor(repositories, services) {
+    this.repository = repositories;
+    this.service = services;
+  }
+
+  async execute({ param1, param2 }) {
+    // 1. Validate input
+    // 2. Load domain entities
+    // 3. Execute business logic
+    // 4. Persist changes
+    // 5. Return result
+  }
+}
+```
+
+Example: `CreateParty.js`:
+
+```javascript
+async execute({ ownerId, name, visibility, settings }) {
+  // Validate input
+  if (!ownerId || typeof ownerId !== 'string') {
+    throw new Error('Owner ID is required');
+  }
+
+  // Verify owner exists
+  const owner = await this.userRepository.findById(ownerId);
+  if (!owner) {
+    throw new Error('Owner not found');
+  }
+
+  // Create entity
+  const party = Party.create(name, ownerId, visibility, partySettings);
+
+  // Persist
+  const savedParty = await this.partyRepository.save(party);
+
+  return { success: true, party: savedParty.toPublicObject() };
+}
+```
+
+### Repository Pattern
+
+Repositories abstract data access:
+
+```javascript
+class PartyRepository {
+  async save(party) { /* Save to database */ }
+  async findById(id) { /* Load from database */ }
+  async findPublicParties(status, limit, offset) { /* Query */ }
+  async addPlayer(partyId, userId, playerIndex) { /* Join table */ }
+  // ...
+}
+```
+
+### Authentication Flow
+
+1. **Registration/Login** → Use case validates → JWT token generated
+2. **API Request** → AuthMiddleware extracts Bearer token → ValidateToken use case → User attached to `req.user`
+3. **Protected Endpoint** → Access `req.user.id` for authorization
 
 ### Card ID System
 
@@ -89,58 +302,288 @@ The application uses numeric card IDs (0-53) for frontend/backend communication:
 - 39-51: Diamonds (A-K)
 - 52-53: Jokers
 
-**Conversion Functions:**
-- `get_card_id(card, deck)` - Card object → ID (handles joker disambiguation via deck reference)
-- `get_card_from_id(id, deck)` - ID → Card object (uses deck.findCards() for object identity)
-- `json_hand(cards, deck)` - Card array → ID array for API responses
+**Conversion Functions in GameState:**
+- Cards are stored as numeric IDs in database
+- Frontend converts IDs to visual representations
+- Legacy utils.js contains conversion helpers
 
 ## Common Development Patterns
 
-### Adding New Game Actions
+### Adding New Use Case
 
-1. Add action constant to `round.js` (e.g., `Round.ACTION_NEWACTION = "newaction"`)
-2. Implement state change method in `Round` class
-3. Add Express endpoint in `app.js` with player validation
-4. Emit `event` via emitter to trigger SSE updates
-5. Update `update_game()` in `app_view.js` to handle new action state
-6. Add button/UI control in `build_topbar()` with appropriate enable/disable logic
+1. **Create use case file** in appropriate directory (`src/use-cases/`)
+2. **Implement execute() method** with business logic
+3. **Register in bootstrap.js**:
+   ```javascript
+   container.register('myUseCase', new MyUseCase(repository, service));
+   ```
+4. **Create API route** in `src/api/routes/`
+5. **Add route to main router** in `src/api/routes/index.js`
 
-### Player Hand Validation
+### Adding New Entity
 
-Before modifying player state, always:
-1. Validate turn order (current_turn % nb_players == player_id in production code)
-2. Check action state (e.g., can't play during ACTION_DRAW)
-3. Use `check_play()` for card combination validation
-4. Verify cards exist in player.hand before removal
+1. **Create entity file** in `src/domain/entities/`
+2. **Implement core methods**:
+   - Static factory methods (`create()`, `fromDatabase()`)
+   - Business logic methods
+   - `toPublicObject()` for API serialization
+3. **Add validation** in constructor or factory methods
+4. **Update repository** with data access methods
 
-### Working with the Deck
+### Adding New API Endpoint
 
-The `cards` library deck has two states:
-- `deck.draw(n)` - Returns array of n cards and moves them to drawn state
-- `deck.discard(card)` - Moves card to discard pile
-- `deck.shuffleDiscard()` - Moves discard pile back to draw pile when `deck.remainingLength < 1`
+1. **Create route handler** in appropriate route file
+2. **Apply authentication** if needed:
+   ```javascript
+   router.post('/endpoint', authMiddleware, async (req, res) => {
+     // Access req.user.id
+   });
+   ```
+3. **Resolve use case** from container
+4. **Handle errors** appropriately with status codes
+5. **Return JSON** with consistent structure
 
-Round manages deck recycling: `last_cards_played` are discarded when new cards are drawn, keeping `cards_played` as the new drawable cards.
+### Working with Game State
+
+Game state is stored as JSON in the database:
+
+```javascript
+// Load game state
+const gameState = await partyRepository.getGameState(partyId);
+
+// Update immutably
+const newGameState = gameState.with({
+  currentTurn: gameState.currentTurn + 1,
+  currentAction: 'draw'
+});
+
+// Save
+await partyRepository.saveGameState(partyId, newGameState);
+```
+
+### Event Emission for SSE
+
+```javascript
+// In route handler
+const result = await useCase.execute(params);
+
+// Emit event for real-time updates
+if (emitter) {
+  emitter.emit('event', {
+    partyId,
+    userId: req.user.id,
+    action: 'play'
+  });
+}
+```
 
 ## Testing Strategy
 
-Tests exist for `player.js` in `player.test.js`. When adding tests:
-- Mock card objects with `{ rank: { shortName: 'A' }, suit: { unicode: '♠' } }` structure
-- Test hand manipulation: `draw()`, `play()`, `sethand()`
-- Test point calculations: `hand_points` (jokers = 0) vs `hand_points_with_joker` (jokers = 25)
-- Validate error cases (empty names, invalid plays)
+### Unit Tests
 
-## Code Organization Notes
+Test domain entities and use cases in isolation:
 
-- Entry point: `app.js` initializes deck, creates party, adds 5 hardcoded players, starts first round
-- Views use EJS templating (`views/hand.ejs`) with player ID injection
-- Static assets served from `/node_modules/` (deck-of-cards, jquery) and `/public/` (app.css, app_view.js)
-- Morgan logger configured in dev mode for HTTP request logging
+```javascript
+describe('CreateParty', () => {
+  it('should create party with valid input', async () => {
+    const mockUserRepo = { findById: jest.fn().mockResolvedValue({ id: 'user1' }) };
+    const mockPartyRepo = { save: jest.fn().mockResolvedValue(party) };
+
+    const useCase = new CreateParty(mockPartyRepo, mockUserRepo);
+    const result = await useCase.execute({ ownerId: 'user1', name: 'Test' });
+
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+### Integration Tests
+
+Test API endpoints with real database:
+
+```javascript
+// See scripts/test-api.js for example
+const response = await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'test', password: 'test123' })
+});
+```
+
+## Migration from Legacy Code
+
+### Legacy vs. New Architecture
+
+**Legacy (`app.legacy.js`):**
+- Monolithic server file
+- In-memory game state
+- No authentication
+- Direct player ID access (0-4)
+- Hardcoded 5 players
+
+**New (`app.js` + `src/`):**
+- Clean architecture with layers
+- Database persistence
+- JWT authentication
+- User-based access control
+- Dynamic player management
+
+### Running Both Versions
+
+```bash
+# New clean architecture (default)
+npm start
+
+# Legacy implementation
+npm start:legacy
+```
+
+### Migration Checklist
+
+If migrating from legacy:
+
+1. ✅ Run `npm run init-demo` to create demo users
+2. ✅ Update frontend to use new API endpoints (`/api/...`)
+3. ✅ Add authentication (login flow, JWT tokens)
+4. ✅ Update player identification (user IDs instead of indices)
+5. ⏳ Update game state management (database instead of memory)
+6. ⏳ Update real-time updates (party-specific SSE events)
+
+## Demo Data
+
+Create demo users and party:
+
+```bash
+npm run init-demo
+```
+
+**Creates:**
+- 5 users: Vincent, Thibaut, Simon, Lyo, Laurent (password: demo123)
+- 1 public party: "Demo Game" with 3 players
+- All data persisted in `data/zapzap.db`
+
+**Testing API:**
+
+```bash
+# Login
+curl -X POST http://localhost:9999/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"Vincent","password":"demo123"}'
+
+# List parties
+curl http://localhost:9999/api/party
+
+# Join party (with token)
+curl -X POST http://localhost:9999/api/party/:id/join \
+  -H "Authorization: Bearer <token>"
+```
 
 ## Known Limitations
 
-- Player list is hardcoded in `app.js:15-19` (5 players)
+### Current (v2.0)
+
+- Single server instance (no horizontal scaling)
+- SQLite database (not suitable for high concurrency)
+- Simple JWT authentication (no refresh tokens)
+- Basic session management
+- SSE for real-time updates (consider WebSocket for production)
+
+### Legacy Limitations (Still Present in Old Code)
+
+- Player list hardcoded in `app.legacy.js` (5 players)
 - No authentication or session management
-- Game state is in-memory only (restarting server resets game)
-- Initial round always deals 10 cards to each player (`app.js:22`)
-- SSE heartbeat is 15 seconds (`app.js:48`)
+- Game state in memory only
+- Single game instance per server
+- No mobile optimization
+
+## Code Quality Standards
+
+- **Clean Architecture**: Maintain separation between layers
+- **SOLID Principles**: Single responsibility, dependency injection
+- **Error Handling**: Use descriptive error messages, proper status codes
+- **Validation**: Validate all inputs at use case layer
+- **Immutability**: Prefer immutable value objects (GameState, PartySettings)
+- **Testing**: Aim for >90% coverage on business logic
+- **Logging**: Use winston logger for all significant events
+- **Documentation**: JSDoc comments on public methods
+
+## Environment Variables
+
+```env
+# Server
+PORT=9999
+NODE_ENV=development
+
+# Database
+DB_PATH=./data/zapzap.db
+
+# JWT
+JWT_SECRET=your-secret-key-change-in-production
+
+# Logging
+LOG_LEVEL=info
+LOG_DIR=./logs
+```
+
+## Troubleshooting
+
+### Database Issues
+
+```bash
+# Check database
+sqlite3 data/zapzap.db "SELECT * FROM users;"
+sqlite3 data/zapzap.db "SELECT * FROM parties;"
+
+# Reset database (deletes all data!)
+rm data/zapzap.db
+npm run init-demo
+```
+
+### Authentication Issues
+
+- Check JWT_SECRET environment variable
+- Verify token format: `Authorization: Bearer <token>`
+- Check token expiration (default 24h)
+- Use ValidateToken use case for debugging
+
+### API Testing
+
+```bash
+# Test API integration
+node scripts/test-api.js
+
+# Check server health
+curl http://localhost:9999/api/health
+```
+
+## Performance Considerations
+
+- **Database Queries**: Use indexes on foreign keys
+- **JWT Validation**: Cached in-memory for duration of request
+- **Game State**: Denormalized JSON for fast reads
+- **SSE Connections**: Limited by system file descriptors
+- **Concurrent Games**: Each party is independent
+
+## Security Notes
+
+⚠️ **Current Implementation**:
+- Basic JWT authentication
+- Bcrypt password hashing
+- Input validation in use cases
+- SQL injection protection via parameterized queries
+
+⚠️ **Production Improvements Needed**:
+- Rate limiting
+- HTTPS enforcement
+- CORS configuration
+- Input sanitization
+- Security headers
+- Session management
+- Password reset flow
+- Email verification
+
+## Further Reading
+
+- [BACKEND_API.md](BACKEND_API.md) - Complete API documentation
+- [README.md](README.md) - User-facing documentation
+- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - Legacy to v2 migration
