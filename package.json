@@ -23,6 +23,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cards": "^1.2.0",
+    "cors": "^2.8.5",
     "deck-of-cards": "^0.1.8",
     "ejs": "^3.0.2",
     "events": "^3.1.0",

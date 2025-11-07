@@ -5,6 +5,7 @@
 
 const express = require('express');
 const morgan = require('morgan');
+const cors = require('cors');
 const events = require('events');
 const { bootstrap, shutdown } = require('./bootstrap');
 const createApiRouter = require('./routes/index');
@@ -23,6 +24,27 @@ function createApp(container, emitter) {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
     app.use(morgan('dev'));
+
+    // CORS configuration - allow frontend to communicate with backend
+    const allowedOrigins = process.env.NODE_ENV === 'production'
+        ? (process.env.ALLOWED_ORIGINS || '').split(',')
+        : ['http://localhost:5173', 'http://localhost:5174'];
+
+    app.use(cors({
+        origin: (origin, callback) => {
+            // Allow requests with no origin (mobile apps, curl, etc.)
+            if (!origin) return callback(null, true);
+
+            if (allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+        credentials: true,  // Allow cookies and Authorization headers
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    }));
 
     // Static files
     app.use('/node_modules/deck-of-cards', express.static('node_modules/deck-of-cards'));

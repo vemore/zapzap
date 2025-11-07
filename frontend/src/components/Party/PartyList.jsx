@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Dice6, LogOut, Plus, Loader, Users } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 function PartyList() {
   const [parties, setParties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     fetchParties();
@@ -33,46 +36,130 @@ function PartyList() {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   if (loading) {
-    return <div>Loading parties...</div>;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="flex items-center text-white">
+          <Loader className="w-8 h-8 mr-3 animate-spin text-amber-400" />
+          <span className="text-xl">Loading parties...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="party-list-container">
-      <div className="party-list-header">
-        <h1>Available Parties</h1>
-        <Link to="/create-party">
-          <button className="create-party-btn">Create Party</button>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center">
+              <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+              <h1 className="text-2xl font-bold text-white">ZapZap</h1>
+            </div>
 
-      {error && <div className="error-message">{error}</div>}
-
-      {parties.length === 0 ? (
-        <div className="empty-state">No parties available. Create one to get started!</div>
-      ) : (
-        <div className="parties-grid">
-          {parties.map((party) => (
-            <div key={party.id} className="party-card">
-              <h3>{party.name}</h3>
-              <div className="party-info">
-                <p>Players: {party.playerCount || 0}/{party.maxPlayers || party.settings?.playerCount || 5}</p>
-                <p>Status: {party.status}</p>
-              </div>
+            {/* User info and logout */}
+            <div className="flex items-center space-x-4">
+              <span className="text-gray-300">
+                Welcome, <span className="font-semibold text-white">{user?.username}</span>
+              </span>
               <button
-                onClick={() => handleJoin(party.id)}
-                disabled={
-                  party.playerCount >= (party.maxPlayers || party.settings?.playerCount || 5) ||
-                  party.status === 'playing'
-                }
-                className="join-btn"
+                onClick={handleLogout}
+                className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
               >
-                {party.status === 'playing' ? 'In Progress' : party.playerCount >= (party.maxPlayers || 5) ? 'Full' : 'Join'}
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
               </button>
             </div>
-          ))}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Main content */}
+      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Page header with Create button */}
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-3xl font-bold text-white">Available Parties</h2>
+          <Link to="/create-party">
+            <button className="flex items-center px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg">
+              <Plus className="w-5 h-5 mr-2" />
+              Create Party
+            </button>
+          </Link>
+        </div>
+
+        {/* Error message */}
+        {error && (
+          <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6" role="alert">
+            {error}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {parties.length === 0 ? (
+          <div className="bg-slate-800 rounded-lg shadow-xl p-12 border border-slate-700 text-center">
+            <Users className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-white mb-2">No Parties Available</h3>
+            <p className="text-gray-400 mb-6">Be the first to create a party and start playing!</p>
+            <Link to="/create-party">
+              <button className="inline-flex items-center px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors">
+                <Plus className="w-5 h-5 mr-2" />
+                Create Your First Party
+              </button>
+            </Link>
+          </div>
+        ) : (
+          /* Parties grid */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {parties.map((party) => {
+              const maxPlayers = party.maxPlayers || party.settings?.playerCount || 5;
+              const playerCount = party.playerCount || 0;
+              const isFull = playerCount >= maxPlayers;
+              const isPlaying = party.status === 'playing';
+
+              return (
+                <div
+                  key={party.id}
+                  className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700 hover:border-amber-400 transition-all hover:shadow-2xl"
+                >
+                  <h3 className="text-xl font-bold text-white mb-4">{party.name}</h3>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Players:</span>
+                      <span className="text-white font-medium">
+                        {playerCount} / {maxPlayers}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Status:</span>
+                      <span className={`font-medium ${
+                        isPlaying ? 'text-amber-400' : 'text-green-400'
+                      }`}>
+                        {isPlaying ? 'Playing' : 'Waiting'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleJoin(party.id)}
+                    disabled={isFull || isPlaying}
+                    className="w-full py-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:bg-gray-600 disabled:text-gray-400 bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    {isPlaying ? 'In Progress' : isFull ? 'Full' : 'Join Party'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
