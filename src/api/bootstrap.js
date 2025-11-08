@@ -28,13 +28,23 @@ const DrawCard = require('../use-cases/game/DrawCard');
 const CallZapZap = require('../use-cases/game/CallZapZap');
 const GetGameState = require('../use-cases/game/GetGameState');
 
+// Use Cases - Bot Management
+const CreateBot = require('../use-cases/bot/CreateBot');
+const ListBots = require('../use-cases/bot/ListBots');
+const DeleteBot = require('../use-cases/bot/DeleteBot');
+
+// Bot Infrastructure
+const BotActionService = require('../infrastructure/bot/BotActionService');
+const BotOrchestrator = require('../infrastructure/bot/BotOrchestrator');
+
 const logger = require('../../logger');
 
 /**
  * Bootstrap the application
+ * @param {EventEmitter} emitter - Event emitter for SSE (optional)
  * @returns {Promise<DIContainer>} Initialized DI container
  */
-async function bootstrap() {
+async function bootstrap(emitter = null) {
     try {
         logger.info('Bootstrapping application...');
 
@@ -67,8 +77,10 @@ async function bootstrap() {
         container.register('validateToken', new ValidateToken(userRepository, jwtService));
 
         // Register party management use cases
-        container.register('createParty', new CreateParty(partyRepository, userRepository));
-        container.register('joinParty', new JoinParty(partyRepository, userRepository));
+        // Note: JoinParty must be registered before CreateParty for dependency injection
+        const joinParty = new JoinParty(partyRepository, userRepository);
+        container.register('joinParty', joinParty);
+        container.register('createParty', new CreateParty(partyRepository, userRepository, joinParty));
         container.register('leaveParty', new LeaveParty(partyRepository, userRepository));
         container.register('startParty', new StartParty(partyRepository, userRepository));
         container.register('listPublicParties', new ListPublicParties(partyRepository));
@@ -79,6 +91,40 @@ async function bootstrap() {
         container.register('drawCard', new DrawCard(partyRepository, userRepository));
         container.register('callZapZap', new CallZapZap(partyRepository, userRepository));
         container.register('getGameState', new GetGameState(partyRepository, userRepository));
+
+        // Register bot management use cases
+        container.register('createBot', new CreateBot(userRepository));
+        container.register('listBots', new ListBots(userRepository));
+        container.register('deleteBot', new DeleteBot(userRepository));
+
+        // Register bot infrastructure (if emitter is provided)
+        if (emitter) {
+            const botActionService = new BotActionService(
+                {
+                    playCards: container.resolve('playCards'),
+                    drawCard: container.resolve('drawCard'),
+                    callZapZap: container.resolve('callZapZap')
+                },
+                {
+                    partyRepository,
+                    userRepository
+                }
+            );
+
+            const botOrchestrator = new BotOrchestrator(
+                botActionService,
+                partyRepository,
+                userRepository,
+                emitter
+            );
+
+            container.register('botActionService', botActionService);
+            container.register('botOrchestrator', botOrchestrator);
+
+            // Start bot orchestrator
+            botOrchestrator.start();
+            logger.info('Bot system initialized and started');
+        }
 
         logger.info('Use cases registered');
         logger.info('Application bootstrap complete');
@@ -97,6 +143,15 @@ async function bootstrap() {
 async function shutdown(container) {
     try {
         logger.info('Shutting down application...');
+
+        // Stop bot orchestrator if running
+        if (container.has('botOrchestrator')) {
+            const botOrchestrator = container.resolve('botOrchestrator');
+            if (botOrchestrator) {
+                botOrchestrator.stop();
+                logger.info('Bot orchestrator stopped');
+            }
+        }
 
         const db = container.resolve('database');
         if (db) {

@@ -7,6 +7,7 @@
     "start": "NODE_ENV=development nodemon app.js",
     "start:legacy": "NODE_ENV=development nodemon app.legacy.js",
     "init-demo": "node scripts/init-demo-data.js",
+    "init-bots": "node scripts/init-bots.js",
     "test": "jest"
   },
   "repository": {

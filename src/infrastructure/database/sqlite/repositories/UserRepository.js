@@ -97,21 +97,21 @@ class UserRepository extends IUserRepository {
                 // Update existing user
                 await this.db.run(
                     `UPDATE users
-                     SET username = ?, password_hash = ?, updated_at = ?
+                     SET username = ?, password_hash = ?, user_type = ?, bot_difficulty = ?, updated_at = ?
                      WHERE id = ?`,
-                    [user.username, user.passwordHash, user.updatedAt, user.id]
+                    [user.username, user.passwordHash, user.userType, user.botDifficulty, user.updatedAt, user.id]
                 );
 
-                logger.info('User updated', { userId: user.id, username: user.username });
+                logger.info('User updated', { userId: user.id, username: user.username, userType: user.userType });
             } else {
                 // Insert new user
                 await this.db.run(
-                    `INSERT INTO users (id, username, password_hash, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [user.id, user.username, user.passwordHash, user.createdAt, user.updatedAt]
+                    `INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [user.id, user.username, user.passwordHash, user.userType, user.botDifficulty, user.createdAt, user.updatedAt]
                 );
 
-                logger.info('User created', { userId: user.id, username: user.username });
+                logger.info('User created', { userId: user.id, username: user.username, userType: user.userType });
             }
 
             return user;
@@ -183,6 +183,34 @@ class UserRepository extends IUserRepository {
         } catch (error) {
             logger.error('Error counting users', { error: error.message });
             throw new Error(`Failed to count users: ${error.message}`);
+        }
+    }
+
+    /**
+     * Find all bots
+     * @param {string|null} difficulty - Filter by difficulty (optional)
+     * @returns {Promise<Array<User>>}
+     */
+    async findBots(difficulty = null) {
+        try {
+            let query = 'SELECT * FROM users WHERE user_type = ?';
+            let params = ['bot'];
+
+            if (difficulty) {
+                query += ' AND bot_difficulty = ?';
+                params.push(difficulty);
+            }
+
+            query += ' ORDER BY username';
+
+            const records = await this.db.all(query, params);
+
+            logger.debug('Bots retrieved', { count: records.length, difficulty });
+
+            return records.map(record => User.fromDatabase(record));
+        } catch (error) {
+            logger.error('Error finding bots', { difficulty, error: error.message });
+            throw new Error(`Failed to find bots: ${error.message}`);
         }
     }
 }

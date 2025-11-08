@@ -134,11 +134,11 @@ async function startServer(port = process.env.PORT || 9999) {
     try {
         logger.info('Starting ZapZap server...');
 
-        // Bootstrap application
-        const container = await bootstrap();
-
         // Create event emitter for SSE
         const emitter = new events.EventEmitter();
+
+        // Bootstrap application (with emitter for bot orchestrator)
+        const container = await bootstrap(emitter);
 
         // Create Express app
         const app = createApp(container, emitter);

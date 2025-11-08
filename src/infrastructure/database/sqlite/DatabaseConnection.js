@@ -72,6 +72,8 @@ class DatabaseConnection {
                 id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                user_type TEXT NOT NULL DEFAULT 'human' CHECK(user_type IN ('human', 'bot')),
+                bot_difficulty TEXT CHECK(bot_difficulty IN ('easy', 'medium', 'hard')),
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );

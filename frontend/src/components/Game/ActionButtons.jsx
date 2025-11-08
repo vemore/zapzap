@@ -1,4 +1,4 @@
-import './ActionButtons.css';
+import { Play, Download, Zap, Sparkles, Clock } from 'lucide-react';
 
 /**
  * ActionButtons component - Play, Draw, ZapZap actions
@@ -31,26 +31,39 @@ function ActionButtons({
   const canZapZap = isMyTurn && zapZapEligible;
 
   return (
-    <div className="action-buttons">
-      <div className="turn-indicator">
+    <div className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
+      {/* Turn indicator */}
+      <div className="mb-6">
         {isMyTurn ? (
-          <span className="my-turn">✨ Your Turn - {currentAction === 'draw' ? 'Draw a card' : 'Play cards or Draw'}</span>
+          <div className="flex items-center justify-center bg-green-900/30 border border-green-700 rounded-lg p-4">
+            <Sparkles className="w-5 h-5 text-green-400 mr-2" />
+            <span className="text-green-400 font-semibold">
+              Your Turn - {currentAction === 'draw' ? 'Draw a card' : 'Play cards or Draw'}
+            </span>
+          </div>
         ) : (
-          <span className="waiting">⏳ Waiting for other players...</span>
+          <div className="flex items-center justify-center bg-slate-700 border border-slate-600 rounded-lg p-4">
+            <Clock className="w-5 h-5 text-gray-400 mr-2 animate-pulse" />
+            <span className="text-gray-400 font-semibold">Waiting for other players...</span>
+          </div>
         )}
       </div>
 
+      {/* Invalid play warning */}
       {invalidPlay && (
-        <div className="invalid-warning">
-          ⚠️ Invalid play: {invalidPlay}
+        <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6 flex items-center" role="alert">
+          <span className="mr-2">⚠️</span>
+          <span>Invalid play: {invalidPlay}</span>
         </div>
       )}
 
-      <div className="button-group">
+      {/* Action buttons */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Play Cards button */}
         <button
-          className="action-button play-button"
           onClick={() => onPlay(selectedCards)}
           disabled={!canPlay}
+          className="flex items-center justify-center px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-700"
           title={
             !isMyTurn
               ? 'Not your turn'
@@ -61,14 +74,20 @@ function ActionButtons({
               : 'Play selected cards'
           }
         >
-          🎴 Play Cards
-          {selectedCards.length > 0 && ` (${selectedCards.length})`}
+          <Play className="w-5 h-5 mr-2" />
+          Play Cards
+          {selectedCards.length > 0 && (
+            <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-sm">
+              {selectedCards.length}
+            </span>
+          )}
         </button>
 
+        {/* Draw Card button */}
         <button
-          className="action-button draw-button"
           onClick={onDraw}
           disabled={!canDraw}
+          className="flex items-center justify-center px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           title={
             !isMyTurn
               ? 'Not your turn'
@@ -77,13 +96,19 @@ function ActionButtons({
               : 'Draw a card'
           }
         >
-          📥 Draw Card
+          <Download className="w-5 h-5 mr-2" />
+          Draw Card
         </button>
 
+        {/* ZapZap button */}
         <button
-          className={`action-button zapzap-button ${zapZapEligible ? 'highlight' : ''}`}
           onClick={onZapZap}
           disabled={!canZapZap}
+          className={`flex items-center justify-center px-6 py-4 font-semibold rounded-lg transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+            zapZapEligible
+              ? 'bg-amber-400 hover:bg-amber-500 text-slate-900 animate-pulse'
+              : 'bg-slate-700 text-white'
+          }`}
           title={
             !isMyTurn
               ? 'Not your turn'
@@ -92,7 +117,8 @@ function ActionButtons({
               : 'Call ZapZap to end the round!'
           }
         >
-          ⚡ ZapZap!
+          <Zap className="w-5 h-5 mr-2" />
+          ZapZap!
         </button>
       </div>
     </div>

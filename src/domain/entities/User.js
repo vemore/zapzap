@@ -13,15 +13,19 @@ class User {
      * @param {string} props.id - User ID (UUID)
      * @param {string} props.username - Username (unique)
      * @param {string} props.passwordHash - Hashed password
+     * @param {string} props.userType - User type ('human' or 'bot')
+     * @param {string} props.botDifficulty - Bot difficulty ('easy', 'medium', 'hard') - only for bots
      * @param {number} props.createdAt - Creation timestamp
      * @param {number} props.updatedAt - Last update timestamp
      */
-    constructor({ id, username, passwordHash, createdAt, updatedAt }) {
-        this.validate(username, passwordHash);
+    constructor({ id, username, passwordHash, userType = 'human', botDifficulty = null, createdAt, updatedAt }) {
+        this.validate(username, passwordHash, userType, botDifficulty);
 
         this._id = id || crypto.randomUUID();
         this._username = username;
         this._passwordHash = passwordHash;
+        this._userType = userType;
+        this._botDifficulty = botDifficulty;
         this._createdAt = createdAt || Math.floor(Date.now() / 1000);
         this._updatedAt = updatedAt || Math.floor(Date.now() / 1000);
     }
@@ -30,7 +34,7 @@ class User {
      * Validate user properties
      * @private
      */
-    validate(username, passwordHash) {
+    validate(username, passwordHash, userType, botDifficulty) {
         if (!username || typeof username !== 'string') {
             throw new Error('Username is required and must be a string');
         }
@@ -50,6 +54,22 @@ class User {
         if (!passwordHash || typeof passwordHash !== 'string') {
             throw new Error('Password hash is required');
         }
+
+        // Validate user type
+        if (!['human', 'bot'].includes(userType)) {
+            throw new Error('User type must be either "human" or "bot"');
+        }
+
+        // Validate bot difficulty
+        if (userType === 'bot') {
+            if (!botDifficulty || !['easy', 'medium', 'hard'].includes(botDifficulty)) {
+                throw new Error('Bot difficulty must be "easy", "medium", or "hard"');
+            }
+        }
+
+        if (userType === 'human' && botDifficulty) {
+            throw new Error('Bot difficulty should not be set for human users');
+        }
     }
 
     // Getters
@@ -65,12 +85,36 @@ class User {
         return this._passwordHash;
     }
 
+    get userType() {
+        return this._userType;
+    }
+
+    get botDifficulty() {
+        return this._botDifficulty;
+    }
+
     get createdAt() {
         return this._createdAt;
     }
 
     get updatedAt() {
         return this._updatedAt;
+    }
+
+    /**
+     * Check if user is a bot
+     * @returns {boolean}
+     */
+    isBot() {
+        return this._userType === 'bot';
+    }
+
+    /**
+     * Check if user is human
+     * @returns {boolean}
+     */
+    isHuman() {
+        return this._userType === 'human';
     }
 
     /**
@@ -92,7 +136,30 @@ class User {
 
         return new User({
             username: username.trim(),
-            passwordHash
+            passwordHash,
+            userType: 'human'
+        });
+    }
+
+    /**
+     * Create a new Bot user
+     * @param {string} username - Bot username
+     * @param {string} difficulty - Bot difficulty ('easy', 'medium', 'hard')
+     * @returns {Promise<User>} New Bot user instance
+     */
+    static async createBot(username, difficulty) {
+        if (!difficulty || !['easy', 'medium', 'hard'].includes(difficulty)) {
+            throw new Error('Bot difficulty must be "easy", "medium", or "hard"');
+        }
+
+        // Bots don't need real passwords, use a placeholder hash
+        const passwordHash = await bcrypt.hash('bot-no-password-' + crypto.randomUUID(), 10);
+
+        return new User({
+            username: username.trim(),
+            passwordHash,
+            userType: 'bot',
+            botDifficulty: difficulty
         });
     }
 
@@ -155,6 +222,8 @@ class User {
             id: this._id,
             username: this._username,
             passwordHash: this._passwordHash,
+            userType: this._userType,
+            botDifficulty: this._botDifficulty,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -168,6 +237,8 @@ class User {
         return {
             id: this._id,
             username: this._username,
+            userType: this._userType,
+            botDifficulty: this._botDifficulty,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -183,6 +254,8 @@ class User {
             id: record.id,
             username: record.username,
             passwordHash: record.password_hash,
+            userType: record.user_type || 'human',
+            botDifficulty: record.bot_difficulty || null,
             createdAt: record.created_at,
             updatedAt: record.updated_at
         });

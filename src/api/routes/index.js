@@ -8,6 +8,7 @@ const { createAuthMiddleware, createOptionalAuthMiddleware } = require('../middl
 const createAuthRouter = require('./authRoutes');
 const createPartyRouter = require('./partyRoutes');
 const createGameRouter = require('./gameRoutes');
+const createBotRouter = require('./botRoutes');
 
 /**
  * Create main API router
@@ -27,6 +28,7 @@ function createApiRouter(container, emitter) {
     router.use('/auth', createAuthRouter(container));
     router.use('/party', createPartyRouter(container, authMiddleware));
     router.use('/game', createGameRouter(container, authMiddleware, emitter));
+    router.use('/bots', createBotRouter(container)); // Bot management (admin endpoints)
 
     // Health check endpoint
     router.get('/health', (req, res) => {

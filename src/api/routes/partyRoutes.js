@@ -25,10 +25,11 @@ function createPartyRouter(container, authMiddleware) {
     /**
      * POST /api/party
      * Create a new party
+     * Body: { name, visibility, settings, botIds? }
      */
     router.post('/', authMiddleware, async (req, res) => {
         try {
-            const { name, visibility, settings } = req.body;
+            const { name, visibility, settings, botIds } = req.body;
 
             if (!name) {
                 return res.status(400).json({
@@ -41,13 +42,16 @@ function createPartyRouter(container, authMiddleware) {
                 ownerId: req.user.id,
                 name,
                 visibility: visibility || 'public',
-                settings: settings || {}
+                settings: settings || {},
+                botIds: botIds || []
             });
 
             logger.info('Party created', {
                 userId: req.user.id,
                 partyId: result.party.id,
-                partyName: result.party.name
+                partyName: result.party.name,
+                botCount: botIds?.length || 0,
+                botsJoined: result.botsJoined || 0
             });
 
             res.status(201).json({
@@ -61,7 +65,8 @@ function createPartyRouter(container, authMiddleware) {
                     status: result.party.status,
                     settings: result.party.settings,
                     createdAt: result.party.createdAt
-                }
+                },
+                botsJoined: result.botsJoined || 0
             });
         } catch (error) {
             logger.error('Create party error', {

@@ -3,6 +3,7 @@
  * Handles playing cards from a player's hand
  */
 
+const CardAnalyzer = require('../../infrastructure/bot/CardAnalyzer');
 const logger = require('../../../logger');
 
 class PlayCards {
@@ -154,23 +155,15 @@ class PlayCards {
      * @private
      */
     validateCardPlay(cardIds) {
-        // Basic validation - cards must be provided
-        if (cardIds.length === 0) {
-            throw new Error('Must play at least one card');
+        // Validate using CardAnalyzer
+        if (!CardAnalyzer.isValidPlay(cardIds)) {
+            throw new Error(
+                'Invalid card play. Cards must be:\n' +
+                '- Single card, OR\n' +
+                '- 2+ cards of same rank (with optional jokers), OR\n' +
+                '- 3+ cards in sequence of same suit (with optional jokers)'
+            );
         }
-
-        // For same rank: need at least 2 cards
-        // For sequence: need at least 3 cards
-        // This is simplified - the real validation would check actual card values
-        if (cardIds.length === 1) {
-            throw new Error('Must play at least 2 cards of same rank or 3+ cards in sequence');
-        }
-
-        // Additional validation would check:
-        // - Same rank (2+ cards with same rank)
-        // - Sequence (3+ cards of same suit with consecutive values)
-        // - Jokers as wildcards
-        // This would use the existing utils.check_play() logic
     }
 }
 

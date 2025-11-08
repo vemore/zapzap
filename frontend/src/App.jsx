@@ -4,6 +4,7 @@ import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import PartyList from './components/Party/PartyList';
+import CreateParty from './components/Party/CreateParty';
 import PartyLobby from './components/Party/PartyLobby';
 import GameBoard from './components/Game/GameBoard';
 import './App.css';
@@ -26,6 +27,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <PartyList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-party"
+            element={
+              <ProtectedRoute>
+                <CreateParty />
               </ProtectedRoute>
             }
           />

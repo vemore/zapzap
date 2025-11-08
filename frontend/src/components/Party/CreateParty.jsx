@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Dice6, Bot, User } from 'lucide-react';
 import { apiClient } from '../../services/api';
 
 function CreateParty() {
@@ -9,7 +10,63 @@ function CreateParty() {
   const [visibility, setVisibility] = useState('public');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [availableBots, setAvailableBots] = useState([]);
+  const [playerSlots, setPlayerSlots] = useState([]);
   const navigate = useNavigate();
+
+  // Fetch available bots on component mount
+  useEffect(() => {
+    const fetchBots = async () => {
+      try {
+        const response = await apiClient.get('/bots');
+        setAvailableBots(response.data.bots || []);
+      } catch (err) {
+        console.error('Failed to fetch bots:', err);
+        // Don't show error to user, just won't have bot options
+      }
+    };
+
+    fetchBots();
+  }, []);
+
+  // Initialize player slots when player count changes
+  useEffect(() => {
+    const count = parseInt(playerCount);
+    if (count >= 3 && count <= 8) {
+      // Slot 0 is owner (always human), slots 1+ are configurable
+      const slots = Array.from({ length: count - 1 }, (_, i) => ({
+        index: i + 1,
+        type: 'human', // 'human' or 'bot'
+        botId: null,
+        difficulty: null
+      }));
+      setPlayerSlots(slots);
+    }
+  }, [playerCount]);
+
+  // Handle player slot configuration change
+  const handleSlotChange = (slotIndex, type, difficulty = null) => {
+    setPlayerSlots(prevSlots => {
+      const newSlots = [...prevSlots];
+      const slot = newSlots[slotIndex];
+
+      if (type === 'human') {
+        slot.type = 'human';
+        slot.botId = null;
+        slot.difficulty = null;
+      } else if (type === 'bot' && difficulty) {
+        slot.type = 'bot';
+        slot.difficulty = difficulty;
+        // Find first available bot of this difficulty
+        const botsOfDifficulty = availableBots.filter(b => b.botDifficulty === difficulty);
+        if (botsOfDifficulty.length > 0) {
+          slot.botId = botsOfDifficulty[0].id;
+        }
+      }
+
+      return newSlots;
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,6 +98,11 @@ function CreateParty() {
     setLoading(true);
 
     try {
+      // Extract bot IDs from player slots
+      const botIds = playerSlots
+        .filter(slot => slot.type === 'bot' && slot.botId)
+        .map(slot => slot.botId);
+
       const response = await apiClient.post('/party', {
         name: name.trim(),
         visibility,
@@ -48,90 +110,196 @@ function CreateParty() {
           playerCount: parseInt(playerCount),
           handSize: parseInt(handSize),
         },
+        botIds
       });
 
       const partyId = response.data.party.id;
       navigate(`/party/${partyId}`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create party');
+      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to create party');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="create-party-container">
-      <div className="create-party-card">
-        <h1>Create New Party</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Back to parties link */}
+        <Link
+          to="/parties"
+          className="inline-flex items-center text-gray-300 hover:text-white mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Parties
+        </Link>
 
-        <form onSubmit={handleSubmit} className="create-party-form">
-          <div className="form-group">
-            <label htmlFor="party-name">Party Name</label>
-            <input
-              id="party-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter party name"
-              disabled={loading}
-            />
+        {/* Card */}
+        <div className="bg-slate-800 rounded-lg shadow-2xl p-8 border border-slate-700">
+          {/* Header with logo */}
+          <div className="flex items-center justify-center mb-6">
+            <Dice6 className="w-8 h-8 text-amber-400 mr-3" />
+            <h1 className="text-3xl font-bold text-white">Create New Party</h1>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="player-count">Player Count (3-8)</label>
-            <input
-              id="player-count"
-              type="number"
-              min="3"
-              max="8"
-              value={playerCount}
-              onChange={(e) => setPlayerCount(e.target.value)}
-              disabled={loading}
-            />
-            <small>Minimum 3 players, maximum 8 players</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="hand-size">Hand Size (5-7 cards)</label>
-            <input
-              id="hand-size"
-              type="number"
-              min="5"
-              max="7"
-              value={handSize}
-              onChange={(e) => setHandSize(e.target.value)}
-              disabled={loading}
-            />
-            <small>Starting hand size: 5-7 cards</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="visibility">Visibility</label>
-            <select
-              id="visibility"
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value)}
-              disabled={loading}
-            >
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-            </select>
-          </div>
-
-          {error && (
-            <div className="error-message" role="alert">
-              {error}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Party Name */}
+            <div>
+              <label htmlFor="party-name" className="block text-sm font-medium text-gray-300 mb-2">
+                Party Name
+              </label>
+              <input
+                id="party-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter party name"
+                disabled={loading}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            className="submit-button"
-            disabled={loading}
-          >
-            {loading ? 'Creating...' : 'Create Party'}
-          </button>
-        </form>
+            {/* Player Count */}
+            <div>
+              <label htmlFor="player-count" className="block text-sm font-medium text-gray-300 mb-2">
+                Player Count (3-8)
+              </label>
+              <input
+                id="player-count"
+                type="number"
+                min="3"
+                max="8"
+                value={playerCount}
+                onChange={(e) => setPlayerCount(e.target.value)}
+                disabled={loading}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-gray-400">Minimum 3 players, maximum 8 players</p>
+            </div>
+
+            {/* Hand Size */}
+            <div>
+              <label htmlFor="hand-size" className="block text-sm font-medium text-gray-300 mb-2">
+                Hand Size (5-7 cards)
+              </label>
+              <input
+                id="hand-size"
+                type="number"
+                min="5"
+                max="7"
+                value={handSize}
+                onChange={(e) => setHandSize(e.target.value)}
+                disabled={loading}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-gray-400">Starting hand size: 5-7 cards</p>
+            </div>
+
+            {/* Visibility */}
+            <div>
+              <label htmlFor="visibility" className="block text-sm font-medium text-gray-300 mb-2">
+                Visibility
+              </label>
+              <select
+                id="visibility"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value)}
+                disabled={loading}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+              >
+                <option value="public">Public - Anyone can join</option>
+                <option value="private">Private - Invite code required</option>
+              </select>
+            </div>
+
+            {/* Player Slots Configuration */}
+            {playerSlots.length > 0 && (
+              <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Configure Player Slots
+                </label>
+
+                {/* Owner slot (always human) */}
+                <div className="mb-3 p-3 bg-slate-800 rounded-lg border border-amber-400/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <User className="w-4 h-4 text-amber-400 mr-2" />
+                      <span className="text-white font-medium">Player 1 (You)</span>
+                    </div>
+                    <span className="text-xs text-gray-400 bg-amber-400/20 px-2 py-1 rounded">Owner</span>
+                  </div>
+                </div>
+
+                {/* Configurable slots */}
+                <div className="space-y-2">
+                  {playerSlots.map((slot, index) => (
+                    <div key={slot.index} className="p-3 bg-slate-800 rounded-lg border border-slate-600">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          {slot.type === 'bot' ? (
+                            <Bot className="w-4 h-4 text-purple-400 mr-2" />
+                          ) : (
+                            <User className="w-4 h-4 text-gray-400 mr-2" />
+                          )}
+                          <span className="text-white text-sm">Player {slot.index + 1}</span>
+                        </div>
+                        <select
+                          value={slot.type === 'bot' ? `bot-${slot.difficulty}` : 'human'}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === 'human') {
+                              handleSlotChange(index, 'human');
+                            } else {
+                              const difficulty = value.replace('bot-', '');
+                              handleSlotChange(index, 'bot', difficulty);
+                            }
+                          }}
+                          disabled={loading}
+                          className="px-3 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+                        >
+                          <option value="human">Waiting for Human</option>
+                          <option value="bot-easy" disabled={availableBots.filter(b => b.botDifficulty === 'easy').length === 0}>
+                            Bot - Easy {availableBots.filter(b => b.botDifficulty === 'easy').length === 0 && '(None available)'}
+                          </option>
+                          <option value="bot-medium" disabled={availableBots.filter(b => b.botDifficulty === 'medium').length === 0}>
+                            Bot - Medium {availableBots.filter(b => b.botDifficulty === 'medium').length === 0 && '(None available)'}
+                          </option>
+                          <option value="bot-hard" disabled={availableBots.filter(b => b.botDifficulty === 'hard').length === 0}>
+                            Bot - Hard {availableBots.filter(b => b.botDifficulty === 'hard').length === 0 && '(None available)'}
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Summary */}
+                <div className="mt-3 pt-3 border-t border-slate-600">
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>Humans: {playerSlots.filter(s => s.type === 'human').length + 1}</span>
+                    <span>Bots: {playerSlots.filter(s => s.type === 'bot').length}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg" role="alert">
+                {error}
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Creating...' : 'Create Party'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
