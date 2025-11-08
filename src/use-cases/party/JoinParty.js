@@ -86,12 +86,6 @@ class JoinParty {
             // Add player to party
             const savedPlayer = await this.partyRepository.addPlayer(partyPlayer);
 
-            // If party is full after this player joins, update status to playing
-            if (players.length + 1 === party.settings.playerCount) {
-                party.start();
-                await this.partyRepository.save(party);
-            }
-
             logger.info('User joined party', {
                 userId: userId,
                 username: user.username,

@@ -119,6 +119,28 @@ class CreateParty {
                 botCount: botIds.length
             });
 
+            // Auto-join owner to the party
+            if (this.joinPartyUseCase) {
+                try {
+                    await this.joinPartyUseCase.execute({
+                        userId: ownerId,
+                        partyId: savedParty.id
+                    });
+                    logger.info('Owner auto-joined party', {
+                        ownerId,
+                        partyId: savedParty.id
+                    });
+                } catch (error) {
+                    logger.error('Failed to auto-join owner', {
+                        ownerId,
+                        partyId: savedParty.id,
+                        error: error.message
+                    });
+                    // Owner join is critical, rethrow
+                    throw new Error(`Failed to join owner to party: ${error.message}`);
+                }
+            }
+
             // Auto-join bots if provided
             if (botIds && botIds.length > 0 && this.joinPartyUseCase) {
                 logger.info('Auto-joining bots to party', {
@@ -148,17 +170,11 @@ class CreateParty {
                 // Reload party to get updated player list
                 const updatedParty = await this.partyRepository.findById(savedParty.id);
 
-                // Ensure party stays in 'waiting' status even if all slots filled
-                // (User requirement: always wait for manual start)
-                if (updatedParty.status === 'playing') {
-                    updatedParty.status = 'waiting';
-                    await this.partyRepository.save(updatedParty);
-                }
-
                 logger.info('Bots auto-joined successfully', {
                     partyId: savedParty.id,
                     requestedCount: botIds.length,
-                    joinedCount: joinedBots.length
+                    joinedCount: joinedBots.length,
+                    partyStatus: updatedParty.status
                 });
 
                 return {

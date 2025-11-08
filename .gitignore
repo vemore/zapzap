@@ -9,6 +9,16 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Playwright report files
+playwright-report/
+
+# Test results
+test-results/
+tests/e2e/results/
+
+# Test database
+data/zapzap.test.db
+
 # Runtime data
 pids
 *.pid

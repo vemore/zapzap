@@ -153,7 +153,10 @@ function createPartyRouter(container, authMiddleware) {
                     updatedAt: result.party.updatedAt
                 },
                 players: result.players.map(p => ({
+                    id: p.id,
                     userId: p.userId,
+                    username: p.username,
+                    userType: p.userType,
                     playerIndex: p.playerIndex,
                     joinedAt: p.joinedAt
                 })),
