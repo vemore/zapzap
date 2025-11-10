@@ -12,6 +12,7 @@ RUN npm ci --only=production
 
 # Copy application source
 COPY app.js ./
+COPY logger.js ./
 COPY src/ ./src/
 COPY public/ ./public/
 COPY views/ ./views/
