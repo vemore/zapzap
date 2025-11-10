@@ -78,6 +78,175 @@ node scripts/test-api.js
 
 ---
 
+## 🐳 Docker Deployment
+
+### Prerequisites
+
+- **Docker** 20.10.0 or higher
+- **Docker Compose** 2.0.0 or higher
+
+### Quick Start with Docker
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/vemore/zapzap.git
+cd zapzap
+
+# 2. Create environment file
+cp .env.example .env
+
+# 3. Generate a secure JWT secret
+openssl rand -base64 32
+
+# 4. Edit .env and set JWT_SECRET to the generated value
+nano .env
+
+# 5. Start all services
+docker-compose up -d
+
+# 6. (Optional) Initialize demo data
+docker-compose exec backend npm run init-demo
+```
+
+The application will be available at **http://localhost** (port 80).
+
+### Docker Services
+
+The Docker setup includes three services:
+
+- **nginx** (Reverse Proxy) - Routes requests to appropriate services
+  - Port 80 → Frontend and API
+- **backend** (Node.js API) - Express API server
+  - Internal port 9999
+- **frontend** (React App) - Vite-built React application
+  - Internal port 80
+
+### Configuration
+
+Environment variables in `.env`:
+
+```env
+# Required
+NODE_ENV=production
+JWT_SECRET=your-secure-random-string-here
+
+# Optional
+LOG_LEVEL=info
+PROXY_PORT=80
+```
+
+### Useful Docker Commands
+
+```bash
+# Start services
+docker-compose up -d
+
+# Stop services
+docker-compose down
+
+# View logs (all services)
+docker-compose logs -f
+
+# View logs (specific service)
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f nginx
+
+# Restart services
+docker-compose restart
+
+# Rebuild and restart (after code changes)
+docker-compose up -d --build
+
+# Initialize demo data
+docker-compose exec backend npm run init-demo
+
+# Access backend shell
+docker-compose exec backend sh
+
+# Check service health
+docker-compose ps
+```
+
+### Volume Persistence
+
+The following directories are persisted:
+
+- `./data/` - SQLite database files
+- `./logs/` - Application logs
+
+Data persists across container restarts and rebuilds.
+
+### Troubleshooting Docker
+
+**Services won't start:**
+```bash
+# Check logs for errors
+docker-compose logs
+
+# Verify environment file exists
+cat .env
+
+# Check if ports are available
+lsof -i :80
+```
+
+**Database issues:**
+```bash
+# Check database file exists
+ls -la data/
+
+# Reset database (WARNING: deletes all data!)
+rm data/zapzap.db
+docker-compose restart backend
+docker-compose exec backend npm run init-demo
+```
+
+**Network issues:**
+```bash
+# Recreate network
+docker-compose down
+docker network prune
+docker-compose up -d
+```
+
+**Rebuild from scratch:**
+```bash
+# Remove all containers, volumes, and images
+docker-compose down -v
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Production Considerations
+
+For production deployment:
+
+1. **Set NODE_ENV to production**
+   ```env
+   NODE_ENV=production
+   ```
+
+2. **Use a strong JWT secret**
+   ```bash
+   openssl rand -base64 64
+   ```
+
+3. **Configure proper logging**
+   ```env
+   LOG_LEVEL=warn
+   ```
+
+4. **Consider adding HTTPS** (Modify nginx config for SSL)
+
+5. **Set up proper monitoring and backups**
+   - Database backups: `./data/`
+   - Log rotation: `./logs/`
+
+6. **Review security settings** in CLAUDE.md
+
+---
+
 ## 📖 How to Play (Quick Guide)
 
 ### Objective

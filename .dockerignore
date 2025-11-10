@@ -1,0 +1,74 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Testing
+coverage
+test-results
+playwright-report
+.nyc_output
+*.test.js
+__tests__
+
+# Build
+dist
+build
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+
+# Database (will be mounted as volume)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+CLAUDE.md
+BACKEND_API.md
+MIGRATION_GUIDE.md
+*.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend (built separately)
+frontend
+
+# Nginx config (not needed in backend)
+nginx
+
+# Misc
+*.bak
+*.tmp
+.cache
