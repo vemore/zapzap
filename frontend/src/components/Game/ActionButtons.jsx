@@ -1,31 +1,38 @@
-import { Play, Download, Zap, Sparkles, Clock } from 'lucide-react';
+import { Play, Download, Zap, Sparkles, Clock, Layers } from 'lucide-react';
 
 /**
  * ActionButtons component - Play, Draw, ZapZap actions
  * @param {number[]} selectedCards - Currently selected cards
  * @param {Function} onPlay - Play selected cards
- * @param {Function} onDraw - Draw a card
+ * @param {Function} onDrawFromDeck - Draw from deck
+ * @param {Function} onDrawFromDiscard - Draw selected card from discard
  * @param {Function} onZapZap - Call ZapZap
  * @param {string} currentAction - Current required action ('play' or 'draw')
  * @param {boolean} isMyTurn - Is it the current player's turn
  * @param {boolean} zapZapEligible - Can call ZapZap
  * @param {string} invalidPlay - Invalid play reason
+ * @param {boolean} hasDiscardSelection - A discard card is selected
+ * @param {boolean} hasDiscardCards - There are cards in the discard pile
  */
 function ActionButtons({
   selectedCards = [],
   onPlay,
-  onDraw,
+  onDrawFromDeck,
+  onDrawFromDiscard,
   onZapZap,
   currentAction = 'play',
   isMyTurn = false,
   zapZapEligible = false,
   invalidPlay = null,
+  hasDiscardSelection = false,
+  hasDiscardCards = false,
 }) {
   // Play button logic
   const canPlay = isMyTurn && selectedCards.length > 0 && !invalidPlay;
 
   // Draw button logic
-  const canDraw = isMyTurn && currentAction === 'draw';
+  const canDrawFromDeck = isMyTurn && currentAction === 'draw';
+  const canDrawFromDiscard = isMyTurn && currentAction === 'draw' && hasDiscardCards && hasDiscardSelection;
 
   // ZapZap button logic
   const canZapZap = isMyTurn && zapZapEligible;
@@ -58,12 +65,12 @@ function ActionButtons({
       )}
 
       {/* Action buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Play Cards button */}
         <button
           onClick={() => onPlay(selectedCards)}
           disabled={!canPlay}
-          className="flex items-center justify-center px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-700"
+          className="flex items-center justify-center px-4 py-4 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-700"
           title={
             !isMyTurn
               ? 'Not your turn'
@@ -83,28 +90,53 @@ function ActionButtons({
           )}
         </button>
 
-        {/* Draw Card button */}
+        {/* Draw from Deck button */}
         <button
-          onClick={onDraw}
-          disabled={!canDraw}
-          className="flex items-center justify-center px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={onDrawFromDeck}
+          disabled={!canDrawFromDeck}
+          className="flex items-center justify-center px-4 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           title={
             !isMyTurn
               ? 'Not your turn'
               : currentAction !== 'draw'
               ? 'Must play cards first'
-              : 'Draw a card'
+              : 'Draw from deck'
           }
         >
           <Download className="w-5 h-5 mr-2" />
-          Draw Card
+          Draw Deck
+        </button>
+
+        {/* Draw from Discard button */}
+        <button
+          onClick={onDrawFromDiscard}
+          disabled={!canDrawFromDiscard}
+          className={`flex items-center justify-center px-4 py-4 font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            hasDiscardSelection
+              ? 'bg-green-600 hover:bg-green-700 text-white'
+              : 'bg-slate-700 text-white'
+          }`}
+          title={
+            !isMyTurn
+              ? 'Not your turn'
+              : currentAction !== 'draw'
+              ? 'Must play cards first'
+              : !hasDiscardCards
+              ? 'No cards in discard pile'
+              : !hasDiscardSelection
+              ? 'Select a card from the discard pile first'
+              : 'Draw selected card'
+          }
+        >
+          <Layers className="w-5 h-5 mr-2" />
+          {hasDiscardSelection ? 'Draw Selected' : 'Draw Discard'}
         </button>
 
         {/* ZapZap button */}
         <button
           onClick={onZapZap}
           disabled={!canZapZap}
-          className={`flex items-center justify-center px-6 py-4 font-semibold rounded-lg transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={`flex items-center justify-center px-4 py-4 font-semibold rounded-lg transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
             zapZapEligible
               ? 'bg-amber-400 hover:bg-amber-500 text-slate-900 animate-pulse'
               : 'bg-slate-700 text-white'

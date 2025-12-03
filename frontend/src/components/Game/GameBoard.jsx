@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import PlayerTable from './PlayerTable';
 import PlayerHand from './PlayerHand';
 import ActionButtons from './ActionButtons';
+import DeckPile from './DeckPile';
+import DiscardPile from './DiscardPile';
 import { isValidPlay, analyzePlay } from '../../utils/validation';
 import { isZapZapEligible } from '../../utils/scoring';
 
@@ -17,6 +19,7 @@ function GameBoard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [selectedCards, setSelectedCards] = useState([]);
+  const [selectedDiscardCard, setSelectedDiscardCard] = useState(null);
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,9 +91,14 @@ function GameBoard() {
   };
 
   // Handle draw card
-  const handleDraw = async (source = 'deck') => {
+  const handleDraw = async (source = 'deck', cardId = undefined) => {
     try {
-      await apiClient.post(`/game/${partyId}/draw`, { source });
+      const body = { source };
+      if (cardId !== undefined) {
+        body.cardId = cardId;
+      }
+      await apiClient.post(`/game/${partyId}/draw`, body);
+      setSelectedDiscardCard(null);
       await fetchGameState();
     } catch (err) {
       console.error('Failed to draw card:', err);
@@ -144,6 +152,8 @@ function GameBoard() {
     currentAction = 'play',
     myHand = [],
     myUserId,
+    deckSize = 0,
+    lastCardsPlayed = [],
   } = gameData;
 
   const isMyTurn = currentTurnId === myUserId;
@@ -166,9 +176,16 @@ function GameBoard() {
     }
   };
 
-  const onDrawCard = () => {
-    handleDraw();
+  const onDrawFromDeck = () => {
+    handleDraw('deck');
     setSelectedCards([]);
+  };
+
+  const onDrawFromDiscard = () => {
+    if (selectedDiscardCard !== null) {
+      handleDraw('played', selectedDiscardCard);
+      setSelectedCards([]);
+    }
   };
 
   const onCallZapZap = () => {
@@ -211,6 +228,30 @@ function GameBoard() {
 
           {/* Play area */}
           <main className="lg:col-span-3 space-y-6">
+            {/* Deck and Discard pile section */}
+            <section className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
+              <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+                {/* Deck */}
+                <DeckPile
+                  cardsRemaining={deckSize}
+                  onClick={onDrawFromDeck}
+                  disabled={!isMyTurn || currentAction !== 'draw'}
+                />
+
+                {/* Divider */}
+                <div className="hidden md:block w-px h-24 bg-slate-600" />
+                <div className="md:hidden h-px w-24 bg-slate-600" />
+
+                {/* Discard pile */}
+                <DiscardPile
+                  cards={lastCardsPlayed}
+                  selectedCard={selectedDiscardCard}
+                  onCardSelect={setSelectedDiscardCard}
+                  disabled={!isMyTurn || currentAction !== 'draw'}
+                />
+              </div>
+            </section>
+
             {/* My hand section */}
             <section>
               <PlayerHand
@@ -225,12 +266,15 @@ function GameBoard() {
               <ActionButtons
                 selectedCards={selectedCards}
                 onPlay={onPlayCards}
-                onDraw={onDrawCard}
+                onDrawFromDeck={onDrawFromDeck}
+                onDrawFromDiscard={onDrawFromDiscard}
                 onZapZap={onCallZapZap}
                 currentAction={currentAction}
                 isMyTurn={isMyTurn}
                 zapZapEligible={zapZapEligible}
                 invalidPlay={invalidPlay}
+                hasDiscardSelection={selectedDiscardCard !== null}
+                hasDiscardCards={lastCardsPlayed.length > 0}
               />
             </section>
           </main>

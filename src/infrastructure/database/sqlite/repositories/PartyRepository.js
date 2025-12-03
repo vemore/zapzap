@@ -139,7 +139,7 @@ class PartyRepository extends IPartyRepository {
                 await this.db.run(
                     `UPDATE parties
                      SET name = ?, owner_id = ?, invite_code = ?, visibility = ?,
-                         status = ?, settings_json = ?, updated_at = ?
+                         status = ?, settings_json = ?, current_round_id = ?, updated_at = ?
                      WHERE id = ?`,
                     [
                         dbParty.name,
@@ -148,6 +148,7 @@ class PartyRepository extends IPartyRepository {
                         dbParty.visibility,
                         dbParty.status,
                         dbParty.settings_json,
+                        dbParty.current_round_id,
                         dbParty.updated_at,
                         dbParty.id
                     ]
@@ -157,8 +158,8 @@ class PartyRepository extends IPartyRepository {
             } else {
                 // Insert new party
                 await this.db.run(
-                    `INSERT INTO parties (id, name, owner_id, invite_code, visibility, status, settings_json, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    `INSERT INTO parties (id, name, owner_id, invite_code, visibility, status, settings_json, current_round_id, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         dbParty.id,
                         dbParty.name,
@@ -167,6 +168,7 @@ class PartyRepository extends IPartyRepository {
                         dbParty.visibility,
                         dbParty.status,
                         dbParty.settings_json,
+                        dbParty.current_round_id,
                         dbParty.created_at,
                         dbParty.updated_at
                     ]
