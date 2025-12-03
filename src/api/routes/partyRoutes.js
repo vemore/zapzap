@@ -10,9 +10,10 @@ const logger = require('../../../logger');
  * Create party router
  * @param {DIContainer} container - DI container
  * @param {Function} authMiddleware - Authentication middleware
+ * @param {Function} optionalAuthMiddleware - Optional authentication middleware
  * @returns {express.Router}
  */
-function createPartyRouter(container, authMiddleware) {
+function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
     const router = express.Router();
 
     const createParty = container.resolve('createParty');
@@ -21,6 +22,7 @@ function createPartyRouter(container, authMiddleware) {
     const startParty = container.resolve('startParty');
     const listPublicParties = container.resolve('listPublicParties');
     const getPartyDetails = container.resolve('getPartyDetails');
+    const deleteParty = container.resolve('deleteParty');
 
     /**
      * POST /api/party
@@ -86,14 +88,15 @@ function createPartyRouter(container, authMiddleware) {
      * GET /api/party
      * Get list of public parties
      */
-    router.get('/', async (req, res) => {
+    router.get('/', optionalAuthMiddleware, async (req, res) => {
         try {
             const { status, limit, offset } = req.query;
 
             const result = await listPublicParties.execute({
                 status: status || null,
                 limit: parseInt(limit) || 50,
-                offset: parseInt(offset) || 0
+                offset: parseInt(offset) || 0,
+                userId: req.user?.id || null
             });
 
             res.json({
@@ -104,8 +107,9 @@ function createPartyRouter(container, authMiddleware) {
                     ownerId: p.ownerId,
                     inviteCode: p.inviteCode,
                     status: p.status,
-                    playerCount: p.playerCount || 0,
-                    maxPlayers: p.settings.playerCount,
+                    playerCount: p.currentPlayers || 0,
+                    maxPlayers: p.maxPlayers,
+                    isMember: p.isMember || false,
                     createdAt: p.createdAt
                 })),
                 total: result.total,
@@ -380,6 +384,74 @@ function createPartyRouter(container, authMiddleware) {
             res.status(500).json({
                 error: 'Failed to start party',
                 code: 'START_PARTY_ERROR',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * DELETE /api/party/:partyId
+     * Delete a party (owner or only human player can delete)
+     */
+    router.delete('/:partyId', authMiddleware, async (req, res) => {
+        try {
+            const { partyId } = req.params;
+
+            const result = await deleteParty.execute({
+                userId: req.user.id,
+                partyId
+            });
+
+            logger.info('Party deleted via API', {
+                userId: req.user.id,
+                partyId,
+                partyName: result.deletedPartyName
+            });
+
+            res.json({
+                success: true,
+                message: 'Party deleted successfully',
+                deletedPartyId: result.deletedPartyId,
+                deletedPartyName: result.deletedPartyName
+            });
+        } catch (error) {
+            logger.error('Delete party error', {
+                error: error.message,
+                userId: req.user.id,
+                partyId: req.params.partyId
+            });
+
+            if (error.message === 'Party not found') {
+                return res.status(404).json({
+                    error: error.message,
+                    code: 'PARTY_NOT_FOUND'
+                });
+            }
+
+            if (error.message === 'User is not in this party') {
+                return res.status(403).json({
+                    error: error.message,
+                    code: 'NOT_IN_PARTY'
+                });
+            }
+
+            if (error.message === 'Only the party owner or the only human player can delete the party') {
+                return res.status(403).json({
+                    error: error.message,
+                    code: 'NOT_AUTHORIZED'
+                });
+            }
+
+            if (error.message === 'Cannot delete party during active game') {
+                return res.status(409).json({
+                    error: error.message,
+                    code: 'PARTY_PLAYING'
+                });
+            }
+
+            res.status(500).json({
+                error: 'Failed to delete party',
+                code: 'DELETE_PARTY_ERROR',
                 details: error.message
             });
         }

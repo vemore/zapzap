@@ -19,9 +19,10 @@ class ListPublicParties {
      * @param {string} [request.status] - Filter by status ('waiting', 'playing', 'finished')
      * @param {number} [request.limit] - Maximum number of results
      * @param {number} [request.offset] - Offset for pagination
+     * @param {string} [request.userId] - Current user ID to check membership
      * @returns {Promise<Object>} List result with parties
      */
-    async execute({ status, limit = 50, offset = 0 } = {}) {
+    async execute({ status, limit = 50, offset = 0, userId = null } = {}) {
         try {
             // Validate input
             if (status && !['waiting', 'playing', 'finished'].includes(status)) {
@@ -39,16 +40,18 @@ class ListPublicParties {
             // Get public parties
             const parties = await this.partyRepository.findPublicParties(status, limit, offset);
 
-            // For each party, get player count
+            // For each party, get player count and check membership
             const partiesWithDetails = await Promise.all(
                 parties.map(async (party) => {
                     const players = await this.partyRepository.getPartyPlayers(party.id);
+                    const isMember = userId ? players.some(p => p.userId === userId) : false;
 
                     return {
                         ...party.toPublicObject(),
                         currentPlayers: players.length,
                         maxPlayers: party.settings.playerCount,
-                        isFull: players.length >= party.settings.playerCount
+                        isFull: players.length >= party.settings.playerCount,
+                        isMember
                     };
                 })
             );

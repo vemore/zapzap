@@ -21,6 +21,7 @@ const LeaveParty = require('../use-cases/party/LeaveParty');
 const StartParty = require('../use-cases/party/StartParty');
 const ListPublicParties = require('../use-cases/party/ListPublicParties');
 const GetPartyDetails = require('../use-cases/party/GetPartyDetails');
+const DeleteParty = require('../use-cases/party/DeleteParty');
 
 // Use Cases - Game Actions
 const PlayCards = require('../use-cases/game/PlayCards');
@@ -85,6 +86,7 @@ async function bootstrap(emitter = null) {
         container.register('startParty', new StartParty(partyRepository, userRepository));
         container.register('listPublicParties', new ListPublicParties(partyRepository));
         container.register('getPartyDetails', new GetPartyDetails(partyRepository, userRepository));
+        container.register('deleteParty', new DeleteParty(partyRepository, userRepository));
 
         // Register game action use cases
         container.register('playCards', new PlayCards(partyRepository, userRepository));

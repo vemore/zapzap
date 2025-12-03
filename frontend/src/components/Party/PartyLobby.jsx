@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot } from 'lucide-react';
+import { Dice6, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -36,6 +36,18 @@ function PartyLobby() {
       navigate('/parties');
     } catch (err) {
       setError('Failed to leave party');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this party? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/party/${partyId}`);
+      navigate('/parties');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete party');
     }
   };
 
@@ -87,6 +99,13 @@ function PartyLobby() {
   const playerCount = party.players?.length || 0;
   const minPlayers = 3; // Game rule from README line 89
   const maxPlayers = party.settings?.playerCount || 5;
+
+  // Check if user is the only human player (all others are bots)
+  const humanPlayers = party.players?.filter(p => p.userType !== 'bot') || [];
+  const isOnlyHuman = humanPlayers.length === 1 && humanPlayers[0]?.userId === user?.id;
+
+  // User can delete if they are owner OR the only human player
+  const canDelete = isOwner || isOnlyHuman;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -246,6 +265,17 @@ function PartyLobby() {
               <ArrowLeft className="w-5 h-5 mr-2" />
               Leave Party
             </button>
+
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                className="flex-1 flex items-center justify-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+                title={isOnlyHuman && !isOwner ? 'You can delete because you are the only human player' : 'Delete this party'}
+              >
+                <Trash2 className="w-5 h-5 mr-2" />
+                Delete Party
+              </button>
+            )}
           </div>
         </div>
       </div>

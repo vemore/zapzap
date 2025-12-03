@@ -32,7 +32,20 @@ function PartyList() {
       await apiClient.post(`/party/${partyId}/join`);
       navigate(`/party/${partyId}`);
     } catch (err) {
-      setError('Failed to join party');
+      // If already in party, just navigate to it
+      if (err.response?.data?.code === 'ALREADY_IN_PARTY') {
+        navigate(`/party/${partyId}`);
+      } else {
+        setError('Failed to join party');
+      }
+    }
+  };
+
+  const handleContinue = (partyId, isPlaying) => {
+    if (isPlaying) {
+      navigate(`/game/${partyId}`);
+    } else {
+      navigate(`/party/${partyId}`);
     }
   };
 
@@ -122,13 +135,23 @@ function PartyList() {
               const playerCount = party.playerCount || 0;
               const isFull = playerCount >= maxPlayers;
               const isPlaying = party.status === 'playing';
+              const isMember = party.isMember || false;
 
               return (
                 <div
                   key={party.id}
-                  className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700 hover:border-amber-400 transition-all hover:shadow-2xl"
+                  className={`bg-slate-800 rounded-lg shadow-xl p-6 border transition-all hover:shadow-2xl ${
+                    isMember ? 'border-green-500 hover:border-green-400' : 'border-slate-700 hover:border-amber-400'
+                  }`}
                 >
-                  <h3 className="text-xl font-bold text-white mb-4">{party.name}</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-white">{party.name}</h3>
+                    {isMember && (
+                      <span className="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-1 rounded-full">
+                        Joined
+                      </span>
+                    )}
+                  </div>
 
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
@@ -147,13 +170,22 @@ function PartyList() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleJoin(party.id)}
-                    disabled={isFull || isPlaying}
-                    className="w-full py-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:bg-gray-600 disabled:text-gray-400 bg-amber-500 hover:bg-amber-600 text-white"
-                  >
-                    {isPlaying ? 'In Progress' : isFull ? 'Full' : 'Join Party'}
-                  </button>
+                  {isMember ? (
+                    <button
+                      onClick={() => handleContinue(party.id, isPlaying)}
+                      className="w-full py-2 rounded-lg font-semibold transition-colors bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {isPlaying ? 'Continue Game' : 'Return to Lobby'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleJoin(party.id)}
+                      disabled={isFull || isPlaying}
+                      className="w-full py-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:bg-gray-600 disabled:text-gray-400 bg-amber-500 hover:bg-amber-600 text-white"
+                    >
+                      {isPlaying ? 'In Progress' : isFull ? 'Full' : 'Join Party'}
+                    </button>
+                  )}
                 </div>
               );
             })}
