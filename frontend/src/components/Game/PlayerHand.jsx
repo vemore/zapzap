@@ -77,8 +77,8 @@ function PlayerHand({ hand = [], onCardsSelected, disabled = false }) {
           selectedCards={selectedCards}
           onCardClick={handleCardClick}
           disabled={disabled}
-          cardWidth={80}
-          maxSpreadAngle={60}
+          cardWidth={110}
+          maxSpreadAngle={90}
         />
       </div>
 

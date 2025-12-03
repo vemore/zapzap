@@ -17,9 +17,9 @@ function CardFan({
   selectedCards = [],
   onCardClick,
   disabled = false,
-  cardWidth = 80,
-  maxSpreadAngle = 60,
-  radius = 300,
+  cardWidth = 110,
+  maxSpreadAngle = 90,
+  radius = 350,
 }) {
   const cardCount = cards.length;
 

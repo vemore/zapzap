@@ -587,3 +587,4 @@ curl http://localhost:9999/api/health
 - [BACKEND_API.md](BACKEND_API.md) - Complete API documentation
 - [README.md](README.md) - User-facing documentation
 - [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - Legacy to v2 migration
+- Toute modification doit être testée avec le navigateur. Tout bugs identifié doit être corrigé.
