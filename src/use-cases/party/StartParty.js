@@ -99,7 +99,7 @@ class StartParty {
                 deck: deck,
                 hands: hands,
                 currentTurn: 0,
-                currentAction: 'play',
+                currentAction: 'draw',
                 roundNumber: 1
             });
 

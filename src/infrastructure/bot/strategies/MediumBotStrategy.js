@@ -68,7 +68,7 @@ class MediumBotStrategy extends BotStrategy {
             );
 
             if (newMultiCardPlays.length > 0) {
-                return 'discard';
+                return 'played';
             }
         }
 

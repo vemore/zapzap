@@ -1,5 +1,5 @@
 import { Trophy, AlertTriangle, Sparkles, Zap, ArrowRight, Loader, Crown } from 'lucide-react';
-import { getCardName } from '../../utils/cards';
+import PlayingCard from './PlayingCard';
 
 /**
  * RoundEnd component - displays scoring at end of round
@@ -146,12 +146,13 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
                 <p className="text-gray-400 text-sm mb-2">Hand:</p>
                 <div className="flex flex-wrap gap-2">
                   {player.hand.map((cardId, idx) => (
-                    <span
+                    <PlayingCard
                       key={`${cardId}-${idx}`}
-                      className="bg-slate-800 border border-slate-600 rounded px-3 py-1 text-white text-sm font-medium"
-                    >
-                      {getCardName(cardId)}
-                    </span>
+                      cardId={cardId}
+                      width={60}
+                      selected={false}
+                      disabled={true}
+                    />
                   ))}
                 </div>
               </div>

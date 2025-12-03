@@ -119,7 +119,7 @@ class HardBotStrategy extends BotStrategy {
 
         // If any discard card provides significant improvement, take it
         if (bestImprovement > 5) {
-            return 'discard';
+            return 'played';
         }
 
         // Default to deck

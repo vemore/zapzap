@@ -20,7 +20,8 @@ function PartyLobby() {
   const fetchPartyDetails = async () => {
     try {
       const response = await apiClient.get(`/party/${partyId}`);
-      setParty(response.data.party);
+      // Merge party data with players array
+      setParty({ ...response.data.party, players: response.data.players || [] });
       setError('');
     } catch (err) {
       setError('Failed to load party details');

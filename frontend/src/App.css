@@ -1,4 +1,127 @@
 /* App.css - Minimal custom styles */
 /* Most styling is now handled by Tailwind CSS utility classes */
 
-/* Any global custom styles or overrides can go here */
+/* ========================================
+   Card Fan Layout - Cardmeister Integration
+   ======================================== */
+
+/* Fan container - cards arranged in an arc */
+.card-fan {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  position: relative;
+  min-height: 180px;
+  padding-bottom: 20px;
+}
+
+/* Individual card in fan */
+.card-fan-item {
+  position: absolute;
+  bottom: 0;
+  transform-origin: bottom center;
+  transition: transform 0.25s ease-out, z-index 0s;
+  cursor: pointer;
+}
+
+/* Hover effect - lift card slightly */
+.card-fan-item:hover {
+  z-index: 100 !important;
+}
+
+.card-fan-item:hover:not(.selected) {
+  transform: rotate(var(--card-angle, 0deg)) translateY(-15px) scale(1.05);
+}
+
+/* Selected card - lifted higher with glow */
+.card-fan-item.selected {
+  z-index: 99 !important;
+}
+
+/* ========================================
+   Playing Card Wrapper Styles
+   ======================================== */
+
+.playing-card-wrapper {
+  display: inline-block;
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.playing-card-wrapper:focus {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.playing-card-wrapper.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Selection glow for cardmeister cards */
+.playing-card-wrapper.selected {
+  box-shadow: 0 0 20px 8px rgba(251, 191, 36, 0.7);
+  border-radius: 8px;
+}
+
+/* Cardmeister card image styling */
+playing-card {
+  display: block;
+}
+
+playing-card img {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ========================================
+   Joker Card Styles
+   ======================================== */
+
+.joker-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+.joker-card:focus {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.joker-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Selection glow for Jokers */
+.joker-card.selected {
+  box-shadow: 0 0 20px 8px rgba(251, 191, 36, 0.7);
+}
+
+.joker-card img {
+  display: block;
+}
+
+/* ========================================
+   Responsive Adjustments
+   ======================================== */
+
+@media (max-width: 768px) {
+  .card-fan {
+    min-height: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-fan {
+    min-height: 120px;
+  }
+}

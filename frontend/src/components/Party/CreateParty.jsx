@@ -57,10 +57,16 @@ function CreateParty() {
       } else if (type === 'bot' && difficulty) {
         slot.type = 'bot';
         slot.difficulty = difficulty;
-        // Find first available bot of this difficulty
-        const botsOfDifficulty = availableBots.filter(b => b.botDifficulty === difficulty);
+        // Find first available bot of this difficulty that isn't already used
+        const usedBotIds = new Set(newSlots.filter((s, i) => i !== slotIndex && s.type === 'bot').map(s => s.botId));
+        const botsOfDifficulty = availableBots.filter(b => b.botDifficulty === difficulty && !usedBotIds.has(b.id));
         if (botsOfDifficulty.length > 0) {
           slot.botId = botsOfDifficulty[0].id;
+        } else {
+          // No available bot of this difficulty, fallback to human
+          slot.type = 'human';
+          slot.botId = null;
+          slot.difficulty = null;
         }
       }
 

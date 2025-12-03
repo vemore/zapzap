@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Dice6, Loader } from 'lucide-react';
+import { apiClient } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import PlayerTable from './PlayerTable';
 import PlayerHand from './PlayerHand';
 import ActionButtons from './ActionButtons';
@@ -8,15 +11,105 @@ import { isZapZapEligible } from '../../utils/scoring';
 
 /**
  * GameBoard component - main game interface
- * @param {Object} gameState - Complete game state
- * @param {Function} onPlay - Play selected cards
- * @param {Function} onDraw - Draw a card
- * @param {Function} onZapZap - Call ZapZap
  */
-function GameBoard({ gameState, onPlay, onDraw, onZapZap }) {
+function GameBoard() {
+  const { partyId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedCards, setSelectedCards] = useState([]);
+  const [gameData, setGameData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!gameState) {
+  // Fetch game state
+  useEffect(() => {
+    if (user) {
+      fetchGameState();
+    }
+    // TODO: Set up SSE for real-time game updates
+  }, [partyId, user]);
+
+  const fetchGameState = async () => {
+    try {
+      if (!user) {
+        setError('User not authenticated');
+        setLoading(false);
+        return;
+      }
+
+      const response = await apiClient.get(`/game/${partyId}/state`);
+      const data = response.data;
+
+      // Check if game has started
+      if (!data.gameState) {
+        setError('Game has not started yet');
+        setLoading(false);
+        return;
+      }
+
+      // Transform API data to component format
+      const transformedData = {
+        partyId: data.party.id,
+        partyName: data.party.name,
+        players: data.players.map(p => ({
+          userId: p.userId,
+          playerIndex: p.playerIndex,
+        })),
+        currentTurnId: data.players[data.gameState.currentTurn]?.userId,
+        currentAction: data.gameState.currentAction,
+        myHand: data.gameState.playerHand || [],
+        myUserId: user.id,
+        deckSize: data.gameState.deckSize,
+        lastCardsPlayed: data.gameState.lastCardsPlayed || [],
+        cardsPlayed: data.gameState.cardsPlayed || [],
+        otherPlayersHandSizes: data.gameState.otherPlayersHandSizes || {},
+        round: data.round,
+      };
+
+      setGameData(transformedData);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load game state:', err);
+      setError('Failed to load game state');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle play cards
+  const handlePlay = async (cards) => {
+    try {
+      await apiClient.post(`/game/${partyId}/play`, { cardIds: cards });
+      await fetchGameState();
+    } catch (err) {
+      console.error('Failed to play cards:', err);
+      setError(err.response?.data?.error || 'Failed to play cards');
+    }
+  };
+
+  // Handle draw card
+  const handleDraw = async (source = 'deck') => {
+    try {
+      await apiClient.post(`/game/${partyId}/draw`, { source });
+      await fetchGameState();
+    } catch (err) {
+      console.error('Failed to draw card:', err);
+      setError(err.response?.data?.error || 'Failed to draw card');
+    }
+  };
+
+  // Handle ZapZap
+  const handleZapZap = async () => {
+    try {
+      await apiClient.post(`/game/${partyId}/zapzap`);
+      await fetchGameState();
+    } catch (err) {
+      console.error('Failed to call ZapZap:', err);
+      setError(err.response?.data?.error || 'Failed to call ZapZap');
+    }
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
         <div className="flex items-center text-white">
@@ -27,14 +120,31 @@ function GameBoard({ gameState, onPlay, onDraw, onZapZap }) {
     );
   }
 
+  if (error || !gameData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="bg-slate-800 rounded-lg shadow-2xl p-8 border border-slate-700 text-center max-w-md">
+          <h2 className="text-2xl font-bold text-white mb-4">Error</h2>
+          <p className="text-gray-400 mb-6">{error || 'Failed to load game'}</p>
+          <button
+            onClick={() => navigate(`/party/${partyId}`)}
+            className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const {
-    partyId,
+    partyName,
     players = [],
     currentTurnId,
     currentAction = 'play',
     myHand = [],
     myUserId,
-  } = gameState;
+  } = gameData;
 
   const isMyTurn = currentTurnId === myUserId;
   const zapZapEligible = isZapZapEligible(myHand);
@@ -48,21 +158,21 @@ function GameBoard({ gameState, onPlay, onDraw, onZapZap }) {
     }
   }
 
-  // Action handlers
-  const handlePlay = (cards) => {
+  // Action handlers with validation
+  const onPlayCards = (cards) => {
     if (isValidPlay(cards)) {
-      onPlay(cards);
+      handlePlay(cards);
       setSelectedCards([]);
     }
   };
 
-  const handleDraw = () => {
-    onDraw();
+  const onDrawCard = () => {
+    handleDraw();
     setSelectedCards([]);
   };
 
-  const handleZapZap = () => {
-    onZapZap();
+  const onCallZapZap = () => {
+    handleZapZap();
   };
 
   return (
@@ -80,7 +190,7 @@ function GameBoard({ gameState, onPlay, onDraw, onZapZap }) {
             {/* Party info */}
             <div className="flex items-center">
               <span className="text-gray-300">
-                Party: <span className="font-semibold text-white">{partyId}</span>
+                Party: <span className="font-semibold text-white">{partyName || partyId}</span>
               </span>
             </div>
           </div>
@@ -114,9 +224,9 @@ function GameBoard({ gameState, onPlay, onDraw, onZapZap }) {
             <section>
               <ActionButtons
                 selectedCards={selectedCards}
-                onPlay={handlePlay}
-                onDraw={handleDraw}
-                onZapZap={handleZapZap}
+                onPlay={onPlayCards}
+                onDraw={onDrawCard}
+                onZapZap={onCallZapZap}
                 currentAction={currentAction}
                 isMyTurn={isMyTurn}
                 zapZapEligible={zapZapEligible}

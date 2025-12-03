@@ -34,10 +34,11 @@ class Party {
      * @param {string} props.visibility - 'public' or 'private'
      * @param {string} props.status - 'waiting', 'playing', or 'finished'
      * @param {PartySettings} props.settings - Party settings
+     * @param {string} props.currentRoundId - Current round ID (null if not playing)
      * @param {number} props.createdAt - Creation timestamp
      * @param {number} props.updatedAt - Last update timestamp
      */
-    constructor({ id, name, ownerId, inviteCode, visibility, status, settings, createdAt, updatedAt }) {
+    constructor({ id, name, ownerId, inviteCode, visibility, status, settings, currentRoundId, createdAt, updatedAt }) {
         this.validate(name, ownerId, inviteCode, visibility, status);
 
         this._id = id || crypto.randomUUID();
@@ -47,6 +48,7 @@ class Party {
         this._visibility = visibility || PartyVisibility.PUBLIC;
         this._status = status || PartyStatus.WAITING;
         this._settings = settings || PartySettings.createDefault();
+        this._currentRoundId = currentRoundId || null;
         this._createdAt = createdAt || Math.floor(Date.now() / 1000);
         this._updatedAt = updatedAt || Math.floor(Date.now() / 1000);
     }
@@ -326,6 +328,7 @@ class Party {
             visibility: this._visibility,
             status: this._status,
             settings_json: this._settings.toJSON(),
+            current_round_id: this._currentRoundId,
             created_at: this._createdAt,
             updated_at: this._updatedAt
         };
@@ -345,6 +348,7 @@ class Party {
             visibility: record.visibility,
             status: record.status,
             settings: PartySettings.fromJSON(record.settings_json),
+            currentRoundId: record.current_round_id,
             createdAt: record.created_at,
             updatedAt: record.updated_at
         });

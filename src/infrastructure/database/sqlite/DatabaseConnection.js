@@ -87,6 +87,7 @@ class DatabaseConnection {
                 visibility TEXT NOT NULL CHECK(visibility IN ('public', 'private')),
                 status TEXT NOT NULL CHECK(status IN ('waiting', 'playing', 'finished')),
                 settings_json TEXT NOT NULL,
+                current_round_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE

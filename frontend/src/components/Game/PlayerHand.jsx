@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Sparkles } from 'lucide-react';
-import { getCardName, getCardSuit, SUIT_SYMBOLS } from '../../utils/cards';
 import { getHandValueDisplay, isZapZapEligible } from '../../utils/scoring';
+import CardFan from './CardFan';
 
 /**
  * PlayerHand component - displays player's cards with selection
@@ -70,17 +70,16 @@ function PlayerHand({ hand = [], onCardsSelected, disabled = false }) {
         )}
       </div>
 
-      {/* Cards container */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        {hand.map((cardId, index) => (
-          <Card
-            key={`${cardId}-${index}`}
-            cardId={cardId}
-            selected={selectedCards.includes(cardId)}
-            onClick={() => handleCardClick(cardId)}
-            disabled={disabled}
-          />
-        ))}
+      {/* Cards container - Fan layout */}
+      <div className="flex justify-center mb-6">
+        <CardFan
+          cards={hand}
+          selectedCards={selectedCards}
+          onCardClick={handleCardClick}
+          disabled={disabled}
+          cardWidth={80}
+          maxSpreadAngle={60}
+        />
       </div>
 
       {/* Hand actions */}
@@ -100,47 +99,6 @@ function PlayerHand({ hand = [], onCardsSelected, disabled = false }) {
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * Card component - displays a single card
- */
-function Card({ cardId, selected, onClick, disabled }) {
-  const suit = getCardSuit(cardId);
-  const name = getCardName(cardId);
-  const isRed = suit === 'hearts' || suit === 'diamonds';
-  const isJoker = cardId >= 52;
-
-  const baseClasses = "w-20 h-28 rounded-lg border-2 shadow-lg transition-all transform hover:scale-105 hover:-translate-y-1";
-  const colorClasses = isRed ? "text-red-500" : "text-slate-900";
-  const bgClasses = isJoker
-    ? "bg-gradient-to-br from-amber-400 to-amber-600 border-amber-500"
-    : "bg-white border-gray-300";
-  const selectedClasses = selected
-    ? "border-amber-400 ring-4 ring-amber-400/50 -translate-y-2 scale-110"
-    : "";
-  const disabledClasses = disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer";
-
-  return (
-    <button
-      className={`${baseClasses} ${bgClasses} ${selectedClasses} ${disabledClasses}`}
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={`Card: ${name}`}
-    >
-      <div className="flex flex-col items-center justify-between h-full p-2">
-        <div className={`text-2xl font-bold ${isJoker ? 'text-white' : colorClasses}`}>
-          {name.slice(0, -1) || '🃏'}
-        </div>
-        <div className={`text-3xl ${isJoker ? 'text-white' : colorClasses}`}>
-          {isJoker ? '🃏' : SUIT_SYMBOLS[suit]}
-        </div>
-        <div className={`text-2xl font-bold ${isJoker ? 'text-white' : colorClasses}`}>
-          {name.slice(0, -1) || '🃏'}
-        </div>
-      </div>
-    </button>
   );
 }
 
