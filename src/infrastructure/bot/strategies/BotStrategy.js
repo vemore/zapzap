@@ -38,7 +38,7 @@ class BotStrategy {
      * @param {Array<number>} hand - Bot's current hand (card IDs)
      * @param {Array<number>} lastCardsPlayed - Cards in discard pile
      * @param {Object} gameState - Current game state
-     * @returns {string} 'deck' or 'discard'
+     * @returns {string} 'deck' or 'played' (API expects 'played' for discard)
      */
     selectDrawSource(hand, lastCardsPlayed, gameState) {
         // Default: always draw from deck (can be overridden)

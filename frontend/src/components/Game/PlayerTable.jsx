@@ -1,12 +1,14 @@
 import { Users, User, Play } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import CardBack from './CardBack';
 
 /**
- * PlayerTable component - displays all players at the table
- * @param {Object[]} players - Array of player objects
- * @param {string} currentTurnId - ID of player whose turn it is
+ * PlayerTable component - displays all players in a horizontal row
+ * @param {Object[]} players - Array of player objects with username, cardCount, score
+ * @param {number} currentTurn - Index of player whose turn it is
  * @param {string} currentUserId - ID of the current user
  */
-function PlayerTable({ players = [], currentTurnId, currentUserId }) {
+function PlayerTable({ players = [], currentTurn, currentUserId }) {
   if (players.length === 0) {
     return (
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 border border-slate-700 text-center">
@@ -17,18 +19,14 @@ function PlayerTable({ players = [], currentTurnId, currentUserId }) {
   }
 
   return (
-    <div className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
-      <div className="flex items-center mb-4">
-        <Users className="w-5 h-5 text-amber-400 mr-2" />
-        <h3 className="text-lg font-semibold text-white">Players</h3>
-      </div>
-      <div className="space-y-3">
-        {players.map((player) => (
+    <div className="bg-slate-800/50 rounded-lg shadow-xl p-4 border border-slate-700">
+      <div className="flex flex-wrap justify-center gap-4">
+        {players.map((player, index) => (
           <PlayerCard
-            key={player.id}
+            key={player.userId || index}
             player={player}
-            isCurrentUser={player.id === currentUserId}
-            isCurrentTurn={player.id === currentTurnId}
+            isCurrentUser={player.userId === currentUserId}
+            isCurrentTurn={player.playerIndex === currentTurn}
           />
         ))}
       </div>
@@ -37,59 +35,88 @@ function PlayerTable({ players = [], currentTurnId, currentUserId }) {
 }
 
 /**
- * PlayerCard component - displays a single player
+ * PlayerCard component - displays a single player with card fan
  */
 function PlayerCard({ player, isCurrentUser, isCurrentTurn }) {
+  const cardCount = player.cardCount || 0;
+
   const borderClasses = isCurrentUser
     ? 'border-amber-400 ring-2 ring-amber-400/30'
     : isCurrentTurn
-    ? 'border-green-400 ring-2 ring-green-400/30'
+    ? 'border-green-400 ring-2 ring-green-400/30 animate-pulse'
     : 'border-slate-600';
 
   const bgClasses = isCurrentTurn
-    ? 'bg-green-900/20'
-    : 'bg-slate-700';
+    ? 'bg-green-900/30'
+    : 'bg-slate-700/50';
 
   return (
-    <div className={`${bgClasses} rounded-lg p-4 border-2 ${borderClasses} transition-all`}>
+    <motion.div
+      className={`${bgClasses} rounded-lg p-3 border-2 ${borderClasses} transition-all min-w-[140px]`}
+      layout
+    >
       {/* Player header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center">
-          <User className="w-4 h-4 text-gray-400 mr-2" />
-          <span className="text-white font-semibold">
+          <User className="w-4 h-4 text-gray-400 mr-1" />
+          <span className="text-white font-semibold text-sm truncate max-w-[100px]">
             {player.username}
-            {isCurrentUser && (
-              <span className="ml-2 text-xs bg-amber-400/20 text-amber-400 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                You
-              </span>
-            )}
           </span>
         </div>
-        {isCurrentTurn && (
-          <div className="flex items-center text-green-400 text-sm font-semibold">
-            <Play className="w-4 h-4 mr-1 animate-pulse" />
-            Playing
-          </div>
+        {isCurrentUser && (
+          <span className="text-xs bg-amber-400/20 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded-full">
+            You
+          </span>
         )}
       </div>
 
-      {/* Player stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-2">
-          <span className="text-gray-400 text-sm">Cards:</span>
-          <span className="text-white font-medium">
-            {player.cardCount}
-          </span>
+      {/* Turn indicator */}
+      {isCurrentTurn && (
+        <div className="flex items-center justify-center text-green-400 text-xs font-semibold mb-2">
+          <Play className="w-3 h-3 mr-1" />
+          Playing
         </div>
+      )}
 
+      {/* Card fan */}
+      <div className="flex justify-center items-end h-16 mb-2">
+        <AnimatePresence mode="popLayout">
+          {Array(Math.min(cardCount, 7)).fill(0).map((_, i) => (
+            <motion.div
+              key={`card-${i}`}
+              className="card-in-fan"
+              style={{
+                marginLeft: i > 0 ? '-20px' : '0',
+                transform: `rotate(${(i - Math.min(cardCount, 7) / 2) * 5}deg)`,
+                transformOrigin: 'bottom center',
+                zIndex: i
+              }}
+              initial={{ opacity: 0, y: -20, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.5 }}
+              transition={{ delay: i * 0.05, duration: 0.2 }}
+            >
+              <CardBack size="sm" />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {cardCount > 7 && (
+          <span className="text-xs text-gray-400 ml-1">+{cardCount - 7}</span>
+        )}
+      </div>
+
+      {/* Card count and score */}
+      <div className="flex justify-between text-xs">
+        <span className="text-gray-400">
+          <span className="text-white font-medium">{cardCount}</span> cards
+        </span>
         {player.score !== undefined && (
-          <div className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-2">
-            <span className="text-gray-400 text-sm">Score:</span>
-            <span className="text-white font-medium">{player.score}</span>
-          </div>
+          <span className="text-gray-400">
+            Score: <span className="text-white font-medium">{player.score}</span>
+          </span>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 

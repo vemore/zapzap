@@ -116,7 +116,13 @@ class PlayCards {
                 hands: newHands,
                 cardsPlayed: cardIds,
                 lastCardsPlayed: gameState.cardsPlayed,
-                currentAction: 'draw'
+                currentAction: 'draw',
+                lastAction: {
+                    type: 'play',
+                    playerIndex: player.playerIndex,
+                    cardIds: cardIds,
+                    timestamp: Date.now()
+                }
             });
 
             // Save game state

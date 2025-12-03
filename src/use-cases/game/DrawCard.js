@@ -135,7 +135,14 @@ class DrawCard {
                 deck: newDeck,
                 lastCardsPlayed: newLastCardsPlayed,
                 currentTurn: nextTurn,
-                currentAction: 'play'
+                currentAction: 'play',
+                lastAction: {
+                    type: 'draw',
+                    playerIndex: player.playerIndex,
+                    source: source,
+                    cardId: drawnCard,
+                    timestamp: Date.now()
+                }
             });
 
             // Save game state

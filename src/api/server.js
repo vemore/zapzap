@@ -26,14 +26,21 @@ function createApp(container, emitter) {
     app.use(morgan('dev'));
 
     // CORS configuration - allow frontend to communicate with backend
-    const allowedOrigins = process.env.NODE_ENV === 'production'
-        ? (process.env.ALLOWED_ORIGINS || '').split(',')
-        : ['http://localhost:5173', 'http://localhost:5174'];
+    // In development, allow all localhost origins
+    const isDev = process.env.NODE_ENV !== 'production' || !process.env.ALLOWED_ORIGINS;
+    const allowedOrigins = isDev
+        ? ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174']
+        : (process.env.ALLOWED_ORIGINS || '').split(',');
 
     app.use(cors({
         origin: (origin, callback) => {
             // Allow requests with no origin (mobile apps, curl, etc.)
             if (!origin) return callback(null, true);
+
+            // In dev mode, allow all localhost origins
+            if (isDev && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
+                return callback(null, true);
+            }
 
             if (allowedOrigins.includes(origin)) {
                 callback(null, true);

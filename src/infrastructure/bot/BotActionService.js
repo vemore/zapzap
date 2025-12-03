@@ -153,28 +153,70 @@ class BotActionService {
      */
     async executeBotDraw(partyId, botUser, botHand, gameState, strategy) {
         try {
+            const lastCardsPlayed = gameState.lastCardsPlayed || [];
+            const deckSize = gameState.deck ? gameState.deck.length : 0;
+
             // Decide draw source
-            const drawSource = strategy.selectDrawSource(
+            let drawSource = strategy.selectDrawSource(
                 botHand,
-                gameState.lastCardsPlayed || [],
+                lastCardsPlayed,
                 gameState
             );
 
+            let cardId = undefined;
+
+            // Handle empty deck: force drawing from discard pile if available
+            if (drawSource === 'deck' && deckSize === 0) {
+                if (lastCardsPlayed.length > 0) {
+                    drawSource = 'played';
+                    // Pick the first card from discard pile (any card works)
+                    cardId = lastCardsPlayed[0];
+                    logger.info('Bot forced to draw from discard (deck empty)', {
+                        botId: botUser.id,
+                        cardId
+                    });
+                } else {
+                    // Both deck and discard are empty - this shouldn't happen normally
+                    logger.error('Both deck and discard are empty', { botId: botUser.id });
+                    throw new Error('No cards available to draw');
+                }
+            }
+
+            // When drawing from discard pile, select a card
+            if (drawSource === 'played' && cardId === undefined) {
+                if (lastCardsPlayed.length > 0) {
+                    // Pick the first available card from discard
+                    cardId = lastCardsPlayed[0];
+                } else {
+                    // Fallback to deck if discard is empty
+                    drawSource = 'deck';
+                }
+            }
+
             logger.info('Bot drawing card', {
                 botId: botUser.id,
-                source: drawSource
+                source: drawSource,
+                cardId
             });
 
-            const result = await this.drawCard.execute({
+            const drawParams = {
                 userId: botUser.id,
                 partyId,
                 source: drawSource
-            });
+            };
+
+            // Add cardId only when drawing from discard
+            if (drawSource === 'played' && cardId !== undefined) {
+                drawParams.cardId = cardId;
+            }
+
+            const result = await this.drawCard.execute(drawParams);
 
             return {
                 success: true,
                 action: 'draw',
                 source: drawSource,
+                cardId,
                 result
             };
         } catch (error) {

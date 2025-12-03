@@ -7,8 +7,9 @@ import PlayerTable from './PlayerTable';
 import PlayerHand from './PlayerHand';
 import ActionButtons from './ActionButtons';
 import DeckPile from './DeckPile';
-import DiscardPile from './DiscardPile';
+import TableArea from './TableArea';
 import { isValidPlay, analyzePlay } from '../../utils/validation';
+// Note: DiscardPile is now integrated into TableArea
 import { isZapZapEligible } from '../../utils/scoring';
 
 /**
@@ -57,7 +58,13 @@ function GameBoard() {
         players: data.players.map(p => ({
           userId: p.userId,
           playerIndex: p.playerIndex,
+          username: p.username || `Player ${p.playerIndex + 1}`,
+          cardCount: p.playerIndex === data.players.find(pl => pl.userId === user.id)?.playerIndex
+            ? (data.gameState.playerHand || []).length
+            : (data.gameState.otherPlayersHandSizes?.[p.playerIndex] || 0),
+          score: data.gameState.scores?.[p.playerIndex] || 0,
         })),
+        currentTurn: data.gameState.currentTurn,
         currentTurnId: data.players[data.gameState.currentTurn]?.userId,
         currentAction: data.gameState.currentAction,
         myHand: data.gameState.playerHand || [],
@@ -66,6 +73,7 @@ function GameBoard() {
         lastCardsPlayed: data.gameState.lastCardsPlayed || [],
         cardsPlayed: data.gameState.cardsPlayed || [],
         otherPlayersHandSizes: data.gameState.otherPlayersHandSizes || {},
+        lastAction: data.gameState.lastAction || null,
         round: data.round,
       };
 
@@ -148,12 +156,15 @@ function GameBoard() {
   const {
     partyName,
     players = [],
+    currentTurn,
     currentTurnId,
     currentAction = 'play',
     myHand = [],
     myUserId,
     deckSize = 0,
     lastCardsPlayed = [],
+    cardsPlayed = [],
+    lastAction = null,
   } = gameData;
 
   const isMyTurn = currentTurnId === myUserId;
@@ -215,70 +226,66 @@ function GameBoard() {
       </div>
 
       {/* Main game layout */}
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Players sidebar */}
-          <aside className="lg:col-span-1">
-            <PlayerTable
-              players={players}
-              currentTurnId={currentTurnId}
-              currentUserId={myUserId}
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        {/* Players row at top */}
+        <section>
+          <PlayerTable
+            players={players}
+            currentTurn={currentTurn}
+            currentUserId={myUserId}
+          />
+        </section>
+
+        {/* Table area (tapis) - center */}
+        <section>
+          <TableArea
+            cardsPlayed={cardsPlayed}
+            lastCardsPlayed={lastCardsPlayed}
+            lastAction={lastAction}
+            players={players}
+            currentTurn={currentTurn}
+            onDiscardSelect={isMyTurn && currentAction === 'draw' ? setSelectedDiscardCard : undefined}
+            selectedDiscardCard={selectedDiscardCard}
+          />
+        </section>
+
+        {/* Deck and hand row */}
+        <section className="flex flex-col lg:flex-row gap-6">
+          {/* Deck */}
+          <div className="lg:w-48 flex-shrink-0">
+            <DeckPile
+              cardsRemaining={deckSize}
+              onClick={onDrawFromDeck}
+              disabled={!isMyTurn || currentAction !== 'draw'}
             />
-          </aside>
+          </div>
 
-          {/* Play area */}
-          <main className="lg:col-span-3 space-y-6">
-            {/* Deck and Discard pile section */}
-            <section className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
-              <div className="flex flex-col md:flex-row items-center justify-center gap-8">
-                {/* Deck */}
-                <DeckPile
-                  cardsRemaining={deckSize}
-                  onClick={onDrawFromDeck}
-                  disabled={!isMyTurn || currentAction !== 'draw'}
-                />
+          {/* My hand */}
+          <div className="flex-grow">
+            <PlayerHand
+              hand={myHand}
+              onCardsSelected={setSelectedCards}
+              disabled={!isMyTurn}
+            />
+          </div>
+        </section>
 
-                {/* Divider */}
-                <div className="hidden md:block w-px h-24 bg-slate-600" />
-                <div className="md:hidden h-px w-24 bg-slate-600" />
-
-                {/* Discard pile */}
-                <DiscardPile
-                  cards={lastCardsPlayed}
-                  selectedCard={selectedDiscardCard}
-                  onCardSelect={setSelectedDiscardCard}
-                  disabled={!isMyTurn || currentAction !== 'draw'}
-                />
-              </div>
-            </section>
-
-            {/* My hand section */}
-            <section>
-              <PlayerHand
-                hand={myHand}
-                onCardsSelected={setSelectedCards}
-                disabled={!isMyTurn}
-              />
-            </section>
-
-            {/* Action buttons section */}
-            <section>
-              <ActionButtons
-                selectedCards={selectedCards}
-                onPlay={onPlayCards}
-                onDrawFromDeck={onDrawFromDeck}
-                onDrawFromDiscard={onDrawFromDiscard}
-                onZapZap={onCallZapZap}
-                currentAction={currentAction}
-                isMyTurn={isMyTurn}
-                zapZapEligible={zapZapEligible}
-                invalidPlay={invalidPlay}
-                hasDiscardSelection={selectedDiscardCard !== null}
-                hasDiscardCards={lastCardsPlayed.length > 0}
-              />
-            </section>
-          </main>
-        </div>
+        {/* Action buttons */}
+        <section>
+          <ActionButtons
+            selectedCards={selectedCards}
+            onPlay={onPlayCards}
+            onDrawFromDeck={onDrawFromDeck}
+            onDrawFromDiscard={onDrawFromDiscard}
+            onZapZap={onCallZapZap}
+            currentAction={currentAction}
+            isMyTurn={isMyTurn}
+            zapZapEligible={zapZapEligible}
+            invalidPlay={invalidPlay}
+            hasDiscardSelection={selectedDiscardCard !== null}
+            hasDiscardCards={lastCardsPlayed.length > 0}
+          />
+        </section>
       </div>
     </div>
   );

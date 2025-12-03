@@ -15,6 +15,7 @@ class GameState {
      * @param {number} props.currentTurn - Current turn number
      * @param {string} props.currentAction - Current action ('draw', 'play', 'zapzap')
      * @param {number} props.roundNumber - Current round number
+     * @param {Object} props.lastAction - Last action performed { type, playerIndex, source?, cardId? }
      */
     constructor({
         deck = [],
@@ -24,7 +25,8 @@ class GameState {
         scores = {},
         currentTurn = 0,
         currentAction = 'draw',
-        roundNumber = 1
+        roundNumber = 1,
+        lastAction = null
     }) {
         this._deck = [...deck];
         this._hands = JSON.parse(JSON.stringify(hands));
@@ -34,6 +36,7 @@ class GameState {
         this._currentTurn = currentTurn;
         this._currentAction = currentAction;
         this._roundNumber = roundNumber;
+        this._lastAction = lastAction ? { ...lastAction } : null;
 
         // Make immutable
         Object.freeze(this);
@@ -70,6 +73,10 @@ class GameState {
 
     get roundNumber() {
         return this._roundNumber;
+    }
+
+    get lastAction() {
+        return this._lastAction ? { ...this._lastAction } : null;
     }
 
     /**
@@ -138,7 +145,8 @@ class GameState {
             scores: updates.scores !== undefined ? updates.scores : this._scores,
             currentTurn: updates.currentTurn !== undefined ? updates.currentTurn : this._currentTurn,
             currentAction: updates.currentAction !== undefined ? updates.currentAction : this._currentAction,
-            roundNumber: updates.roundNumber !== undefined ? updates.roundNumber : this._roundNumber
+            roundNumber: updates.roundNumber !== undefined ? updates.roundNumber : this._roundNumber,
+            lastAction: updates.lastAction !== undefined ? updates.lastAction : this._lastAction
         });
     }
 
@@ -164,7 +172,8 @@ class GameState {
             scores: this._scores,
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
-            roundNumber: this._roundNumber
+            roundNumber: this._roundNumber,
+            lastAction: this._lastAction
         });
     }
 
@@ -181,7 +190,8 @@ class GameState {
             scores: JSON.parse(JSON.stringify(this._scores)),
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
-            roundNumber: this._roundNumber
+            roundNumber: this._roundNumber,
+            lastAction: this._lastAction ? { ...this._lastAction } : null
         };
     }
 
@@ -198,7 +208,8 @@ class GameState {
             scores: JSON.parse(JSON.stringify(this._scores)),
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
-            roundNumber: this._roundNumber
+            roundNumber: this._roundNumber,
+            lastAction: this._lastAction ? { ...this._lastAction } : null
         };
     }
 

@@ -273,8 +273,9 @@ class CardAnalyzer {
             cards.sort((a, b) => this.getRank(a) - this.getRank(b));
 
             // Try all possible sequence starting positions and lengths
+            // Sequences require 3+ cards
             for (let start = 0; start < cards.length; start++) {
-                for (let end = start + 2; end <= cards.length; end++) {
+                for (let end = start + 3; end <= cards.length; end++) {
                     const subset = cards.slice(start, end);
 
                     // Check if this subset can form a sequence with jokers

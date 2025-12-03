@@ -34,8 +34,8 @@ function ActionButtons({
   const canDrawFromDeck = isMyTurn && currentAction === 'draw';
   const canDrawFromDiscard = isMyTurn && currentAction === 'draw' && hasDiscardCards && hasDiscardSelection;
 
-  // ZapZap button logic
-  const canZapZap = isMyTurn && zapZapEligible;
+  // ZapZap button logic - only allowed during 'play' phase
+  const canZapZap = isMyTurn && zapZapEligible && currentAction === 'play';
 
   return (
     <div className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
@@ -144,6 +144,8 @@ function ActionButtons({
           title={
             !isMyTurn
               ? 'Not your turn'
+              : currentAction !== 'play'
+              ? 'ZapZap can only be called during play phase'
               : !zapZapEligible
               ? 'Hand value must be ≤5 points'
               : 'Call ZapZap to end the round!'

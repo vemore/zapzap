@@ -52,6 +52,18 @@ class GetGameState {
                 throw new Error('User is not in this party');
             }
 
+            // Fetch usernames for all players
+            const playersWithNames = await Promise.all(
+                players.map(async (p) => {
+                    const playerUser = await this.userRepository.findById(p.userId);
+                    return {
+                        playerIndex: p.playerIndex,
+                        userId: p.userId,
+                        username: playerUser?.username || `Player ${p.playerIndex + 1}`
+                    };
+                })
+            );
+
             // Get party details
             const partyDetails = {
                 id: party.id,
@@ -65,10 +77,7 @@ class GetGameState {
                 return {
                     success: true,
                     party: partyDetails,
-                    players: players.map(p => ({
-                        playerIndex: p.playerIndex,
-                        userId: p.userId
-                    })),
+                    players: playersWithNames,
                     round: null,
                     gameState: null
                 };
@@ -79,10 +88,7 @@ class GetGameState {
                 return {
                     success: true,
                     party: partyDetails,
-                    players: players.map(p => ({
-                        playerIndex: p.playerIndex,
-                        userId: p.userId
-                    })),
+                    players: playersWithNames,
                     round: null,
                     gameState: null
                 };
@@ -118,10 +124,7 @@ class GetGameState {
             return {
                 success: true,
                 party: partyDetails,
-                players: players.map(p => ({
-                    playerIndex: p.playerIndex,
-                    userId: p.userId
-                })),
+                players: playersWithNames,
                 round: {
                     id: round.id,
                     roundNumber: round.roundNumber,
@@ -135,7 +138,8 @@ class GetGameState {
                     cardsPlayed: gameState.cardsPlayed,
                     scores: gameState.scores,
                     playerHand: playerHand,
-                    otherPlayersHandSizes: otherPlayersHandSizes
+                    otherPlayersHandSizes: otherPlayersHandSizes,
+                    lastAction: gameState.lastAction
                 } : null
             };
         } catch (error) {
