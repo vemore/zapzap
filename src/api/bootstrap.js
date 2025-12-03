@@ -113,12 +113,18 @@ async function bootstrap(emitter = null) {
                 }
             );
 
+            // Bot action delay configurable via environment variable (default: 1000ms)
+            const botActionDelayMs = parseInt(process.env.BOT_ACTION_DELAY_MS, 10) || 1000;
+
             const botOrchestrator = new BotOrchestrator(
                 botActionService,
                 partyRepository,
                 userRepository,
-                emitter
+                emitter,
+                { actionDelayMs: botActionDelayMs }
             );
+
+            logger.info('Bot orchestrator configured', { actionDelayMs: botActionDelayMs });
 
             container.register('botActionService', botActionService);
             container.register('botOrchestrator', botOrchestrator);

@@ -11,12 +11,15 @@ class BotOrchestrator {
      * @param {IPartyRepository} partyRepository - Party repository
      * @param {IUserRepository} userRepository - User repository
      * @param {EventEmitter} eventEmitter - Event emitter for game events
+     * @param {Object} options - Configuration options
+     * @param {number} options.actionDelayMs - Delay between bot actions in milliseconds (default: 1000)
      */
-    constructor(botActionService, partyRepository, userRepository, eventEmitter) {
+    constructor(botActionService, partyRepository, userRepository, eventEmitter, options = {}) {
         this.botActionService = botActionService;
         this.partyRepository = partyRepository;
         this.userRepository = userRepository;
         this.eventEmitter = eventEmitter;
+        this.actionDelayMs = options.actionDelayMs || 1000; // Default 1 second
         this.isProcessing = new Set(); // Track parties currently processing bot turns
     }
 
@@ -131,7 +134,6 @@ class BotOrchestrator {
      */
     async executeBotTurnWithRetry(partyId, botUser, retryCount = 0) {
         const maxRetries = 3;
-        const ACTION_DELAY_MS = 1000; // 1 second between actions
 
         try {
             const result = await this.botActionService.executeBotTurn(partyId, botUser);
@@ -151,15 +153,15 @@ class BotOrchestrator {
                     bot: true
                 });
 
-                // If the bot just played cards, wait 1s then execute draw action
+                // If the bot just played cards, wait then execute draw action
                 if (result.action === 'play') {
                     logger.info('Bot waiting before draw action', {
                         partyId,
                         botId: botUser.id,
-                        delayMs: ACTION_DELAY_MS
+                        delayMs: this.actionDelayMs
                     });
 
-                    await new Promise(resolve => setTimeout(resolve, ACTION_DELAY_MS));
+                    await new Promise(resolve => setTimeout(resolve, this.actionDelayMs));
 
                     // Check if it's still the bot's turn and needs to draw
                     const gameState = await this.partyRepository.getGameState(partyId);
@@ -191,8 +193,8 @@ class BotOrchestrator {
                 }
 
                 // Check if another bot turn is needed (recursively handle multiple bots)
-                // Wait 1s before next bot's turn as well
-                await new Promise(resolve => setTimeout(resolve, ACTION_DELAY_MS));
+                // Wait before next bot's turn as well
+                await new Promise(resolve => setTimeout(resolve, this.actionDelayMs));
                 await this.checkForNextBotTurn(partyId);
             } else {
                 logger.warn('Bot turn not successful', {

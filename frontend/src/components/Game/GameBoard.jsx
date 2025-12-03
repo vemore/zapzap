@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Dice6, Loader } from 'lucide-react';
 import { apiClient } from '../../services/api';
@@ -25,15 +25,8 @@ function GameBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Fetch game state
-  useEffect(() => {
-    if (user) {
-      fetchGameState();
-    }
-    // TODO: Set up SSE for real-time game updates
-  }, [partyId, user]);
-
-  const fetchGameState = async () => {
+  // Fetch game state function wrapped in useCallback for SSE handler
+  const fetchGameState = useCallback(async () => {
     try {
       if (!user) {
         setError('User not authenticated');
@@ -85,7 +78,31 @@ function GameBoard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [partyId, user]);
+
+  // Polling for real-time updates when it's not our turn
+  useEffect(() => {
+    if (!user || !gameData) return;
+
+    const isMyTurn = gameData.currentTurnId === gameData.myUserId;
+
+    // Poll every second when it's not our turn (bots are playing)
+    if (!isMyTurn) {
+      const pollInterval = setInterval(() => {
+        console.log('Polling for game state update...');
+        fetchGameState();
+      }, 1000);
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [user, gameData, fetchGameState]);
+
+  // Fetch initial game state
+  useEffect(() => {
+    if (user) {
+      fetchGameState();
+    }
+  }, [user, fetchGameState]);
 
   // Handle play cards
   const handlePlay = async (cards) => {

@@ -64,6 +64,13 @@ function createApp(container, emitter) {
 
     // SSE endpoint for real-time updates
     app.get('/suscribeupdate', (req, res) => {
+        // Add CORS headers for SSE
+        const origin = req.headers.origin;
+        if (origin && (isDev && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')))) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
