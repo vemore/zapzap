@@ -4,6 +4,7 @@
  */
 
 const logger = require('../../../logger');
+const CardAnalyzer = require('../../infrastructure/bot/CardAnalyzer');
 
 class CallZapZap {
     /**
@@ -92,24 +93,26 @@ class CallZapZap {
                 throw new Error(`Hand value too high (${handPoints} points). Must be ≤5 to call zapzap.`);
             }
 
-            // Calculate all players' scores
-            const scores = {};
-            const handPointsMap = {};
-
+            // Calculate all players' base hand values (Joker=0) for ZapZap comparison
+            const baseHandPoints = {};
             for (const p of players) {
                 const hand = gameState.hands[p.playerIndex] || [];
-                const points = this.calculateHandPoints(hand);
-                handPointsMap[p.playerIndex] = points;
+                baseHandPoints[p.playerIndex] = this.calculateHandPoints(hand);
+            }
+
+            // Initialize scores from current game state
+            const scores = {};
+            for (const p of players) {
                 scores[p.playerIndex] = (gameState.scores[p.playerIndex] || 0);
             }
 
-            // Check for counteract (another player has equal or lower points)
+            // Check for counteract (another player has equal or lower base points)
             let counteracted = false;
             let counteractPlayer = null;
 
             for (const p of players) {
                 if (p.playerIndex !== player.playerIndex) {
-                    if (handPointsMap[p.playerIndex] <= handPoints) {
+                    if (baseHandPoints[p.playerIndex] <= handPoints) {
                         counteracted = true;
                         counteractPlayer = p;
                         break;
@@ -117,12 +120,43 @@ class CallZapZap {
                 }
             }
 
-            // Calculate score changes
+            // Find the lowest base hand value to determine who has lowest hand
+            const lowestBaseValue = Math.min(...Object.values(baseHandPoints));
+
+            // Calculate actual hand scores with Joker rule (Joker = 25 pts)
+            // Note: We calculate with Joker=25 for everyone, lowest hand gets 0 anyway
+            const handPointsMap = {};
+            for (const p of players) {
+                const hand = gameState.hands[p.playerIndex] || [];
+                // Calculate with Joker = 25 for display purposes
+                handPointsMap[p.playerIndex] = CardAnalyzer.calculateHandScore(hand, false);
+            }
+
+            // Calculate score changes according to rules:
+            // - Lowest hand player: 0 points
+            // - Other players: their hand points (Joker = 25)
+            // - If counteracted: caller gets hand_points + (num_players × 5)
+
             if (counteracted) {
-                // Zapzap failed - caller gets points from all players
+                // ZapZap failed - someone else has lower or equal hand
+                // The counteracting player (lowest) gets 0 points
+                // Caller gets penalty: their hand points + (num_players × 5)
+                // Other players get their hand points (Joker = 25)
+
+                const callerPenalty = handPointsMap[player.playerIndex] + (players.length * 5);
+
                 for (const p of players) {
-                    if (p.playerIndex !== player.playerIndex) {
-                        scores[player.playerIndex] += handPointsMap[p.playerIndex];
+                    const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+
+                    if (isLowest) {
+                        // Lowest hand gets 0 points this round
+                        // scores[p.playerIndex] += 0;
+                    } else if (p.playerIndex === player.playerIndex) {
+                        // Caller gets penalty
+                        scores[p.playerIndex] += callerPenalty;
+                    } else {
+                        // Other players get their hand points
+                        scores[p.playerIndex] += handPointsMap[p.playerIndex];
                     }
                 }
 
@@ -131,15 +165,23 @@ class CallZapZap {
                     username: user.username,
                     partyId: partyId,
                     roundId: round.id,
-                    callerPoints: handPoints,
+                    callerBasePoints: handPoints,
+                    callerPenalty: callerPenalty,
                     counteractPlayerIndex: counteractPlayer.playerIndex,
-                    counteractPoints: handPointsMap[counteractPlayer.playerIndex]
+                    counteractPoints: baseHandPoints[counteractPlayer.playerIndex]
                 });
             } else {
-                // Zapzap successful - all other players get caller's points
+                // ZapZap successful - caller has lowest hand
+                // Caller (lowest) gets 0 points
+                // Other players get their hand points (Joker = 25)
+
                 for (const p of players) {
-                    if (p.playerIndex !== player.playerIndex) {
-                        scores[p.playerIndex] += handPoints;
+                    if (p.playerIndex === player.playerIndex) {
+                        // Caller (lowest) gets 0 points this round
+                        // scores[p.playerIndex] += 0;
+                    } else {
+                        // Other players get their hand points
+                        scores[p.playerIndex] += handPointsMap[p.playerIndex];
                     }
                 }
 

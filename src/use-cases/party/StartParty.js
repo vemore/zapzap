@@ -94,12 +94,16 @@ class StartParty {
                 hands[i] = deck.splice(0, handSize);
             }
 
+            // Flip first card from deck to discard pile
+            const firstDiscardCard = deck.pop();
+
             // Create game state with dealt cards
             const initialGameState = gameState.with({
                 deck: deck,
                 hands: hands,
+                lastCardsPlayed: [firstDiscardCard],
                 currentTurn: 0,
-                currentAction: 'draw',
+                currentAction: 'play',
                 roundNumber: 1
             });
 

@@ -1,13 +1,10 @@
-# ZapZap Backend API Documentation v2.0
+# ZapZap Backend API Documentation
 
-**Version:** 2.0.0 (Clean Architecture)
 **Base URL:** `http://localhost:9999`
 **API Base:** `/api`
 **Protocol:** HTTP/1.1
 **Real-time Updates:** Server-Sent Events (SSE)
 **Authentication:** JWT Bearer Tokens
-
-> **Note:** For legacy API (v1.0) documentation, see [BACKEND_API.legacy.md](BACKEND_API.legacy.md)
 
 ---
 
@@ -29,7 +26,7 @@
 
 ## Overview
 
-The ZapZap API v2 provides a clean architecture RESTful interface for managing multiplayer card games. Key improvements over v1:
+The ZapZap API provides a clean architecture RESTful interface for managing multiplayer card games.
 
 - **Authentication**: JWT token-based security
 - **Persistence**: SQLite database for game state
@@ -879,34 +876,11 @@ curl -X POST http://localhost:9999/api/game/$PARTY_ID/zapzap \
 
 ---
 
-## Changelog
-
-### v2.0.0 (Current)
-- Clean architecture implementation
-- JWT authentication
-- Database persistence
-- RESTful API design
-- Multi-party support
-- Proper error handling
-
-### v1.0.0 (Legacy)
-- See [BACKEND_API.legacy.md](BACKEND_API.legacy.md)
-
----
-
-## Migration from v1
-
-See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for complete migration instructions.
-
----
-
 ## Support
 
 - **Documentation**: [CLAUDE.md](CLAUDE.md)
 - **Issues**: [GitHub Issues](https://github.com/vemore/zapzap/issues)
-- **Migration**: [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
 
 ---
 
-**Last Updated:** 2025-11-06
-**API Version:** 2.0.0
+**Last Updated:** 2025-12-04

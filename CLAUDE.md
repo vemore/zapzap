@@ -17,11 +17,8 @@ ZapZap is a multiplayer card game web application built with Node.js/Express bac
 ### Running the Application
 
 ```bash
-# Development mode with auto-reload (new clean architecture)
+# Development mode with auto-reload
 npm start
-
-# Legacy server (old implementation)
-npm start:legacy
 
 # Initialize demo data (5 users, 1 party)
 npm run init-demo
@@ -103,14 +100,6 @@ src/
         ├── authRoutes.js       # Authentication endpoints
         ├── partyRoutes.js      # Party management endpoints
         └── gameRoutes.js       # Game action endpoints
-
-Legacy Files:
-├── app.js                      # New entry point (uses clean architecture)
-├── app.legacy.js               # Old monolithic implementation
-├── party.js                    # Legacy party management
-├── round.js                    # Legacy round state
-├── player.js                   # Legacy player class
-└── utils.js                    # Legacy card utilities
 ```
 
 ### Database Schema
@@ -173,7 +162,7 @@ game_state (
 )
 ```
 
-### API Endpoints (v2 - Clean Architecture)
+### API Endpoints
 
 **Authentication:**
 - `POST /api/auth/register` - Register new user
@@ -302,10 +291,9 @@ The application uses numeric card IDs (0-53) for frontend/backend communication:
 - 39-51: Diamonds (A-K)
 - 52-53: Jokers
 
-**Conversion Functions in GameState:**
+**Conversion:**
 - Cards are stored as numeric IDs in database
-- Frontend converts IDs to visual representations
-- Legacy utils.js contains conversion helpers
+- Frontend converts IDs to visual representations using `frontend/src/utils/cardAdapter.js`
 
 ## Common Development Patterns
 
@@ -410,44 +398,6 @@ const response = await fetch('/api/auth/login', {
 });
 ```
 
-## Migration from Legacy Code
-
-### Legacy vs. New Architecture
-
-**Legacy (`app.legacy.js`):**
-- Monolithic server file
-- In-memory game state
-- No authentication
-- Direct player ID access (0-4)
-- Hardcoded 5 players
-
-**New (`app.js` + `src/`):**
-- Clean architecture with layers
-- Database persistence
-- JWT authentication
-- User-based access control
-- Dynamic player management
-
-### Running Both Versions
-
-```bash
-# New clean architecture (default)
-npm start
-
-# Legacy implementation
-npm start:legacy
-```
-
-### Migration Checklist
-
-If migrating from legacy:
-
-1. ✅ Run `npm run init-demo` to create demo users
-2. ✅ Update frontend to use new API endpoints (`/api/...`)
-3. ✅ Add authentication (login flow, JWT tokens)
-4. ✅ Update player identification (user IDs instead of indices)
-5. ⏳ Update game state management (database instead of memory)
-6. ⏳ Update real-time updates (party-specific SSE events)
 
 ## Demo Data
 
@@ -480,21 +430,13 @@ curl -X POST http://localhost:9999/api/party/:id/join \
 
 ## Known Limitations
 
-### Current (v2.0)
+### Current Limitations
 
 - Single server instance (no horizontal scaling)
 - SQLite database (not suitable for high concurrency)
 - Simple JWT authentication (no refresh tokens)
 - Basic session management
 - SSE for real-time updates (consider WebSocket for production)
-
-### Legacy Limitations (Still Present in Old Code)
-
-- Player list hardcoded in `app.legacy.js` (5 players)
-- No authentication or session management
-- Game state in memory only
-- Single game instance per server
-- No mobile optimization
 
 ## Code Quality Standards
 
@@ -556,35 +498,109 @@ node scripts/test-api.js
 curl http://localhost:9999/api/health
 ```
 
-## Performance Considerations
-
-- **Database Queries**: Use indexes on foreign keys
-- **JWT Validation**: Cached in-memory for duration of request
-- **Game State**: Denormalized JSON for fast reads
-- **SSE Connections**: Limited by system file descriptors
-- **Concurrent Games**: Each party is independent
-
-## Security Notes
-
-⚠️ **Current Implementation**:
-- Basic JWT authentication
-- Bcrypt password hashing
-- Input validation in use cases
-- SQL injection protection via parameterized queries
-
-⚠️ **Production Improvements Needed**:
-- Rate limiting
-- HTTPS enforcement
-- CORS configuration
-- Input sanitization
-- Security headers
-- Session management
-- Password reset flow
-- Email verification
-
-## Further Reading
-
-- [BACKEND_API.md](BACKEND_API.md) - Complete API documentation
-- [README.md](README.md) - User-facing documentation
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - Legacy to v2 migration
 - Toute modification doit être testée avec le navigateur. Tout bugs identifié doit être corrigé.
+
+## 🎮 Complete Game Rules
+
+### Card Values
+
+| Card | Points | Notes |
+|------|--------|-------|
+| Ace (A) | 1 | Lowest value |
+| 2-10 | Face value | |
+| Jack (J) | 11 | Face card |
+| Queen (Q) | 12 | Face card |
+| King (K) | 13 | Highest value |
+| **Joker (in play)** | **0** | **For ZapZap eligibility** |
+| **Joker (penalty)** | **25** | **For final scoring** |
+
+### Valid Card Combinations
+
+#### ✅ Valid Plays
+
+```
+Single Card:
+  5♠
+
+Pairs (Same Rank):
+  K♠ K♥
+  A♠ A♥ A♣ A♦
+  6♠ 6♥ 🃏 (Joker as third 6)
+
+Sequences (Same Suit, 3+ consecutive):
+  5♠ 6♠ 7♠
+  10♣ J♣ Q♣ K♣
+  2♥ 3♥ 4♥ 5♥ 6♥
+
+Sequences with Jokers:
+  5♠ 🃏 7♠ (Joker = 6♠)
+  10♣ J♣ 🃏 K♣ (Joker = Q♣)
+```
+
+#### ❌ Invalid Plays
+
+```
+Mixed Suits in Sequence:
+  5♠ 6♥ 7♣ (different suits)
+
+Non-Consecutive Sequence:
+  5♠ 7♠ 9♠ (missing 6♠ and 8♠)
+
+Sequence with Only 2 Cards:
+  5♠ 6♠ (need minimum 3 cards)
+```
+
+### ZapZap Eligibility
+
+Your hand must be **5 points or less** (calculated **without** Joker penalty):
+
+| Hand | Calculation | Eligible? |
+|------|-------------|-----------|
+| A♠, 2♥, 2♣ | 1 + 2 + 2 = 5 | ✅ Yes |
+| Joker, 3♦, 2♠ | 0 + 3 + 2 = 5 | ✅ Yes |
+| A♠, A♥, A♣, A♦, Joker | 1+1+1+1+0 = 4 | ✅ Yes |
+| 3♠, 3♥ | 3 + 3 = 6 | ❌ No |
+
+### Final Scoring
+
+```javascript
+// Standard scoring
+if (player has lowest hand) {
+  score = 0
+} else {
+  score = hand_points_with_joker  // Jokers = 25
+}
+
+// Counteract penalty
+if (zapzap_called && someone_has_lower_or_equal) {
+  zapzap_caller_score = hand_points_with_joker + (num_players × 5)
+}
+```
+
+**Example Scoring:**
+
+```
+Game with 5 players:
+Player 0: A♠, 2♥, 3♣ = 6 points
+Player 1: Joker, A♦ = 1 point (0 + 1)
+Player 2: A♥, A♣, 2♠ = 4 points → Calls ZapZap!
+Player 3: K♠, Q♥ = 25 points
+Player 4: 5♦, 5♣ = 10 points
+
+Result:
+- Player 1 has lowest (1 point)
+- Player 2 called ZapZap but Player 1 is lower → Counteracted!
+
+Final Scores:
+Player 0: 6 points
+Player 1: 0 points (lowest, but note: Joker now worth 25 if counted)
+Player 2: 29 points (4 + (5 × 5) = 29 points penalty!)
+Player 3: 25 points
+Player 4: 10 points
+```
+
+### Game Elimination
+
+- Players above **100 points** are eliminated (dead)
+- Last 2 players alive: "Golden Score" final round
+- Winner: Last player alive (≤100 points)

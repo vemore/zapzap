@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Dice6, Loader } from 'lucide-react';
+import { Dice6, Loader, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import useSSE from '../../hooks/useSSE';
 import PlayerTable from './PlayerTable';
 import PlayerHand from './PlayerHand';
 import ActionButtons from './ActionButtons';
 import DeckPile from './DeckPile';
 import TableArea from './TableArea';
+import RoundEnd from './RoundEnd';
 import { isValidPlay, analyzePlay } from '../../utils/validation';
 // Note: DiscardPile is now integrated into TableArea
 import { isZapZapEligible } from '../../utils/scoring';
@@ -24,6 +26,8 @@ function GameBoard() {
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [roundEndData, setRoundEndData] = useState(null);
+  const [showRoundEnd, setShowRoundEnd] = useState(false);
 
   // Fetch game state function wrapped in useCallback for SSE handler
   const fetchGameState = useCallback(async () => {
@@ -68,6 +72,11 @@ function GameBoard() {
         otherPlayersHandSizes: data.gameState.otherPlayersHandSizes || {},
         lastAction: data.gameState.lastAction || null,
         round: data.round,
+        // Round end data (only populated when currentAction === 'finished')
+        allHands: data.gameState.allHands || null,
+        handPoints: data.gameState.handPoints || null,
+        zapZapCaller: data.gameState.zapZapCaller,
+        lowestHandPlayerIndex: data.gameState.lowestHandPlayerIndex,
       };
 
       setGameData(transformedData);
@@ -80,22 +89,47 @@ function GameBoard() {
     }
   }, [partyId, user]);
 
-  // Polling for real-time updates when it's not our turn
-  useEffect(() => {
-    if (!user || !gameData) return;
+  // Handle SSE messages for real-time game updates
+  const handleSSEMessage = useCallback((data) => {
+    // Only process events for this party
+    if (data.partyId !== partyId) return;
 
-    const isMyTurn = gameData.currentTurnId === gameData.myUserId;
-
-    // Poll every second when it's not our turn (bots are playing)
-    if (!isMyTurn) {
-      const pollInterval = setInterval(() => {
-        console.log('Polling for game state update...');
+    switch (data.action) {
+      case 'play':
+      case 'draw':
+        // Refresh game state when any player plays or draws
         fetchGameState();
-      }, 1000);
-
-      return () => clearInterval(pollInterval);
+        break;
+      case 'zapzap':
+        // Fetch game state and show round end
+        fetchGameState().then(() => {
+          // Round end data will be shown based on currentAction === 'finished'
+        });
+        break;
+      case 'roundStarted':
+        // New round started, refresh and hide round end screen
+        setShowRoundEnd(false);
+        setRoundEndData(null);
+        fetchGameState();
+        break;
+      case 'gameFinished':
+        // Game ended, navigate to results or lobby
+        fetchGameState();
+        break;
+      case 'partyDeleted':
+        // Party was deleted, go back to parties list
+        navigate('/parties');
+        break;
+      default:
+        break;
     }
-  }, [user, gameData, fetchGameState]);
+  }, [partyId, fetchGameState, navigate]);
+
+  // Set up SSE connection for real-time updates
+  const sseUrl = `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:9999'}/suscribeupdate`;
+  const { connected: sseConnected } = useSSE(sseUrl, {
+    onMessage: handleSSEMessage
+  });
 
   // Fetch initial game state
   useEffect(() => {
@@ -220,6 +254,95 @@ function GameBoard() {
     handleZapZap();
   };
 
+  // Handle continue to next round
+  const handleContinueRound = async () => {
+    try {
+      await apiClient.post(`/game/${partyId}/nextRound`);
+      setShowRoundEnd(false);
+      setRoundEndData(null);
+      await fetchGameState();
+    } catch (err) {
+      console.error('Failed to start next round:', err);
+      setError(err.response?.data?.error || 'Failed to start next round');
+    }
+  };
+
+  // Check if round is finished and prepare round end data
+  const isRoundFinished = currentAction === 'finished';
+
+  // Show RoundEnd component if round is finished
+  if (isRoundFinished) {
+    // Convert zapZapCaller from playerIndex to userId
+    const zapZapCallerUserId = gameData.zapZapCaller !== null && gameData.zapZapCaller !== undefined
+      ? players.find(p => p.playerIndex === gameData.zapZapCaller)?.userId || null
+      : null;
+
+    // Convert lowestHandPlayerIndex to userId
+    const lowestHandUserId = gameData.lowestHandPlayerIndex !== null && gameData.lowestHandPlayerIndex !== undefined
+      ? players.find(p => p.playerIndex === gameData.lowestHandPlayerIndex)?.userId || null
+      : null;
+
+    // Prepare round end data for the component
+    const roundEndDisplayData = {
+      roundNumber: gameData.round?.roundNumber || 1,
+      players: players.map(p => {
+        const isLowestHand = p.playerIndex === gameData.lowestHandPlayerIndex;
+        const handPointsValue = gameData.handPoints?.[p.playerIndex] || 0;
+        // Lowest hand player gets 0 points this round
+        const roundScore = isLowestHand ? 0 : handPointsValue;
+
+        return {
+          id: p.userId,
+          username: p.username,
+          hand: gameData.allHands?.[p.playerIndex] || [],
+          score: roundScore, // This round's score (0 for lowest hand)
+          totalScore: p.score,
+          handValue: handPointsValue, // Hand value for display (with Joker=25)
+          isLowestHand: isLowestHand,
+        };
+      }),
+      zapZapCaller: zapZapCallerUserId,
+      lowestHandPlayer: lowestHandUserId,
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+                <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
+                  {sseConnected ? (
+                    <Wifi className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <WifiOff className="w-4 h-4 text-gray-500 animate-pulse" />
+                  )}
+                </div>
+                <span className="text-gray-300">
+                  Party: <span className="font-semibold text-white">{partyName || partyId}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Round End Content */}
+        <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+          <RoundEnd
+            roundData={roundEndDisplayData}
+            onContinue={handleContinueRound}
+            disabled={false}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
@@ -232,8 +355,16 @@ function GameBoard() {
               <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
             </div>
 
-            {/* Party info */}
-            <div className="flex items-center">
+            {/* Party info and SSE indicator */}
+            <div className="flex items-center space-x-4">
+              {/* SSE connection indicator */}
+              <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
+                {sseConnected ? (
+                  <Wifi className="w-4 h-4 text-green-400" />
+                ) : (
+                  <WifiOff className="w-4 h-4 text-gray-500 animate-pulse" />
+                )}
+              </div>
               <span className="text-gray-300">
                 Party: <span className="font-semibold text-white">{partyName || partyId}</span>
               </span>

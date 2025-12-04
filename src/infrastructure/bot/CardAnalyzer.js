@@ -33,7 +33,8 @@ class CardAnalyzer {
     }
 
     /**
-     * Calculate total hand value (for zapzap)
+     * Calculate total hand value (for zapzap eligibility check)
+     * Jokers count as 0 points here
      * @param {Array<number>} hand - Array of card IDs
      * @returns {number} Total hand value
      */
@@ -45,6 +46,57 @@ class CardAnalyzer {
         return hand.reduce((total, cardId) => {
             return total + this.getCardPoints(cardId);
         }, 0);
+    }
+
+    /**
+     * Calculate hand score for end of round
+     * Jokers count as 25 points if NOT the lowest hand
+     * @param {Array<number>} hand - Array of card IDs
+     * @param {boolean} isLowestHand - Whether this is the lowest hand
+     * @returns {number} Total hand score
+     */
+    static calculateHandScore(hand, isLowestHand = false) {
+        if (!Array.isArray(hand) || hand.length === 0) {
+            return 0;
+        }
+
+        return hand.reduce((total, cardId) => {
+            // Jokers (52-53) = 0 if lowest hand, 25 otherwise
+            if (cardId >= 52) {
+                return total + (isLowestHand ? 0 : 25);
+            }
+            return total + this.getCardPoints(cardId);
+        }, 0);
+    }
+
+    /**
+     * Calculate all hand scores for end of round
+     * First finds the lowest hand (with Joker=0), then calculates actual scores
+     * @param {Object} hands - Map of playerIndex to hand array
+     * @returns {Object} Map of playerIndex to score
+     */
+    static calculateAllHandScores(hands) {
+        if (!hands || typeof hands !== 'object') {
+            return {};
+        }
+
+        // First pass: calculate base values (Joker=0) to find lowest hand
+        const baseValues = {};
+        for (const [playerIndex, hand] of Object.entries(hands)) {
+            baseValues[playerIndex] = this.calculateHandValue(hand);
+        }
+
+        // Find the lowest base value
+        const lowestValue = Math.min(...Object.values(baseValues));
+
+        // Second pass: calculate actual scores with Joker penalty
+        const scores = {};
+        for (const [playerIndex, hand] of Object.entries(hands)) {
+            const isLowest = baseValues[playerIndex] === lowestValue;
+            scores[playerIndex] = this.calculateHandScore(hand, isLowest);
+        }
+
+        return scores;
     }
 
     /**

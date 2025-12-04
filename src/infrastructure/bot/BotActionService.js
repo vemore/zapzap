@@ -62,18 +62,20 @@ class BotActionService {
             }
 
             // Get bot's hand
-            const botHand = gameState.hands[botPlayer.playerIndex];
-            if (!botHand || botHand.length === 0) {
-                throw new Error('Bot has no cards');
-            }
+            const botHand = gameState.hands[botPlayer.playerIndex] || [];
 
             // Get bot strategy
             const strategy = BotStrategyFactory.create(botUser.botDifficulty);
 
             // Execute action based on current action state
             if (gameState.currentAction === 'play') {
+                // Bot needs cards to play
+                if (botHand.length === 0) {
+                    throw new Error('Bot has no cards to play');
+                }
                 return await this.executeBotPlay(partyId, botUser, botHand, gameState, strategy);
             } else if (gameState.currentAction === 'draw') {
+                // Bot can draw even with empty hand (will get a card from deck/discard)
                 return await this.executeBotDraw(partyId, botUser, botHand, gameState, strategy);
             } else {
                 logger.warn('Unknown action state', { action: gameState.currentAction });

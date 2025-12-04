@@ -18,7 +18,7 @@ A real-time multiplayer card game built with clean architecture, Node.js, Expres
 - 🎨 **Visual Card Interface**: Beautiful card animations using deck-of-cards library
 - 📊 **Live Updates**: Real-time game state synchronization across all players
 
-### Technical Features (v2.0)
+### Technical Features
 - 🏗️ **Clean Architecture**: Domain-driven design with clear layer separation
 - 🔐 **JWT Authentication**: Secure token-based user management
 - 💾 **Database Persistence**: SQLite for game state and user data
@@ -52,11 +52,8 @@ npm run init-demo
 ### Running the Game
 
 ```bash
-# Development mode with auto-reload (v2 Clean Architecture)
+# Development mode with auto-reload
 npm start
-
-# Legacy version (v1)
-npm start:legacy
 ```
 
 The server will start on **port 9999** by default.
@@ -304,7 +301,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 
 ## 🏗️ Architecture
 
-### Clean Architecture (v2.0)
+### Clean Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -334,7 +331,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 
 ```
 zapzap/
-├── src/                        # New Clean Architecture
+├── src/                        # Clean Architecture
 │   ├── domain/                 # Domain entities & value objects
 │   │   ├── entities/           # User, Party, Round
 │   │   └── value-objects/      # GameState, PartySettings
@@ -366,16 +363,8 @@ zapzap/
 ├── views/                      # EJS templates
 │   └── hand.ejs               # Player view template
 │
-├── tests/                      # Jest tests
-│   ├── player.test.js         # Legacy player tests
-│   └── [...]                  # More tests
-│
-├── app.js                      # New entry point (v2)
-├── app.legacy.js              # Legacy implementation (v1)
-│
-├── BACKEND_API.md             # API documentation (v2)
-├── BACKEND_API.legacy.md      # Legacy API docs (v1)
-├── MIGRATION_GUIDE.md         # v1 → v2 migration guide
+├── app.js                      # Entry point
+├── BACKEND_API.md             # API documentation
 ├── CLAUDE.md                  # Developer guide
 └── README.md                  # This file
 ```
@@ -387,11 +376,8 @@ zapzap/
 ### Available Scripts
 
 ```bash
-# Start development server (v2 clean architecture)
+# Start development server
 npm start
-
-# Start legacy server (v1)
-npm start:legacy
 
 # Initialize demo data
 npm run init-demo
@@ -403,7 +389,7 @@ npm test
 node scripts/test-api.js
 ```
 
-### API Endpoints (v2)
+### API Endpoints
 
 **Authentication:**
 - `POST /api/auth/register` - Register new user
@@ -599,17 +585,14 @@ Player 4: 10 points
 
 ## 📚 Documentation
 
-- **[BACKEND_API.md](BACKEND_API.md)** - Complete API reference (v2.0)
-- **[BACKEND_API.legacy.md](BACKEND_API.legacy.md)** - Legacy API reference (v1.0)
-- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - Migrate from v1 to v2
+- **[BACKEND_API.md](BACKEND_API.md)** - Complete API reference
 - **[CLAUDE.md](CLAUDE.md)** - Developer guide for Claude Code
-- **[README.legacy.md](README.legacy.md)** - Original v1.0 README
 
 ---
 
 ## 🐛 Known Issues & Limitations
 
-### Current (v2.0)
+### Current Limitations
 
 1. **Single Server Instance**
    - No horizontal scaling support
@@ -621,16 +604,11 @@ Player 4: 10 points
    - No password reset flow
    - No email verification
 
-3. **Frontend Not Updated**
-   - Frontend still uses legacy API (v1)
-   - Requires update to use new v2 endpoints
-   - See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
-
-4. **No Mobile Optimization**
+3. **No Mobile Optimization**
    - UI designed for desktop browsers
    - Touch interactions may be awkward
 
-5. **Limited Game Features**
+4. **Limited Game Features**
    - No spectator mode
    - No game replay/history
    - No AI opponents
@@ -654,23 +632,22 @@ Player 4: 10 points
 
 ## 🗺️ Roadmap
 
-### v2.1 (In Progress)
+### Current Progress
 - [x] Clean architecture implementation
 - [x] JWT authentication
 - [x] Database persistence
 - [x] API documentation
-- [ ] Update frontend for v2 API
 - [ ] Integration tests for all endpoints
 - [ ] API rate limiting
 
-### v2.2 (Planned)
+### Planned Features
 - [ ] WebSocket support (replace SSE)
 - [ ] Refresh tokens
 - [ ] Password reset flow
 - [ ] Email verification
 - [ ] Mobile-responsive UI
 
-### v3.0 (Future)
+### Future Enhancements
 - [ ] PostgreSQL support
 - [ ] Horizontal scaling
 - [ ] Spectator mode
@@ -723,22 +700,6 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 - **Issues:** [GitHub Issues](https://github.com/vemore/zapzap/issues)
 - **Documentation:** [BACKEND_API.md](BACKEND_API.md), [CLAUDE.md](CLAUDE.md)
-- **Migration Help:** [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
-
----
-
-## 🆚 Version Comparison
-
-| Feature | v1.0 (Legacy) | v2.0 (Clean Arch) |
-|---------|---------------|-------------------|
-| Architecture | Monolithic | Clean Architecture |
-| Authentication | None | JWT Tokens |
-| Database | In-memory | SQLite |
-| API Design | GET-only | RESTful |
-| Multi-party | No | Yes |
-| Error Handling | Basic | Structured |
-| Testing | Unit only | Unit + Integration |
-| Documentation | Basic | Comprehensive |
 
 ---
 

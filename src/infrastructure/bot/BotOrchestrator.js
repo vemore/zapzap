@@ -55,8 +55,9 @@ class BotOrchestrator {
 
         const { partyId, action } = data;
 
-        // Only process on play, draw, or zapzap actions
-        if (!['play', 'draw', 'zapzap'].includes(action)) {
+        // Only process on play, draw, zapzap, or roundStarted actions
+        // roundStarted is needed to trigger bots when a new round begins
+        if (!['play', 'draw', 'zapzap', 'roundStarted'].includes(action)) {
             return;
         }
 

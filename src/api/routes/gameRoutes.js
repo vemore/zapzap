@@ -20,6 +20,7 @@ function createGameRouter(container, authMiddleware, emitter) {
     const drawCard = container.resolve('drawCard');
     const callZapZap = container.resolve('callZapZap');
     const getGameState = container.resolve('getGameState');
+    const nextRound = container.resolve('nextRound');
 
     /**
      * GET /api/game/:partyId/state
@@ -351,6 +352,139 @@ function createGameRouter(container, authMiddleware, emitter) {
             res.status(500).json({
                 error: 'Failed to call zapzap',
                 code: 'ZAPZAP_ERROR',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * POST /api/game/:partyId/nextRound
+     * Start the next round after a round ends
+     */
+    router.post('/:partyId/nextRound', authMiddleware, async (req, res) => {
+        try {
+            const { partyId } = req.params;
+
+            const result = await nextRound.execute({
+                userId: req.user.id,
+                partyId
+            });
+
+            logger.info('Next round', {
+                userId: req.user.id,
+                partyId,
+                gameFinished: result.gameFinished,
+                roundNumber: result.round?.roundNumber
+            });
+
+            // Emit SSE event
+            if (emitter) {
+                if (result.gameFinished) {
+                    emitter.emit('event', {
+                        partyId,
+                        userId: req.user.id,
+                        action: 'gameFinished',
+                        winner: result.winner
+                    });
+                } else {
+                    emitter.emit('event', {
+                        partyId,
+                        userId: req.user.id,
+                        action: 'roundStarted',
+                        roundNumber: result.round.roundNumber
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                gameFinished: result.gameFinished,
+                winner: result.winner,
+                round: result.round,
+                startingPlayer: result.startingPlayer,
+                scores: result.scores,
+                eliminatedPlayers: result.eliminatedPlayers,
+                finalScores: result.finalScores
+            });
+        } catch (error) {
+            logger.error('Next round error', {
+                error: error.message,
+                userId: req.user.id,
+                partyId: req.params.partyId
+            });
+
+            if (error.message === 'Party not found') {
+                return res.status(404).json({
+                    error: error.message,
+                    code: 'PARTY_NOT_FOUND'
+                });
+            }
+
+            if (error.message === 'User is not in this party') {
+                return res.status(403).json({
+                    error: error.message,
+                    code: 'NOT_IN_PARTY'
+                });
+            }
+
+            if (error.message === 'Party is not in playing state') {
+                return res.status(400).json({
+                    error: error.message,
+                    code: 'INVALID_PARTY_STATE'
+                });
+            }
+
+            if (error.message === 'Current round is not finished') {
+                return res.status(400).json({
+                    error: error.message,
+                    code: 'ROUND_NOT_FINISHED'
+                });
+            }
+
+            res.status(500).json({
+                error: 'Failed to start next round',
+                code: 'NEXT_ROUND_ERROR',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * POST /api/game/:partyId/trigger-bot
+     * Manually trigger bot turn (useful for stuck games)
+     */
+    router.post('/:partyId/trigger-bot', authMiddleware, async (req, res) => {
+        try {
+            const { partyId } = req.params;
+
+            logger.info('Manual bot trigger requested', {
+                partyId,
+                userId: req.user.id
+            });
+
+            // Emit event to trigger bot orchestrator
+            if (emitter) {
+                emitter.emit('event', {
+                    partyId,
+                    userId: req.user.id,
+                    action: 'roundStarted',
+                    manual: true
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'Bot trigger event emitted'
+            });
+        } catch (error) {
+            logger.error('Trigger bot error', {
+                error: error.message,
+                partyId: req.params.partyId
+            });
+
+            res.status(500).json({
+                error: 'Failed to trigger bot',
+                code: 'TRIGGER_BOT_ERROR',
                 details: error.message
             });
         }
