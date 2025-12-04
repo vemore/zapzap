@@ -92,6 +92,9 @@ class CallZapZap {
                 throw new Error('Player is eliminated and cannot call ZapZap');
             }
 
+            // Filter out eliminated players - they don't participate in scoring
+            const activePlayers = players.filter(p => !eliminatedPlayers.includes(p.playerIndex));
+
             // Calculate player's hand points
             const playerHand = gameState.hands[player.playerIndex] || [];
             const handPoints = this.calculateHandPoints(playerHand);
@@ -102,23 +105,24 @@ class CallZapZap {
             }
 
             // Calculate all players' base hand values (Joker=0) for ZapZap comparison
+            // Only for active (non-eliminated) players
             const baseHandPoints = {};
-            for (const p of players) {
+            for (const p of activePlayers) {
                 const hand = gameState.hands[p.playerIndex] || [];
                 baseHandPoints[p.playerIndex] = this.calculateHandPoints(hand);
             }
 
-            // Initialize scores from current game state
+            // Initialize scores from current game state (for all players, including eliminated)
             const scores = {};
             for (const p of players) {
                 scores[p.playerIndex] = (gameState.scores[p.playerIndex] || 0);
             }
 
-            // Check for counteract (another player has equal or lower base points)
+            // Check for counteract (another ACTIVE player has equal or lower base points)
             let counteracted = false;
             let counteractPlayer = null;
 
-            for (const p of players) {
+            for (const p of activePlayers) {
                 if (p.playerIndex !== player.playerIndex) {
                     if (baseHandPoints[p.playerIndex] <= handPoints) {
                         counteracted = true;
@@ -128,13 +132,13 @@ class CallZapZap {
                 }
             }
 
-            // Find the lowest base hand value to determine who has lowest hand
+            // Find the lowest base hand value among ACTIVE players to determine who has lowest hand
             const lowestBaseValue = Math.min(...Object.values(baseHandPoints));
 
             // Calculate actual hand scores with Joker rule (Joker = 25 pts)
-            // Note: We calculate with Joker=25 for everyone, lowest hand gets 0 anyway
+            // Only for active players - eliminated players don't get scored
             const handPointsMap = {};
-            for (const p of players) {
+            for (const p of activePlayers) {
                 const hand = gameState.hands[p.playerIndex] || [];
                 // Calculate with Joker = 25 for display purposes
                 handPointsMap[p.playerIndex] = CardAnalyzer.calculateHandScore(hand, false);
@@ -142,18 +146,19 @@ class CallZapZap {
 
             // Calculate score changes according to rules:
             // - Lowest hand player: 0 points
-            // - Other players: their hand points (Joker = 25)
-            // - If counteracted: caller gets hand_points + (num_players × 5)
+            // - Other active players: their hand points (Joker = 25)
+            // - If counteracted: caller gets hand_points + (num_active_players × 5)
+            // - Eliminated players: no score change (they're out of the game)
 
             if (counteracted) {
                 // ZapZap failed - someone else has lower or equal hand
                 // The counteracting player (lowest) gets 0 points
-                // Caller gets penalty: their hand points + (num_players × 5)
-                // Other players get their hand points (Joker = 25)
+                // Caller gets penalty: their hand points + (num_active_players × 5)
+                // Other active players get their hand points (Joker = 25)
 
-                const callerPenalty = handPointsMap[player.playerIndex] + (players.length * 5);
+                const callerPenalty = handPointsMap[player.playerIndex] + (activePlayers.length * 5);
 
-                for (const p of players) {
+                for (const p of activePlayers) {
                     const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
 
                     if (isLowest) {
@@ -163,7 +168,7 @@ class CallZapZap {
                         // Caller gets penalty
                         scores[p.playerIndex] += callerPenalty;
                     } else {
-                        // Other players get their hand points
+                        // Other active players get their hand points
                         scores[p.playerIndex] += handPointsMap[p.playerIndex];
                     }
                 }
@@ -181,14 +186,14 @@ class CallZapZap {
             } else {
                 // ZapZap successful - caller has lowest hand
                 // Caller (lowest) gets 0 points
-                // Other players get their hand points (Joker = 25)
+                // Other active players get their hand points (Joker = 25)
 
-                for (const p of players) {
+                for (const p of activePlayers) {
                     if (p.playerIndex === player.playerIndex) {
                         // Caller (lowest) gets 0 points this round
                         // scores[p.playerIndex] += 0;
                     } else {
-                        // Other players get their hand points
+                        // Other active players get their hand points
                         scores[p.playerIndex] += handPointsMap[p.playerIndex];
                     }
                 }
@@ -207,14 +212,21 @@ class CallZapZap {
             await this.partyRepository.saveRound(round);
 
             // Calculate round scores (points gained this round) for each player
+            // Eliminated players get 0 for this round (they don't participate)
             const roundScores = {};
             for (const p of players) {
+                // Eliminated players get 0 - they're out of the game
+                if (eliminatedPlayers.includes(p.playerIndex)) {
+                    roundScores[p.playerIndex] = 0;
+                    continue;
+                }
+
                 const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
                 if (isLowest) {
                     roundScores[p.playerIndex] = 0;
                 } else if (counteracted && p.playerIndex === player.playerIndex) {
-                    // Caller got penalty
-                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex] + (players.length * 5);
+                    // Caller got penalty (using active players count)
+                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex] + (activePlayers.length * 5);
                 } else {
                     roundScores[p.playerIndex] = handPointsMap[p.playerIndex];
                 }
@@ -239,9 +251,9 @@ class CallZapZap {
 
             // Archive round scores
             if (this.saveRoundScores) {
-                // Find the lowest hand player index
+                // Find the lowest hand player index (among active players)
                 let lowestHandPlayerIndex = player.playerIndex;
-                for (const p of players) {
+                for (const p of activePlayers) {
                     if (baseHandPoints[p.playerIndex] === lowestBaseValue) {
                         lowestHandPlayerIndex = p.playerIndex;
                         break;
@@ -250,14 +262,24 @@ class CallZapZap {
 
                 // Calculate score this round for each player
                 const playersWithScores = players.map(p => {
+                    // Eliminated players get 0 and no hand points
+                    if (eliminatedPlayers.includes(p.playerIndex)) {
+                        return {
+                            odId: p.userId,
+                            playerIndex: p.playerIndex,
+                            handPoints: 0,
+                            scoreThisRound: 0
+                        };
+                    }
+
                     const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
                     let scoreThisRound = 0;
 
                     if (isLowest) {
                         scoreThisRound = 0;
                     } else if (counteracted && p.playerIndex === player.playerIndex) {
-                        // Caller got penalty
-                        scoreThisRound = handPointsMap[p.playerIndex] + (players.length * 5);
+                        // Caller got penalty (using active players count)
+                        scoreThisRound = handPointsMap[p.playerIndex] + (activePlayers.length * 5);
                     } else {
                         scoreThisRound = handPointsMap[p.playerIndex];
                     }
