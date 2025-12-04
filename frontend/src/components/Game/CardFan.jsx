@@ -28,9 +28,14 @@ function CardFan({
   }
 
   // Calculate spread angle based on card count (more cards = wider spread, up to max)
-  const spreadAngle = Math.min(maxSpreadAngle, cardCount * 8);
+  // Using 15° per card for better spacing and easier click targets
+  const spreadAngle = Math.min(maxSpreadAngle, cardCount * 15);
   const startAngle = -spreadAngle / 2;
   const angleStep = cardCount > 1 ? spreadAngle / (cardCount - 1) : 0;
+
+  // Calculate horizontal spacing based on card count
+  // More cards = less spacing per card, but still readable
+  const horizontalSpacing = Math.max(25, 60 - cardCount * 5);
 
   return (
     <div className="card-fan" style={{ height: `${radius * 0.6}px` }}>
@@ -38,9 +43,10 @@ function CardFan({
         const angle = startAngle + index * angleStep;
         const isSelected = selectedCards.includes(cardId);
 
-        // Calculate position offset for fan effect
-        // Cards rotate around bottom center, creating an arc
-        const radians = (angle * Math.PI) / 180;
+        // Calculate horizontal offset from center
+        const centerIndex = (cardCount - 1) / 2;
+        const offsetFromCenter = index - centerIndex;
+        const translateX = offsetFromCenter * horizontalSpacing;
         const translateY = isSelected ? -30 : 0; // Lift selected cards
 
         return (
@@ -48,9 +54,10 @@ function CardFan({
             key={`${cardId}-${index}`}
             className={`card-fan-item ${isSelected ? 'selected' : ''}`}
             style={{
-              transform: `rotate(${angle}deg) translateY(${translateY}px)`,
+              transform: `translateX(${translateX}px) rotate(${angle}deg) translateY(${translateY}px)`,
               zIndex: index,
               '--card-angle': `${angle}deg`,
+              '--card-translateX': `${translateX}px`,
             }}
           >
             <PlayingCard

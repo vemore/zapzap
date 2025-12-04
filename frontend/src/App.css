@@ -30,7 +30,7 @@
 }
 
 .card-fan-item:hover:not(.selected) {
-  transform: rotate(var(--card-angle, 0deg)) translateY(-15px) scale(1.05);
+  transform: translateX(var(--card-translateX, 0px)) rotate(var(--card-angle, 0deg)) translateY(-15px) scale(1.05);
 }
 
 /* Selected card - lifted higher with glow */
