@@ -84,6 +84,12 @@ class CallZapZap {
                 throw new Error('Cannot call zapzap at this time');
             }
 
+            // Check if player is eliminated
+            const eliminatedPlayers = gameState.eliminatedPlayers || [];
+            if (eliminatedPlayers.includes(player.playerIndex)) {
+                throw new Error('Player is eliminated and cannot call ZapZap');
+            }
+
             // Calculate player's hand points
             const playerHand = gameState.hands[player.playerIndex] || [];
             const handPoints = this.calculateHandPoints(playerHand);

@@ -89,6 +89,12 @@ class PlayCards {
                 throw new Error('Current action is not PLAY');
             }
 
+            // Check if player is eliminated
+            const eliminatedPlayers = gameState.eliminatedPlayers || [];
+            if (eliminatedPlayers.includes(player.playerIndex)) {
+                throw new Error('Player is eliminated and cannot play');
+            }
+
             // Get player's hand
             const playerHand = gameState.hands[player.playerIndex];
             if (!playerHand) {

@@ -89,6 +89,12 @@ class DrawCard {
                 throw new Error('Current action is not DRAW');
             }
 
+            // Check if player is eliminated
+            const eliminatedPlayers = gameState.eliminatedPlayers || [];
+            if (eliminatedPlayers.includes(player.playerIndex)) {
+                throw new Error('Player is eliminated and cannot play');
+            }
+
             let drawnCard;
             let newDeck = [...gameState.deck];
             let newLastCardsPlayed = [...gameState.lastCardsPlayed];
@@ -127,8 +133,11 @@ class DrawCard {
             const newHands = { ...gameState.hands };
             newHands[player.playerIndex] = newHand;
 
-            // Move to next turn
-            const nextTurn = (gameState.currentTurn + 1) % players.length;
+            // Move to next turn (skip eliminated players)
+            let nextTurn = (gameState.currentTurn + 1) % players.length;
+            while (eliminatedPlayers.includes(nextTurn)) {
+                nextTurn = (nextTurn + 1) % players.length;
+            }
 
             const newGameState = gameState.withUpdates({
                 hands: newHands,

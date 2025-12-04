@@ -120,6 +120,8 @@ class GetGameState {
             let handPoints = null;
             let zapZapCaller = null;
             let lowestHandPlayerIndex = null;
+            let gameFinished = false;
+            let winner = null;
 
             if (gameState && gameState.currentAction === 'finished') {
                 allHands = gameState.hands;
@@ -150,6 +152,46 @@ class GetGameState {
                 if (gameState.lastAction && gameState.lastAction.type === 'zapzap') {
                     zapZapCaller = gameState.lastAction.playerIndex;
                 }
+
+                // Check if game is finished (only 1 active player remaining)
+                // Calculate eliminated players based on current scores (> 100 points)
+                const scores = gameState.scores || {};
+                const currentlyEliminatedIndices = players
+                    .filter(p => (scores[p.playerIndex] || 0) > 100)
+                    .map(p => p.playerIndex);
+                const activePlayers = players.filter(p => (scores[p.playerIndex] || 0) <= 100);
+
+                if (activePlayers.length <= 1) {
+                    gameFinished = true;
+                    // Winner is the remaining active player, or lowest score if none
+                    if (activePlayers.length === 1) {
+                        const winnerPlayer = activePlayers[0];
+                        const winnerUser = await this.userRepository.findById(winnerPlayer.userId);
+                        winner = {
+                            userId: winnerPlayer.userId,
+                            playerIndex: winnerPlayer.playerIndex,
+                            username: winnerUser?.username || `Player ${winnerPlayer.playerIndex + 1}`,
+                            score: gameState.scores[winnerPlayer.playerIndex] || 0
+                        };
+                    }
+                } else if (gameState.isGoldenScore && activePlayers.length === 2) {
+                    // Golden Score mode - check if there's a clear winner
+                    const [p1, p2] = activePlayers;
+                    const score1 = gameState.scores[p1.playerIndex] || 0;
+                    const score2 = gameState.scores[p2.playerIndex] || 0;
+
+                    if (score1 !== score2) {
+                        gameFinished = true;
+                        const winnerPlayer = score1 < score2 ? p1 : p2;
+                        const winnerUser = await this.userRepository.findById(winnerPlayer.userId);
+                        winner = {
+                            userId: winnerPlayer.userId,
+                            playerIndex: winnerPlayer.playerIndex,
+                            username: winnerUser?.username || `Player ${winnerPlayer.playerIndex + 1}`,
+                            score: gameState.scores[winnerPlayer.playerIndex] || 0
+                        };
+                    }
+                }
             }
 
             logger.debug('Game state retrieved', {
@@ -178,11 +220,17 @@ class GetGameState {
                     playerHand: playerHand,
                     otherPlayersHandSizes: otherPlayersHandSizes,
                     lastAction: gameState.lastAction,
+                    // Elimination and Golden Score
+                    isGoldenScore: gameState.isGoldenScore || false,
+                    eliminatedPlayers: gameState.eliminatedPlayers || [],
                     // Round end data (only populated when finished)
                     allHands: allHands,
                     handPoints: handPoints,
                     zapZapCaller: zapZapCaller,
-                    lowestHandPlayerIndex: lowestHandPlayerIndex
+                    lowestHandPlayerIndex: lowestHandPlayerIndex,
+                    // Game end data (only populated when game is finished)
+                    gameFinished: gameFinished,
+                    winner: winner
                 } : null
             };
         } catch (error) {

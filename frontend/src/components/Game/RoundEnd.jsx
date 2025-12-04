@@ -1,4 +1,5 @@
-import { Trophy, AlertTriangle, Sparkles, Zap, ArrowRight, Loader, Crown } from 'lucide-react';
+import { Trophy, AlertTriangle, Sparkles, Zap, ArrowRight, Loader, Crown, PartyPopper, Home } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import PlayingCard from './PlayingCard';
 
 /**
@@ -8,6 +9,8 @@ import PlayingCard from './PlayingCard';
  * @param {boolean} disabled - Disable continue button
  */
 function RoundEnd({ roundData, onContinue, disabled = false }) {
+  const navigate = useNavigate();
+
   if (!roundData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
@@ -19,7 +22,7 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
     );
   }
 
-  const { players = [], zapZapCaller, roundNumber } = roundData;
+  const { players = [], zapZapCaller, roundNumber, gameFinished = false, winner = null } = roundData;
 
   if (players.length === 0) {
     return (
@@ -45,12 +48,36 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
 
   return (
     <div className="bg-slate-800 rounded-lg shadow-2xl p-8 border border-slate-700">
-      {/* Round header */}
+      {/* Round/Game header */}
       <div className="mb-8">
-        <div className="flex items-center justify-center mb-6">
-          <Trophy className="w-8 h-8 text-amber-400 mr-3" />
-          <h2 className="text-3xl font-bold text-white">Round {roundNumber} Complete!</h2>
-        </div>
+        {gameFinished ? (
+          // Game Finished header with winner announcement
+          <div className="text-center">
+            <div className="flex items-center justify-center mb-4">
+              <PartyPopper className="w-10 h-10 text-amber-400 mr-3 animate-bounce" />
+              <h2 className="text-4xl font-bold text-white">Game Over!</h2>
+              <PartyPopper className="w-10 h-10 text-amber-400 ml-3 animate-bounce" />
+            </div>
+            {winner && (
+              <div className="bg-gradient-to-r from-amber-900/50 via-yellow-800/50 to-amber-900/50 rounded-lg p-6 border-2 border-amber-400 mb-4">
+                <div className="flex items-center justify-center mb-2">
+                  <Crown className="w-8 h-8 text-yellow-400 mr-2" />
+                  <span className="text-2xl font-bold text-yellow-400">WINNER</span>
+                  <Crown className="w-8 h-8 text-yellow-400 ml-2" />
+                </div>
+                <p className="text-3xl font-bold text-white">{winner.username}</p>
+                <p className="text-amber-300 mt-2">Final Score: {winner.score} points</p>
+              </div>
+            )}
+            <p className="text-gray-400">Round {roundNumber} - Final Round</p>
+          </div>
+        ) : (
+          // Regular round complete header
+          <div className="flex items-center justify-center mb-6">
+            <Trophy className="w-8 h-8 text-amber-400 mr-3" />
+            <h2 className="text-3xl font-bold text-white">Round {roundNumber} Complete!</h2>
+          </div>
+        )}
 
         {/* ZapZap indicator */}
         {zapZapPlayer && (
@@ -192,16 +219,28 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
         </div>
       )}
 
-      {/* Continue button */}
+      {/* Action button */}
       <div className="flex justify-center">
-        <button
-          onClick={onContinue}
-          disabled={disabled}
-          className="flex items-center px-8 py-4 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          Continue to Next Round
-          <ArrowRight className="w-5 h-5 ml-2" />
-        </button>
+        {gameFinished ? (
+          // Game finished - show Back to Parties button
+          <button
+            onClick={() => navigate('/parties')}
+            className="flex items-center px-8 py-4 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-colors shadow-lg"
+          >
+            <Home className="w-5 h-5 mr-2" />
+            Back to Parties
+          </button>
+        ) : (
+          // Game continues - show Continue button
+          <button
+            onClick={onContinue}
+            disabled={disabled}
+            className="flex items-center px-8 py-4 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Continue to Next Round
+            <ArrowRight className="w-5 h-5 ml-2" />
+          </button>
+        )}
       </div>
     </div>
   );

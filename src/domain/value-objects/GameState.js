@@ -16,6 +16,8 @@ class GameState {
      * @param {string} props.currentAction - Current action ('draw', 'play', 'zapzap')
      * @param {number} props.roundNumber - Current round number
      * @param {Object} props.lastAction - Last action performed { type, playerIndex, source?, cardId? }
+     * @param {boolean} props.isGoldenScore - Whether the game is in Golden Score mode (final 2 players)
+     * @param {Array<number>} props.eliminatedPlayers - Player indices who are eliminated (score > 100)
      */
     constructor({
         deck = [],
@@ -26,7 +28,9 @@ class GameState {
         currentTurn = 0,
         currentAction = 'draw',
         roundNumber = 1,
-        lastAction = null
+        lastAction = null,
+        isGoldenScore = false,
+        eliminatedPlayers = []
     }) {
         this._deck = [...deck];
         this._hands = JSON.parse(JSON.stringify(hands));
@@ -37,6 +41,8 @@ class GameState {
         this._currentAction = currentAction;
         this._roundNumber = roundNumber;
         this._lastAction = lastAction ? { ...lastAction } : null;
+        this._isGoldenScore = isGoldenScore;
+        this._eliminatedPlayers = [...eliminatedPlayers];
 
         // Make immutable
         Object.freeze(this);
@@ -77,6 +83,14 @@ class GameState {
 
     get lastAction() {
         return this._lastAction ? { ...this._lastAction } : null;
+    }
+
+    get isGoldenScore() {
+        return this._isGoldenScore;
+    }
+
+    get eliminatedPlayers() {
+        return [...this._eliminatedPlayers];
     }
 
     /**
@@ -146,7 +160,9 @@ class GameState {
             currentTurn: updates.currentTurn !== undefined ? updates.currentTurn : this._currentTurn,
             currentAction: updates.currentAction !== undefined ? updates.currentAction : this._currentAction,
             roundNumber: updates.roundNumber !== undefined ? updates.roundNumber : this._roundNumber,
-            lastAction: updates.lastAction !== undefined ? updates.lastAction : this._lastAction
+            lastAction: updates.lastAction !== undefined ? updates.lastAction : this._lastAction,
+            isGoldenScore: updates.isGoldenScore !== undefined ? updates.isGoldenScore : this._isGoldenScore,
+            eliminatedPlayers: updates.eliminatedPlayers !== undefined ? updates.eliminatedPlayers : this._eliminatedPlayers
         });
     }
 
@@ -173,7 +189,9 @@ class GameState {
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
             roundNumber: this._roundNumber,
-            lastAction: this._lastAction
+            lastAction: this._lastAction,
+            isGoldenScore: this._isGoldenScore,
+            eliminatedPlayers: this._eliminatedPlayers
         });
     }
 
@@ -191,7 +209,9 @@ class GameState {
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
             roundNumber: this._roundNumber,
-            lastAction: this._lastAction ? { ...this._lastAction } : null
+            lastAction: this._lastAction ? { ...this._lastAction } : null,
+            isGoldenScore: this._isGoldenScore,
+            eliminatedPlayers: [...this._eliminatedPlayers]
         };
     }
 
@@ -209,7 +229,9 @@ class GameState {
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
             roundNumber: this._roundNumber,
-            lastAction: this._lastAction ? { ...this._lastAction } : null
+            lastAction: this._lastAction ? { ...this._lastAction } : null,
+            isGoldenScore: this._isGoldenScore,
+            eliminatedPlayers: [...this._eliminatedPlayers]
         };
     }
 

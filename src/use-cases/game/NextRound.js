@@ -75,23 +75,29 @@ class NextRound {
                 throw new Error('Current round not found');
             }
 
-            // Check if any player is eliminated (score >= 100)
+            // Check if any player is eliminated (score > 100, strictly greater)
             const scores = currentGameState.scores || {};
             const eliminatedPlayers = [];
             const activePlayers = [];
 
             for (const p of players) {
                 const playerScore = scores[p.playerIndex] || 0;
-                if (playerScore >= 100) {
+                if (playerScore > 100) {
                     eliminatedPlayers.push(p);
                 } else {
                     activePlayers.push(p);
                 }
             }
 
-            // Check if game should end (only 1 player remaining or all but one eliminated)
+            // Get eliminated player indices for game state
+            const eliminatedPlayerIndices = eliminatedPlayers.map(p => p.playerIndex);
+
+            // Check if we're already in Golden Score mode and this round just ended
+            const wasGoldenScore = currentGameState.isGoldenScore;
+
+            // Check if game should end
             if (activePlayers.length <= 1) {
-                // Game is finished
+                // Game is finished - only 1 player remaining
                 party.finish();
                 await this.partyRepository.save(party);
 
@@ -104,7 +110,8 @@ class NextRound {
                 logger.info('Game finished', {
                     partyId: partyId,
                     winnerId: winner.userId,
-                    finalScores: scores
+                    finalScores: scores,
+                    wasGoldenScore: wasGoldenScore
                 });
 
                 return {
@@ -124,6 +131,60 @@ class NextRound {
                 };
             }
 
+            // If Golden Score round just ended (2 players were playing), determine winner
+            if (wasGoldenScore && activePlayers.length === 2) {
+                // Golden Score round finished - winner is player with lowest score
+                const [player1, player2] = activePlayers;
+                const score1 = scores[player1.playerIndex] || 0;
+                const score2 = scores[player2.playerIndex] || 0;
+
+                // Determine winner (lowest score wins, or if tie, neither is eliminated yet)
+                if (score1 !== score2) {
+                    const winner = score1 < score2 ? player1 : player2;
+                    const loser = score1 < score2 ? player2 : player1;
+
+                    party.finish();
+                    await this.partyRepository.save(party);
+
+                    logger.info('Golden Score finished', {
+                        partyId: partyId,
+                        winnerId: winner.userId,
+                        loserId: loser.userId,
+                        finalScores: scores
+                    });
+
+                    return {
+                        success: true,
+                        gameFinished: true,
+                        goldenScoreResult: true,
+                        winner: {
+                            userId: winner.userId,
+                            playerIndex: winner.playerIndex,
+                            score: scores[winner.playerIndex] || 0
+                        },
+                        finalScores: scores,
+                        eliminatedPlayers: [...eliminatedPlayers, loser].map(p => ({
+                            userId: p.userId,
+                            playerIndex: p.playerIndex,
+                            score: scores[p.playerIndex] || 0
+                        }))
+                    };
+                }
+                // If scores are tied, continue with another Golden Score round
+            }
+
+            // Check if entering Golden Score mode (exactly 2 players remaining)
+            const enteringGoldenScore = activePlayers.length === 2 && !wasGoldenScore;
+            const isGoldenScore = activePlayers.length === 2;
+
+            if (enteringGoldenScore) {
+                logger.info('Entering Golden Score mode', {
+                    partyId: partyId,
+                    players: activePlayers.map(p => ({ userId: p.userId, playerIndex: p.playerIndex })),
+                    scores: scores
+                });
+            }
+
             // Create new round
             const newRoundNumber = currentRound.roundNumber + 1;
             const newRound = Round.create(partyId, newRoundNumber);
@@ -137,20 +198,29 @@ class NextRound {
                 [deck[i], deck[j]] = [deck[j], deck[i]];
             }
 
-            // Deal cards to all players (including eliminated - they still play but can't win)
+            // Deal cards only to active players (eliminated players get empty hands)
             const handSize = party.settings.handSize || 10;
             const hands = {};
 
             for (let i = 0; i < players.length; i++) {
-                hands[i] = deck.splice(0, handSize);
+                if (eliminatedPlayerIndices.includes(i)) {
+                    // Eliminated players get no cards
+                    hands[i] = [];
+                } else {
+                    // Active players get cards
+                    hands[i] = deck.splice(0, handSize);
+                }
             }
 
             // Flip first card from deck to discard pile
             const firstDiscardCard = deck.pop();
 
-            // Determine starting player (next player after last round's starter)
-            // The player who called ZapZap or the player after the last starter
-            const nextStartingPlayer = (currentGameState.currentTurn + 1) % players.length;
+            // Determine starting player - must be an active player
+            // Start from last turn and find next active player
+            let nextStartingPlayer = (currentGameState.currentTurn + 1) % players.length;
+            while (eliminatedPlayerIndices.includes(nextStartingPlayer)) {
+                nextStartingPlayer = (nextStartingPlayer + 1) % players.length;
+            }
 
             // Create new game state preserving scores
             const newGameState = currentGameState.with({
@@ -162,6 +232,8 @@ class NextRound {
                 lastCardsPlayed: [firstDiscardCard],
                 cardsPlayed: [],
                 lastAction: null,
+                isGoldenScore: isGoldenScore,
+                eliminatedPlayers: eliminatedPlayerIndices
                 // scores are preserved from previous state
             });
 
@@ -193,7 +265,14 @@ class NextRound {
                 },
                 startingPlayer: nextStartingPlayer,
                 scores: scores,
+                isGoldenScore: isGoldenScore,
+                enteringGoldenScore: enteringGoldenScore,
                 eliminatedPlayers: eliminatedPlayers.map(p => ({
+                    userId: p.userId,
+                    playerIndex: p.playerIndex,
+                    score: scores[p.playerIndex] || 0
+                })),
+                activePlayers: activePlayers.map(p => ({
                     userId: p.userId,
                     playerIndex: p.playerIndex,
                     score: scores[p.playerIndex] || 0

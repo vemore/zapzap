@@ -48,6 +48,9 @@ function GameBoard() {
         return;
       }
 
+      // Get eliminated players from game state
+      const eliminatedPlayers = data.gameState.eliminatedPlayers || [];
+
       // Transform API data to component format
       const transformedData = {
         partyId: data.party.id,
@@ -60,7 +63,10 @@ function GameBoard() {
             ? (data.gameState.playerHand || []).length
             : (data.gameState.otherPlayersHandSizes?.[p.playerIndex] || 0),
           score: data.gameState.scores?.[p.playerIndex] || 0,
+          isEliminated: eliminatedPlayers.includes(p.playerIndex),
         })),
+        isGoldenScore: data.gameState.isGoldenScore || false,
+        eliminatedPlayers: eliminatedPlayers,
         currentTurn: data.gameState.currentTurn,
         currentTurnId: data.players[data.gameState.currentTurn]?.userId,
         currentAction: data.gameState.currentAction,
@@ -77,6 +83,9 @@ function GameBoard() {
         handPoints: data.gameState.handPoints || null,
         zapZapCaller: data.gameState.zapZapCaller,
         lowestHandPlayerIndex: data.gameState.lowestHandPlayerIndex,
+        // Game end data
+        gameFinished: data.gameState.gameFinished || false,
+        winner: data.gameState.winner || null,
       };
 
       setGameData(transformedData);
@@ -216,6 +225,7 @@ function GameBoard() {
     lastCardsPlayed = [],
     cardsPlayed = [],
     lastAction = null,
+    isGoldenScore = false,
   } = gameData;
 
   const isMyTurn = currentTurnId === myUserId;
@@ -303,6 +313,9 @@ function GameBoard() {
       }),
       zapZapCaller: zapZapCallerUserId,
       lowestHandPlayer: lowestHandUserId,
+      // Game end data
+      gameFinished: gameData.gameFinished || false,
+      winner: gameData.winner || null,
     };
 
     return (
@@ -357,6 +370,12 @@ function GameBoard() {
 
             {/* Party info and SSE indicator */}
             <div className="flex items-center space-x-4">
+              {/* Golden Score indicator */}
+              {isGoldenScore && (
+                <div className="flex items-center bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-1 animate-pulse">
+                  <span className="text-yellow-400 font-bold text-sm">GOLDEN SCORE</span>
+                </div>
+              )}
               {/* SSE connection indicator */}
               <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
                 {sseConnected ? (
@@ -381,6 +400,7 @@ function GameBoard() {
             players={players}
             currentTurn={currentTurn}
             currentUserId={myUserId}
+            isGoldenScore={isGoldenScore}
           />
         </section>
 

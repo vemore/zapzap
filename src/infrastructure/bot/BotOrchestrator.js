@@ -109,6 +109,17 @@ class BotOrchestrator {
                 return; // Human player's turn, no action needed
             }
 
+            // Check if bot is eliminated
+            const eliminatedPlayers = gameState.eliminatedPlayers || [];
+            if (eliminatedPlayers.includes(currentPlayer.playerIndex)) {
+                logger.info('Bot is eliminated, skipping turn', {
+                    partyId,
+                    botId: user.id,
+                    playerIndex: currentPlayer.playerIndex
+                });
+                return;
+            }
+
             logger.info('Bot turn detected', {
                 partyId,
                 botId: user.id,

@@ -1,14 +1,15 @@
-import { Users, User, Play } from 'lucide-react';
+import { Users, User, Play, Skull } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CardBack from './CardBack';
 
 /**
  * PlayerTable component - displays all players in a horizontal row
- * @param {Object[]} players - Array of player objects with username, cardCount, score
+ * @param {Object[]} players - Array of player objects with username, cardCount, score, isEliminated
  * @param {number} currentTurn - Index of player whose turn it is
  * @param {string} currentUserId - ID of the current user
+ * @param {boolean} isGoldenScore - Whether the game is in Golden Score mode
  */
-function PlayerTable({ players = [], currentTurn, currentUserId }) {
+function PlayerTable({ players = [], currentTurn, currentUserId, isGoldenScore = false }) {
   if (players.length === 0) {
     return (
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 border border-slate-700 text-center">
@@ -26,7 +27,8 @@ function PlayerTable({ players = [], currentTurn, currentUserId }) {
             key={player.userId || index}
             player={player}
             isCurrentUser={player.userId === currentUserId}
-            isCurrentTurn={player.playerIndex === currentTurn}
+            isCurrentTurn={player.playerIndex === currentTurn && !player.isEliminated}
+            isEliminated={player.isEliminated}
           />
         ))}
       </div>
@@ -37,8 +39,51 @@ function PlayerTable({ players = [], currentTurn, currentUserId }) {
 /**
  * PlayerCard component - displays a single player with card fan
  */
-function PlayerCard({ player, isCurrentUser, isCurrentTurn }) {
+function PlayerCard({ player, isCurrentUser, isCurrentTurn, isEliminated = false }) {
   const cardCount = player.cardCount || 0;
+
+  // Eliminated players have special styling
+  if (isEliminated) {
+    return (
+      <motion.div
+        className="bg-slate-900/80 rounded-lg p-3 border-2 border-red-900/50 opacity-60 min-w-[140px]"
+        layout
+      >
+        {/* Player header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center">
+            <Skull className="w-4 h-4 text-red-500 mr-1" />
+            <span className="text-gray-500 font-semibold text-sm truncate max-w-[100px] line-through">
+              {player.username}
+            </span>
+          </div>
+          {isCurrentUser && (
+            <span className="text-xs bg-red-900/30 text-red-400 border border-red-900/50 px-1.5 py-0.5 rounded-full">
+              You
+            </span>
+          )}
+        </div>
+
+        {/* Eliminated indicator */}
+        <div className="flex items-center justify-center text-red-500 text-xs font-semibold mb-2">
+          <Skull className="w-3 h-3 mr-1" />
+          ELIMINATED
+        </div>
+
+        {/* Empty card area */}
+        <div className="flex justify-center items-end h-16 mb-2">
+          <span className="text-gray-600 text-xs">No cards</span>
+        </div>
+
+        {/* Score (showing final score when eliminated) */}
+        <div className="flex justify-center text-xs">
+          <span className="text-red-400">
+            Final Score: <span className="font-bold">{player.score}</span>
+          </span>
+        </div>
+      </motion.div>
+    );
+  }
 
   const borderClasses = isCurrentUser
     ? 'border-amber-400 ring-2 ring-amber-400/30'
