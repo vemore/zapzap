@@ -29,7 +29,9 @@ function GameDetails() {
   };
 
   const formatDate = (timestamp) => {
-    return new Date(timestamp).toLocaleDateString('fr-FR', {
+    // Backend stores timestamps in seconds, JavaScript expects milliseconds
+    const timestampMs = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    return new Date(timestampMs).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

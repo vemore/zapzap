@@ -29,7 +29,7 @@ async function createTestEndgameParty() {
 
         // Create party
         const partyId = uuidv4();
-        const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase().padEnd(8, '0');
         const now = Math.floor(Date.now() / 1000);
 
         await db.run(
@@ -42,7 +42,7 @@ async function createTestEndgameParty() {
                 inviteCode,
                 'public',
                 'playing',
-                JSON.stringify({ maxPlayers: 3, handSize: 5 }),
+                JSON.stringify({ playerCount: 3, handSize: 5, allowSpectators: false, roundTimeLimit: 0 }),
                 now,
                 now
             ]
@@ -64,9 +64,9 @@ async function createTestEndgameParty() {
         // Create round
         const roundId = uuidv4();
         await db.run(
-            `INSERT INTO rounds (id, party_id, round_number, status, started_at)
-             VALUES (?, ?, ?, ?, ?)`,
-            [roundId, partyId, 5, 'active', new Date().toISOString()]
+            `INSERT INTO rounds (id, party_id, round_number, status, current_turn, current_action, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [roundId, partyId, 5, 'active', 0, 'play', now]
         );
 
         // Update party with current round
@@ -116,7 +116,7 @@ async function createTestEndgameParty() {
         };
 
         await db.run(
-            `INSERT INTO game_state (party_id, state, updated_at)
+            `INSERT INTO game_state (party_id, state_json, updated_at)
              VALUES (?, ?, ?)`,
             [partyId, JSON.stringify(gameState), Math.floor(Date.now() / 1000)]
         );

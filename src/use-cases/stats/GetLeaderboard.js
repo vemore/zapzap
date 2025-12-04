@@ -28,20 +28,15 @@ class GetLeaderboard {
             // Get leaderboard from repository
             const leaderboard = await this.partyRepository.getLeaderboard(minGames, limit, offset);
 
-            // Enrich with usernames
-            const enrichedLeaderboard = await Promise.all(leaderboard.map(async (entry, index) => {
-                const user = await this.userRepository.findById(entry.user_id);
-                return {
-                    rank: offset + index + 1,
-                    userId: entry.user_id,
-                    username: user?.username || 'Unknown',
-                    gamesPlayed: entry.games_played,
-                    wins: entry.wins,
-                    winRate: entry.win_rate,
-                    averageScore: entry.average_score,
-                    totalZapZaps: entry.total_zapzaps,
-                    successfulZapZaps: entry.successful_zapzaps
-                };
+            // The repository already returns enriched data with usernames
+            const enrichedLeaderboard = leaderboard.map((entry) => ({
+                rank: entry.rank,
+                userId: entry.userId,
+                username: entry.username || 'Unknown',
+                gamesPlayed: entry.gamesPlayed,
+                wins: entry.wins,
+                winRate: entry.winRate,
+                averageScore: entry.avgScore
             }));
 
             logger.debug('Leaderboard retrieved', {
