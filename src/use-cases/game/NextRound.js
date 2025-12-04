@@ -122,7 +122,7 @@ class NextRound {
                         await this.saveGameResult.execute({
                             partyId,
                             winner: {
-                                odId: winner.userId,
+                                userId: winner.userId,
                                 playerIndex: winner.playerIndex,
                                 finalScore: scores[winner.playerIndex] || 0
                             },
@@ -184,7 +184,7 @@ class NextRound {
                             await this.saveGameResult.execute({
                                 partyId,
                                 winner: {
-                                    odId: winner.userId,
+                                    userId: winner.userId,
                                     playerIndex: winner.playerIndex,
                                     finalScore: scores[winner.playerIndex] || 0
                                 },

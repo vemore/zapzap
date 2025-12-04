@@ -11,11 +11,13 @@ class CallZapZap {
      * @param {IPartyRepository} partyRepository - Party repository
      * @param {IUserRepository} userRepository - User repository
      * @param {SaveRoundScores} saveRoundScores - SaveRoundScores use case
+     * @param {SaveGameResult} saveGameResult - SaveGameResult use case
      */
-    constructor(partyRepository, userRepository, saveRoundScores = null) {
+    constructor(partyRepository, userRepository, saveRoundScores = null, saveGameResult = null) {
         this.partyRepository = partyRepository;
         this.userRepository = userRepository;
         this.saveRoundScores = saveRoundScores;
+        this.saveGameResult = saveGameResult;
     }
 
     /**
@@ -285,6 +287,30 @@ class CallZapZap {
                     finalScores: scores,
                     wasGoldenScore: gameState.isGoldenScore
                 });
+
+                // Archive game result
+                if (this.saveGameResult && winner) {
+                    try {
+                        await this.saveGameResult.execute({
+                            partyId,
+                            winner: {
+                                userId: winner.userId,
+                                playerIndex: winner.playerIndex,
+                                finalScore: scores[winner.playerIndex] || 0
+                            },
+                            totalRounds: round.roundNumber,
+                            wasGoldenScore: gameState.isGoldenScore,
+                            players: players,
+                            gameState: gameState.withUpdates({ scores })
+                        });
+                    } catch (archiveError) {
+                        logger.error('Failed to archive game result after ZapZap', {
+                            partyId,
+                            error: archiveError.message
+                        });
+                        // Don't fail the zapzap if archiving fails
+                    }
+                }
             }
 
             // Update game state with final scores and zapzap action info
@@ -321,7 +347,7 @@ class CallZapZap {
                     // Eliminated players get 0 and no hand points
                     if (eliminatedPlayers.includes(p.playerIndex)) {
                         return {
-                            odId: p.userId,
+                            userId: p.userId,
                             playerIndex: p.playerIndex,
                             handPoints: 0,
                             scoreThisRound: 0
@@ -341,7 +367,7 @@ class CallZapZap {
                     }
 
                     return {
-                        odId: p.userId,
+                        userId: p.userId,
                         playerIndex: p.playerIndex,
                         handPoints: handPointsMap[p.playerIndex],
                         scoreThisRound: scoreThisRound

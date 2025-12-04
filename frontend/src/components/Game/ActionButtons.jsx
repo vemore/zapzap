@@ -30,9 +30,9 @@ function ActionButtons({
   // Play button logic
   const canPlay = isMyTurn && selectedCards.length > 0 && !invalidPlay;
 
-  // Draw button logic
-  const canDrawFromDeck = isMyTurn && currentAction === 'draw';
-  const canDrawFromDiscard = isMyTurn && currentAction === 'draw' && hasDiscardCards && hasDiscardSelection;
+  // Draw button logic - can draw during 'play' phase (before playing) OR 'draw' phase (after playing)
+  const canDrawFromDeck = isMyTurn && (currentAction === 'draw' || currentAction === 'play');
+  const canDrawFromDiscard = isMyTurn && (currentAction === 'draw' || currentAction === 'play') && hasDiscardCards && hasDiscardSelection;
 
   // ZapZap button logic - only allowed during 'play' phase
   const canZapZap = isMyTurn && zapZapEligible && currentAction === 'play';
@@ -98,8 +98,6 @@ function ActionButtons({
           title={
             !isMyTurn
               ? 'Not your turn'
-              : currentAction !== 'draw'
-              ? 'Must play cards first'
               : 'Draw from deck'
           }
         >
@@ -119,8 +117,6 @@ function ActionButtons({
           title={
             !isMyTurn
               ? 'Not your turn'
-              : currentAction !== 'draw'
-              ? 'Must play cards first'
               : !hasDiscardCards
               ? 'No cards in discard pile'
               : !hasDiscardSelection

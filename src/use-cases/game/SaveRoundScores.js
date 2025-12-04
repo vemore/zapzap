@@ -57,7 +57,7 @@ class SaveRoundScores {
                 const isEliminated = totalScoreAfter > 100;
 
                 return {
-                    odId: player.userId,
+                    userId: player.userId,
                     playerIndex: playerIndex,
                     scoreThisRound: scoreThisRound,
                     totalScoreAfter: totalScoreAfter,

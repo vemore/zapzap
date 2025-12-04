@@ -108,7 +108,7 @@ async function bootstrap(emitter = null) {
         container.register('saveGameResult', saveGameResult);
         container.register('playCards', new PlayCards(partyRepository, userRepository));
         container.register('drawCard', new DrawCard(partyRepository, userRepository));
-        container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores));
+        container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores, saveGameResult));
         container.register('getGameState', new GetGameState(partyRepository, userRepository));
         container.register('nextRound', new NextRound(partyRepository, userRepository, saveGameResult));
 

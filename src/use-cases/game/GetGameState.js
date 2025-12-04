@@ -73,8 +73,8 @@ class GetGameState {
                 currentRoundId: party.currentRoundId
             };
 
-            // If party is not playing, return basic info
-            if (party.status !== 'playing') {
+            // If party is waiting (not started), return basic info
+            if (party.status === 'waiting') {
                 return {
                     success: true,
                     party: partyDetails,
@@ -83,6 +83,8 @@ class GetGameState {
                     gameState: null
                 };
             }
+
+            // For 'playing' or 'finished' parties, continue to get game state
 
             // Get current round
             if (!party.currentRoundId) {

@@ -102,7 +102,7 @@ class SaveGameResult {
                 const isWinner = player.userId === winner.userId;
 
                 return {
-                    odId: player.userId,
+                    userId: player.userId,
                     finalScore,
                     finishPosition: index + 1,
                     roundsPlayed: totalRounds,
