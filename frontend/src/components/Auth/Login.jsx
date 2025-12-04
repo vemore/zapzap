@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dice6, Loader } from 'lucide-react';
 import { login as loginUser } from '../../services/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -9,6 +10,7 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { setUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,7 +24,8 @@ function Login() {
     setLoading(true);
 
     try {
-      await loginUser(username, password);
+      const result = await loginUser(username, password);
+      setUser(result.user);  // Update auth context with user data
       navigate('/parties');
     } catch (err) {
       setError(err.message || 'Login failed');

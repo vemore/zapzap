@@ -57,6 +57,7 @@ class GetPartyDetails {
                         userId: player.userId,
                         username: user ? user.username : 'Unknown',
                         userType: user ? user.userType : 'human',
+                        botDifficulty: user ? user.botDifficulty : null,
                         playerIndex: player.playerIndex,
                         joinedAt: player.joinedAt
                     };

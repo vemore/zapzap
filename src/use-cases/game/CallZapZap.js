@@ -206,10 +206,33 @@ class CallZapZap {
             round.finish();
             await this.partyRepository.saveRound(round);
 
-            // Update game state with final scores
+            // Calculate round scores (points gained this round) for each player
+            const roundScores = {};
+            for (const p of players) {
+                const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+                if (isLowest) {
+                    roundScores[p.playerIndex] = 0;
+                } else if (counteracted && p.playerIndex === player.playerIndex) {
+                    // Caller got penalty
+                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex] + (players.length * 5);
+                } else {
+                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex];
+                }
+            }
+
+            // Update game state with final scores and zapzap action info
             const newGameState = gameState.withUpdates({
                 scores: scores,
-                currentAction: 'finished'
+                currentAction: 'finished',
+                lastAction: {
+                    type: 'zapzap',
+                    playerIndex: player.playerIndex,
+                    wasCounterActed: counteracted,
+                    counterActedByPlayerIndex: counteracted ? counteractPlayer.playerIndex : null,
+                    callerHandPoints: handPoints,
+                    roundScores: roundScores,
+                    timestamp: Date.now()
+                }
             });
 
             await this.partyRepository.saveGameState(partyId, newGameState);

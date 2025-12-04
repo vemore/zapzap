@@ -73,6 +73,7 @@ export const register = async (username, password) => {
  */
 export const logout = () => {
   clearAuthToken();
+  localStorage.removeItem('user');
 };
 
 /**

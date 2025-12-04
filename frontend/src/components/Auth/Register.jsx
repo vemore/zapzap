@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dice6, Loader } from 'lucide-react';
 import { register as registerUser } from '../../services/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 function Register() {
   const [username, setUsername] = useState('');
@@ -9,6 +10,7 @@ function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { setUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,7 +34,8 @@ function Register() {
     setLoading(true);
 
     try {
-      await registerUser(username, password);
+      const result = await registerUser(username, password);
+      setUser(result.user);  // Update auth context with user data
       navigate('/parties');
     } catch (err) {
       setError(err.message || 'Registration failed');

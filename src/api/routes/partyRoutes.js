@@ -162,6 +162,7 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                     userId: p.userId,
                     username: p.username,
                     userType: p.userType,
+                    botDifficulty: p.botDifficulty,
                     playerIndex: p.playerIndex,
                     joinedAt: p.joinedAt
                 })),

@@ -83,6 +83,9 @@ function GameBoard() {
         handPoints: data.gameState.handPoints || null,
         zapZapCaller: data.gameState.zapZapCaller,
         lowestHandPlayerIndex: data.gameState.lowestHandPlayerIndex,
+        wasCounterActed: data.gameState.wasCounterActed || false,
+        counterActedByPlayerIndex: data.gameState.counterActedByPlayerIndex,
+        roundScores: data.gameState.roundScores || null,
         // Game end data
         gameFinished: data.gameState.gameFinished || false,
         winner: data.gameState.winner || null,
@@ -300,14 +303,15 @@ function GameBoard() {
       players: players.map(p => {
         const isLowestHand = p.playerIndex === gameData.lowestHandPlayerIndex;
         const handPointsValue = gameData.handPoints?.[p.playerIndex] || 0;
-        // Lowest hand player gets 0 points this round
-        const roundScore = isLowestHand ? 0 : handPointsValue;
+        // Use backend-calculated round scores if available (includes counter penalty)
+        // Otherwise fallback to simple calculation
+        const roundScore = gameData.roundScores?.[p.playerIndex] ?? (isLowestHand ? 0 : handPointsValue);
 
         return {
           id: p.userId,
           username: p.username,
           hand: gameData.allHands?.[p.playerIndex] || [],
-          score: roundScore, // This round's score (0 for lowest hand)
+          score: roundScore, // This round's score (0 for lowest hand, or penalty for counteracted caller)
           totalScore: p.score,
           handValue: handPointsValue, // Hand value for display (with Joker=25)
           isLowestHand: isLowestHand,
@@ -315,6 +319,8 @@ function GameBoard() {
       }),
       zapZapCaller: zapZapCallerUserId,
       lowestHandPlayer: lowestHandUserId,
+      wasCounterActed: gameData.wasCounterActed || false,
+      counterActedByPlayerIndex: gameData.counterActedByPlayerIndex,
       // Game end data
       gameFinished: gameData.gameFinished || false,
       winner: gameData.winner || null,

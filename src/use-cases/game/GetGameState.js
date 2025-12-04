@@ -120,6 +120,9 @@ class GetGameState {
             let handPoints = null;
             let zapZapCaller = null;
             let lowestHandPlayerIndex = null;
+            let wasCounterActed = false;
+            let counterActedByPlayerIndex = null;
+            let roundScores = null;
             let gameFinished = false;
             let winner = null;
 
@@ -148,9 +151,12 @@ class GetGameState {
                     handPoints[playerIndex] = CardAnalyzer.calculateHandScore(hand, false);
                 }
 
-                // Get ZapZap caller from lastAction
+                // Get ZapZap caller and counter info from lastAction
                 if (gameState.lastAction && gameState.lastAction.type === 'zapzap') {
                     zapZapCaller = gameState.lastAction.playerIndex;
+                    wasCounterActed = gameState.lastAction.wasCounterActed || false;
+                    counterActedByPlayerIndex = gameState.lastAction.counterActedByPlayerIndex || null;
+                    roundScores = gameState.lastAction.roundScores || null;
                 }
 
                 // Check if game is finished (only 1 active player remaining)
@@ -228,6 +234,9 @@ class GetGameState {
                     handPoints: handPoints,
                     zapZapCaller: zapZapCaller,
                     lowestHandPlayerIndex: lowestHandPlayerIndex,
+                    wasCounterActed: wasCounterActed,
+                    counterActedByPlayerIndex: counterActedByPlayerIndex,
+                    roundScores: roundScores,
                     // Game end data (only populated when game is finished)
                     gameFinished: gameFinished,
                     winner: winner

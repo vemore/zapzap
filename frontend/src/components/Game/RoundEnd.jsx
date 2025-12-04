@@ -22,7 +22,15 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
     );
   }
 
-  const { players = [], zapZapCaller, roundNumber, gameFinished = false, winner = null } = roundData;
+  const {
+    players = [],
+    zapZapCaller,
+    roundNumber,
+    gameFinished = false,
+    winner = null,
+    wasCounterActed = false,
+    counterActedByPlayerIndex = null
+  } = roundData;
 
   if (players.length === 0) {
     return (
@@ -32,13 +40,11 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
     );
   }
 
-  // Find lowest hand value for this round
-  const lowestScore = Math.min(...players.map((p) => p.score));
-  const lowestPlayer = players.find((p) => p.score === lowestScore);
+  // Find lowest hand value for this round (player who got 0 points)
+  const lowestPlayer = players.find((p) => p.score === 0) || players[0];
 
   // Check if ZapZap was called
   const zapZapPlayer = zapZapCaller ? players.find((p) => p.id === zapZapCaller) : null;
-  const wasCounterActed = zapZapPlayer && zapZapPlayer.score > zapZapPlayer.handValue;
 
   // Sort players by score (lowest first)
   const sortedPlayers = [...players].sort((a, b) => a.score - b.score);

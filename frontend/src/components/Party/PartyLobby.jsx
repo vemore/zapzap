@@ -257,7 +257,7 @@ function PartyLobby() {
                       {player.userType === 'bot' && (
                         <span className="flex items-center text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full">
                           <Bot className="w-3 h-3 mr-1" />
-                          {player.botDifficulty?.charAt(0).toUpperCase() + player.botDifficulty?.slice(1)}
+                          {player.botDifficulty ? player.botDifficulty.charAt(0).toUpperCase() + player.botDifficulty.slice(1) : 'Bot'}
                         </span>
                       )}
                     </div>
