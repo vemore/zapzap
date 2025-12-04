@@ -11,9 +11,10 @@ const logger = require('../../../logger');
  * @param {DIContainer} container - DI container
  * @param {Function} authMiddleware - Authentication middleware
  * @param {Function} optionalAuthMiddleware - Optional authentication middleware
+ * @param {EventEmitter} emitter - Event emitter for SSE
  * @returns {express.Router}
  */
-function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
+function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, emitter) {
     const router = express.Router();
 
     const createParty = container.resolve('createParty');
@@ -217,6 +218,16 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
                 playerIndex: result.playerIndex
             });
 
+            // Emit SSE event for real-time updates
+            if (emitter) {
+                emitter.emit('event', {
+                    partyId,
+                    userId: req.user.id,
+                    action: 'playerJoined',
+                    playerIndex: result.playerIndex
+                });
+            }
+
             res.json({
                 success: true,
                 party: {
@@ -287,6 +298,16 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
                 partyId
             });
 
+            // Emit SSE event for real-time updates
+            if (emitter) {
+                emitter.emit('event', {
+                    partyId,
+                    userId: req.user.id,
+                    action: 'playerLeft',
+                    newOwner: result.newOwner || null
+                });
+            }
+
             res.json({
                 success: true,
                 message: 'Left party successfully',
@@ -339,6 +360,16 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
                 partyId: result.party.id,
                 roundId: result.round.id
             });
+
+            // Emit SSE event for real-time updates
+            if (emitter) {
+                emitter.emit('event', {
+                    partyId,
+                    userId: req.user.id,
+                    action: 'partyStarted',
+                    roundId: result.round.id
+                });
+            }
 
             res.json({
                 success: true,
@@ -407,6 +438,15 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware) {
                 partyId,
                 partyName: result.deletedPartyName
             });
+
+            // Emit SSE event for real-time updates
+            if (emitter) {
+                emitter.emit('event', {
+                    partyId,
+                    userId: req.user.id,
+                    action: 'partyDeleted'
+                });
+            }
 
             res.json({
                 success: true,

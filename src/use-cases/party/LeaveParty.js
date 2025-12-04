@@ -88,7 +88,7 @@ class LeaveParty {
             }
 
             // Remove player from party
-            await this.partyRepository.removePlayer(player.id);
+            await this.partyRepository.removePlayer(partyId, userId);
 
             logger.info('User left party', {
                 userId: userId,

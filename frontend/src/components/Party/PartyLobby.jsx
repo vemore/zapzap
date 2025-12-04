@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2 } from 'lucide-react';
+import { Dice6, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import useSSE from '../../hooks/useSSE';
 
 function PartyLobby() {
   const { partyId } = useParams();
@@ -12,14 +13,47 @@ function PartyLobby() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  // Handle SSE messages for real-time updates
+  const handleSSEMessage = useCallback((data) => {
+    // Only process events for this party
+    if (data.partyId !== partyId) return;
+
+    switch (data.action) {
+      case 'playerJoined':
+      case 'playerLeft':
+        // Refresh party details when players join or leave
+        fetchPartyDetails();
+        break;
+      case 'partyStarted':
+        // Navigate to game when party starts
+        navigate(`/game/${partyId}`);
+        break;
+      case 'partyDeleted':
+        // Navigate back to parties list if party is deleted
+        navigate('/parties');
+        break;
+      default:
+        break;
+    }
+  }, [partyId, navigate]);
+
+  // Set up SSE connection for real-time updates
+  const sseUrl = `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:9999'}/suscribeupdate`;
+  const { connected: sseConnected } = useSSE(sseUrl, {
+    onMessage: handleSSEMessage
+  });
+
   useEffect(() => {
     fetchPartyDetails();
-    // TODO: Set up SSE for real-time updates
   }, [partyId]);
 
   const fetchPartyDetails = async () => {
     try {
-      const response = await apiClient.get(`/party/${partyId}`);
+      // Use cache-busting to ensure fresh data on SSE updates
+      const response = await apiClient.get(`/party/${partyId}`, {
+        headers: { 'Cache-Control': 'no-cache' },
+        params: { _t: Date.now() }
+      });
       // Merge party data with players array
       setParty({ ...response.data.party, players: response.data.players || [] });
       setError('');
@@ -121,6 +155,14 @@ function PartyLobby() {
 
             {/* User info and logout */}
             <div className="flex items-center space-x-4">
+              {/* SSE connection indicator */}
+              <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
+                {sseConnected ? (
+                  <Wifi className="w-4 h-4 text-green-400" />
+                ) : (
+                  <WifiOff className="w-4 h-4 text-gray-500 animate-pulse" />
+                )}
+              </div>
               <span className="text-gray-300">
                 Welcome, <span className="font-semibold text-white">{user?.username}</span>
               </span>

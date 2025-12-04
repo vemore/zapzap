@@ -26,7 +26,7 @@ function createApiRouter(container, emitter) {
 
     // Mount route modules
     router.use('/auth', createAuthRouter(container));
-    router.use('/party', createPartyRouter(container, authMiddleware, optionalAuthMiddleware));
+    router.use('/party', createPartyRouter(container, authMiddleware, optionalAuthMiddleware, emitter));
     router.use('/game', createGameRouter(container, authMiddleware, emitter));
     router.use('/bots', createBotRouter(container)); // Bot management (admin endpoints)
 
