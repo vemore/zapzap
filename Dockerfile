@@ -1,5 +1,5 @@
 # Backend Dockerfile for ZapZap
-FROM node:24-alpine
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app

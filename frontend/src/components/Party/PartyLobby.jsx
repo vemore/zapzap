@@ -38,7 +38,9 @@ function PartyLobby() {
   }, [partyId, navigate]);
 
   // Set up SSE connection for real-time updates
-  const sseUrl = `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:9999'}/suscribeupdate`;
+  // Use VITE_API_URL if set (dev), otherwise use current origin (production)
+  const baseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || window.location.origin;
+  const sseUrl = `${baseUrl}/suscribeupdate`;
   const { connected: sseConnected } = useSSE(sseUrl, {
     onMessage: handleSSEMessage
   });

@@ -1,9 +1,14 @@
 # Frontend Dockerfile for ZapZap (Multi-stage build)
 
 # Stage 1: Build the React/Vite application
-FROM node:24-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Build arguments for environment variables (optional)
+# Leave empty for production - the app will use window.location.origin
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
 
 # Copy package files
 COPY package*.json ./
@@ -15,6 +20,7 @@ RUN npm ci
 COPY . .
 
 # Build the application
+# In production (no VITE_API_URL), the app will use window.location.origin
 RUN npm run build
 
 # Stage 2: Serve with Nginx

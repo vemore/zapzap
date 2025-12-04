@@ -45,6 +45,7 @@ function createApp(container, emitter) {
             if (allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
+                logger.warn('CORS rejected origin', { origin, allowedOrigins });
                 callback(new Error('Not allowed by CORS'));
             }
         },

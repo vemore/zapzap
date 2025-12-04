@@ -10,6 +10,7 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=9999
       - JWT_SECRET=${JWT_SECRET}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - DB_PATH=/app/data/zapzap.db
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-info}
