@@ -70,20 +70,34 @@ function createApp(container, emitter) {
         if (origin && (isDev && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')))) {
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Credentials', 'true');
+        } else if (!isDev && allowedOrigins.includes(origin)) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
 
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',  // Disable buffering for nginx proxies
+            'Pragma': 'no-cache',
+            'Expires': '0'
         });
 
-        // Heartbeat
-        const nln = () => res.write('\n');
-        const hbt = setInterval(nln, 15000);
+        // Send initial connection message
+        res.write('retry: 1000\n');
+        res.write('event: connected\n');
+        res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
+
+        // Heartbeat every 20 seconds to keep connection alive through proxies
+        // Most proxies have 60s timeout, so 20s gives us safety margin
+        const sendHeartbeat = () => {
+            res.write(`: heartbeat ${Date.now()}\n\n`);
+        };
+        const hbt = setInterval(sendHeartbeat, 20000);
 
         const onEvent = (data) => {
-            res.write('retry: 500\n');
+            res.write('retry: 1000\n');
             res.write('event: event\n');
             res.write(`data: ${JSON.stringify(data)}\n\n`);
         };
