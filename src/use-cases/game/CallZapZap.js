@@ -232,10 +232,66 @@ class CallZapZap {
                 }
             }
 
+            // Check if game is finished after this round
+            // Recalculate active players based on NEW scores (after this round)
+            const newlyEliminatedIndices = [];
+            const stillActivePlayers = [];
+            for (const p of players) {
+                const playerScore = scores[p.playerIndex] || 0;
+                if (playerScore > 100) {
+                    newlyEliminatedIndices.push(p.playerIndex);
+                } else {
+                    stillActivePlayers.push(p);
+                }
+            }
+
+            // Check if game should end
+            let gameFinished = false;
+            let winner = null;
+
+            if (stillActivePlayers.length <= 1) {
+                // Game is finished - only 1 or 0 players remaining
+                gameFinished = true;
+                if (stillActivePlayers.length === 1) {
+                    winner = stillActivePlayers[0];
+                } else {
+                    // All players eliminated - winner is lowest score
+                    winner = players.reduce((lowest, p) => {
+                        const pScore = scores[p.playerIndex] || 0;
+                        const lowestScore = scores[lowest.playerIndex] || 0;
+                        return pScore < lowestScore ? p : lowest;
+                    }, players[0]);
+                }
+            } else if (gameState.isGoldenScore && stillActivePlayers.length === 2) {
+                // Golden Score mode - check if there's a clear winner
+                const [p1, p2] = stillActivePlayers;
+                const score1 = scores[p1.playerIndex] || 0;
+                const score2 = scores[p2.playerIndex] || 0;
+
+                if (score1 !== score2) {
+                    gameFinished = true;
+                    winner = score1 < score2 ? p1 : p2;
+                }
+            }
+
+            // Update party status if game is finished
+            if (gameFinished) {
+                party.finish();
+                await this.partyRepository.save(party);
+
+                logger.info('Game finished after ZapZap', {
+                    partyId: partyId,
+                    winnerId: winner?.userId,
+                    finalScores: scores,
+                    wasGoldenScore: gameState.isGoldenScore
+                });
+            }
+
             // Update game state with final scores and zapzap action info
             const newGameState = gameState.withUpdates({
                 scores: scores,
                 currentAction: 'finished',
+                eliminatedPlayers: newlyEliminatedIndices,
                 lastAction: {
                     type: 'zapzap',
                     playerIndex: player.playerIndex,
