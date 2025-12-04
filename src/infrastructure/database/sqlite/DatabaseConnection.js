@@ -136,6 +136,72 @@ class DatabaseConnection {
             CREATE INDEX IF NOT EXISTS idx_party_players_party ON party_players(party_id);
             CREATE INDEX IF NOT EXISTS idx_rounds_party ON rounds(party_id);
             CREATE INDEX IF NOT EXISTS idx_rounds_status ON rounds(party_id, status);
+
+            -- Round scores table (archives scores at end of each round)
+            CREATE TABLE IF NOT EXISTS round_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                party_id TEXT NOT NULL,
+                round_number INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                player_index INTEGER NOT NULL,
+                score_this_round INTEGER NOT NULL,
+                total_score_after INTEGER NOT NULL,
+                hand_points INTEGER NOT NULL,
+                is_zapzap_caller INTEGER NOT NULL DEFAULT 0,
+                zapzap_success INTEGER NOT NULL DEFAULT 0,
+                was_counteracted INTEGER NOT NULL DEFAULT 0,
+                hand_cards TEXT,
+                is_lowest_hand INTEGER NOT NULL DEFAULT 0,
+                is_eliminated INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(party_id, round_number, user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_round_scores_party ON round_scores(party_id);
+            CREATE INDEX IF NOT EXISTS idx_round_scores_user ON round_scores(user_id);
+            CREATE INDEX IF NOT EXISTS idx_round_scores_party_round ON round_scores(party_id, round_number);
+
+            -- Game results table (stores final game results)
+            CREATE TABLE IF NOT EXISTS game_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                party_id TEXT UNIQUE NOT NULL,
+                winner_user_id TEXT NOT NULL,
+                winner_final_score INTEGER NOT NULL,
+                total_rounds INTEGER NOT NULL,
+                was_golden_score INTEGER NOT NULL DEFAULT 0,
+                player_count INTEGER NOT NULL,
+                finished_at INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE,
+                FOREIGN KEY (winner_user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_game_results_winner ON game_results(winner_user_id);
+            CREATE INDEX IF NOT EXISTS idx_game_results_finished ON game_results(finished_at);
+
+            -- Player game results table (per-player results for each finished game)
+            CREATE TABLE IF NOT EXISTS player_game_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                party_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                final_score INTEGER NOT NULL,
+                finish_position INTEGER NOT NULL,
+                rounds_played INTEGER NOT NULL,
+                total_zapzap_calls INTEGER NOT NULL DEFAULT 0,
+                successful_zapzaps INTEGER NOT NULL DEFAULT 0,
+                failed_zapzaps INTEGER NOT NULL DEFAULT 0,
+                lowest_hand_count INTEGER NOT NULL DEFAULT 0,
+                is_winner INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(party_id, user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_player_results_user ON player_game_results(user_id);
+            CREATE INDEX IF NOT EXISTS idx_player_results_party ON player_game_results(party_id);
         `;
 
         await this.exec(schema);

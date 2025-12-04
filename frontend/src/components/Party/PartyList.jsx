@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Plus, Loader, Users } from 'lucide-react';
+import { Dice6, LogOut, Plus, Loader, Users, History, BarChart3 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -77,10 +77,26 @@ function PartyList() {
               <h1 className="text-2xl font-bold text-white">ZapZap</h1>
             </div>
 
-            {/* User info and logout */}
+            {/* Navigation and User info */}
             <div className="flex items-center space-x-4">
+              {/* Navigation Links */}
+              <Link
+                to="/history"
+                className="flex items-center px-3 py-2 text-gray-300 hover:text-white hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                <History className="w-4 h-4 mr-1" />
+                History
+              </Link>
+              <Link
+                to="/stats"
+                className="flex items-center px-3 py-2 text-gray-300 hover:text-white hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                <BarChart3 className="w-4 h-4 mr-1" />
+                Stats
+              </Link>
+              <span className="text-gray-500">|</span>
               <span className="text-gray-300">
-                Welcome, <span className="font-semibold text-white">{user?.username}</span>
+                <span className="font-semibold text-white">{user?.username}</span>
               </span>
               <button
                 onClick={handleLogout}

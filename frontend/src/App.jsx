@@ -7,6 +7,9 @@ import PartyList from './components/Party/PartyList';
 import CreateParty from './components/Party/CreateParty';
 import PartyLobby from './components/Party/PartyLobby';
 import GameBoard from './components/Game/GameBoard';
+import GameHistory from './components/History/GameHistory';
+import GameDetails from './components/History/GameDetails';
+import Statistics from './components/Stats/Statistics';
 import './App.css';
 
 /**
@@ -51,6 +54,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <GameBoard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <ProtectedRoute>
+                <GameHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/history/:partyId"
+            element={
+              <ProtectedRoute>
+                <GameDetails />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stats"
+            element={
+              <ProtectedRoute>
+                <Statistics />
               </ProtectedRoute>
             }
           />

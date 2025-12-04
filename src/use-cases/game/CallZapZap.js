@@ -10,10 +10,12 @@ class CallZapZap {
     /**
      * @param {IPartyRepository} partyRepository - Party repository
      * @param {IUserRepository} userRepository - User repository
+     * @param {SaveRoundScores} saveRoundScores - SaveRoundScores use case
      */
-    constructor(partyRepository, userRepository) {
+    constructor(partyRepository, userRepository, saveRoundScores = null) {
         this.partyRepository = partyRepository;
         this.userRepository = userRepository;
+        this.saveRoundScores = saveRoundScores;
     }
 
     /**
@@ -211,6 +213,59 @@ class CallZapZap {
             });
 
             await this.partyRepository.saveGameState(partyId, newGameState);
+
+            // Archive round scores
+            if (this.saveRoundScores) {
+                // Find the lowest hand player index
+                let lowestHandPlayerIndex = player.playerIndex;
+                for (const p of players) {
+                    if (baseHandPoints[p.playerIndex] === lowestBaseValue) {
+                        lowestHandPlayerIndex = p.playerIndex;
+                        break;
+                    }
+                }
+
+                // Calculate score this round for each player
+                const playersWithScores = players.map(p => {
+                    const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+                    let scoreThisRound = 0;
+
+                    if (isLowest) {
+                        scoreThisRound = 0;
+                    } else if (counteracted && p.playerIndex === player.playerIndex) {
+                        // Caller got penalty
+                        scoreThisRound = handPointsMap[p.playerIndex] + (players.length * 5);
+                    } else {
+                        scoreThisRound = handPointsMap[p.playerIndex];
+                    }
+
+                    return {
+                        odId: p.userId,
+                        playerIndex: p.playerIndex,
+                        handPoints: handPointsMap[p.playerIndex],
+                        scoreThisRound: scoreThisRound
+                    };
+                });
+
+                try {
+                    await this.saveRoundScores.execute({
+                        partyId,
+                        roundNumber: round.roundNumber,
+                        players: playersWithScores,
+                        gameState: newGameState,
+                        zapZapCallerIndex: player.playerIndex,
+                        wasCounterActed: counteracted,
+                        lowestHandPlayerIndex: lowestHandPlayerIndex
+                    });
+                } catch (archiveError) {
+                    logger.error('Failed to archive round scores', {
+                        partyId,
+                        roundNumber: round.roundNumber,
+                        error: archiveError.message
+                    });
+                    // Don't fail the zapzap if archiving fails
+                }
+            }
 
             return {
                 success: true,

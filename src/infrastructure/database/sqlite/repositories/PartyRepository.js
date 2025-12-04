@@ -82,6 +82,9 @@ class PartyRepository extends IPartyRepository {
             if (status) {
                 query += ` AND status = ?`;
                 params.push(status);
+            } else {
+                // By default, exclude finished parties from the list
+                query += ` AND status != 'finished'`;
             }
 
             query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
@@ -585,6 +588,415 @@ class PartyRepository extends IPartyRepository {
         } catch (error) {
             logger.error('Error counting public parties', { error: error.message });
             throw new Error(`Failed to count public parties: ${error.message}`);
+        }
+    }
+
+    // ============================================
+    // HISTORY & STATS METHODS
+    // ============================================
+
+    /**
+     * Save round scores for all players at end of round
+     * @param {string} partyId - Party ID
+     * @param {number} roundNumber - Round number
+     * @param {Array} playerScores - Array of player score data
+     * @returns {Promise<void>}
+     */
+    async saveRoundScores(partyId, roundNumber, playerScores) {
+        try {
+            const now = Math.floor(Date.now() / 1000);
+
+            for (const ps of playerScores) {
+                await this.db.run(
+                    `INSERT OR REPLACE INTO round_scores
+                     (party_id, round_number, user_id, player_index, score_this_round, total_score_after,
+                      hand_points, is_zapzap_caller, zapzap_success, was_counteracted, hand_cards,
+                      is_lowest_hand, is_eliminated, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        partyId,
+                        roundNumber,
+                        ps.userId,
+                        ps.playerIndex,
+                        ps.scoreThisRound,
+                        ps.totalScoreAfter,
+                        ps.handPoints,
+                        ps.isZapZapCaller ? 1 : 0,
+                        ps.zapZapSuccess ? 1 : 0,
+                        ps.wasCounterActed ? 1 : 0,
+                        ps.handCards ? JSON.stringify(ps.handCards) : null,
+                        ps.isLowestHand ? 1 : 0,
+                        ps.isEliminated ? 1 : 0,
+                        now
+                    ]
+                );
+            }
+
+            logger.info('Round scores saved', { partyId, roundNumber, playerCount: playerScores.length });
+        } catch (error) {
+            logger.error('Error saving round scores', { partyId, roundNumber, error: error.message });
+            throw new Error(`Failed to save round scores: ${error.message}`);
+        }
+    }
+
+    /**
+     * Save game result when game finishes
+     * @param {Object} gameResult - Game result data
+     * @returns {Promise<void>}
+     */
+    async saveGameResult(gameResult) {
+        try {
+            const now = Math.floor(Date.now() / 1000);
+
+            await this.db.run(
+                `INSERT OR REPLACE INTO game_results
+                 (party_id, winner_user_id, winner_final_score, total_rounds, was_golden_score,
+                  player_count, finished_at, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    gameResult.partyId,
+                    gameResult.winnerUserId,
+                    gameResult.winnerFinalScore,
+                    gameResult.totalRounds,
+                    gameResult.wasGoldenScore ? 1 : 0,
+                    gameResult.playerCount,
+                    now,
+                    now
+                ]
+            );
+
+            logger.info('Game result saved', { partyId: gameResult.partyId, winnerId: gameResult.winnerUserId });
+        } catch (error) {
+            logger.error('Error saving game result', { partyId: gameResult.partyId, error: error.message });
+            throw new Error(`Failed to save game result: ${error.message}`);
+        }
+    }
+
+    /**
+     * Save player game results for all players
+     * @param {string} partyId - Party ID
+     * @param {Array} playerResults - Array of player result data
+     * @returns {Promise<void>}
+     */
+    async savePlayerGameResults(partyId, playerResults) {
+        try {
+            const now = Math.floor(Date.now() / 1000);
+
+            for (const pr of playerResults) {
+                await this.db.run(
+                    `INSERT OR REPLACE INTO player_game_results
+                     (party_id, user_id, final_score, finish_position, rounds_played,
+                      total_zapzap_calls, successful_zapzaps, failed_zapzaps, lowest_hand_count,
+                      is_winner, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        partyId,
+                        pr.userId,
+                        pr.finalScore,
+                        pr.finishPosition,
+                        pr.roundsPlayed,
+                        pr.totalZapZapCalls || 0,
+                        pr.successfulZapZaps || 0,
+                        pr.failedZapZaps || 0,
+                        pr.lowestHandCount || 0,
+                        pr.isWinner ? 1 : 0,
+                        now
+                    ]
+                );
+            }
+
+            logger.info('Player game results saved', { partyId, playerCount: playerResults.length });
+        } catch (error) {
+            logger.error('Error saving player game results', { partyId, error: error.message });
+            throw new Error(`Failed to save player game results: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get finished games for a user
+     * @param {string} userId - User ID
+     * @param {number} limit - Limit
+     * @param {number} offset - Offset
+     * @returns {Promise<Array>}
+     */
+    async getFinishedGamesForUser(userId, limit = 20, offset = 0) {
+        try {
+            const records = await this.db.all(
+                `SELECT gr.*, p.name as party_name, p.visibility,
+                        u.username as winner_username,
+                        pgr.final_score as user_final_score,
+                        pgr.finish_position as user_position,
+                        pgr.is_winner as user_is_winner
+                 FROM game_results gr
+                 JOIN parties p ON gr.party_id = p.id
+                 JOIN users u ON gr.winner_user_id = u.id
+                 JOIN player_game_results pgr ON gr.party_id = pgr.party_id AND pgr.user_id = ?
+                 ORDER BY gr.finished_at DESC
+                 LIMIT ? OFFSET ?`,
+                [userId, limit, offset]
+            );
+
+            return records;
+        } catch (error) {
+            logger.error('Error getting finished games for user', { userId, error: error.message });
+            throw new Error(`Failed to get finished games: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get public finished games
+     * @param {number} limit - Limit
+     * @param {number} offset - Offset
+     * @returns {Promise<Array>}
+     */
+    async getPublicFinishedGames(limit = 20, offset = 0) {
+        try {
+            const records = await this.db.all(
+                `SELECT gr.*, p.name as party_name,
+                        u.username as winner_username
+                 FROM game_results gr
+                 JOIN parties p ON gr.party_id = p.id
+                 JOIN users u ON gr.winner_user_id = u.id
+                 WHERE p.visibility = 'public'
+                 ORDER BY gr.finished_at DESC
+                 LIMIT ? OFFSET ?`,
+                [limit, offset]
+            );
+
+            return records;
+        } catch (error) {
+            logger.error('Error getting public finished games', { error: error.message });
+            throw new Error(`Failed to get public finished games: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get game result by party ID
+     * @param {string} partyId - Party ID
+     * @returns {Promise<Object|null>}
+     */
+    async getGameResultByPartyId(partyId) {
+        try {
+            const record = await this.db.get(
+                `SELECT gr.*, p.name as party_name, p.visibility,
+                        u.username as winner_username
+                 FROM game_results gr
+                 JOIN parties p ON gr.party_id = p.id
+                 JOIN users u ON gr.winner_user_id = u.id
+                 WHERE gr.party_id = ?`,
+                [partyId]
+            );
+
+            return record || null;
+        } catch (error) {
+            logger.error('Error getting game result', { partyId, error: error.message });
+            throw new Error(`Failed to get game result: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get round scores for a party
+     * @param {string} partyId - Party ID
+     * @returns {Promise<Array>}
+     */
+    async getRoundScoresForParty(partyId) {
+        try {
+            const records = await this.db.all(
+                `SELECT rs.*, u.username
+                 FROM round_scores rs
+                 JOIN users u ON rs.user_id = u.id
+                 WHERE rs.party_id = ?
+                 ORDER BY rs.round_number ASC, rs.player_index ASC`,
+                [partyId]
+            );
+
+            return records;
+        } catch (error) {
+            logger.error('Error getting round scores', { partyId, error: error.message });
+            throw new Error(`Failed to get round scores: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get player results for a party
+     * @param {string} partyId - Party ID
+     * @returns {Promise<Array>}
+     */
+    async getPlayerResultsForParty(partyId) {
+        try {
+            const records = await this.db.all(
+                `SELECT pgr.*, u.username
+                 FROM player_game_results pgr
+                 JOIN users u ON pgr.user_id = u.id
+                 WHERE pgr.party_id = ?
+                 ORDER BY pgr.finish_position ASC`,
+                [partyId]
+            );
+
+            return records;
+        } catch (error) {
+            logger.error('Error getting player results', { partyId, error: error.message });
+            throw new Error(`Failed to get player results: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get user statistics
+     * @param {string} userId - User ID
+     * @returns {Promise<Object>}
+     */
+    async getUserStats(userId) {
+        try {
+            // Get basic game stats
+            const gameStats = await this.db.get(
+                `SELECT
+                    COUNT(*) as games_played,
+                    SUM(CASE WHEN is_winner = 1 THEN 1 ELSE 0 END) as wins,
+                    AVG(final_score) as avg_score,
+                    MIN(final_score) as best_score,
+                    SUM(rounds_played) as total_rounds,
+                    SUM(total_zapzap_calls) as total_zapzaps,
+                    SUM(successful_zapzaps) as successful_zapzaps,
+                    SUM(failed_zapzaps) as failed_zapzaps,
+                    SUM(lowest_hand_count) as lowest_hand_count
+                 FROM player_game_results
+                 WHERE user_id = ?`,
+                [userId]
+            );
+
+            const gamesPlayed = gameStats.games_played || 0;
+            const wins = gameStats.wins || 0;
+
+            return {
+                gamesPlayed,
+                wins,
+                losses: gamesPlayed - wins,
+                winRate: gamesPlayed > 0 ? wins / gamesPlayed : 0,
+                averageScore: gameStats.avg_score || 0,
+                bestScore: gameStats.best_score || 0,
+                totalRoundsPlayed: gameStats.total_rounds || 0,
+                zapzaps: {
+                    total: gameStats.total_zapzaps || 0,
+                    successful: gameStats.successful_zapzaps || 0,
+                    failed: gameStats.failed_zapzaps || 0,
+                    successRate: (gameStats.total_zapzaps || 0) > 0
+                        ? (gameStats.successful_zapzaps || 0) / (gameStats.total_zapzaps || 0)
+                        : 0
+                },
+                lowestHandCount: gameStats.lowest_hand_count || 0
+            };
+        } catch (error) {
+            logger.error('Error getting user stats', { userId, error: error.message });
+            throw new Error(`Failed to get user stats: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get global leaderboard
+     * @param {number} minGames - Minimum games to qualify
+     * @param {number} limit - Limit
+     * @param {number} offset - Offset
+     * @returns {Promise<Array>}
+     */
+    async getLeaderboard(minGames = 5, limit = 50, offset = 0) {
+        try {
+            const records = await this.db.all(
+                `SELECT
+                    u.id as user_id,
+                    u.username,
+                    COUNT(*) as games_played,
+                    SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as wins,
+                    CAST(SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
+                    AVG(pgr.final_score) as avg_score
+                 FROM player_game_results pgr
+                 JOIN users u ON pgr.user_id = u.id
+                 WHERE u.user_type = 'human'
+                 GROUP BY pgr.user_id
+                 HAVING COUNT(*) >= ?
+                 ORDER BY win_rate DESC, wins DESC
+                 LIMIT ? OFFSET ?`,
+                [minGames, limit, offset]
+            );
+
+            return records.map((r, index) => ({
+                rank: offset + index + 1,
+                userId: r.user_id,
+                username: r.username,
+                gamesPlayed: r.games_played,
+                wins: r.wins,
+                winRate: r.win_rate,
+                avgScore: r.avg_score
+            }));
+        } catch (error) {
+            logger.error('Error getting leaderboard', { error: error.message });
+            throw new Error(`Failed to get leaderboard: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count finished games for user
+     * @param {string} userId - User ID
+     * @returns {Promise<number>}
+     */
+    async countFinishedGamesForUser(userId) {
+        try {
+            const result = await this.db.get(
+                `SELECT COUNT(*) as count
+                 FROM player_game_results
+                 WHERE user_id = ?`,
+                [userId]
+            );
+
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting finished games', { userId, error: error.message });
+            throw new Error(`Failed to count finished games: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count public finished games
+     * @returns {Promise<number>}
+     */
+    async countPublicFinishedGames() {
+        try {
+            const result = await this.db.get(
+                `SELECT COUNT(*) as count
+                 FROM game_results gr
+                 JOIN parties p ON gr.party_id = p.id
+                 WHERE p.visibility = 'public'`
+            );
+
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting public finished games', { error: error.message });
+            throw new Error(`Failed to count public finished games: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count leaderboard entries
+     * @param {number} minGames - Minimum games to qualify
+     * @returns {Promise<number>}
+     */
+    async countLeaderboardEntries(minGames = 5) {
+        try {
+            const result = await this.db.get(
+                `SELECT COUNT(*) as count FROM (
+                    SELECT pgr.user_id
+                    FROM player_game_results pgr
+                    JOIN users u ON pgr.user_id = u.id
+                    WHERE u.user_type = 'human'
+                    GROUP BY pgr.user_id
+                    HAVING COUNT(*) >= ?
+                 )`,
+                [minGames]
+            );
+
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting leaderboard entries', { error: error.message });
+            throw new Error(`Failed to count leaderboard entries: ${error.message}`);
         }
     }
 }

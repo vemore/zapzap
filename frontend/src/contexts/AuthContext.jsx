@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getCurrentUser, isAuthenticated as checkAuth } from '../services/auth';
+import { getCurrentUser, isAuthenticated as checkAuth, logout as authLogout } from '../services/auth';
 
 const AuthContext = createContext(null);
 
@@ -16,11 +16,17 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
+  const logout = () => {
+    authLogout();
+    setUser(null);
+  };
+
   const value = {
     user,
     setUser,
     isAuthenticated: checkAuth(),
     loading,
+    logout,
   };
 
   return (

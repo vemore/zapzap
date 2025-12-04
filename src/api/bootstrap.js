@@ -29,11 +29,21 @@ const DrawCard = require('../use-cases/game/DrawCard');
 const CallZapZap = require('../use-cases/game/CallZapZap');
 const GetGameState = require('../use-cases/game/GetGameState');
 const NextRound = require('../use-cases/game/NextRound');
+const SaveRoundScores = require('../use-cases/game/SaveRoundScores');
+const SaveGameResult = require('../use-cases/game/SaveGameResult');
 
 // Use Cases - Bot Management
 const CreateBot = require('../use-cases/bot/CreateBot');
 const ListBots = require('../use-cases/bot/ListBots');
 const DeleteBot = require('../use-cases/bot/DeleteBot');
+
+// Use Cases - History
+const GetGameHistory = require('../use-cases/history/GetGameHistory');
+const GetGameDetails = require('../use-cases/history/GetGameDetails');
+
+// Use Cases - Stats
+const GetUserStats = require('../use-cases/stats/GetUserStats');
+const GetLeaderboard = require('../use-cases/stats/GetLeaderboard');
 
 // Bot Infrastructure
 const BotActionService = require('../infrastructure/bot/BotActionService');
@@ -90,16 +100,30 @@ async function bootstrap(emitter = null) {
         container.register('deleteParty', new DeleteParty(partyRepository, userRepository));
 
         // Register game action use cases
+        // Note: SaveRoundScores and SaveGameResult are created first for dependency injection
+        const saveRoundScores = new SaveRoundScores(partyRepository);
+        const saveGameResult = new SaveGameResult(partyRepository);
+
+        container.register('saveRoundScores', saveRoundScores);
+        container.register('saveGameResult', saveGameResult);
         container.register('playCards', new PlayCards(partyRepository, userRepository));
         container.register('drawCard', new DrawCard(partyRepository, userRepository));
-        container.register('callZapZap', new CallZapZap(partyRepository, userRepository));
+        container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores));
         container.register('getGameState', new GetGameState(partyRepository, userRepository));
-        container.register('nextRound', new NextRound(partyRepository, userRepository));
+        container.register('nextRound', new NextRound(partyRepository, userRepository, saveGameResult));
 
         // Register bot management use cases
         container.register('createBot', new CreateBot(userRepository));
         container.register('listBots', new ListBots(userRepository));
         container.register('deleteBot', new DeleteBot(userRepository));
+
+        // Register history use cases
+        container.register('getGameHistory', new GetGameHistory(partyRepository, userRepository));
+        container.register('getGameDetails', new GetGameDetails(partyRepository, userRepository));
+
+        // Register stats use cases
+        container.register('getUserStats', new GetUserStats(partyRepository, userRepository));
+        container.register('getLeaderboard', new GetLeaderboard(partyRepository, userRepository));
 
         // Register bot infrastructure (if emitter is provided)
         if (emitter) {

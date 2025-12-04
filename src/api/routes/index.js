@@ -9,6 +9,8 @@ const createAuthRouter = require('./authRoutes');
 const createPartyRouter = require('./partyRoutes');
 const createGameRouter = require('./gameRoutes');
 const createBotRouter = require('./botRoutes');
+const createHistoryRouter = require('./historyRoutes');
+const createStatsRouter = require('./statsRoutes');
 
 /**
  * Create main API router
@@ -29,6 +31,8 @@ function createApiRouter(container, emitter) {
     router.use('/party', createPartyRouter(container, authMiddleware, optionalAuthMiddleware, emitter));
     router.use('/game', createGameRouter(container, authMiddleware, emitter));
     router.use('/bots', createBotRouter(container)); // Bot management (admin endpoints)
+    router.use('/history', createHistoryRouter(container)); // Game history
+    router.use('/stats', createStatsRouter(container)); // Statistics and leaderboard
 
     // Health check endpoint
     router.get('/health', (req, res) => {

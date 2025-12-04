@@ -99,7 +99,7 @@ function createAuthRouter(container) {
                 username: req.body.username
             });
 
-            if (error.message === 'Invalid credentials') {
+            if (error.message === 'Invalid username or password') {
                 return res.status(401).json({
                     error: error.message,
                     code: 'INVALID_CREDENTIALS'

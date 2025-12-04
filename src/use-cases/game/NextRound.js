@@ -10,10 +10,12 @@ class NextRound {
     /**
      * @param {IPartyRepository} partyRepository - Party repository
      * @param {IUserRepository} userRepository - User repository
+     * @param {SaveGameResult} saveGameResult - SaveGameResult use case
      */
-    constructor(partyRepository, userRepository) {
+    constructor(partyRepository, userRepository, saveGameResult = null) {
         this.partyRepository = partyRepository;
         this.userRepository = userRepository;
+        this.saveGameResult = saveGameResult;
     }
 
     /**
@@ -114,6 +116,29 @@ class NextRound {
                     wasGoldenScore: wasGoldenScore
                 });
 
+                // Archive game result
+                if (this.saveGameResult) {
+                    try {
+                        await this.saveGameResult.execute({
+                            partyId,
+                            winner: {
+                                odId: winner.userId,
+                                playerIndex: winner.playerIndex,
+                                finalScore: scores[winner.playerIndex] || 0
+                            },
+                            totalRounds: currentRound.roundNumber,
+                            wasGoldenScore: wasGoldenScore,
+                            players: players,
+                            gameState: currentGameState
+                        });
+                    } catch (archiveError) {
+                        logger.error('Failed to archive game result', {
+                            partyId,
+                            error: archiveError.message
+                        });
+                    }
+                }
+
                 return {
                     success: true,
                     gameFinished: true,
@@ -152,6 +177,29 @@ class NextRound {
                         loserId: loser.userId,
                         finalScores: scores
                     });
+
+                    // Archive game result
+                    if (this.saveGameResult) {
+                        try {
+                            await this.saveGameResult.execute({
+                                partyId,
+                                winner: {
+                                    odId: winner.userId,
+                                    playerIndex: winner.playerIndex,
+                                    finalScore: scores[winner.playerIndex] || 0
+                                },
+                                totalRounds: currentRound.roundNumber,
+                                wasGoldenScore: true,
+                                players: players,
+                                gameState: currentGameState
+                            });
+                        } catch (archiveError) {
+                            logger.error('Failed to archive Golden Score result', {
+                                partyId,
+                                error: archiveError.message
+                            });
+                        }
+                    }
 
                     return {
                         success: true,
