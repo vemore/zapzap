@@ -105,7 +105,7 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
                 </div>
                 <div className="bg-red-900/50 border border-red-800 rounded px-4 py-2 text-center">
                   <p className="text-red-200 text-sm">
-                    Penalty: {zapZapPlayer.handValue} + ({players.length} × 5) = {zapZapPlayer.score} points
+                    Penalty: {zapZapPlayer.handValue} + ({players.filter(p => p.totalScore <= 100).length - 1} × 5) = {zapZapPlayer.score} points
                   </p>
                 </div>
               </>

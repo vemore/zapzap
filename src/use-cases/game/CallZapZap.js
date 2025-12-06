@@ -147,31 +147,33 @@ class CallZapZap {
             }
 
             // Calculate score changes according to rules:
-            // - Lowest hand player: 0 points
+            // - Lowest hand player (not the caller if counteracted): 0 points
             // - Other active players: their hand points (Joker = 25)
-            // - If counteracted: caller gets hand_points + (num_active_players × 5)
+            // - If counteracted: caller gets hand_points + ((num_active_players - 1) × 5)
             // - Eliminated players: no score change (they're out of the game)
 
             if (counteracted) {
                 // ZapZap failed - someone else has lower or equal hand
-                // The counteracting player (lowest) gets 0 points
-                // Caller gets penalty: their hand points + (num_active_players × 5)
+                // The counteracting player (lowest, not the caller) gets 0 points
+                // Caller gets penalty: their hand points + ((num_active_players - 1) × 5)
                 // Other active players get their hand points (Joker = 25)
 
-                const callerPenalty = handPointsMap[player.playerIndex] + (activePlayers.length * 5);
+                // Penalty is based on other active players (excluding the caller)
+                const callerPenalty = handPointsMap[player.playerIndex] + ((activePlayers.length - 1) * 5);
 
                 for (const p of activePlayers) {
-                    const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
-
-                    if (isLowest) {
-                        // Lowest hand gets 0 points this round
-                        // scores[p.playerIndex] += 0;
-                    } else if (p.playerIndex === player.playerIndex) {
-                        // Caller gets penalty
+                    if (p.playerIndex === player.playerIndex) {
+                        // Caller always gets penalty when counteracted (even if tied for lowest)
                         scores[p.playerIndex] += callerPenalty;
                     } else {
-                        // Other active players get their hand points
-                        scores[p.playerIndex] += handPointsMap[p.playerIndex];
+                        const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+                        if (isLowest) {
+                            // Lowest hand (not the caller) gets 0 points this round
+                            // scores[p.playerIndex] += 0;
+                        } else {
+                            // Other active players get their hand points
+                            scores[p.playerIndex] += handPointsMap[p.playerIndex];
+                        }
                     }
                 }
 
@@ -223,14 +225,17 @@ class CallZapZap {
                     continue;
                 }
 
-                const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
-                if (isLowest) {
-                    roundScores[p.playerIndex] = 0;
-                } else if (counteracted && p.playerIndex === player.playerIndex) {
-                    // Caller got penalty (using active players count)
-                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex] + (activePlayers.length * 5);
+                if (counteracted && p.playerIndex === player.playerIndex) {
+                    // Caller always gets penalty when counteracted (even if tied for lowest)
+                    // Penalty is based on other active players (excluding the caller)
+                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex] + ((activePlayers.length - 1) * 5);
                 } else {
-                    roundScores[p.playerIndex] = handPointsMap[p.playerIndex];
+                    const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+                    if (isLowest) {
+                        roundScores[p.playerIndex] = 0;
+                    } else {
+                        roundScores[p.playerIndex] = handPointsMap[p.playerIndex];
+                    }
                 }
             }
 
@@ -354,16 +359,19 @@ class CallZapZap {
                         };
                     }
 
-                    const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
                     let scoreThisRound = 0;
 
-                    if (isLowest) {
-                        scoreThisRound = 0;
-                    } else if (counteracted && p.playerIndex === player.playerIndex) {
-                        // Caller got penalty (using active players count)
-                        scoreThisRound = handPointsMap[p.playerIndex] + (activePlayers.length * 5);
+                    if (counteracted && p.playerIndex === player.playerIndex) {
+                        // Caller always gets penalty when counteracted (even if tied for lowest)
+                        // Penalty is based on other active players (excluding the caller)
+                        scoreThisRound = handPointsMap[p.playerIndex] + ((activePlayers.length - 1) * 5);
                     } else {
-                        scoreThisRound = handPointsMap[p.playerIndex];
+                        const isLowest = baseHandPoints[p.playerIndex] === lowestBaseValue;
+                        if (isLowest) {
+                            scoreThisRound = 0;
+                        } else {
+                            scoreThisRound = handPointsMap[p.playerIndex];
+                        }
                     }
 
                     return {

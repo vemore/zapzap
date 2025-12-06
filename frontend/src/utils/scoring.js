@@ -30,12 +30,13 @@ export function isZapZapEligible(hand) {
 /**
  * Calculate counteract penalty
  * @param {number} handValue - Player's hand value
- * @param {number} numPlayers - Total number of players
- * @returns {number} - Penalty = hand + (players × 5)
+ * @param {number} numActivePlayers - Number of active (non-eliminated) players
+ * @returns {number} - Penalty = hand + ((activePlayers - 1) × 5)
  */
-export function calculateCounteractPenalty(handValue, numPlayers) {
-  // README line 388: hand_points_with_joker + (num_players × 5)
-  return handValue + (numPlayers * 5);
+export function calculateCounteractPenalty(handValue, numActivePlayers) {
+  // Penalty is hand points + (other active players × 5)
+  // The caller is excluded from the count
+  return handValue + ((numActivePlayers - 1) * 5);
 }
 
 /**
@@ -73,9 +74,14 @@ export function calculateFinalScore(hands, zapZapCallerId = null) {
   // Check for counteract if someone called ZapZap
   if (zapZapCallerId) {
     const caller = handValues.find(h => h.userId === zapZapCallerId);
+    // Check if another player has equal or lower value (counteract condition)
+    const otherPlayersLowerOrEqual = handValues.some(
+      h => h.userId !== zapZapCallerId && h.value <= caller.value
+    );
 
-    if (caller && caller.value !== lowestValue) {
-      // Caller is counteracted! Apply penalty (README line 388-389)
+    if (caller && otherPlayersLowerOrEqual) {
+      // Caller is counteracted! Apply penalty
+      // The caller always gets penalty when counteracted (even if tied for lowest)
       scores[zapZapCallerId] = calculateCounteractPenalty(caller.value, numPlayers);
     }
   }
@@ -95,11 +101,12 @@ export function checkZapZapSuccess(callerHand, otherHands) {
   const otherValues = otherHands.map(hand => calculateHandValue(hand, true));
   const lowestOther = Math.min(...otherValues);
 
-  if (callerValue <= lowestOther) {
-    // Caller has lowest or tied - success!
+  if (callerValue < lowestOther) {
+    // Caller has strictly lowest - success!
     return { success: true, lowestPlayer: null };
   } else {
-    // Someone has lower - counteracted!
+    // Someone has lower or equal - counteracted!
+    // Equality means counteract (the other player with equal score gets 0, caller gets penalty)
     const lowestPlayerIndex = otherValues.indexOf(lowestOther);
     return { success: false, lowestPlayer: lowestPlayerIndex };
   }
