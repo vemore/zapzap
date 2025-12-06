@@ -420,7 +420,7 @@ function GameBoard() {
             lastAction={lastAction}
             players={players}
             currentTurn={currentTurn}
-            onDiscardSelect={isMyTurn && (currentAction === 'draw' || currentAction === 'play') ? setSelectedDiscardCard : undefined}
+            onDiscardSelect={isMyTurn && currentAction === 'draw' ? setSelectedDiscardCard : undefined}
             selectedDiscardCard={selectedDiscardCard}
           />
         </section>
@@ -432,7 +432,7 @@ function GameBoard() {
             <DeckPile
               cardsRemaining={deckSize}
               onClick={onDrawFromDeck}
-              disabled={!isMyTurn || (currentAction !== 'draw' && currentAction !== 'play')}
+              disabled={!isMyTurn || currentAction !== 'draw'}
             />
           </div>
 

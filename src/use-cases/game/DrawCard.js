@@ -84,9 +84,9 @@ class DrawCard {
                 throw new Error('Not your turn');
             }
 
-            // Check current action allows drawing (either 'draw' phase or 'play' phase at start of turn)
-            if (gameState.currentAction !== 'draw' && gameState.currentAction !== 'play') {
-                throw new Error('Cannot draw at this time');
+            // Check current action allows drawing (only 'draw' phase - after playing cards)
+            if (gameState.currentAction !== 'draw') {
+                throw new Error('Cannot draw at this time - you must play cards first');
             }
 
             // Check if player is eliminated
