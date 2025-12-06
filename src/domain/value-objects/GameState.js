@@ -9,8 +9,9 @@ class GameState {
      * @param {Object} props - State properties
      * @param {Array<number>} props.deck - Array of card IDs in deck
      * @param {Object<string, Array<number>>} props.hands - Map of player index to card IDs
-     * @param {Array<number>} props.lastCardsPlayed - Card IDs from previous turn
+     * @param {Array<number>} props.lastCardsPlayed - Card IDs from previous turn (visible discard)
      * @param {Array<number>} props.cardsPlayed - Card IDs from current turn
+     * @param {Array<number>} props.discardPile - All previously discarded cards (for reshuffling)
      * @param {Object<string, number>} props.scores - Map of player index to scores
      * @param {number} props.currentTurn - Current turn number
      * @param {string} props.currentAction - Current action ('draw', 'play', 'zapzap')
@@ -24,6 +25,7 @@ class GameState {
         hands = {},
         lastCardsPlayed = [],
         cardsPlayed = [],
+        discardPile = [],
         scores = {},
         currentTurn = 0,
         currentAction = 'draw',
@@ -36,6 +38,7 @@ class GameState {
         this._hands = JSON.parse(JSON.stringify(hands));
         this._lastCardsPlayed = [...lastCardsPlayed];
         this._cardsPlayed = [...cardsPlayed];
+        this._discardPile = [...discardPile];
         this._scores = JSON.parse(JSON.stringify(scores));
         this._currentTurn = currentTurn;
         this._currentAction = currentAction;
@@ -63,6 +66,10 @@ class GameState {
 
     get cardsPlayed() {
         return [...this._cardsPlayed];
+    }
+
+    get discardPile() {
+        return [...this._discardPile];
     }
 
     get scores() {
@@ -156,6 +163,7 @@ class GameState {
             hands: updates.hands !== undefined ? updates.hands : this._hands,
             lastCardsPlayed: updates.lastCardsPlayed !== undefined ? updates.lastCardsPlayed : this._lastCardsPlayed,
             cardsPlayed: updates.cardsPlayed !== undefined ? updates.cardsPlayed : this._cardsPlayed,
+            discardPile: updates.discardPile !== undefined ? updates.discardPile : this._discardPile,
             scores: updates.scores !== undefined ? updates.scores : this._scores,
             currentTurn: updates.currentTurn !== undefined ? updates.currentTurn : this._currentTurn,
             currentAction: updates.currentAction !== undefined ? updates.currentAction : this._currentAction,
@@ -185,6 +193,7 @@ class GameState {
             hands: this._hands,
             lastCardsPlayed: this._lastCardsPlayed,
             cardsPlayed: this._cardsPlayed,
+            discardPile: this._discardPile,
             scores: this._scores,
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
@@ -205,6 +214,7 @@ class GameState {
             hands: JSON.parse(JSON.stringify(this._hands)),
             lastCardsPlayed: [...this._lastCardsPlayed],
             cardsPlayed: [...this._cardsPlayed],
+            discardPile: [...this._discardPile],
             scores: JSON.parse(JSON.stringify(this._scores)),
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,
@@ -225,6 +235,7 @@ class GameState {
             hands: JSON.parse(JSON.stringify(this._hands)),
             lastCardsPlayed: [...this._lastCardsPlayed],
             cardsPlayed: [...this._cardsPlayed],
+            discardPile: [...this._discardPile],
             scores: JSON.parse(JSON.stringify(this._scores)),
             currentTurn: this._currentTurn,
             currentAction: this._currentAction,

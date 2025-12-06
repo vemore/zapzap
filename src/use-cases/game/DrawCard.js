@@ -98,11 +98,32 @@ class DrawCard {
             let drawnCard;
             let newDeck = [...gameState.deck];
             let newLastCardsPlayed = [...gameState.lastCardsPlayed];
+            let newDiscardPile = [...(gameState.discardPile || [])];
+            let deckWasReshuffled = false;
 
             if (source === 'deck') {
                 // Draw from deck
                 if (newDeck.length === 0) {
-                    throw new Error('Deck is empty');
+                    // Deck is empty - reshuffle discard pile (excluding lastCardsPlayed which are still pickable)
+                    if (newDiscardPile.length === 0) {
+                        throw new Error('Deck is empty and no cards to reshuffle');
+                    }
+
+                    // Shuffle the discard pile using Fisher-Yates algorithm
+                    const shuffledCards = [...newDiscardPile];
+                    for (let i = shuffledCards.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [shuffledCards[i], shuffledCards[j]] = [shuffledCards[j], shuffledCards[i]];
+                    }
+
+                    newDeck = shuffledCards;
+                    newDiscardPile = []; // Clear discard pile after reshuffling
+                    deckWasReshuffled = true;
+
+                    logger.info('Deck reshuffled from discard pile', {
+                        partyId: partyId,
+                        cardsReshuffled: newDeck.length
+                    });
                 }
 
                 drawnCard = newDeck.pop();
@@ -143,6 +164,7 @@ class DrawCard {
                 hands: newHands,
                 deck: newDeck,
                 lastCardsPlayed: newLastCardsPlayed,
+                discardPile: newDiscardPile,
                 currentTurn: nextTurn,
                 currentAction: 'play',
                 lastAction: {
@@ -150,6 +172,7 @@ class DrawCard {
                     playerIndex: player.playerIndex,
                     source: source,
                     cardId: drawnCard,
+                    deckReshuffled: deckWasReshuffled,
                     timestamp: Date.now()
                 }
             });
@@ -172,7 +195,8 @@ class DrawCard {
                 gameState: newGameState.toPublicObject(),
                 cardDrawn: drawnCard,
                 source: source,
-                handSize: newHand.length
+                handSize: newHand.length,
+                deckReshuffled: deckWasReshuffled
             };
         } catch (error) {
             logger.error('Draw card error', {

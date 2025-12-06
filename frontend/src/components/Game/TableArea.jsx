@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, Download, ArrowRight } from 'lucide-react';
+import { Layers, Download, ArrowRight, Shuffle } from 'lucide-react';
 import PlayingCard from './PlayingCard';
 
 /**
@@ -29,6 +29,18 @@ function TableArea({
     return player?.username || `Player ${playerIndex + 1}`;
   };
 
+  // Track when deck was reshuffled for animation
+  const [showReshuffle, setShowReshuffle] = useState(false);
+
+  // Trigger reshuffle animation when deck is reshuffled
+  useEffect(() => {
+    if (lastAction?.deckReshuffled) {
+      setShowReshuffle(true);
+      const timer = setTimeout(() => setShowReshuffle(false), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastAction?.timestamp]);
+
   // Build action message
   const actionMessage = useMemo(() => {
     if (!lastAction) return null;
@@ -45,9 +57,14 @@ function TableArea({
 
     if (lastAction.type === 'draw') {
       if (lastAction.source === 'deck') {
+        // Check if deck was reshuffled during this draw
+        const reshuffleText = lastAction.deckReshuffled
+          ? ' (deck reshuffled!)'
+          : '';
         return {
-          text: `${playerName} drew from deck`,
-          icon: <Download className="w-4 h-4" />
+          text: `${playerName} drew from deck${reshuffleText}`,
+          icon: lastAction.deckReshuffled ? <Shuffle className="w-4 h-4" /> : <Download className="w-4 h-4" />,
+          deckReshuffled: lastAction.deckReshuffled
         };
       } else {
         return {
@@ -62,7 +79,39 @@ function TableArea({
   }, [lastAction, players, cardsPlayed]);
 
   return (
-    <div className="bg-gradient-to-b from-green-900/40 to-green-800/30 rounded-xl p-6 border border-green-700/50 shadow-inner">
+    <div className="relative bg-gradient-to-b from-green-900/40 to-green-800/30 rounded-xl p-6 border border-green-700/50 shadow-inner">
+      {/* Reshuffle animation overlay */}
+      <AnimatePresence>
+        {showReshuffle && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none"
+          >
+            <motion.div
+              className="bg-amber-500/90 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3"
+              animate={{
+                rotate: [0, -5, 5, -5, 5, 0],
+              }}
+              transition={{
+                duration: 0.5,
+                repeat: 2,
+                ease: "easeInOut"
+              }}
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 0.8, repeat: 2, ease: "linear" }}
+              >
+                <Shuffle className="w-6 h-6" />
+              </motion.div>
+              <span className="font-bold text-lg">Deck Reshuffled!</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Action message */}
       <AnimatePresence mode="wait">
         {actionMessage && (
@@ -71,7 +120,9 @@ function TableArea({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="flex items-center justify-center gap-2 mb-4 text-green-300 text-sm font-medium"
+            className={`flex items-center justify-center gap-2 mb-4 text-sm font-medium ${
+              actionMessage.deckReshuffled ? 'text-amber-400' : 'text-green-300'
+            }`}
           >
             {actionMessage.icon}
             <span>{actionMessage.text}</span>

@@ -24,19 +24,12 @@
   cursor: pointer;
 }
 
-/* Hover effect - lift card slightly */
-.card-fan-item:hover {
-  z-index: 100 !important;
-}
-
+/* Hover effect - lift card slightly (no z-index change to avoid blocking other cards) */
 .card-fan-item:hover:not(.selected) {
   transform: translateX(var(--card-translateX, 0px)) rotate(var(--card-angle, 0deg)) translateY(-15px) scale(1.05);
 }
 
-/* Selected card - lifted higher with glow */
-.card-fan-item.selected {
-  z-index: 99 !important;
-}
+/* Selected card - lifted higher with glow (no z-index change to allow selecting other cards) */
 
 /* ========================================
    Playing Card Wrapper Styles

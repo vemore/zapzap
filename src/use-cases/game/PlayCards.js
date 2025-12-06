@@ -118,10 +118,14 @@ class PlayCards {
             const newHands = { ...gameState.hands };
             newHands[player.playerIndex] = newHand;
 
+            // Add old lastCardsPlayed to discard pile (they're no longer pickable)
+            const newDiscardPile = [...(gameState.discardPile || []), ...gameState.lastCardsPlayed];
+
             const newGameState = gameState.withUpdates({
                 hands: newHands,
                 cardsPlayed: cardIds,
                 lastCardsPlayed: gameState.cardsPlayed,
+                discardPile: newDiscardPile,
                 currentAction: 'draw',
                 lastAction: {
                     type: 'play',
