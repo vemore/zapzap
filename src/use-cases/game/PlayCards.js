@@ -118,13 +118,25 @@ class PlayCards {
             const newHands = { ...gameState.hands };
             newHands[player.playerIndex] = newHand;
 
-            // Add old lastCardsPlayed to discard pile (they're no longer pickable)
-            const newDiscardPile = [...(gameState.discardPile || []), ...gameState.lastCardsPlayed];
+            // Determine new lastCardsPlayed:
+            // - If cardsPlayed is empty (first play of the round), keep current lastCardsPlayed
+            //   (the flipped card) so the player can still choose it when drawing
+            // - Otherwise, use the previous cardsPlayed
+            const isFirstPlayOfRound = !gameState.cardsPlayed || gameState.cardsPlayed.length === 0;
+            const newLastCardsPlayed = isFirstPlayOfRound
+                ? gameState.lastCardsPlayed  // Keep the flipped card available
+                : gameState.cardsPlayed;
+
+            // Add old lastCardsPlayed to discard pile only if not first play
+            // (first play keeps the flipped card in lastCardsPlayed)
+            const newDiscardPile = isFirstPlayOfRound
+                ? [...(gameState.discardPile || [])]
+                : [...(gameState.discardPile || []), ...gameState.lastCardsPlayed];
 
             const newGameState = gameState.withUpdates({
                 hands: newHands,
                 cardsPlayed: cardIds,
-                lastCardsPlayed: gameState.cardsPlayed,
+                lastCardsPlayed: newLastCardsPlayed,
                 discardPile: newDiscardPile,
                 currentAction: 'draw',
                 lastAction: {
