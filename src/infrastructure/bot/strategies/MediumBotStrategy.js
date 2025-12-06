@@ -22,7 +22,7 @@ class MediumBotStrategy extends BotStrategy {
             return null;
         }
 
-        // Try to play high-value cards (10, J, Q, K = 10 points)
+        // Try to play high-value cards (10=10, J=11, Q=12, K=13 points)
         const highValuePlay = CardAnalyzer.findHighValuePlay(hand);
 
         if (highValuePlay && highValuePlay.length > 0) {

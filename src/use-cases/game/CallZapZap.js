@@ -440,13 +440,21 @@ class CallZapZap {
             // Get rank (0-12 for A-K)
             const rank = cardId % 13;
 
-            // Ace = 1, 2-9 = face value, 10-K = 10
+            // Ace = 1
             if (rank === 0) {
-                points += 1; // Ace
-            } else if (rank <= 8) {
-                points += rank + 1; // 2-9
+                points += 1;
+            }
+            // 2-10 = face value (rank 1-9 → points 2-10)
+            else if (rank <= 9) {
+                points += rank + 1;
+            }
+            // J = 11, Q = 12, K = 13 points
+            else if (rank === 10) {
+                points += 11; // Jack
+            } else if (rank === 11) {
+                points += 12; // Queen
             } else {
-                points += 10; // 10, J, Q, K
+                points += 13; // King
             }
         }
 

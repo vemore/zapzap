@@ -24,9 +24,15 @@
   cursor: pointer;
 }
 
-/* Hover effect - lift card slightly (no z-index change to avoid blocking other cards) */
+/* Hover effect - lift card slightly and bring to front */
 .card-fan-item:hover:not(.selected) {
   transform: translateX(var(--card-translateX, 0px)) rotate(var(--card-angle, 0deg)) translateY(-15px) scale(1.05);
+  z-index: 50 !important;
+}
+
+/* Selected card should be on top */
+.card-fan-item.selected {
+  z-index: 100 !important;
 }
 
 /* Selected card - lifted higher with glow (no z-index change to allow selecting other cards) */
@@ -109,12 +115,75 @@ playing-card img {
 
 @media (max-width: 768px) {
   .card-fan {
-    min-height: 140px;
+    min-height: 100px;
   }
 }
 
 @media (max-width: 480px) {
   .card-fan {
-    min-height: 120px;
+    min-height: 80px;
+  }
+}
+
+/* ========================================
+   Custom Scrollbar Styles
+   ======================================== */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 3px;
+}
+
+.scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
+  background-color: #475569;
+}
+
+/* ========================================
+   Mobile-specific optimizations
+   ======================================== */
+
+@media (max-width: 640px) {
+  /* Lock the game container to viewport height on mobile */
+  .mobile-game-container {
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile browsers */
+    overflow: hidden;
+  }
+
+  /* Prevent text selection on game elements for better touch experience */
+  .card-fan-item,
+  .playing-card-wrapper,
+  .joker-card {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Reduce card hover effects on touch devices */
+  .card-fan-item:hover:not(.selected) {
+    transform: translateX(var(--card-translateX, 0px)) rotate(var(--card-angle, 0deg));
+  }
+
+  /* Smaller card shadows on mobile for performance */
+  .playing-card-wrapper.selected {
+    box-shadow: 0 0 12px 4px rgba(251, 191, 36, 0.6);
+  }
+
+  .joker-card.selected {
+    box-shadow: 0 0 12px 4px rgba(251, 191, 36, 0.6);
   }
 }

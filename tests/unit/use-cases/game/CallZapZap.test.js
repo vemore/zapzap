@@ -102,8 +102,8 @@ describe('CallZapZap Use Case', () => {
             expect(result.zapzapSuccess).toBe(true);
             expect(result.counteracted).toBe(false);
             expect(result.callerPoints).toBe(3);
-            expect(result.scores[1]).toBe(3);
-            expect(result.scores[2]).toBe(3);
+            expect(result.scores[1]).toBe(6);  // Ace + 2 + 3 = 1+2+3 = 6 points
+            expect(result.scores[2]).toBe(6);  // Ace + 2 + 3 = 1+2+3 = 6 points
         });
 
         it('should be counteracted when another player has equal/lower points', async () => {
@@ -153,8 +153,10 @@ describe('CallZapZap Use Case', () => {
                 partyId: mockParty.id
             });
 
-            // Caller gets all other players' points
-            expect(result.scores[0]).toBe(9); // 3 + 6
+            // Caller gets penalty: callerPoints + ((activePlayerCount - 1) * 5)
+            // mockGameState: player 0 = 3pts, player 1 = 3pts, player 2 = 6pts
+            // Counteracted by player 1 (equal), so caller gets: 3 + ((3-1) * 5) = 3 + 10 = 13
+            expect(result.scores[0]).toBe(13);
         });
 
         it('should finish the round', async () => {
@@ -273,7 +275,7 @@ describe('CallZapZap Use Case', () => {
             const highHandState = new GameState({
                 ...mockGameState.toObject(),
                 hands: {
-                    0: [9, 10, 11] // 10 + 10 + 10 = 30 points
+                    0: [9, 10, 11] // 10 + J(11) + Q(12) = 33 points
                 }
             });
 
@@ -288,7 +290,7 @@ describe('CallZapZap Use Case', () => {
                     userId: mockUser.id,
                     partyId: mockParty.id
                 })
-            ).rejects.toThrow('Hand value too high (30 points). Must be ≤5 to call zapzap.');
+            ).rejects.toThrow('Hand value too high (33 points). Must be ≤5 to call zapzap.');
         });
 
         it('should reject zapzap when current action not allowed', async () => {
@@ -341,7 +343,7 @@ describe('CallZapZap Use Case', () => {
                 { id: 'p0', userId: mockUser.id, playerIndex: 0 }
             ];
 
-            // J, Q, K = 10 + 10 + 10 = 30
+            // J, Q, K = 11 + 12 + 13 = 36
             const faceCardState = new GameState({
                 ...mockGameState.toObject(),
                 hands: { 0: [10, 11, 12] }
@@ -358,7 +360,7 @@ describe('CallZapZap Use Case', () => {
                     userId: mockUser.id,
                     partyId: mockParty.id
                 })
-            ).rejects.toThrow('Hand value too high (30 points)');
+            ).rejects.toThrow('Hand value too high (36 points)');
         });
 
         it('should count jokers as 0 points', async () => {

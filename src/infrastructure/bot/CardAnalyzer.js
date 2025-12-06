@@ -23,13 +23,15 @@ class CardAnalyzer {
             return 1;
         }
 
-        // 2-9 = face value (rank 1-8 → points 2-9)
-        if (rank <= 8) {
+        // 2-10 = face value (rank 1-9 → points 2-10)
+        if (rank <= 9) {
             return rank + 1;
         }
 
-        // 10, J, Q, K = 10 points
-        return 10;
+        // J = 11, Q = 12, K = 13 points
+        if (rank === 10) return 11; // Jack
+        if (rank === 11) return 12; // Queen
+        return 13; // King
     }
 
     /**

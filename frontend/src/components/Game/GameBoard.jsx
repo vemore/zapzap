@@ -365,35 +365,35 @@ function GameBoard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen sm:h-auto flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 mobile-game-container">
+      {/* Header - compact on mobile */}
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-2 py-2 sm:px-4 sm:py-3">
           <div className="flex items-center justify-between">
-            {/* Logo */}
+            {/* Logo - smaller on mobile */}
             <div className="flex items-center">
-              <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
-              <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
+              <Dice6 className="w-5 h-5 sm:w-8 sm:h-8 text-amber-400 mr-1 sm:mr-2" />
+              <h1 className="text-lg sm:text-2xl font-bold text-white">ZapZap</h1>
             </div>
 
             {/* Party info and SSE indicator */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Golden Score indicator */}
               {isGoldenScore && (
-                <div className="flex items-center bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-1 animate-pulse">
-                  <span className="text-yellow-400 font-bold text-sm">GOLDEN SCORE</span>
+                <div className="flex items-center bg-yellow-500/20 border border-yellow-500/50 rounded px-2 py-0.5 animate-pulse">
+                  <span className="text-yellow-400 font-bold text-xs sm:text-sm">GOLDEN</span>
                 </div>
               )}
               {/* SSE connection indicator */}
               <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
                 {sseConnected ? (
-                  <Wifi className="w-4 h-4 text-green-400" />
+                  <Wifi className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />
                 ) : (
-                  <WifiOff className="w-4 h-4 text-gray-500 animate-pulse" />
+                  <WifiOff className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500 animate-pulse" />
                 )}
               </div>
-              <span className="text-gray-300">
-                Party: <span className="font-semibold text-white">{partyName || partyId}</span>
+              <span className="text-gray-300 text-xs sm:text-base truncate max-w-[100px] sm:max-w-none">
+                <span className="font-semibold text-white">{partyName || partyId}</span>
               </span>
             </div>
           </div>
@@ -401,9 +401,9 @@ function GameBoard() {
       </div>
 
       {/* Main game layout */}
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Players row at top */}
-        <section>
+      <div className="flex-1 flex flex-col max-w-7xl mx-auto w-full px-2 py-1 sm:px-4 sm:py-4 gap-1 sm:gap-4">
+        {/* Players row at top - horizontal scrollable on mobile */}
+        <section className="flex-shrink-0">
           <PlayerTable
             players={players}
             currentTurn={currentTurn}
@@ -412,8 +412,8 @@ function GameBoard() {
           />
         </section>
 
-        {/* Table area (tapis) - center */}
-        <section>
+        {/* Table area (tapis) - compact on mobile */}
+        <section className="flex-shrink-0">
           <TableArea
             cardsPlayed={cardsPlayed}
             lastCardsPlayed={lastCardsPlayed}
@@ -425,29 +425,20 @@ function GameBoard() {
           />
         </section>
 
-        {/* Deck and hand row */}
-        <section className="flex flex-col lg:flex-row gap-6">
-          {/* Deck */}
-          <div className="lg:w-48 flex-shrink-0">
-            <DeckPile
-              cardsRemaining={deckSize}
-              onClick={onDrawFromDeck}
-              disabled={!isMyTurn || currentAction !== 'draw'}
-            />
-          </div>
-
-          {/* My hand */}
-          <div className="flex-grow">
-            <PlayerHand
-              hand={myHand}
-              onCardsSelected={setSelectedCards}
-              disabled={!isMyTurn}
-            />
-          </div>
+        {/* My hand with integrated deck */}
+        <section className="flex-1 min-h-[120px] sm:min-h-[200px]">
+          <PlayerHand
+            hand={myHand}
+            onCardsSelected={setSelectedCards}
+            disabled={!isMyTurn}
+            deckSize={deckSize}
+            onDrawFromDeck={onDrawFromDeck}
+            canDrawFromDeck={isMyTurn && currentAction === 'draw'}
+          />
         </section>
 
         {/* Action buttons */}
-        <section>
+        <section className="flex-shrink-0">
           <ActionButtons
             selectedCards={selectedCards}
             onPlay={onPlayCards}
