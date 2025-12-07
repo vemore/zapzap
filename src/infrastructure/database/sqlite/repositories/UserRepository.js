@@ -97,18 +97,22 @@ class UserRepository extends IUserRepository {
                 // Update existing user
                 await this.db.run(
                     `UPDATE users
-                     SET username = ?, password_hash = ?, user_type = ?, bot_difficulty = ?, updated_at = ?
+                     SET username = ?, password_hash = ?, user_type = ?, bot_difficulty = ?,
+                         is_admin = ?, last_login_at = ?, total_play_time_seconds = ?, updated_at = ?
                      WHERE id = ?`,
-                    [user.username, user.passwordHash, user.userType, user.botDifficulty, user.updatedAt, user.id]
+                    [user.username, user.passwordHash, user.userType, user.botDifficulty,
+                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds, user.updatedAt, user.id]
                 );
 
                 logger.info('User updated', { userId: user.id, username: user.username, userType: user.userType });
             } else {
                 // Insert new user
                 await this.db.run(
-                    `INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                    [user.id, user.username, user.passwordHash, user.userType, user.botDifficulty, user.createdAt, user.updatedAt]
+                    `INSERT INTO users (id, username, password_hash, user_type, bot_difficulty,
+                                        is_admin, last_login_at, total_play_time_seconds, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [user.id, user.username, user.passwordHash, user.userType, user.botDifficulty,
+                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds, user.createdAt, user.updatedAt]
                 );
 
                 logger.info('User created', { userId: user.id, username: user.username, userType: user.userType });
@@ -211,6 +215,88 @@ class UserRepository extends IUserRepository {
         } catch (error) {
             logger.error('Error finding bots', { difficulty, error: error.message });
             throw new Error(`Failed to find bots: ${error.message}`);
+        }
+    }
+
+    /**
+     * Update user's last login timestamp
+     * @param {string} userId - User ID
+     * @returns {Promise<void>}
+     */
+    async updateLastLogin(userId) {
+        try {
+            const now = Math.floor(Date.now() / 1000);
+            await this.db.run(
+                'UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?',
+                [now, now, userId]
+            );
+            logger.debug('Last login updated', { userId });
+        } catch (error) {
+            logger.error('Error updating last login', { userId, error: error.message });
+            throw new Error(`Failed to update last login: ${error.message}`);
+        }
+    }
+
+    /**
+     * Set user admin status
+     * @param {string} userId - User ID
+     * @param {boolean} isAdmin - Admin status
+     * @returns {Promise<void>}
+     */
+    async setAdminStatus(userId, isAdmin) {
+        try {
+            const now = Math.floor(Date.now() / 1000);
+            await this.db.run(
+                'UPDATE users SET is_admin = ?, updated_at = ? WHERE id = ?',
+                [isAdmin ? 1 : 0, now, userId]
+            );
+            logger.info('Admin status updated', { userId, isAdmin });
+        } catch (error) {
+            logger.error('Error setting admin status', { userId, error: error.message });
+            throw new Error(`Failed to set admin status: ${error.message}`);
+        }
+    }
+
+    /**
+     * Find all human users with game statistics
+     * @param {number} limit - Maximum number of results
+     * @param {number} offset - Offset for pagination
+     * @returns {Promise<Array<Object>>}
+     */
+    async findAllHumansWithStats(limit = 50, offset = 0) {
+        try {
+            const records = await this.db.all(
+                `SELECT u.*,
+                        COALESCE((SELECT COUNT(*) FROM player_game_results pgr WHERE pgr.user_id = u.id), 0) as games_played
+                 FROM users u
+                 WHERE u.user_type = 'human'
+                 ORDER BY u.created_at DESC
+                 LIMIT ? OFFSET ?`,
+                [limit, offset]
+            );
+
+            logger.debug('Human users with stats retrieved', { count: records.length, limit, offset });
+
+            return records;
+        } catch (error) {
+            logger.error('Error finding human users with stats', { error: error.message });
+            throw new Error(`Failed to find human users with stats: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count total human users
+     * @returns {Promise<number>}
+     */
+    async countHumans() {
+        try {
+            const result = await this.db.get(
+                "SELECT COUNT(*) as count FROM users WHERE user_type = 'human'"
+            );
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting human users', { error: error.message });
+            throw new Error(`Failed to count human users: ${error.message}`);
         }
     }
 }

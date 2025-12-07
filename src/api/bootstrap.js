@@ -46,6 +46,16 @@ const GetGameDetails = require('../use-cases/history/GetGameDetails');
 const GetUserStats = require('../use-cases/stats/GetUserStats');
 const GetLeaderboard = require('../use-cases/stats/GetLeaderboard');
 
+// Use Cases - Admin
+const CreateDefaultAdmin = require('../use-cases/admin/CreateDefaultAdmin');
+const ListUsers = require('../use-cases/admin/ListUsers');
+const DeleteUser = require('../use-cases/admin/DeleteUser');
+const SetUserAdmin = require('../use-cases/admin/SetUserAdmin');
+const ListAllParties = require('../use-cases/admin/ListAllParties');
+const StopParty = require('../use-cases/admin/StopParty');
+const AdminDeleteParty = require('../use-cases/admin/AdminDeleteParty');
+const GetAdminStatistics = require('../use-cases/admin/GetAdminStatistics');
+
 // Bot Infrastructure
 const BotActionService = require('../infrastructure/bot/BotActionService');
 const BotOrchestrator = require('../infrastructure/bot/BotOrchestrator');
@@ -126,6 +136,28 @@ async function bootstrap(emitter = null) {
         // Register stats use cases
         container.register('getUserStats', new GetUserStats(partyRepository, userRepository));
         container.register('getLeaderboard', new GetLeaderboard(partyRepository, userRepository));
+
+        // Register admin use cases
+        container.register('createDefaultAdmin', new CreateDefaultAdmin(userRepository));
+        container.register('listUsers', new ListUsers(userRepository));
+        container.register('deleteUser', new DeleteUser(userRepository, partyRepository));
+        container.register('setUserAdmin', new SetUserAdmin(userRepository));
+        container.register('listAllParties', new ListAllParties(partyRepository, userRepository));
+        container.register('stopParty', new StopParty(partyRepository, userRepository));
+        container.register('adminDeleteParty', new AdminDeleteParty(partyRepository, userRepository));
+        container.register('getAdminStatistics', new GetAdminStatistics(partyRepository, userRepository));
+
+        // Create default admin user on startup
+        const adminPassword = process.env.ADMIN_PASSWORD || 'zapzap123';
+        const createDefaultAdmin = container.resolve('createDefaultAdmin');
+        try {
+            const adminResult = await createDefaultAdmin.execute({ password: adminPassword });
+            if (adminResult.created) {
+                logger.info('Default admin user created');
+            }
+        } catch (adminError) {
+            logger.error('Failed to create default admin', { error: adminError.message });
+        }
 
         // Register bot infrastructure (if emitter is provided)
         if (emitter) {

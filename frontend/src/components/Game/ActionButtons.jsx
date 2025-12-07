@@ -150,7 +150,7 @@ function ActionButtons({
           }
         >
           <Zap className="w-4 h-4 sm:w-5 sm:h-5 sm:mr-1" />
-          <span className="text-[10px] sm:text-base">Zap!</span>
+          <span className="text-[10px] sm:text-base">ZapZap!</span>
         </button>
       </div>
     </div>

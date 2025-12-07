@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Plus, Loader, Users, History, BarChart3 } from 'lucide-react';
+import { Dice6, LogOut, Plus, Loader, Users, History, BarChart3, Shield } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -94,6 +94,15 @@ function PartyList() {
                 <BarChart3 className="w-4 h-4 mr-1" />
                 Stats
               </Link>
+              {user?.isAdmin && (
+                <Link
+                  to="/admin"
+                  className="flex items-center px-3 py-2 text-amber-300 hover:text-amber-200 hover:bg-amber-900/30 rounded-lg transition-colors"
+                >
+                  <Shield className="w-4 h-4 mr-1" />
+                  Admin
+                </Link>
+              )}
               <span className="text-gray-500">|</span>
               <span className="text-gray-300">
                 <span className="font-semibold text-white">{user?.username}</span>

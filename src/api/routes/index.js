@@ -11,6 +11,7 @@ const createGameRouter = require('./gameRoutes');
 const createBotRouter = require('./botRoutes');
 const createHistoryRouter = require('./historyRoutes');
 const createStatsRouter = require('./statsRoutes');
+const createAdminRouter = require('./adminRoutes');
 
 /**
  * Create main API router
@@ -33,6 +34,7 @@ function createApiRouter(container, emitter) {
     router.use('/bots', createBotRouter(container)); // Bot management (admin endpoints)
     router.use('/history', createHistoryRouter(container)); // Game history
     router.use('/stats', createStatsRouter(container)); // Statistics and leaderboard
+    router.use('/admin', createAdminRouter(container)); // Admin panel
 
     // Health check endpoint
     router.get('/health', (req, res) => {

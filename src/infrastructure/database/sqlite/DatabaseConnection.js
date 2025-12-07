@@ -205,6 +205,43 @@ class DatabaseConnection {
         `;
 
         await this.exec(schema);
+
+        // Run migrations for admin features
+        await this.runMigrations();
+    }
+
+    /**
+     * Run database migrations for new features
+     * @returns {Promise<void>}
+     */
+    async runMigrations() {
+        // Migration: Add admin-related columns to users table
+        const adminMigrations = [
+            {
+                name: 'add_is_admin_column',
+                sql: 'ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0'
+            },
+            {
+                name: 'add_last_login_at_column',
+                sql: 'ALTER TABLE users ADD COLUMN last_login_at INTEGER'
+            },
+            {
+                name: 'add_total_play_time_seconds_column',
+                sql: 'ALTER TABLE users ADD COLUMN total_play_time_seconds INTEGER NOT NULL DEFAULT 0'
+            }
+        ];
+
+        for (const migration of adminMigrations) {
+            try {
+                await this.run(migration.sql);
+                logger.debug(`Migration applied: ${migration.name}`);
+            } catch (error) {
+                // Ignore "duplicate column name" errors (column already exists)
+                if (!error.message.includes('duplicate column name')) {
+                    throw error;
+                }
+            }
+        }
     }
 
     /**

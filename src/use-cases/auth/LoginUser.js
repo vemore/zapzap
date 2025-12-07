@@ -54,15 +54,20 @@ class LoginUser {
                 throw new Error('Invalid username or password');
             }
 
-            // Generate JWT token
+            // Update last login timestamp
+            await this.userRepository.updateLastLogin(user.id);
+
+            // Generate JWT token (include isAdmin for frontend)
             const token = this.jwtService.sign({
                 userId: user.id,
-                username: user.username
+                username: user.username,
+                isAdmin: user.isAdminUser()
             });
 
             logger.info('User logged in successfully', {
                 userId: user.id,
-                username: user.username
+                username: user.username,
+                isAdmin: user.isAdminUser()
             });
 
             return {

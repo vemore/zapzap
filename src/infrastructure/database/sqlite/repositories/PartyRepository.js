@@ -999,6 +999,158 @@ class PartyRepository extends IPartyRepository {
             throw new Error(`Failed to count leaderboard entries: ${error.message}`);
         }
     }
+
+    // ============================================
+    // ADMIN METHODS
+    // ============================================
+
+    /**
+     * Find all parties (for admin - includes private parties)
+     * @param {string} status - Optional status filter
+     * @param {number} limit - Maximum number of results
+     * @param {number} offset - Offset for pagination
+     * @returns {Promise<Array<Party>>}
+     */
+    async findAllParties(status = null, limit = 50, offset = 0) {
+        try {
+            let query = `SELECT * FROM parties`;
+            const params = [];
+
+            if (status) {
+                query += ` WHERE status = ?`;
+                params.push(status);
+            }
+
+            query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+            params.push(limit, offset);
+
+            const records = await this.db.all(query, params);
+
+            logger.debug('All parties retrieved (admin)', { count: records.length, status, limit, offset });
+
+            return records.map(record => Party.fromDatabase(record));
+        } catch (error) {
+            logger.error('Error finding all parties', { error: error.message });
+            throw new Error(`Failed to find all parties: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count all parties (for admin)
+     * @param {string} status - Optional status filter
+     * @returns {Promise<number>}
+     */
+    async countAllParties(status = null) {
+        try {
+            let query = `SELECT COUNT(*) as count FROM parties`;
+            const params = [];
+
+            if (status) {
+                query += ` WHERE status = ?`;
+                params.push(status);
+            }
+
+            const result = await this.db.get(query, params);
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting all parties', { error: error.message });
+            throw new Error(`Failed to count all parties: ${error.message}`);
+        }
+    }
+
+    /**
+     * Count total rounds played
+     * @returns {Promise<number>}
+     */
+    async countTotalRounds() {
+        try {
+            const result = await this.db.get(
+                `SELECT COUNT(*) as count FROM rounds`
+            );
+            return result.count;
+        } catch (error) {
+            logger.error('Error counting total rounds', { error: error.message });
+            throw new Error(`Failed to count total rounds: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get games finished per time period
+     * @param {string} period - 'day', 'week', or 'month'
+     * @returns {Promise<Array>}
+     */
+    async getGamesPerPeriod(period = 'day') {
+        try {
+            let dateFormat;
+            let limit;
+
+            switch (period) {
+                case 'week':
+                    dateFormat = '%Y-%W';
+                    limit = 12;
+                    break;
+                case 'month':
+                    dateFormat = '%Y-%m';
+                    limit = 12;
+                    break;
+                case 'day':
+                default:
+                    dateFormat = '%Y-%m-%d';
+                    limit = 30;
+                    break;
+            }
+
+            const records = await this.db.all(
+                `SELECT
+                    strftime('${dateFormat}', datetime(finished_at, 'unixepoch')) as period,
+                    COUNT(*) as count
+                 FROM game_results
+                 GROUP BY period
+                 ORDER BY period DESC
+                 LIMIT ?`,
+                [limit]
+            );
+
+            return records.reverse();
+        } catch (error) {
+            logger.error('Error getting games per period', { period, error: error.message });
+            throw new Error(`Failed to get games per period: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get most active users by games played
+     * @param {number} limit - Number of users to return
+     * @returns {Promise<Array>}
+     */
+    async getMostActiveUsers(limit = 10) {
+        try {
+            const records = await this.db.all(
+                `SELECT
+                    u.id as user_id,
+                    u.username,
+                    COUNT(pgr.id) as games_played,
+                    SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as wins
+                 FROM users u
+                 JOIN player_game_results pgr ON u.id = pgr.user_id
+                 WHERE u.user_type = 'human'
+                 GROUP BY u.id
+                 ORDER BY games_played DESC
+                 LIMIT ?`,
+                [limit]
+            );
+
+            return records.map(r => ({
+                userId: r.user_id,
+                username: r.username,
+                gamesPlayed: r.games_played,
+                wins: r.wins
+            }));
+        } catch (error) {
+            logger.error('Error getting most active users', { error: error.message });
+            throw new Error(`Failed to get most active users: ${error.message}`);
+        }
+    }
 }
 
 module.exports = PartyRepository;

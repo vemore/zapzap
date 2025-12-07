@@ -10,6 +10,11 @@ import GameBoard from './components/Game/GameBoard';
 import GameHistory from './components/History/GameHistory';
 import GameDetails from './components/History/GameDetails';
 import Statistics from './components/Stats/Statistics';
+import AdminRoute from './components/Admin/AdminRoute';
+import AdminLayout from './components/Admin/AdminLayout';
+import UserList from './components/Admin/Users/UserList';
+import AdminPartyList from './components/Admin/Parties/AdminPartyList';
+import AdminStats from './components/Admin/Statistics/AdminStats';
 import './App.css';
 
 /**
@@ -81,6 +86,21 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Admin routes */}
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminLayout />
+              </AdminRoute>
+            }
+          >
+            <Route index element={<Navigate to="/admin/users" replace />} />
+            <Route path="users" element={<UserList />} />
+            <Route path="parties" element={<AdminPartyList />} />
+            <Route path="statistics" element={<AdminStats />} />
+          </Route>
 
           {/* Root redirect - send to login page */}
           <Route path="/" element={<Navigate to="/login" replace />} />

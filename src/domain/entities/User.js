@@ -15,10 +15,13 @@ class User {
      * @param {string} props.passwordHash - Hashed password
      * @param {string} props.userType - User type ('human' or 'bot')
      * @param {string} props.botDifficulty - Bot difficulty ('easy', 'medium', 'hard') - only for bots
+     * @param {boolean} props.isAdmin - Whether user has admin privileges
+     * @param {number} props.lastLoginAt - Last login timestamp
+     * @param {number} props.totalPlayTimeSeconds - Total play time in seconds
      * @param {number} props.createdAt - Creation timestamp
      * @param {number} props.updatedAt - Last update timestamp
      */
-    constructor({ id, username, passwordHash, userType = 'human', botDifficulty = null, createdAt, updatedAt }) {
+    constructor({ id, username, passwordHash, userType = 'human', botDifficulty = null, isAdmin = false, lastLoginAt = null, totalPlayTimeSeconds = 0, createdAt, updatedAt }) {
         this.validate(username, passwordHash, userType, botDifficulty);
 
         this._id = id || crypto.randomUUID();
@@ -26,6 +29,9 @@ class User {
         this._passwordHash = passwordHash;
         this._userType = userType;
         this._botDifficulty = botDifficulty;
+        this._isAdmin = isAdmin;
+        this._lastLoginAt = lastLoginAt;
+        this._totalPlayTimeSeconds = totalPlayTimeSeconds;
         this._createdAt = createdAt || Math.floor(Date.now() / 1000);
         this._updatedAt = updatedAt || Math.floor(Date.now() / 1000);
     }
@@ -101,6 +107,18 @@ class User {
         return this._updatedAt;
     }
 
+    get isAdmin() {
+        return this._isAdmin;
+    }
+
+    get lastLoginAt() {
+        return this._lastLoginAt;
+    }
+
+    get totalPlayTimeSeconds() {
+        return this._totalPlayTimeSeconds;
+    }
+
     /**
      * Check if user is a bot
      * @returns {boolean}
@@ -115,6 +133,40 @@ class User {
      */
     isHuman() {
         return this._userType === 'human';
+    }
+
+    /**
+     * Check if user has admin privileges
+     * @returns {boolean}
+     */
+    isAdminUser() {
+        return this._isAdmin === true || this._isAdmin === 1;
+    }
+
+    /**
+     * Set admin status
+     * @param {boolean} value - Admin status
+     */
+    setAdmin(value) {
+        this._isAdmin = value;
+        this._updatedAt = Math.floor(Date.now() / 1000);
+    }
+
+    /**
+     * Update last login timestamp to now
+     */
+    updateLastLogin() {
+        this._lastLoginAt = Math.floor(Date.now() / 1000);
+        this._updatedAt = Math.floor(Date.now() / 1000);
+    }
+
+    /**
+     * Add play time
+     * @param {number} seconds - Seconds to add
+     */
+    addPlayTime(seconds) {
+        this._totalPlayTimeSeconds += seconds;
+        this._updatedAt = Math.floor(Date.now() / 1000);
     }
 
     /**
@@ -224,6 +276,9 @@ class User {
             passwordHash: this._passwordHash,
             userType: this._userType,
             botDifficulty: this._botDifficulty,
+            isAdmin: this._isAdmin,
+            lastLoginAt: this._lastLoginAt,
+            totalPlayTimeSeconds: this._totalPlayTimeSeconds,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -239,6 +294,9 @@ class User {
             username: this._username,
             userType: this._userType,
             botDifficulty: this._botDifficulty,
+            isAdmin: this._isAdmin,
+            lastLoginAt: this._lastLoginAt,
+            totalPlayTimeSeconds: this._totalPlayTimeSeconds,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -256,6 +314,9 @@ class User {
             passwordHash: record.password_hash,
             userType: record.user_type || 'human',
             botDifficulty: record.bot_difficulty || null,
+            isAdmin: record.is_admin === 1,
+            lastLoginAt: record.last_login_at || null,
+            totalPlayTimeSeconds: record.total_play_time_seconds || 0,
             createdAt: record.created_at,
             updatedAt: record.updated_at
         });

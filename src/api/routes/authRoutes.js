@@ -89,7 +89,8 @@ function createAuthRouter(container) {
                 success: true,
                 user: {
                     id: result.user.id,
-                    username: result.user.username
+                    username: result.user.username,
+                    isAdmin: result.user.isAdmin
                 },
                 token: result.token
             });
