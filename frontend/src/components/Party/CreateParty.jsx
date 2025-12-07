@@ -6,7 +6,6 @@ import { apiClient } from '../../services/api';
 function CreateParty() {
   const [name, setName] = useState('');
   const [playerCount, setPlayerCount] = useState(5);
-  const [handSize, setHandSize] = useState(7);
   const [visibility, setVisibility] = useState('public');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -78,18 +77,10 @@ function CreateParty() {
     e.preventDefault();
 
     const numPlayers = parseInt(playerCount);
-    const numHandSize = parseInt(handSize);
 
-    // Game rule validation: 3-8 players (README line 89)
+    // Game rule validation: 3-8 players
     if (numPlayers < 3 || numPlayers > 8) {
       setError('Player count must be between 3 and 8');
-      setLoading(false);
-      return;
-    }
-
-    // Game rule validation: 5-7 card hand size (README line 91)
-    if (numHandSize < 5 || numHandSize > 7) {
-      setError('Hand size must be between 5 and 7');
       setLoading(false);
       return;
     }
@@ -114,7 +105,6 @@ function CreateParty() {
         visibility,
         settings: {
           playerCount: parseInt(playerCount),
-          handSize: parseInt(handSize),
         },
         botIds
       });
@@ -181,24 +171,6 @@ function CreateParty() {
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
               />
               <p className="mt-1 text-xs text-gray-400">Minimum 3 players, maximum 8 players</p>
-            </div>
-
-            {/* Hand Size */}
-            <div>
-              <label htmlFor="hand-size" className="block text-sm font-medium text-gray-300 mb-2">
-                Hand Size (5-7 cards)
-              </label>
-              <input
-                id="hand-size"
-                type="number"
-                min="5"
-                max="7"
-                value={handSize}
-                onChange={(e) => setHandSize(e.target.value)}
-                disabled={loading}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
-              />
-              <p className="mt-1 text-xs text-gray-400">Starting hand size: 5-7 cards</p>
             </div>
 
             {/* Visibility */}

@@ -62,6 +62,19 @@ class EasyBotStrategy extends BotStrategy {
     selectDrawSource(hand, lastCardsPlayed, gameState) {
         return 'deck';
     }
+
+    /**
+     * Select random hand size within valid range
+     * @param {number} activePlayerCount - Number of active players
+     * @param {boolean} isGoldenScore - Whether in Golden Score mode
+     * @returns {number} Hand size
+     */
+    selectHandSize(activePlayerCount, isGoldenScore) {
+        const minHandSize = 4;
+        const maxHandSize = isGoldenScore ? 10 : 7;
+        // Random selection within range
+        return minHandSize + Math.floor(Math.random() * (maxHandSize - minHandSize + 1));
+    }
 }
 
 module.exports = EasyBotStrategy;

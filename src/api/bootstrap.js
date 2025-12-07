@@ -31,6 +31,7 @@ const GetGameState = require('../use-cases/game/GetGameState');
 const NextRound = require('../use-cases/game/NextRound');
 const SaveRoundScores = require('../use-cases/game/SaveRoundScores');
 const SaveGameResult = require('../use-cases/game/SaveGameResult');
+const SelectHandSize = require('../use-cases/game/SelectHandSize');
 
 // Use Cases - Bot Management
 const CreateBot = require('../use-cases/bot/CreateBot');
@@ -111,6 +112,7 @@ async function bootstrap(emitter = null) {
         container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores, saveGameResult));
         container.register('getGameState', new GetGameState(partyRepository, userRepository));
         container.register('nextRound', new NextRound(partyRepository, userRepository, saveGameResult));
+        container.register('selectHandSize', new SelectHandSize(partyRepository, userRepository));
 
         // Register bot management use cases
         container.register('createBot', new CreateBot(userRepository));
@@ -131,7 +133,8 @@ async function bootstrap(emitter = null) {
                 {
                     playCards: container.resolve('playCards'),
                     drawCard: container.resolve('drawCard'),
-                    callZapZap: container.resolve('callZapZap')
+                    callZapZap: container.resolve('callZapZap'),
+                    selectHandSize: container.resolve('selectHandSize')
                 },
                 {
                     partyRepository,

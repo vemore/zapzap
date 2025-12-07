@@ -498,7 +498,9 @@ node scripts/test-api.js
 curl http://localhost:9999/api/health
 ```
 
+- Toute modification du backend doit en premier être testée avec des appel direct à l'API
 - Toute modification doit être testée avec le navigateur. Tout bugs identifié doit être corrigé.
+- Toute modification et a été testée avec le navigateur et dont tout les bugs ont été corrigés peut être commité sur le repo git local.
 
 ## 🎮 Complete Game Rules
 

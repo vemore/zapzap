@@ -55,9 +55,10 @@ class BotOrchestrator {
 
         const { partyId, action } = data;
 
-        // Only process on play, draw, zapzap, or roundStarted actions
+        // Only process on play, draw, zapzap, selectHandSize, or roundStarted actions
         // roundStarted is needed to trigger bots when a new round begins
-        if (!['play', 'draw', 'zapzap', 'roundStarted'].includes(action)) {
+        // selectHandSize is needed to trigger bots when hand size selection phase starts
+        if (!['play', 'draw', 'zapzap', 'selectHandSize', 'roundStarted'].includes(action)) {
             return;
         }
 

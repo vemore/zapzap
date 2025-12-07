@@ -10,6 +10,7 @@ import ActionButtons from './ActionButtons';
 import DeckPile from './DeckPile';
 import TableArea from './TableArea';
 import RoundEnd from './RoundEnd';
+import HandSizeSelector from './HandSizeSelector';
 import { isValidPlay, analyzePlay } from '../../utils/validation';
 // Note: DiscardPile is now integrated into TableArea
 import { isZapZapEligible } from '../../utils/scoring';
@@ -109,7 +110,8 @@ function GameBoard() {
     switch (data.action) {
       case 'play':
       case 'draw':
-        // Refresh game state when any player plays or draws
+      case 'selectHandSize':
+        // Refresh game state when any player plays, draws, or selects hand size
         fetchGameState();
         break;
       case 'zapzap':
@@ -187,6 +189,18 @@ function GameBoard() {
     } catch (err) {
       console.error('Failed to call ZapZap:', err);
       setError(err.response?.data?.error || 'Failed to call ZapZap');
+    }
+  };
+
+  // Handle select hand size
+  const handleSelectHandSize = async (handSize) => {
+    try {
+      await apiClient.post(`/game/${partyId}/selectHandSize`, { handSize });
+      await fetchGameState();
+    } catch (err) {
+      console.error('Failed to select hand size:', err);
+      setError(err.response?.data?.error || 'Failed to select hand size');
+      throw err;
     }
   };
 
@@ -284,6 +298,62 @@ function GameBoard() {
 
   // Check if round is finished and prepare round end data
   const isRoundFinished = currentAction === 'finished';
+  const isSelectHandSizePhase = currentAction === 'selectHandSize';
+
+  // Get current player's username for display
+  const currentPlayerName = players.find(p => p.playerIndex === currentTurn)?.username || `Player ${currentTurn + 1}`;
+
+  // Show HandSizeSelector component if in select hand size phase
+  if (isSelectHandSizePhase) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+                <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
+              </div>
+              <div className="flex items-center space-x-4">
+                {isGoldenScore && (
+                  <div className="flex items-center bg-yellow-500/20 border border-yellow-500/50 rounded px-2 py-1 animate-pulse">
+                    <span className="text-yellow-400 font-bold text-sm">GOLDEN SCORE</span>
+                  </div>
+                )}
+                <div className="flex items-center" title={sseConnected ? 'Real-time updates active' : 'Connecting...'}>
+                  {sseConnected ? (
+                    <Wifi className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <WifiOff className="w-4 h-4 text-gray-500 animate-pulse" />
+                  )}
+                </div>
+                <span className="text-gray-300">
+                  Party: <span className="font-semibold text-white">{partyName || partyId}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Hand Size Selection Content */}
+        <div className="max-w-md mx-auto px-4 py-8 sm:px-6 lg:px-8">
+          <div className="text-center mb-6">
+            <p className="text-gray-400 text-lg">
+              Round {gameData.round?.roundNumber || 1} - Starting
+            </p>
+          </div>
+          <HandSizeSelector
+            isMyTurn={isMyTurn}
+            currentPlayerName={currentPlayerName}
+            isGoldenScore={isGoldenScore}
+            onSelectHandSize={handleSelectHandSize}
+            disabled={false}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // Show RoundEnd component if round is finished
   if (isRoundFinished) {

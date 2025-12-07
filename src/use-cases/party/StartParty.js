@@ -86,24 +86,19 @@ class StartParty {
                 [deck[i], deck[j]] = [deck[j], deck[i]];
             }
 
-            // Deal cards to players
-            const handSize = party.settings.handSize || 10;
+            // Initialize empty hands - cards will be dealt when first player selects handSize
             const hands = {};
-
             for (let i = 0; i < players.length; i++) {
-                hands[i] = deck.splice(0, handSize);
+                hands[i] = [];
             }
 
-            // Flip first card from deck to discard pile
-            const firstDiscardCard = deck.pop();
-
-            // Create game state with dealt cards
+            // Create game state - first player must select hand size before playing
             const initialGameState = gameState.with({
                 deck: deck,
                 hands: hands,
-                lastCardsPlayed: [firstDiscardCard],
+                lastCardsPlayed: [],
                 currentTurn: 0,
-                currentAction: 'play',
+                currentAction: 'selectHandSize',
                 roundNumber: 1
             });
 

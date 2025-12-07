@@ -16,6 +16,7 @@ class BotActionService {
         this.playCards = useCases.playCards;
         this.drawCard = useCases.drawCard;
         this.callZapZap = useCases.callZapZap;
+        this.selectHandSize = useCases.selectHandSize;
         this.partyRepository = repositories.partyRepository;
         this.userRepository = repositories.userRepository;
     }
@@ -68,7 +69,10 @@ class BotActionService {
             const strategy = BotStrategyFactory.create(botUser.botDifficulty);
 
             // Execute action based on current action state
-            if (gameState.currentAction === 'play') {
+            if (gameState.currentAction === 'selectHandSize') {
+                // Bot needs to select hand size at start of round
+                return await this.executeBotSelectHandSize(partyId, botUser, gameState, strategy);
+            } else if (gameState.currentAction === 'play') {
                 // Bot needs cards to play
                 if (botHand.length === 0) {
                     throw new Error('Bot has no cards to play');
@@ -87,6 +91,49 @@ class BotActionService {
                 partyId,
                 error: error.message,
                 stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Execute bot select hand size action
+     * @private
+     */
+    async executeBotSelectHandSize(partyId, botUser, gameState, strategy) {
+        try {
+            // Get players to count active ones
+            const players = await this.partyRepository.getPartyPlayers(partyId);
+            const eliminatedPlayers = gameState.eliminatedPlayers || [];
+            const activePlayerCount = players.filter(p => !eliminatedPlayers.includes(p.playerIndex)).length;
+            const isGoldenScore = activePlayerCount === 2;
+
+            // Get hand size from strategy
+            const handSize = strategy.selectHandSize(activePlayerCount, isGoldenScore);
+
+            logger.info('Bot selecting hand size', {
+                botId: botUser.id,
+                handSize,
+                activePlayerCount,
+                isGoldenScore
+            });
+
+            const result = await this.selectHandSize.execute({
+                userId: botUser.id,
+                partyId,
+                handSize
+            });
+
+            return {
+                success: true,
+                action: 'selectHandSize',
+                handSize,
+                result
+            };
+        } catch (error) {
+            logger.error('Bot select hand size action error', {
+                botId: botUser.id,
+                error: error.message
             });
             throw error;
         }

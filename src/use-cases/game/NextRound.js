@@ -246,22 +246,11 @@ class NextRound {
                 [deck[i], deck[j]] = [deck[j], deck[i]];
             }
 
-            // Deal cards only to active players (eliminated players get empty hands)
-            const handSize = party.settings.handSize || 10;
+            // Initialize empty hands - cards will be dealt when starting player selects handSize
             const hands = {};
-
             for (let i = 0; i < players.length; i++) {
-                if (eliminatedPlayerIndices.includes(i)) {
-                    // Eliminated players get no cards
-                    hands[i] = [];
-                } else {
-                    // Active players get cards
-                    hands[i] = deck.splice(0, handSize);
-                }
+                hands[i] = [];
             }
-
-            // Flip first card from deck to discard pile
-            const firstDiscardCard = deck.pop();
 
             // Determine starting player - must be an active player
             // Start from last turn and find next active player
@@ -271,14 +260,16 @@ class NextRound {
             }
 
             // Create new game state preserving scores
+            // Starting player must select hand size before playing
             const newGameState = currentGameState.with({
                 deck: deck,
                 hands: hands,
                 currentTurn: nextStartingPlayer,
-                currentAction: 'play',
+                currentAction: 'selectHandSize',
                 roundNumber: newRoundNumber,
-                lastCardsPlayed: [firstDiscardCard],
+                lastCardsPlayed: [],
                 cardsPlayed: [],
+                discardPile: [],
                 lastAction: null,
                 isGoldenScore: isGoldenScore,
                 eliminatedPlayers: eliminatedPlayerIndices

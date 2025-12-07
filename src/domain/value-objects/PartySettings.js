@@ -1,6 +1,7 @@
 /**
  * PartySettings Value Object
  * Represents immutable party configuration
+ * Note: handSize is no longer stored here - it's selected at the start of each round
  */
 
 class PartySettings {
@@ -8,15 +9,13 @@ class PartySettings {
      * Create PartySettings
      * @param {Object} props - Settings properties
      * @param {number} props.playerCount - Number of players (3-8)
-     * @param {number} props.handSize - Starting hand size (5-7)
      * @param {boolean} props.allowSpectators - Allow spectators
      * @param {number} props.roundTimeLimit - Time limit per round in seconds (0 = unlimited)
      */
-    constructor({ playerCount, handSize, allowSpectators = false, roundTimeLimit = 0 }) {
-        this.validate(playerCount, handSize, roundTimeLimit);
+    constructor({ playerCount, allowSpectators = false, roundTimeLimit = 0 }) {
+        this.validate(playerCount, roundTimeLimit);
 
         this._playerCount = playerCount;
-        this._handSize = handSize;
         this._allowSpectators = allowSpectators;
         this._roundTimeLimit = roundTimeLimit;
 
@@ -28,13 +27,9 @@ class PartySettings {
      * Validate settings
      * @private
      */
-    validate(playerCount, handSize, roundTimeLimit) {
+    validate(playerCount, roundTimeLimit) {
         if (typeof playerCount !== 'number' || playerCount < 3 || playerCount > 8) {
             throw new Error('Player count must be between 3 and 8');
-        }
-
-        if (typeof handSize !== 'number' || handSize < 5 || handSize > 7) {
-            throw new Error('Hand size must be between 5 and 7');
         }
 
         if (typeof roundTimeLimit !== 'number' || roundTimeLimit < 0) {
@@ -45,10 +40,6 @@ class PartySettings {
     // Getters
     get playerCount() {
         return this._playerCount;
-    }
-
-    get handSize() {
-        return this._handSize;
     }
 
     get allowSpectators() {
@@ -66,7 +57,6 @@ class PartySettings {
     static createDefault() {
         return new PartySettings({
             playerCount: 5,
-            handSize: 7,
             allowSpectators: false,
             roundTimeLimit: 0
         });
@@ -79,7 +69,6 @@ class PartySettings {
     toJSON() {
         return JSON.stringify({
             playerCount: this._playerCount,
-            handSize: this._handSize,
             allowSpectators: this._allowSpectators,
             roundTimeLimit: this._roundTimeLimit
         });
@@ -92,7 +81,6 @@ class PartySettings {
     toObject() {
         return {
             playerCount: this._playerCount,
-            handSize: this._handSize,
             allowSpectators: this._allowSpectators,
             roundTimeLimit: this._roundTimeLimit
         };
@@ -120,7 +108,6 @@ class PartySettings {
 
         return (
             this._playerCount === other._playerCount &&
-            this._handSize === other._handSize &&
             this._allowSpectators === other._allowSpectators &&
             this._roundTimeLimit === other._roundTimeLimit
         );
@@ -134,7 +121,6 @@ class PartySettings {
     with(changes) {
         return new PartySettings({
             playerCount: changes.playerCount ?? this._playerCount,
-            handSize: changes.handSize ?? this._handSize,
             allowSpectators: changes.allowSpectators ?? this._allowSpectators,
             roundTimeLimit: changes.roundTimeLimit ?? this._roundTimeLimit
         });

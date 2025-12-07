@@ -75,6 +75,22 @@ class MediumBotStrategy extends BotStrategy {
         // Default to deck
         return 'deck';
     }
+
+    /**
+     * Select moderate hand size (5-6 cards)
+     * @param {number} activePlayerCount - Number of active players
+     * @param {boolean} isGoldenScore - Whether in Golden Score mode
+     * @returns {number} Hand size
+     */
+    selectHandSize(activePlayerCount, isGoldenScore) {
+        const minHandSize = 4;
+        const maxHandSize = isGoldenScore ? 10 : 7;
+        // Prefer moderate values (5-6 for normal, 6-7 for Golden Score)
+        if (isGoldenScore) {
+            return 6 + Math.floor(Math.random() * 2); // 6 or 7
+        }
+        return 5 + Math.floor(Math.random() * 2); // 5 or 6
+    }
 }
 
 module.exports = MediumBotStrategy;

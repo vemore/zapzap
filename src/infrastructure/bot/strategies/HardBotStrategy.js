@@ -158,6 +158,23 @@ class HardBotStrategy extends BotStrategy {
 
         return combinationBonus + lowValueBonus + setBonus;
     }
+
+    /**
+     * Select strategic hand size (fewer cards = easier to zapzap quickly)
+     * @param {number} activePlayerCount - Number of active players
+     * @param {boolean} isGoldenScore - Whether in Golden Score mode
+     * @returns {number} Hand size
+     */
+    selectHandSize(activePlayerCount, isGoldenScore) {
+        // Hard bot prefers fewer cards for faster zapzap potential
+        // But not always minimum to add some unpredictability
+        if (isGoldenScore) {
+            // Golden Score: prefer 4-6 cards (lower end)
+            return 4 + Math.floor(Math.random() * 3); // 4, 5, or 6
+        }
+        // Normal game: prefer 4-5 cards (minimum or near minimum)
+        return 4 + Math.floor(Math.random() * 2); // 4 or 5
+    }
 }
 
 module.exports = HardBotStrategy;

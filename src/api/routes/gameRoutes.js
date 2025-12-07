@@ -21,6 +21,7 @@ function createGameRouter(container, authMiddleware, emitter) {
     const callZapZap = container.resolve('callZapZap');
     const getGameState = container.resolve('getGameState');
     const nextRound = container.resolve('nextRound');
+    const selectHandSize = container.resolve('selectHandSize');
 
     /**
      * GET /api/game/:partyId/state
@@ -66,6 +67,94 @@ function createGameRouter(container, authMiddleware, emitter) {
             res.status(500).json({
                 error: 'Failed to get game state',
                 code: 'GET_STATE_ERROR',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * POST /api/game/:partyId/selectHandSize
+     * Select hand size at the start of a round
+     */
+    router.post('/:partyId/selectHandSize', authMiddleware, async (req, res) => {
+        try {
+            const { partyId } = req.params;
+            const { handSize } = req.body;
+
+            if (typeof handSize !== 'number' || !Number.isInteger(handSize)) {
+                return res.status(400).json({
+                    error: 'Hand size must be an integer',
+                    code: 'INVALID_HAND_SIZE'
+                });
+            }
+
+            const result = await selectHandSize.execute({
+                userId: req.user.id,
+                partyId,
+                handSize
+            });
+
+            logger.info('Hand size selected', {
+                userId: req.user.id,
+                partyId,
+                handSize
+            });
+
+            // Emit SSE event
+            if (emitter) {
+                emitter.emit('event', { partyId, userId: req.user.id, action: 'selectHandSize', handSize });
+            }
+
+            res.json({
+                success: true,
+                handSize: result.handSize,
+                gameState: result.gameState
+            });
+        } catch (error) {
+            logger.error('Select hand size error', {
+                error: error.message,
+                userId: req.user.id,
+                partyId: req.params.partyId
+            });
+
+            if (error.message === 'Party not found') {
+                return res.status(404).json({
+                    error: error.message,
+                    code: 'PARTY_NOT_FOUND'
+                });
+            }
+
+            if (error.message === 'User is not in this party') {
+                return res.status(403).json({
+                    error: error.message,
+                    code: 'NOT_IN_PARTY'
+                });
+            }
+
+            if (error.message === 'Not your turn to select hand size') {
+                return res.status(403).json({
+                    error: error.message,
+                    code: 'NOT_YOUR_TURN'
+                });
+            }
+
+            if (error.message === 'Not in hand size selection phase') {
+                return res.status(400).json({
+                    error: error.message,
+                    code: 'INVALID_ACTION_STATE'
+                });
+            }
+
+            if (error.message.includes('Hand size must be between')) {
+                return res.status(400).json({
+                    error: error.message,
+                    code: 'INVALID_HAND_SIZE'
+                });
+            }
+
+            res.status(500).json({
+                error: 'Failed to select hand size',
+                code: 'SELECT_HAND_SIZE_ERROR',
                 details: error.message
             });
         }

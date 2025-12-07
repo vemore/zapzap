@@ -46,6 +46,19 @@ class BotStrategy {
     }
 
     /**
+     * Select number of cards to deal at start of round
+     * @param {number} activePlayerCount - Number of active players
+     * @param {boolean} isGoldenScore - Whether in Golden Score mode (2 players)
+     * @returns {number} Hand size to use (4-7 for 3+ players, 4-10 for Golden Score)
+     */
+    selectHandSize(activePlayerCount, isGoldenScore) {
+        // Default: middle value
+        const minHandSize = 4;
+        const maxHandSize = isGoldenScore ? 10 : 7;
+        return Math.floor((minHandSize + maxHandSize) / 2);
+    }
+
+    /**
      * Get strategy name
      * @returns {string}
      */
