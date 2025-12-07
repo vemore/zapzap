@@ -191,7 +191,7 @@ function TableArea({
                     <PlayingCard
                       cardId={cardId}
                       width={45}
-                      onClick={() => onDiscardSelect?.(cardId)}
+                      onClick={() => onDiscardSelect?.(selectedDiscardCard === cardId ? null : cardId)}
                       selected={selectedDiscardCard === cardId}
                       disabled={!onDiscardSelect}
                     />
