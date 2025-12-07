@@ -500,7 +500,7 @@ function GameBoard() {
           <PlayerHand
             hand={myHand}
             onCardsSelected={setSelectedCards}
-            disabled={!isMyTurn}
+            disabled={!isMyTurn || currentAction !== 'play'}
             deckSize={deckSize}
             onDrawFromDeck={onDrawFromDeck}
             canDrawFromDeck={isMyTurn && currentAction === 'draw'}
