@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Dice6, Bot, User } from 'lucide-react';
+import { ArrowLeft, Zap, Bot, User } from 'lucide-react';
 import { apiClient } from '../../services/api';
 
 function CreateParty() {
@@ -134,7 +134,7 @@ function CreateParty() {
         <div className="bg-slate-800 rounded-lg shadow-2xl p-8 border border-slate-700">
           {/* Header with logo */}
           <div className="flex items-center justify-center mb-6">
-            <Dice6 className="w-8 h-8 text-amber-400 mr-3" />
+            <Zap className="w-8 h-8 text-amber-400 mr-3" />
             <h1 className="text-3xl font-bold text-white">Create New Party</h1>
           </div>
 

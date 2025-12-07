@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { Zap, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import useSSE from '../../hooks/useSSE';
@@ -151,7 +151,7 @@ function PartyLobby() {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center">
-              <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+              <Zap className="w-8 h-8 text-amber-400 mr-2" />
               <h1 className="text-2xl font-bold text-white">ZapZap</h1>
             </div>
 

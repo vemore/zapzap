@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Dice6, Loader, Wifi, WifiOff } from 'lucide-react';
+import { Zap, Loader, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import useSSE from '../../hooks/useSSE';
@@ -312,7 +312,7 @@ function GameBoard() {
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+                <Zap className="w-8 h-8 text-amber-400 mr-2" />
                 <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
               </div>
               <div className="flex items-center space-x-4">
@@ -403,7 +403,7 @@ function GameBoard() {
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+                <Zap className="w-8 h-8 text-amber-400 mr-2" />
                 <h1 className="text-2xl font-bold text-white">ZapZap Game</h1>
               </div>
               <div className="flex items-center space-x-4">
@@ -442,7 +442,7 @@ function GameBoard() {
           <div className="flex items-center justify-between">
             {/* Logo - smaller on mobile */}
             <div className="flex items-center">
-              <Dice6 className="w-5 h-5 sm:w-8 sm:h-8 text-amber-400 mr-1 sm:mr-2" />
+              <Zap className="w-5 h-5 sm:w-8 sm:h-8 text-amber-400 mr-1 sm:mr-2" />
               <h1 className="text-lg sm:text-2xl font-bold text-white">ZapZap</h1>
             </div>
 

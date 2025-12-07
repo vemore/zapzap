@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dice6, LogOut, Plus, Loader, Users, History, BarChart3, Shield } from 'lucide-react';
+import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -73,7 +73,7 @@ function PartyList() {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center">
-              <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+              <Zap className="w-8 h-8 text-amber-400 mr-2" />
               <h1 className="text-2xl font-bold text-white">ZapZap</h1>
             </div>
 

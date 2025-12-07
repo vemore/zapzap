@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dice6, Loader } from 'lucide-react';
+import { Zap, Loader } from 'lucide-react';
 import { login as loginUser } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -40,7 +40,7 @@ function Login() {
         <div className="bg-slate-800 rounded-lg shadow-2xl p-8 border border-slate-700">
           {/* Header with icon */}
           <div className="flex items-center justify-center mb-8">
-            <Dice6 className="w-8 h-8 text-amber-400 mr-2" />
+            <Zap className="w-8 h-8 text-amber-400 mr-2" />
             <h1 className="text-3xl font-bold text-white">ZapZap</h1>
           </div>
 
