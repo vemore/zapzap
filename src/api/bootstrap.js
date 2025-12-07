@@ -45,6 +45,7 @@ const GetGameDetails = require('../use-cases/history/GetGameDetails');
 // Use Cases - Stats
 const GetUserStats = require('../use-cases/stats/GetUserStats');
 const GetLeaderboard = require('../use-cases/stats/GetLeaderboard');
+const GetBotStats = require('../use-cases/stats/GetBotStats');
 
 // Use Cases - Admin
 const CreateDefaultAdmin = require('../use-cases/admin/CreateDefaultAdmin');
@@ -136,6 +137,7 @@ async function bootstrap(emitter = null) {
         // Register stats use cases
         container.register('getUserStats', new GetUserStats(partyRepository, userRepository));
         container.register('getLeaderboard', new GetLeaderboard(partyRepository, userRepository));
+        container.register('getBotStats', new GetBotStats(partyRepository));
 
         // Register admin use cases
         container.register('createDefaultAdmin', new CreateDefaultAdmin(userRepository));

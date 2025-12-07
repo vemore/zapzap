@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Trophy, Target, Zap, Users, Medal, Loader, TrendingUp, Hash } from 'lucide-react';
+import { BarChart3, Trophy, Target, Zap, Medal, Loader, TrendingUp, Hash, Bot } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -8,13 +8,16 @@ function Statistics() {
   const { user } = useAuth();
   const [personalStats, setPersonalStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [botStats, setBotStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
-  const [error, setError] = useState('');
+  const [loadingBotStats, setLoadingBotStats] = useState(true);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(null);
 
   useEffect(() => {
     fetchPersonalStats();
     fetchLeaderboard();
+    fetchBotStats();
   }, []);
 
   const fetchPersonalStats = async () => {
@@ -38,6 +41,18 @@ function Statistics() {
       console.error('Failed to fetch leaderboard:', err);
     } finally {
       setLoadingLeaderboard(false);
+    }
+  };
+
+  const fetchBotStats = async () => {
+    setLoadingBotStats(true);
+    try {
+      const response = await apiClient.get('/stats/bots');
+      setBotStats(response.data);
+    } catch (err) {
+      console.error('Failed to fetch bot stats:', err);
+    } finally {
+      setLoadingBotStats(false);
     }
   };
 
@@ -172,7 +187,7 @@ function Statistics() {
               </div>
             ) : leaderboard.length > 0 ? (
               <div className="space-y-2">
-                {leaderboard.map((entry, index) => (
+                {leaderboard.map((entry) => (
                   <div
                     key={entry.userId}
                     className={`flex items-center justify-between p-3 rounded-lg ${
@@ -221,6 +236,21 @@ function Statistics() {
             </p>
           </div>
         </div>
+
+        {/* Bot Statistics - Full width */}
+        <div className="mt-6 bg-slate-800 rounded-lg p-6 border border-slate-700">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center">
+            <Bot className="w-6 h-6 text-purple-400 mr-2" />
+            Bot Statistics
+          </h2>
+          <BotStatistics
+            botStats={botStats}
+            loading={loadingBotStats}
+            selectedDifficulty={selectedDifficulty}
+            setSelectedDifficulty={setSelectedDifficulty}
+            formatPercentage={formatPercentage}
+          />
+        </div>
       </div>
     </div>
   );
@@ -239,6 +269,204 @@ function StatCard({ icon, label, value, color }) {
       <div className={`${colorClasses[color]} mb-2`}>{icon}</div>
       <p className="text-gray-400 text-sm">{label}</p>
       <p className="text-2xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDifficulty, formatPercentage }) {
+  const difficultyColors = {
+    easy: { bg: 'bg-green-900/30', border: 'border-green-500/50', text: 'text-green-400', tabBg: 'bg-green-900/50' },
+    medium: { bg: 'bg-yellow-900/30', border: 'border-yellow-500/50', text: 'text-yellow-400', tabBg: 'bg-yellow-900/50' },
+    hard: { bg: 'bg-red-900/30', border: 'border-red-500/50', text: 'text-red-400', tabBg: 'bg-red-900/50' }
+  };
+
+  const difficultyLabels = {
+    easy: 'Easy',
+    medium: 'Medium',
+    hard: 'Hard'
+  };
+
+  const difficultyStrategies = {
+    easy: {
+      title: 'Random Strategy',
+      description: 'Plays random valid combinations, prefers multi-card plays. Calls ZapZap immediately when eligible (hand \u2264 5). Always draws from deck. Random hand size selection.'
+    },
+    medium: {
+      title: 'High-Value Priority',
+      description: 'Prioritizes playing high-value cards (K, Q, J, 10). More conservative ZapZap (hand \u2264 3). Draws from discard if it helps complete combinations. Prefers moderate hand sizes (5-6).'
+    },
+    hard: {
+      title: 'Optimal Minimization',
+      description: 'Evaluates all plays to minimize remaining hand value. Strategic ZapZap timing based on round progression. Analyzes discard pile for best card acquisitions. Prefers smaller hands (4-5) for faster ZapZap.'
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader className="w-6 h-6 text-purple-400 animate-spin mr-2" />
+        <span className="text-gray-400">Loading bot statistics...</span>
+      </div>
+    );
+  }
+
+  if (!botStats || botStats.byDifficulty.length === 0) {
+    return (
+      <p className="text-gray-400 text-center py-8">
+        No bot statistics available yet. Play some games with bots!
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Totals Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Bot className="w-5 h-5" />}
+          label="Total Bots"
+          value={botStats.totals.totalBots}
+          color="purple"
+        />
+        <StatCard
+          icon={<Hash className="w-5 h-5" />}
+          label="Games Played"
+          value={botStats.totals.totalGamesPlayed}
+          color="blue"
+        />
+        <StatCard
+          icon={<Trophy className="w-5 h-5" />}
+          label="Overall Win Rate"
+          value={formatPercentage(botStats.totals.overallWinRate)}
+          color="amber"
+        />
+        <StatCard
+          icon={<Zap className="w-5 h-5" />}
+          label="ZapZap Success"
+          value={formatPercentage(botStats.totals.overallZapzapSuccessRate)}
+          color="green"
+        />
+      </div>
+
+      {/* Difficulty Filter Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-700 pb-3">
+        <button
+          onClick={() => setSelectedDifficulty(null)}
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            selectedDifficulty === null
+              ? 'bg-slate-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-slate-700'
+          }`}
+        >
+          All Difficulties
+        </button>
+        {['easy', 'medium', 'hard'].map(diff => (
+          <button
+            key={diff}
+            onClick={() => setSelectedDifficulty(diff)}
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              selectedDifficulty === diff
+                ? `${difficultyColors[diff].tabBg} ${difficultyColors[diff].text}`
+                : 'text-gray-400 hover:text-white hover:bg-slate-700'
+            }`}
+          >
+            {difficultyLabels[diff]}
+          </button>
+        ))}
+      </div>
+
+      {/* Stats by Difficulty */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {botStats.byDifficulty
+          .filter(d => !selectedDifficulty || d.difficulty === selectedDifficulty)
+          .map(diffStats => (
+            <div
+              key={diffStats.difficulty}
+              className={`rounded-lg p-4 border ${difficultyColors[diffStats.difficulty].bg} ${difficultyColors[diffStats.difficulty].border}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h4 className={`font-bold text-lg ${difficultyColors[diffStats.difficulty].text}`}>
+                  {difficultyLabels[diffStats.difficulty]}
+                </h4>
+                <span className="text-gray-400 text-sm">
+                  {diffStats.botCount} bot{diffStats.botCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Strategy Description */}
+              <div className="mb-4">
+                <p className={`text-xs font-medium ${difficultyColors[diffStats.difficulty].text}`}>
+                  {difficultyStrategies[diffStats.difficulty].title}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">
+                  {difficultyStrategies[diffStats.difficulty].description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-center mb-4">
+                <div>
+                  <p className="text-gray-400 text-xs">Games</p>
+                  <p className="text-xl font-bold text-white">{diffStats.gamesPlayed}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">Rounds</p>
+                  <p className="text-xl font-bold text-white">{diffStats.roundsPlayed}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">Win Rate</p>
+                  <p className="text-xl font-bold text-green-400">{formatPercentage(diffStats.winRate)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">Round Wins</p>
+                  <p className="text-xl font-bold text-amber-400">{formatPercentage(diffStats.roundWinRate)}</p>
+                </div>
+              </div>
+
+              {/* ZapZap Stats */}
+              <div className="pt-3 border-t border-slate-600">
+                <p className="text-gray-500 text-xs mb-2 text-center">ZapZap Performance</p>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div>
+                    <p className="text-gray-500 text-xs">Calls</p>
+                    <p className="font-bold text-white">{diffStats.zapzaps.total}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Success Rate</p>
+                    <p className="font-bold text-purple-400">{formatPercentage(diffStats.zapzaps.successRate)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {/* Individual Bot Breakdown */}
+      {selectedDifficulty && (
+        <div className="mt-4">
+          <h4 className="text-white font-semibold mb-3">Individual Bot Performance</h4>
+          <div className="space-y-2">
+            {botStats.byBot
+              .filter(b => b.difficulty === selectedDifficulty)
+              .map(bot => (
+                <div
+                  key={bot.botId}
+                  className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg"
+                >
+                  <div>
+                    <p className="text-white font-medium">{bot.username}</p>
+                    <p className="text-gray-400 text-xs">
+                      {bot.gamesPlayed} games | {bot.wins} wins | {bot.roundsPlayed} rounds
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-green-400">{formatPercentage(bot.winRate)}</p>
+                    <p className="text-gray-500 text-xs">win rate</p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -934,6 +934,67 @@ class PartyRepository extends IPartyRepository {
     }
 
     /**
+     * Get bot statistics aggregated by difficulty
+     * @returns {Promise<Object>} Bot statistics per difficulty level and individual bots
+     */
+    async getBotStats() {
+        try {
+            // Aggregated stats by difficulty
+            const byDifficulty = await this.db.all(
+                `SELECT
+                    u.bot_difficulty as difficulty,
+                    COUNT(DISTINCT pgr.user_id) as bot_count,
+                    COUNT(pgr.id) as games_played,
+                    SUM(pgr.rounds_played) as total_rounds,
+                    SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as wins,
+                    SUM(pgr.total_zapzap_calls) as zapzap_total,
+                    SUM(pgr.successful_zapzaps) as zapzap_success,
+                    SUM(pgr.failed_zapzaps) as zapzap_failed,
+                    SUM(pgr.lowest_hand_count) as lowest_hand_count
+                 FROM player_game_results pgr
+                 JOIN users u ON pgr.user_id = u.id
+                 WHERE u.user_type = 'bot'
+                 GROUP BY u.bot_difficulty
+                 ORDER BY CASE u.bot_difficulty
+                    WHEN 'easy' THEN 1
+                    WHEN 'medium' THEN 2
+                    WHEN 'hard' THEN 3
+                 END`
+            );
+
+            // Individual bot stats
+            const byBot = await this.db.all(
+                `SELECT
+                    u.id as bot_id,
+                    u.username,
+                    u.bot_difficulty as difficulty,
+                    COUNT(pgr.id) as games_played,
+                    SUM(pgr.rounds_played) as total_rounds,
+                    SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as wins,
+                    SUM(pgr.total_zapzap_calls) as zapzap_total,
+                    SUM(pgr.successful_zapzaps) as zapzap_success,
+                    SUM(pgr.failed_zapzaps) as zapzap_failed,
+                    SUM(pgr.lowest_hand_count) as lowest_hand_count
+                 FROM player_game_results pgr
+                 JOIN users u ON pgr.user_id = u.id
+                 WHERE u.user_type = 'bot'
+                 GROUP BY pgr.user_id
+                 ORDER BY u.bot_difficulty, wins DESC`
+            );
+
+            logger.debug('Bot stats retrieved', {
+                difficultyCount: byDifficulty.length,
+                botCount: byBot.length
+            });
+
+            return { byDifficulty, byBot };
+        } catch (error) {
+            logger.error('Error getting bot stats', { error: error.message });
+            throw new Error(`Failed to get bot stats: ${error.message}`);
+        }
+    }
+
+    /**
      * Count finished games for user
      * @param {string} userId - User ID
      * @returns {Promise<number>}

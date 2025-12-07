@@ -78,6 +78,22 @@ function createStatsRoutes(container) {
         }
     });
 
+    /**
+     * GET /api/stats/bots
+     * Get statistics for all bots, grouped by difficulty
+     */
+    router.get('/bots', async (req, res) => {
+        try {
+            const getBotStats = container.resolve('getBotStats');
+
+            const result = await getBotStats.execute();
+
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     return router;
 }
 
