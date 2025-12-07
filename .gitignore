@@ -16,8 +16,12 @@ playwright-report/
 test-results/
 tests/e2e/results/
 
-# Test database
+# Database
+data/zapzap.db
 data/zapzap.test.db
+
+# Playwright MCP screenshots
+.playwright-mcp/
 
 # Runtime data
 pids
