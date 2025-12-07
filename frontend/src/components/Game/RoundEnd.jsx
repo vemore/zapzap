@@ -40,8 +40,9 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
     );
   }
 
-  // Find lowest hand value for this round (player who got 0 points)
-  const lowestPlayer = players.find((p) => p.score === 0) || players[0];
+  // Find lowest hand value for this round (player who got 0 points AND is not eliminated)
+  // Eliminated players don't count for "lowest hand" even if they scored 0 this round
+  const lowestPlayer = players.find((p) => p.score === 0 && p.totalScore <= 100) || null;
 
   // Check if ZapZap was called
   const zapZapPlayer = zapZapCaller ? players.find((p) => p.id === zapZapCaller) : null;
@@ -124,8 +125,9 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
       {/* Players results */}
       <div className="space-y-4 mb-8">
         {sortedPlayers.map((player, index) => {
-          const isLowest = player.id === lowestPlayer?.id;
           const isEliminated = player.totalScore > 100;
+          // Only non-eliminated players can be marked as "lowest hand"
+          const isLowest = !isEliminated && lowestPlayer && player.id === lowestPlayer.id;
           const isZapZapCaller = player.id === zapZapCaller;
 
           const borderClasses = isLowest
@@ -149,7 +151,7 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-white font-semibold text-lg">{player.username}</span>
-                  {index === 0 && (
+                  {index === 0 && !isEliminated && (
                     <span className="text-xs bg-amber-400/20 text-amber-400 border border-amber-400/30 px-2 py-1 rounded-full font-semibold">
                       #{index + 1}
                     </span>

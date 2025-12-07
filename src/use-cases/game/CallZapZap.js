@@ -241,13 +241,16 @@ class CallZapZap {
 
             // Check if game is finished after this round
             // Recalculate active players based on NEW scores (after this round)
-            const newlyEliminatedIndices = [];
+            // Combine previously eliminated players with newly eliminated ones
+            const allEliminatedIndices = [...eliminatedPlayers];
             const stillActivePlayers = [];
             for (const p of players) {
                 const playerScore = scores[p.playerIndex] || 0;
-                if (playerScore > 100) {
-                    newlyEliminatedIndices.push(p.playerIndex);
-                } else {
+                if (playerScore > 100 && !eliminatedPlayers.includes(p.playerIndex)) {
+                    // Newly eliminated this round
+                    allEliminatedIndices.push(p.playerIndex);
+                }
+                if (playerScore <= 100) {
                     stillActivePlayers.push(p);
                 }
             }
@@ -322,7 +325,7 @@ class CallZapZap {
             const newGameState = gameState.withUpdates({
                 scores: scores,
                 currentAction: 'finished',
-                eliminatedPlayers: newlyEliminatedIndices,
+                eliminatedPlayers: allEliminatedIndices,
                 lastAction: {
                     type: 'zapzap',
                     playerIndex: player.playerIndex,
