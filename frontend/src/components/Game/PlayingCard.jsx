@@ -14,6 +14,8 @@ import { cardIdToCid, isJoker, getJokerType } from '../../utils/cardAdapter';
 function PlayingCard({ cardId, selected = false, onClick, disabled = false, width = 80 }) {
   const cardRef = useRef(null);
   const height = Math.round(width * 1.4); // Standard playing card ratio
+  // Calculate border radius based on card width (~5% of width, minimum 2px)
+  const borderRadius = Math.max(2, Math.round(width * 0.05));
 
   // Handle Joker cards with custom SVG
   if (isJoker(cardId)) {
@@ -23,7 +25,7 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
     return (
       <div
         className={`joker-card ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-        style={{ width: `${width}px`, height: `${height}px` }}
+        style={{ width: `${width}px`, height: `${height}px`, borderRadius: `${borderRadius}px` }}
         onClick={disabled ? undefined : onClick}
         role="button"
         tabIndex={disabled ? -1 : 0}
@@ -33,7 +35,7 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
         <img
           src={jokerSrc}
           alt={`Joker ${jokerType}`}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', borderRadius: `${borderRadius}px` }}
           draggable={false}
         />
       </div>
@@ -53,6 +55,7 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
   return (
     <div
       className={`playing-card-wrapper ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
+      style={{ borderRadius: `${borderRadius}px` }}
       onClick={disabled ? undefined : onClick}
       role="button"
       tabIndex={disabled ? -1 : 0}
@@ -62,7 +65,7 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
       <playing-card
         ref={cardRef}
         cid={cid}
-        style={{ width: `${width}px`, display: 'block' }}
+        style={{ width: `${width}px`, display: 'block', '--card-border-radius': `${borderRadius}px` }}
       />
     </div>
   );
