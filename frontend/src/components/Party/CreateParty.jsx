@@ -210,48 +210,78 @@ function CreateParty() {
 
                 {/* Configurable slots */}
                 <div className="space-y-2">
-                  {playerSlots.map((slot, index) => (
-                    <div key={slot.index} className="p-3 bg-slate-800 rounded-lg border border-slate-600">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          {slot.type === 'bot' ? (
-                            <Bot className="w-4 h-4 text-purple-400 mr-2" />
-                          ) : (
-                            <User className="w-4 h-4 text-gray-400 mr-2" />
-                          )}
-                          <span className="text-white text-sm">Player {slot.index + 1}</span>
+                  {playerSlots.map((slot, index) => {
+                    // Calculate available bots per difficulty, excluding bots already used in other slots
+                    const usedBotIds = new Set(
+                      playerSlots
+                        .filter((s, i) => i !== index && s.type === 'bot')
+                        .map(s => s.botId)
+                    );
+
+                    const getAvailableCount = (difficulty) => {
+                      return availableBots.filter(b =>
+                        b.botDifficulty === difficulty && !usedBotIds.has(b.id)
+                      ).length;
+                    };
+
+                    // For current slot, if it's using a bot of a certain difficulty, that bot is still "available" for this slot
+                    const getAvailableCountForSlot = (difficulty) => {
+                      const baseCount = getAvailableCount(difficulty);
+                      // If this slot is already using a bot of this difficulty, it's available for this slot
+                      if (slot.type === 'bot' && slot.difficulty === difficulty) {
+                        return baseCount + 1;
+                      }
+                      return baseCount;
+                    };
+
+                    const easyCount = getAvailableCountForSlot('easy');
+                    const mediumCount = getAvailableCountForSlot('medium');
+                    const hardCount = getAvailableCountForSlot('hard');
+                    const hardVinceCount = getAvailableCountForSlot('hard_vince');
+
+                    return (
+                      <div key={slot.index} className="p-3 bg-slate-800 rounded-lg border border-slate-600">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            {slot.type === 'bot' ? (
+                              <Bot className="w-4 h-4 text-purple-400 mr-2" />
+                            ) : (
+                              <User className="w-4 h-4 text-gray-400 mr-2" />
+                            )}
+                            <span className="text-white text-sm">Player {slot.index + 1}</span>
+                          </div>
+                          <select
+                            value={slot.type === 'bot' ? `bot-${slot.difficulty}` : 'human'}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === 'human') {
+                                handleSlotChange(index, 'human');
+                              } else {
+                                const difficulty = value.replace('bot-', '');
+                                handleSlotChange(index, 'bot', difficulty);
+                              }
+                            }}
+                            disabled={loading}
+                            className="px-3 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
+                          >
+                            <option value="human">Waiting for Human</option>
+                            <option value="bot-easy" disabled={easyCount === 0}>
+                              Bot - Easy {easyCount === 0 && '(None available)'}
+                            </option>
+                            <option value="bot-medium" disabled={mediumCount === 0}>
+                              Bot - Medium {mediumCount === 0 && '(None available)'}
+                            </option>
+                            <option value="bot-hard" disabled={hardCount === 0}>
+                              Bot - Hard {hardCount === 0 && '(None available)'}
+                            </option>
+                            <option value="bot-hard_vince" disabled={hardVinceCount === 0}>
+                              Bot - Hard Vince {hardVinceCount === 0 && '(None available)'}
+                            </option>
+                          </select>
                         </div>
-                        <select
-                          value={slot.type === 'bot' ? `bot-${slot.difficulty}` : 'human'}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === 'human') {
-                              handleSlotChange(index, 'human');
-                            } else {
-                              const difficulty = value.replace('bot-', '');
-                              handleSlotChange(index, 'bot', difficulty);
-                            }
-                          }}
-                          disabled={loading}
-                          className="px-3 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
-                        >
-                          <option value="human">Waiting for Human</option>
-                          <option value="bot-easy" disabled={availableBots.filter(b => b.botDifficulty === 'easy').length === 0}>
-                            Bot - Easy {availableBots.filter(b => b.botDifficulty === 'easy').length === 0 && '(None available)'}
-                          </option>
-                          <option value="bot-medium" disabled={availableBots.filter(b => b.botDifficulty === 'medium').length === 0}>
-                            Bot - Medium {availableBots.filter(b => b.botDifficulty === 'medium').length === 0 && '(None available)'}
-                          </option>
-                          <option value="bot-hard" disabled={availableBots.filter(b => b.botDifficulty === 'hard').length === 0}>
-                            Bot - Hard {availableBots.filter(b => b.botDifficulty === 'hard').length === 0 && '(None available)'}
-                          </option>
-                          <option value="bot-hard_vince" disabled={availableBots.filter(b => b.botDifficulty === 'hard_vince').length === 0}>
-                            Bot - Hard Vince {availableBots.filter(b => b.botDifficulty === 'hard_vince').length === 0 && '(None available)'}
-                          </option>
-                        </select>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Summary */}
