@@ -6,6 +6,7 @@
 const EasyBotStrategy = require('./EasyBotStrategy');
 const MediumBotStrategy = require('./MediumBotStrategy');
 const HardBotStrategy = require('./HardBotStrategy');
+const HardVinceBotStrategy = require('./HardVinceBotStrategy');
 
 class BotStrategyFactory {
     /**
@@ -21,6 +22,8 @@ class BotStrategyFactory {
                 return new MediumBotStrategy();
             case 'hard':
                 return new HardBotStrategy();
+            case 'hard_vince':
+                return new HardVinceBotStrategy();
             default:
                 throw new Error(`Unknown bot difficulty: ${difficulty}`);
         }
@@ -31,7 +34,7 @@ class BotStrategyFactory {
      * @returns {Array<string>}
      */
     static getAvailableDifficulties() {
-        return ['easy', 'medium', 'hard'];
+        return ['easy', 'medium', 'hard', 'hard_vince'];
     }
 
     /**

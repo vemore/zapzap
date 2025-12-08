@@ -68,8 +68,8 @@ class User {
 
         // Validate bot difficulty
         if (userType === 'bot') {
-            if (!botDifficulty || !['easy', 'medium', 'hard'].includes(botDifficulty)) {
-                throw new Error('Bot difficulty must be "easy", "medium", or "hard"');
+            if (!botDifficulty || !['easy', 'medium', 'hard', 'hard_vince'].includes(botDifficulty)) {
+                throw new Error('Bot difficulty must be "easy", "medium", "hard", or "hard_vince"');
             }
         }
 
@@ -200,8 +200,8 @@ class User {
      * @returns {Promise<User>} New Bot user instance
      */
     static async createBot(username, difficulty) {
-        if (!difficulty || !['easy', 'medium', 'hard'].includes(difficulty)) {
-            throw new Error('Bot difficulty must be "easy", "medium", or "hard"');
+        if (!difficulty || !['easy', 'medium', 'hard', 'hard_vince'].includes(difficulty)) {
+            throw new Error('Bot difficulty must be "easy", "medium", "hard", or "hard_vince"');
         }
 
         // Bots don't need real passwords, use a placeholder hash
