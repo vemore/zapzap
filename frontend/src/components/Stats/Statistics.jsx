@@ -277,27 +277,33 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
   const difficultyColors = {
     easy: { bg: 'bg-green-900/30', border: 'border-green-500/50', text: 'text-green-400', tabBg: 'bg-green-900/50' },
     medium: { bg: 'bg-yellow-900/30', border: 'border-yellow-500/50', text: 'text-yellow-400', tabBg: 'bg-yellow-900/50' },
-    hard: { bg: 'bg-red-900/30', border: 'border-red-500/50', text: 'text-red-400', tabBg: 'bg-red-900/50' }
+    hard: { bg: 'bg-red-900/30', border: 'border-red-500/50', text: 'text-red-400', tabBg: 'bg-red-900/50' },
+    hard_vince: { bg: 'bg-purple-900/30', border: 'border-purple-500/50', text: 'text-purple-400', tabBg: 'bg-purple-900/50' }
   };
 
   const difficultyLabels = {
     easy: 'Easy',
     medium: 'Medium',
-    hard: 'Hard'
+    hard: 'Hard',
+    hard_vince: 'Hard Vince'
   };
 
   const difficultyStrategies = {
     easy: {
       title: 'Random Strategy',
-      description: 'Plays random valid combinations, prefers multi-card plays. Calls ZapZap immediately when eligible (hand \u2264 5). Always draws from deck. Random hand size selection.'
+      description: 'Plays random valid combinations, prefers multi-card plays. Calls ZapZap immediately when eligible (hand ≤ 5). Always draws from deck. Random hand size selection.'
     },
     medium: {
       title: 'High-Value Priority',
-      description: 'Prioritizes playing high-value cards (K, Q, J, 10). More conservative ZapZap (hand \u2264 3). Draws from discard if it helps complete combinations. Prefers moderate hand sizes (5-6).'
+      description: 'Prioritizes playing high-value cards (K, Q, J, 10). More conservative ZapZap (hand ≤ 3). Draws from discard if it helps complete combinations. Prefers moderate hand sizes (5-6).'
     },
     hard: {
       title: 'Optimal Minimization',
       description: 'Evaluates all plays to minimize remaining hand value. Strategic ZapZap timing based on round progression. Analyzes discard pile for best card acquisitions. Prefers smaller hands (4-5) for faster ZapZap.'
+    },
+    hard_vince: {
+      title: 'Advanced Vince Strategy',
+      description: 'Builds on Hard strategy with Joker management: keeps Jokers for sequences when opponents have >3 cards, plays them when opponent is close to ZapZap. Tracks opponent card picks and played cards for probability-based decisions. Prioritizes picking up discarded Jokers strategically.'
     }
   };
 
@@ -360,7 +366,7 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
         >
           All Difficulties
         </button>
-        {['easy', 'medium', 'hard'].map(diff => (
+        {['easy', 'medium', 'hard', 'hard_vince'].map(diff => (
           <button
             key={diff}
             onClick={() => setSelectedDifficulty(diff)}

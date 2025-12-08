@@ -245,6 +245,9 @@ function CreateParty() {
                           <option value="bot-hard" disabled={availableBots.filter(b => b.botDifficulty === 'hard').length === 0}>
                             Bot - Hard {availableBots.filter(b => b.botDifficulty === 'hard').length === 0 && '(None available)'}
                           </option>
+                          <option value="bot-hard_vince" disabled={availableBots.filter(b => b.botDifficulty === 'hard_vince').length === 0}>
+                            Bot - Hard Vince {availableBots.filter(b => b.botDifficulty === 'hard_vince').length === 0 && '(None available)'}
+                          </option>
                         </select>
                       </div>
                     </div>
