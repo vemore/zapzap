@@ -6,6 +6,10 @@
  * 3. Track when opponents pick cards from discard - they'll likely play it soon
  * 4. Track all played cards for probability calculation (reset on reshuffle)
  * 5. Priority Joker pickup when opponents have > 3 cards
+ * 6. Golden Score Joker Strategy:
+ *    - ALWAYS pick up Jokers from discard (hoard them)
+ *    - NEVER play Jokers (keep them until the end)
+ *    - This denies Jokers to opponent and forces them to play theirs first
  */
 
 const BotStrategy = require('./BotStrategy');
@@ -128,6 +132,9 @@ class HardVinceBotStrategy extends BotStrategy {
         const minOpponentCards = this.getMinOpponentHandSize(gameState, botPlayerIndex);
         const opponentsHaveMoreThan3 = minOpponentCards > 3;
 
+        // VINCE STRATEGY 6: Detect Golden Score mode
+        const isGoldenScore = gameState.isGoldenScore || false;
+
         // Evaluate each play by resulting hand value
         const evaluatedPlays = validPlays.map(play => {
             const remainingHand = hand.filter(cardId => !play.includes(cardId));
@@ -146,8 +153,14 @@ class HardVinceBotStrategy extends BotStrategy {
 
             let score = -remainingValue + (playSize * 0.5);
 
-            // VINCE STRATEGY 1 & 2: Joker management
-            if (hasJokersInPlay) {
+            // VINCE STRATEGY 6: NEVER play Jokers during Golden Score
+            // In Golden Score, playing a Joker gives a massive advantage to the opponent
+            // Keep Jokers until the very end - opponent will get stuck with their Jokers too
+            if (hasJokersInPlay && isGoldenScore) {
+                score -= 1000; // Extreme penalty - effectively blocks any play containing Jokers
+            }
+            // VINCE STRATEGY 1 & 2: Joker management (only applies outside Golden Score)
+            else if (hasJokersInPlay) {
                 if (opponentsHaveMoreThan3) {
                     // Opponents have > 3 cards: keep jokers, penalize playing them in pairs/sets
                     if (isPairOrSet) {
@@ -286,9 +299,17 @@ class HardVinceBotStrategy extends BotStrategy {
 
         const botPlayerIndex = gameState.currentTurn;
         const opponentsHaveMoreThan3 = this.allOpponentsHaveMoreThan(gameState, botPlayerIndex, 3);
+        const isGoldenScore = gameState.isGoldenScore || false;
 
-        // VINCE STRATEGY 5: Priority Joker pickup when opponents have > 3 cards
+        // VINCE STRATEGY 6: During Golden Score, ALWAYS pick up Jokers from discard
+        // Accumulate Jokers to deny them to opponent - you'll keep them and never play them
+        // This forces opponent to either play their Jokers (giving you advantage) or keep them
         const jokersInDiscard = lastCardsPlayed.filter(cardId => CardAnalyzer.isJoker(cardId));
+        if (jokersInDiscard.length > 0 && isGoldenScore) {
+            // ALWAYS pick up Jokers during Golden Score - hoard them!
+            return 'played';
+        }
+        // VINCE STRATEGY 5: Priority Joker pickup when opponents have > 3 cards (outside Golden Score)
         if (jokersInDiscard.length > 0 && opponentsHaveMoreThan3) {
             // Strongly prefer picking up the Joker
             return 'played';
@@ -368,10 +389,14 @@ class HardVinceBotStrategy extends BotStrategy {
             }
         }
 
-        // Joker bonus - Jokers are valuable ONLY when opponents have > 3 cards
-        // When opponents are close to zapzap, hoarding Jokers is dangerous (25 point penalty)
+        // VINCE STRATEGY 6: During Golden Score, Jokers are EXTREMELY valuable to hoard
+        // Pick them up to deny them to opponent and keep them forever (never play them)
+        const isGoldenScore = gameState.isGoldenScore || false;
         if (CardAnalyzer.isJoker(cardId)) {
-            if (opponentsHaveMoreThan3) {
+            if (isGoldenScore) {
+                // Extreme bonus during Golden Score - ALWAYS pick up Jokers to hoard them
+                return 100;
+            } else if (opponentsHaveMoreThan3) {
                 combinationBonus += 20; // Jokers valuable for sequences/combos
             } else {
                 // Heavy penalty - Jokers are 25 point liability when opponent is close to zapzap
