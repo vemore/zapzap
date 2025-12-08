@@ -12,49 +12,70 @@ const dbPath = process.env.DB_PATH || '/app/data/zapzap.db';
 
 console.log('=== ZapZap Docker Entrypoint ===');
 console.log('Database path:', dbPath);
+console.log('Node version:', process.version);
+console.log('Current directory:', process.cwd());
+console.log('Script location:', __dirname);
 
 /**
  * Run database migrations
  */
 async function runMigrations() {
+    console.log('\n--- Running Database Migrations ---');
+
     // Check if database exists
-    if (!fs.existsSync(dbPath)) {
+    const dbExists = fs.existsSync(dbPath);
+    console.log('Database exists:', dbExists);
+
+    if (!dbExists) {
         console.log('Database does not exist yet. It will be created on first run.');
-        return;
+        return { migrationRan: false, reason: 'no_database' };
     }
 
-    console.log('Running database migrations...');
-
+    console.log('Loading better-sqlite3...');
+    let sqlite3;
     try {
-        const sqlite3 = require('better-sqlite3');
-        const db = sqlite3(dbPath);
+        sqlite3 = require('better-sqlite3');
+        console.log('better-sqlite3 loaded successfully');
+    } catch (err) {
+        console.error('Failed to load better-sqlite3:', err.message);
+        return { migrationRan: false, reason: 'sqlite_load_error', error: err.message };
+    }
+
+    let db;
+    try {
+        console.log('Opening database...');
+        db = sqlite3(dbPath);
+        console.log('Database opened successfully');
 
         // Check current schema for bot_difficulty constraint
+        console.log('Checking users table schema...');
         const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
 
         if (!tableInfo) {
             console.log('Users table does not exist yet. Skipping migration.');
             db.close();
-            return;
+            return { migrationRan: false, reason: 'no_users_table' };
         }
 
         const currentSchema = tableInfo.sql;
-        console.log('Current users table schema found.');
+        console.log('Current schema:', currentSchema.substring(0, 200) + '...');
 
         // Check if hard_vince is already in the constraint
         if (currentSchema.includes('hard_vince')) {
             console.log('Migration not needed: hard_vince already in schema.');
             db.close();
-            return;
+            return { migrationRan: false, reason: 'already_migrated' };
         }
 
         console.log('Migration needed: Adding hard_vince to bot_difficulty constraint...');
 
         // Start transaction
+        console.log('Starting transaction...');
         db.exec('BEGIN TRANSACTION');
 
         try {
             // Create new table with updated constraint
+            console.log('Creating new users table with updated constraint...');
             db.exec(`
                 CREATE TABLE users_new (
                     id TEXT PRIMARY KEY,
@@ -69,55 +90,91 @@ async function runMigrations() {
                     updated_at INTEGER NOT NULL
                 )
             `);
+            console.log('New table created');
 
             // Copy data
+            console.log('Copying data to new table...');
             db.exec(`
                 INSERT INTO users_new
                 SELECT id, username, password_hash, user_type, bot_difficulty, is_admin,
                        last_login_at, total_play_time_seconds, created_at, updated_at
                 FROM users
             `);
+            console.log('Data copied');
 
             // Drop old table and rename new one
+            console.log('Dropping old table and renaming...');
             db.exec('DROP TABLE users');
             db.exec('ALTER TABLE users_new RENAME TO users');
+            console.log('Table renamed');
 
             // Recreate indexes
+            console.log('Recreating indexes...');
             db.exec('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)');
             db.exec('CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type)');
+            console.log('Indexes recreated');
 
             db.exec('COMMIT');
             console.log('Migration completed successfully!');
 
+            db.close();
+            return { migrationRan: true, reason: 'success' };
+
         } catch (migrationError) {
+            console.error('Migration error during transaction:', migrationError.message);
             db.exec('ROLLBACK');
+            db.close();
             throw migrationError;
         }
 
-        db.close();
-
     } catch (error) {
         console.error('Migration error:', error.message);
+        console.error('Stack:', error.stack);
+        if (db) {
+            try { db.close(); } catch (e) { /* ignore */ }
+        }
         // Don't fail startup on migration errors - let the app handle it
-        console.log('Continuing with startup...');
+        console.log('Continuing with startup despite migration error...');
+        return { migrationRan: false, reason: 'error', error: error.message };
     }
 }
 
 /**
  * Create default bots if they don't exist
  */
-async function ensureDefaultBots() {
+async function ensureDefaultBots(migrationResult) {
+    console.log('\n--- Ensuring Default Bots ---');
+    console.log('Migration result:', JSON.stringify(migrationResult));
+
     if (!fs.existsSync(dbPath)) {
+        console.log('Database does not exist. Skipping bot creation.');
         return;
     }
 
+    let sqlite3, bcrypt, crypto;
     try {
-        const sqlite3 = require('better-sqlite3');
-        const bcrypt = require('bcryptjs');
-        const crypto = require('crypto');
-        const db = sqlite3(dbPath);
+        sqlite3 = require('better-sqlite3');
+        bcrypt = require('bcryptjs');
+        crypto = require('crypto');
+    } catch (err) {
+        console.error('Failed to load dependencies for bot creation:', err.message);
+        return;
+    }
+
+    let db;
+    try {
+        db = sqlite3(dbPath);
+
+        // First check if schema supports hard_vince
+        const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+        if (!tableInfo || !tableInfo.sql.includes('hard_vince')) {
+            console.log('Schema does not support hard_vince yet. Skipping VinceBot creation.');
+            db.close();
+            return;
+        }
 
         // Check if VinceBot exists
+        console.log('Checking if VinceBot exists...');
         const vinceBot = db.prepare("SELECT id FROM users WHERE username = 'VinceBot'").get();
 
         if (!vinceBot) {
@@ -135,7 +192,9 @@ async function ensureDefaultBots() {
 
                 console.log('VinceBot created successfully!');
             } catch (err) {
-                if (!err.message.includes('UNIQUE constraint')) {
+                if (err.message.includes('UNIQUE constraint')) {
+                    console.log('VinceBot already exists (race condition).');
+                } else {
                     console.error('Failed to create VinceBot:', err.message);
                 }
             }
@@ -146,6 +205,9 @@ async function ensureDefaultBots() {
         db.close();
     } catch (error) {
         console.error('Error ensuring default bots:', error.message);
+        if (db) {
+            try { db.close(); } catch (e) { /* ignore */ }
+        }
     }
 }
 
@@ -153,7 +215,7 @@ async function ensureDefaultBots() {
  * Start the main application
  */
 function startApp() {
-    console.log('Starting ZapZap application...');
+    console.log('\n--- Starting ZapZap Application ---');
 
     const app = spawn('node', ['app.js'], {
         stdio: 'inherit',
@@ -166,24 +228,37 @@ function startApp() {
     });
 
     app.on('exit', (code) => {
+        console.log('Application exited with code:', code);
         process.exit(code || 0);
     });
 
     // Forward signals to child process
-    process.on('SIGTERM', () => app.kill('SIGTERM'));
-    process.on('SIGINT', () => app.kill('SIGINT'));
+    process.on('SIGTERM', () => {
+        console.log('Received SIGTERM, forwarding to app...');
+        app.kill('SIGTERM');
+    });
+    process.on('SIGINT', () => {
+        console.log('Received SIGINT, forwarding to app...');
+        app.kill('SIGINT');
+    });
 }
 
 /**
  * Main entrypoint
  */
 async function main() {
+    console.log('\n========================================');
+    console.log('ZapZap Docker Entrypoint Starting...');
+    console.log('Time:', new Date().toISOString());
+    console.log('========================================\n');
+
     try {
-        await runMigrations();
-        await ensureDefaultBots();
+        const migrationResult = await runMigrations();
+        await ensureDefaultBots(migrationResult);
         startApp();
     } catch (error) {
         console.error('Entrypoint error:', error);
+        console.error('Stack:', error.stack);
         process.exit(1);
     }
 }
