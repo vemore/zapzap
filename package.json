@@ -12,7 +12,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:smoke": "playwright test smoke.spec.js"
+    "test:e2e:smoke": "playwright test smoke.spec.js",
+    "simulate": "node scripts/run-simulation.js"
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,7 @@
   },
   "homepage": "https://github.com/vemore/zapzap#readme",
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "bcryptjs": "^3.0.3",
     "cards": "^1.2.0",
     "cors": "^2.8.5",

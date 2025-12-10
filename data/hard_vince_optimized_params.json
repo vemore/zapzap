@@ -1,0 +1,768 @@
+{
+  "baseline": {
+    "params": {
+      "goldenScoreJokerPenalty": -525,
+      "goldenScoreJokerPickupBonus": 47.5,
+      "jokerPairSetPenalty": -63,
+      "jokerSequencePenalty": -13.2,
+      "jokerPairSetBonusLateGame": 37.8,
+      "jokerSequenceBonusEarly": 18,
+      "jokerPenaltyNearZapZap": -82.5,
+      "opponentWantsBonusMultiplier": 2,
+      "intermediateCardBonusMultiplier": 12,
+      "highCardPairBreakingPenalty": -16.5,
+      "singleHighCardRetentionPenalty": -2.25,
+      "highCardPairPreservationBonusMultiplier": 4,
+      "combinationBonusMultiplier": 13.2,
+      "setBonusMultiplier": 4.75,
+      "setBonusReduction": -2.625,
+      "combinationBonusReduction": -6,
+      "discardPickupThreshold": 3.6
+    },
+    "winRate": 0.145,
+    "avgScore": 107.4105,
+    "games": 2000
+  },
+  "parameterResults": {
+    "goldenScoreJokerPenalty": {
+      "baseValue": -525,
+      "bestValue": -498.75,
+      "bestWinRate": 0.162,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -472.5,
+          "winRate": 0.15,
+          "avgScore": 107.176,
+          "improvement": 0.0050000000000000044
+        },
+        {
+          "multiplier": 0.95,
+          "value": -498.75,
+          "winRate": 0.162,
+          "avgScore": 107.3255,
+          "improvement": 0.017000000000000015
+        },
+        {
+          "multiplier": 1,
+          "value": -525,
+          "winRate": 0.1445,
+          "avgScore": 107.746,
+          "improvement": -0.0005000000000000004
+        },
+        {
+          "multiplier": 1.05,
+          "value": -551.25,
+          "winRate": 0.1375,
+          "avgScore": 107.359,
+          "improvement": -0.007499999999999979
+        },
+        {
+          "multiplier": 1.1,
+          "value": -577.5,
+          "winRate": 0.1465,
+          "avgScore": 107.2095,
+          "improvement": 0.0015000000000000013
+        }
+      ]
+    },
+    "goldenScoreJokerPickupBonus": {
+      "baseValue": 47.5,
+      "bestValue": 47.5,
+      "bestWinRate": 0.1615,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 42.75,
+          "winRate": 0.1395,
+          "avgScore": 107.328,
+          "improvement": -0.005499999999999977
+        },
+        {
+          "multiplier": 0.95,
+          "value": 45.125,
+          "winRate": 0.14,
+          "avgScore": 107.3005,
+          "improvement": -0.004999999999999977
+        },
+        {
+          "multiplier": 1,
+          "value": 47.5,
+          "winRate": 0.1615,
+          "avgScore": 107.003,
+          "improvement": 0.016500000000000015
+        },
+        {
+          "multiplier": 1.05,
+          "value": 49.875,
+          "winRate": 0.1455,
+          "avgScore": 107.2455,
+          "improvement": 0.0005000000000000004
+        },
+        {
+          "multiplier": 1.1,
+          "value": 52.25000000000001,
+          "winRate": 0.1365,
+          "avgScore": 107.7775,
+          "improvement": -0.00849999999999998
+        }
+      ]
+    },
+    "jokerPairSetPenalty": {
+      "baseValue": -63,
+      "bestValue": -69.30000000000001,
+      "bestWinRate": 0.151,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -56.7,
+          "winRate": 0.14,
+          "avgScore": 107.505,
+          "improvement": -0.004999999999999977
+        },
+        {
+          "multiplier": 0.95,
+          "value": -59.849999999999994,
+          "winRate": 0.135,
+          "avgScore": 107.6655,
+          "improvement": -0.009999999999999981
+        },
+        {
+          "multiplier": 1,
+          "value": -63,
+          "winRate": 0.1345,
+          "avgScore": 107.893,
+          "improvement": -0.010499999999999982
+        },
+        {
+          "multiplier": 1.05,
+          "value": -66.15,
+          "winRate": 0.1355,
+          "avgScore": 107.6555,
+          "improvement": -0.00949999999999998
+        },
+        {
+          "multiplier": 1.1,
+          "value": -69.30000000000001,
+          "winRate": 0.151,
+          "avgScore": 107.255,
+          "improvement": 0.006000000000000005
+        }
+      ]
+    },
+    "jokerSequencePenalty": {
+      "baseValue": -13.2,
+      "bestValue": -11.879999999999999,
+      "bestWinRate": 0.1535,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -11.879999999999999,
+          "winRate": 0.1535,
+          "avgScore": 107.4125,
+          "improvement": 0.008500000000000008
+        },
+        {
+          "multiplier": 0.95,
+          "value": -12.54,
+          "winRate": 0.135,
+          "avgScore": 108.284,
+          "improvement": -0.009999999999999981
+        },
+        {
+          "multiplier": 1,
+          "value": -13.2,
+          "winRate": 0.1275,
+          "avgScore": 108.003,
+          "improvement": -0.017499999999999988
+        },
+        {
+          "multiplier": 1.05,
+          "value": -13.86,
+          "winRate": 0.1395,
+          "avgScore": 108.0665,
+          "improvement": -0.005499999999999977
+        },
+        {
+          "multiplier": 1.1,
+          "value": -14.52,
+          "winRate": 0.1345,
+          "avgScore": 107.9465,
+          "improvement": -0.010499999999999982
+        }
+      ]
+    },
+    "jokerPairSetBonusLateGame": {
+      "baseValue": 37.8,
+      "bestValue": 34.019999999999996,
+      "bestWinRate": 0.153,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 34.019999999999996,
+          "winRate": 0.153,
+          "avgScore": 106.511,
+          "improvement": 0.008000000000000007
+        },
+        {
+          "multiplier": 0.95,
+          "value": 35.91,
+          "winRate": 0.144,
+          "avgScore": 107.337,
+          "improvement": -0.0010000000000000009
+        },
+        {
+          "multiplier": 1,
+          "value": 37.8,
+          "winRate": 0.137,
+          "avgScore": 107.5935,
+          "improvement": -0.00799999999999998
+        },
+        {
+          "multiplier": 1.05,
+          "value": 39.69,
+          "winRate": 0.1435,
+          "avgScore": 107.7095,
+          "improvement": -0.0015000000000000013
+        },
+        {
+          "multiplier": 1.1,
+          "value": 41.58,
+          "winRate": 0.151,
+          "avgScore": 106.8895,
+          "improvement": 0.006000000000000005
+        }
+      ]
+    },
+    "jokerSequenceBonusEarly": {
+      "baseValue": 18,
+      "bestValue": 17.099999999999998,
+      "bestWinRate": 0.1555,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 16.2,
+          "winRate": 0.1435,
+          "avgScore": 107.1765,
+          "improvement": -0.0015000000000000013
+        },
+        {
+          "multiplier": 0.95,
+          "value": 17.099999999999998,
+          "winRate": 0.1555,
+          "avgScore": 106.719,
+          "improvement": 0.01050000000000001
+        },
+        {
+          "multiplier": 1,
+          "value": 18,
+          "winRate": 0.1445,
+          "avgScore": 107.487,
+          "improvement": -0.0005000000000000004
+        },
+        {
+          "multiplier": 1.05,
+          "value": 18.900000000000002,
+          "winRate": 0.155,
+          "avgScore": 107.1305,
+          "improvement": 0.010000000000000009
+        },
+        {
+          "multiplier": 1.1,
+          "value": 19.8,
+          "winRate": 0.1495,
+          "avgScore": 107.2195,
+          "improvement": 0.004500000000000004
+        }
+      ]
+    },
+    "jokerPenaltyNearZapZap": {
+      "baseValue": -82.5,
+      "bestValue": -74.25,
+      "bestWinRate": 0.1545,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -74.25,
+          "winRate": 0.1545,
+          "avgScore": 107.7005,
+          "improvement": 0.009500000000000008
+        },
+        {
+          "multiplier": 0.95,
+          "value": -78.375,
+          "winRate": 0.137,
+          "avgScore": 107.5035,
+          "improvement": -0.00799999999999998
+        },
+        {
+          "multiplier": 1,
+          "value": -82.5,
+          "winRate": 0.1455,
+          "avgScore": 107.0235,
+          "improvement": 0.0005000000000000004
+        },
+        {
+          "multiplier": 1.05,
+          "value": -86.625,
+          "winRate": 0.154,
+          "avgScore": 107,
+          "improvement": 0.009000000000000008
+        },
+        {
+          "multiplier": 1.1,
+          "value": -90.75000000000001,
+          "winRate": 0.1455,
+          "avgScore": 107.4125,
+          "improvement": 0.0005000000000000004
+        }
+      ]
+    },
+    "opponentWantsBonusMultiplier": {
+      "baseValue": 2,
+      "bestValue": 2,
+      "bestWinRate": 0.147,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 1.8,
+          "winRate": 0.131,
+          "avgScore": 107.5365,
+          "improvement": -0.013999999999999985
+        },
+        {
+          "multiplier": 0.95,
+          "value": 1.9,
+          "winRate": 0.131,
+          "avgScore": 107.5705,
+          "improvement": -0.013999999999999985
+        },
+        {
+          "multiplier": 1,
+          "value": 2,
+          "winRate": 0.147,
+          "avgScore": 107.427,
+          "improvement": 0.0020000000000000018
+        },
+        {
+          "multiplier": 1.05,
+          "value": 2.1,
+          "winRate": 0.14,
+          "avgScore": 107.523,
+          "improvement": -0.004999999999999977
+        },
+        {
+          "multiplier": 1.1,
+          "value": 2.2,
+          "winRate": 0.1425,
+          "avgScore": 107.315,
+          "improvement": -0.0025000000000000022
+        }
+      ]
+    },
+    "intermediateCardBonusMultiplier": {
+      "baseValue": 12,
+      "bestValue": 12.600000000000001,
+      "bestWinRate": 0.146,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 10.8,
+          "winRate": 0.1265,
+          "avgScore": 107.6705,
+          "improvement": -0.01849999999999999
+        },
+        {
+          "multiplier": 0.95,
+          "value": 11.399999999999999,
+          "winRate": 0.139,
+          "avgScore": 107.5945,
+          "improvement": -0.005999999999999978
+        },
+        {
+          "multiplier": 1,
+          "value": 12,
+          "winRate": 0.1365,
+          "avgScore": 107.76,
+          "improvement": -0.00849999999999998
+        },
+        {
+          "multiplier": 1.05,
+          "value": 12.600000000000001,
+          "winRate": 0.146,
+          "avgScore": 107.5755,
+          "improvement": 0.0010000000000000009
+        },
+        {
+          "multiplier": 1.1,
+          "value": 13.200000000000001,
+          "winRate": 0.127,
+          "avgScore": 107.951,
+          "improvement": -0.017999999999999988
+        }
+      ]
+    },
+    "highCardPairBreakingPenalty": {
+      "baseValue": -16.5,
+      "bestValue": -16.5,
+      "bestWinRate": 0.145,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -14.85,
+          "winRate": 0.1425,
+          "avgScore": 107.5035,
+          "improvement": -0.0025000000000000022
+        },
+        {
+          "multiplier": 0.95,
+          "value": -15.674999999999999,
+          "winRate": 0.1405,
+          "avgScore": 107.748,
+          "improvement": -0.004499999999999976
+        },
+        {
+          "multiplier": 1,
+          "value": -16.5,
+          "winRate": 0.128,
+          "avgScore": 108.4245,
+          "improvement": -0.016999999999999987
+        },
+        {
+          "multiplier": 1.05,
+          "value": -17.325,
+          "winRate": 0.1325,
+          "avgScore": 107.8585,
+          "improvement": -0.012499999999999983
+        },
+        {
+          "multiplier": 1.1,
+          "value": -18.150000000000002,
+          "winRate": 0.1365,
+          "avgScore": 107.4485,
+          "improvement": -0.00849999999999998
+        }
+      ]
+    },
+    "singleHighCardRetentionPenalty": {
+      "baseValue": -2.25,
+      "bestValue": -2.1374999999999997,
+      "bestWinRate": 0.153,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -2.025,
+          "winRate": 0.149,
+          "avgScore": 107.1105,
+          "improvement": 0.0040000000000000036
+        },
+        {
+          "multiplier": 0.95,
+          "value": -2.1374999999999997,
+          "winRate": 0.153,
+          "avgScore": 107.245,
+          "improvement": 0.008000000000000007
+        },
+        {
+          "multiplier": 1,
+          "value": -2.25,
+          "winRate": 0.146,
+          "avgScore": 107.2025,
+          "improvement": 0.0010000000000000009
+        },
+        {
+          "multiplier": 1.05,
+          "value": -2.3625000000000003,
+          "winRate": 0.1465,
+          "avgScore": 107.439,
+          "improvement": 0.0015000000000000013
+        },
+        {
+          "multiplier": 1.1,
+          "value": -2.475,
+          "winRate": 0.142,
+          "avgScore": 107.253,
+          "improvement": -0.0030000000000000027
+        }
+      ]
+    },
+    "highCardPairPreservationBonusMultiplier": {
+      "baseValue": 4,
+      "bestValue": 4.2,
+      "bestWinRate": 0.157,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 3.6,
+          "winRate": 0.143,
+          "avgScore": 107.1365,
+          "improvement": -0.0020000000000000018
+        },
+        {
+          "multiplier": 0.95,
+          "value": 3.8,
+          "winRate": 0.1395,
+          "avgScore": 107.5775,
+          "improvement": -0.005499999999999977
+        },
+        {
+          "multiplier": 1,
+          "value": 4,
+          "winRate": 0.144,
+          "avgScore": 107.5745,
+          "improvement": -0.0010000000000000009
+        },
+        {
+          "multiplier": 1.05,
+          "value": 4.2,
+          "winRate": 0.157,
+          "avgScore": 106.7075,
+          "improvement": 0.01200000000000001
+        },
+        {
+          "multiplier": 1.1,
+          "value": 4.4,
+          "winRate": 0.144,
+          "avgScore": 107.3085,
+          "improvement": -0.0010000000000000009
+        }
+      ]
+    },
+    "combinationBonusMultiplier": {
+      "baseValue": 13.2,
+      "bestValue": 13.2,
+      "bestWinRate": 0.145,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 11.879999999999999,
+          "winRate": 0.1445,
+          "avgScore": 107.1965,
+          "improvement": -0.0005000000000000004
+        },
+        {
+          "multiplier": 0.95,
+          "value": 12.54,
+          "winRate": 0.1345,
+          "avgScore": 107.8815,
+          "improvement": -0.010499999999999982
+        },
+        {
+          "multiplier": 1,
+          "value": 13.2,
+          "winRate": 0.135,
+          "avgScore": 107.8285,
+          "improvement": -0.009999999999999981
+        },
+        {
+          "multiplier": 1.05,
+          "value": 13.86,
+          "winRate": 0.125,
+          "avgScore": 107.9105,
+          "improvement": -0.01999999999999999
+        },
+        {
+          "multiplier": 1.1,
+          "value": 14.52,
+          "winRate": 0.1315,
+          "avgScore": 108.152,
+          "improvement": -0.013499999999999984
+        }
+      ]
+    },
+    "setBonusMultiplier": {
+      "baseValue": 4.75,
+      "bestValue": 5.2250000000000005,
+      "bestWinRate": 0.1465,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 4.275,
+          "winRate": 0.141,
+          "avgScore": 107.062,
+          "improvement": -0.0040000000000000036
+        },
+        {
+          "multiplier": 0.95,
+          "value": 4.5125,
+          "winRate": 0.1405,
+          "avgScore": 107.7535,
+          "improvement": -0.004499999999999976
+        },
+        {
+          "multiplier": 1,
+          "value": 4.75,
+          "winRate": 0.1345,
+          "avgScore": 107.768,
+          "improvement": -0.010499999999999982
+        },
+        {
+          "multiplier": 1.05,
+          "value": 4.9875,
+          "winRate": 0.1395,
+          "avgScore": 107.6435,
+          "improvement": -0.005499999999999977
+        },
+        {
+          "multiplier": 1.1,
+          "value": 5.2250000000000005,
+          "winRate": 0.1465,
+          "avgScore": 107.3515,
+          "improvement": 0.0015000000000000013
+        }
+      ]
+    },
+    "setBonusReduction": {
+      "baseValue": -2.625,
+      "bestValue": -2.625,
+      "bestWinRate": 0.154,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -2.3625000000000003,
+          "winRate": 0.1375,
+          "avgScore": 107.759,
+          "improvement": -0.007499999999999979
+        },
+        {
+          "multiplier": 0.95,
+          "value": -2.49375,
+          "winRate": 0.133,
+          "avgScore": 108.1765,
+          "improvement": -0.011999999999999983
+        },
+        {
+          "multiplier": 1,
+          "value": -2.625,
+          "winRate": 0.154,
+          "avgScore": 106.852,
+          "improvement": 0.009000000000000008
+        },
+        {
+          "multiplier": 1.05,
+          "value": -2.75625,
+          "winRate": 0.146,
+          "avgScore": 107.5555,
+          "improvement": 0.0010000000000000009
+        },
+        {
+          "multiplier": 1.1,
+          "value": -2.8875,
+          "winRate": 0.1375,
+          "avgScore": 107.328,
+          "improvement": -0.007499999999999979
+        }
+      ]
+    },
+    "combinationBonusReduction": {
+      "baseValue": -6,
+      "bestValue": -5.4,
+      "bestWinRate": 0.153,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": -5.4,
+          "winRate": 0.153,
+          "avgScore": 107.3175,
+          "improvement": 0.008000000000000007
+        },
+        {
+          "multiplier": 0.95,
+          "value": -5.699999999999999,
+          "winRate": 0.136,
+          "avgScore": 108.003,
+          "improvement": -0.00899999999999998
+        },
+        {
+          "multiplier": 1,
+          "value": -6,
+          "winRate": 0.1455,
+          "avgScore": 107.4405,
+          "improvement": 0.0005000000000000004
+        },
+        {
+          "multiplier": 1.05,
+          "value": -6.300000000000001,
+          "winRate": 0.147,
+          "avgScore": 107.5325,
+          "improvement": 0.0020000000000000018
+        },
+        {
+          "multiplier": 1.1,
+          "value": -6.6000000000000005,
+          "winRate": 0.1455,
+          "avgScore": 107.105,
+          "improvement": 0.0005000000000000004
+        }
+      ]
+    },
+    "discardPickupThreshold": {
+      "baseValue": 3.6,
+      "bestValue": 3.7800000000000002,
+      "bestWinRate": 0.147,
+      "variations": [
+        {
+          "multiplier": 0.9,
+          "value": 3.24,
+          "winRate": 0.1405,
+          "avgScore": 107.7475,
+          "improvement": -0.004499999999999976
+        },
+        {
+          "multiplier": 0.95,
+          "value": 3.42,
+          "winRate": 0.1435,
+          "avgScore": 107.2915,
+          "improvement": -0.0015000000000000013
+        },
+        {
+          "multiplier": 1,
+          "value": 3.6,
+          "winRate": 0.1465,
+          "avgScore": 107.263,
+          "improvement": 0.0015000000000000013
+        },
+        {
+          "multiplier": 1.05,
+          "value": 3.7800000000000002,
+          "winRate": 0.147,
+          "avgScore": 107.354,
+          "improvement": 0.0020000000000000018
+        },
+        {
+          "multiplier": 1.1,
+          "value": 3.9600000000000004,
+          "winRate": 0.1365,
+          "avgScore": 107.551,
+          "improvement": -0.00849999999999998
+        }
+      ]
+    }
+  },
+  "optimized": {
+    "params": {
+      "goldenScoreJokerPenalty": -498.75,
+      "goldenScoreJokerPickupBonus": 47.5,
+      "jokerPairSetPenalty": -69.30000000000001,
+      "jokerSequencePenalty": -11.879999999999999,
+      "jokerPairSetBonusLateGame": 34.019999999999996,
+      "jokerSequenceBonusEarly": 17.099999999999998,
+      "jokerPenaltyNearZapZap": -74.25,
+      "opponentWantsBonusMultiplier": 2,
+      "intermediateCardBonusMultiplier": 12.600000000000001,
+      "highCardPairBreakingPenalty": -16.5,
+      "singleHighCardRetentionPenalty": -2.1374999999999997,
+      "highCardPairPreservationBonusMultiplier": 4.2,
+      "combinationBonusMultiplier": 13.2,
+      "setBonusMultiplier": 5.2250000000000005,
+      "setBonusReduction": -2.625,
+      "combinationBonusReduction": -5.4,
+      "discardPickupThreshold": 3.7800000000000002
+    },
+    "winRate": 0.14325,
+    "avgScore": 107.3005,
+    "games": 4000,
+    "improvementOverBaseline": -0.0017500000000000016
+  },
+  "timestamp": "2025-12-10T13:49:44.334Z"
+}

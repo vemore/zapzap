@@ -1,0 +1,154 @@
+{
+  "baseline": {
+    "params": {
+      "goldenScoreJokerPenalty": -547.84,
+      "goldenScoreJokerPickupBonus": 60.63,
+      "jokerPairSetPenalty": -36.96,
+      "jokerSequencePenalty": -10.59,
+      "jokerPairSetBonusLateGame": 53.77,
+      "jokerSequenceBonusEarly": 8.39,
+      "jokerPenaltyNearZapZap": -79.1,
+      "opponentWantsBonusMultiplier": 1.85,
+      "intermediateCardBonusMultiplier": 6.61,
+      "highCardPairBreakingPenalty": -56.33,
+      "singleHighCardRetentionPenalty": -12.45,
+      "highCardPairPreservationBonusMultiplier": 52.75,
+      "combinationBonusMultiplier": 14.53,
+      "setBonusMultiplier": 33.8,
+      "setBonusReduction": -8.1,
+      "combinationBonusReduction": -15.28,
+      "discardPickupThreshold": 15.61,
+      "deckProbabilityWeight": 5.07,
+      "lowProbabilityPenalty": -13.36,
+      "highThreatZapZapPenalty": -35.36,
+      "opponentThreatMultiplier": 1.58,
+      "blockOpponentBonus": 9.7,
+      "aggressiveZapZapMinOpponentCards": 3.11,
+      "defensiveZapZapRiskThreshold": 0.2,
+      "defensiveZapZapMaxHandValue": 4,
+      "counterZapZapMaxHandValue": 2.43,
+      "counterZapZapJokerBonus": 160,
+      "badHandMinValue": 35,
+      "badHandHighCardBonusMultiplier": 3,
+      "badHandMaxPairs": 0,
+      "badHandMaxSequenceCards": 2
+    },
+    "winRate": 0.158,
+    "avgScore": 106.466,
+    "games": 1000
+  },
+  "optimized": {
+    "params": {
+      "goldenScoreJokerPenalty": -393.85701596702563,
+      "goldenScoreJokerPickupBonus": 23.885833529796734,
+      "jokerPairSetPenalty": -46.237172517086194,
+      "jokerSequencePenalty": -15.433129997553634,
+      "jokerPairSetBonusLateGame": 93.68686982044152,
+      "jokerSequenceBonusEarly": 11.471486887879253,
+      "jokerPenaltyNearZapZap": -71.25685793315623,
+      "opponentWantsBonusMultiplier": 5.627096968273323,
+      "intermediateCardBonusMultiplier": 19.830000000000002,
+      "highCardPairBreakingPenalty": -168.99,
+      "singleHighCardRetentionPenalty": -6.097470756158574,
+      "highCardPairPreservationBonusMultiplier": 44.28177133195821,
+      "combinationBonusMultiplier": 11.7703857107831,
+      "setBonusMultiplier": 50.989149930924015,
+      "setBonusReduction": -6.414153186675075,
+      "combinationBonusReduction": -21.53198452900558,
+      "discardPickupThreshold": 15.45397387284154,
+      "deckProbabilityWeight": 6.866425099098277,
+      "lowProbabilityPenalty": -25.651371697120748,
+      "highThreatZapZapPenalty": -40.79010769701881,
+      "opponentThreatMultiplier": 2.396287309807776,
+      "blockOpponentBonus": 17.58754991741187,
+      "aggressiveZapZapMinOpponentCards": 5.376645264081669,
+      "defensiveZapZapRiskThreshold": 0.13055353456603125,
+      "defensiveZapZapMaxHandValue": 6.659296919833572,
+      "counterZapZapMaxHandValue": 4.727625918365772,
+      "counterZapZapJokerBonus": 233.1286478111307,
+      "badHandMinValue": 67.17501585362247,
+      "badHandHighCardBonusMultiplier": 3.9236439927757134,
+      "badHandMaxPairs": 0,
+      "badHandMaxSequenceCards": 3.8300778002099993
+    },
+    "winRate": 0.1865,
+    "avgScore": 105.336,
+    "games": 2000,
+    "improvementOverBaseline": 0.028499999999999998
+  },
+  "config": {
+    "generations": 8,
+    "population": 10,
+    "elite": 2,
+    "mutationRate": 0.1,
+    "mutationRange": 0.3,
+    "crossoverRate": 0.7,
+    "gamesPerEval": 1000
+  },
+  "generationStats": [
+    {
+      "generation": 0,
+      "bestFitness": 0.1704953,
+      "bestWinRate": 0.181,
+      "avgFitness": 0.13770537,
+      "diversity": 0.28367318672680975
+    },
+    {
+      "generation": 1,
+      "bestFitness": 0.1734649,
+      "bestWinRate": 0.184,
+      "avgFitness": 0.15476845,
+      "diversity": 0.28731759740085694
+    },
+    {
+      "generation": 2,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.17777300999999998,
+      "diversity": 0.21458955183556316
+    },
+    {
+      "generation": 3,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.18137752,
+      "diversity": 0.06347611995549501
+    },
+    {
+      "generation": 4,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.17453792999999998,
+      "diversity": 0.05789015756230937
+    },
+    {
+      "generation": 5,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.17233272,
+      "diversity": 0.05097190599415827
+    },
+    {
+      "generation": 6,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.17513374,
+      "diversity": 0.05258775047666136
+    },
+    {
+      "generation": 7,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.17755992,
+      "diversity": 0.05603824573648122
+    },
+    {
+      "generation": 8,
+      "bestFitness": 0.2005146,
+      "bestWinRate": 0.211,
+      "avgFitness": 0.181565,
+      "diversity": 0.025120717395414372
+    }
+  ],
+  "timestamp": "2025-12-10T14:47:29.700Z"
+}
