@@ -8,6 +8,7 @@ const DatabaseConnection = require('../infrastructure/database/sqlite/DatabaseCo
 const UserRepository = require('../infrastructure/database/sqlite/repositories/UserRepository');
 const PartyRepository = require('../infrastructure/database/sqlite/repositories/PartyRepository');
 const JwtService = require('../infrastructure/services/JwtService');
+const BedrockService = require('../infrastructure/services/BedrockService');
 
 // Use Cases - Authentication
 const RegisterUser = require('../use-cases/auth/RegisterUser');
@@ -93,6 +94,26 @@ async function bootstrap(emitter = null) {
         const jwtService = new JwtService();
         container.register('jwtService', jwtService);
 
+        // Initialize BedrockService for LLM bot (if enabled)
+        let bedrockService = null;
+        if (process.env.AWS_BEDROCK_ENABLED === 'true') {
+            try {
+                bedrockService = new BedrockService({
+                    region: process.env.AWS_BEDROCK_REGION,
+                    modelId: process.env.AWS_BEDROCK_MODEL_ID,
+                });
+                container.register('bedrockService', bedrockService);
+                logger.info('BedrockService initialized for LLM bot', {
+                    region: process.env.AWS_BEDROCK_REGION || 'us-east-1',
+                    modelId: process.env.AWS_BEDROCK_MODEL_ID || 'meta.llama3-3-70b-instruct-v1:0'
+                });
+            } catch (error) {
+                logger.warn('BedrockService initialization failed, LLM bot will use fallback strategy', {
+                    error: error.message
+                });
+            }
+        }
+
         logger.info('Repositories and services registered');
 
         // Register authentication use cases
@@ -173,6 +194,9 @@ async function bootstrap(emitter = null) {
                 {
                     partyRepository,
                     userRepository
+                },
+                {
+                    bedrockService
                 }
             );
 

@@ -9,6 +9,7 @@ const HardBotStrategy = require('./HardBotStrategy');
 const HardVinceBotStrategy = require('./HardVinceBotStrategy');
 const MLBotStrategy = require('./MLBotStrategy');
 const DRLBotStrategy = require('./DRLBotStrategy');
+const LLMBotStrategy = require('./LLMBotStrategy');
 
 // Shared ML policy for learning across games (singleton)
 let sharedMLPolicy = null;
@@ -99,6 +100,17 @@ class BotStrategyFactory {
                     useHardRules: options.useHardRules !== false,
                     training: options.training !== false
                 });
+            case 'llm':
+                // LLM bot using Llama 3.3 via AWS Bedrock
+                // Requires bedrockService to be provided in options
+                if (!options.bedrockService) {
+                    // Return strategy without Bedrock - will use fallback for all decisions
+                    return new LLMBotStrategy({ enableFallback: true });
+                }
+                return new LLMBotStrategy({
+                    bedrockService: options.bedrockService,
+                    enableFallback: options.enableFallback !== false
+                });
             default:
                 throw new Error(`Unknown bot difficulty: ${difficulty}`);
         }
@@ -160,7 +172,7 @@ class BotStrategyFactory {
      * @returns {Array<string>}
      */
     static getAvailableDifficulties() {
-        return ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'ml_mcts', 'drl'];
+        return ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'ml_mcts', 'drl', 'llm'];
     }
 
     /**

@@ -7,6 +7,9 @@
  * For the legacy server, see app.legacy.js
  */
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 const { startServer } = require('./src/api/server');
 const logger = require('./logger');
 

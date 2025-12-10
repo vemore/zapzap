@@ -467,6 +467,32 @@ LOG_LEVEL=info
 LOG_DIR=./logs
 ```
 
+## Dangerous Commands - NEVER RUN
+
+⚠️ **The following commands must NEVER be executed:**
+
+```bash
+# NEVER run this - it kills VSCode's connection to WSL
+pkill -9 -f "node"
+
+# NEVER run these either - same issue
+killall -9 node
+kill -9 $(pgrep node)
+```
+
+**Why:** These commands kill ALL node processes including VSCode's remote server connection to WSL, breaking the development environment.
+
+**Safe alternatives:**
+```bash
+# Kill specific processes by port
+lsof -ti:9999 | xargs kill 2>/dev/null  # Kill process on port 9999
+lsof -ti:5173 | xargs kill 2>/dev/null  # Kill process on port 5173
+
+# Kill specific named processes
+pkill -f "nodemon"     # Kill nodemon specifically
+pkill -f "app.js"      # Kill the app process specifically
+```
+
 ## Troubleshooting
 
 ### Database Issues

@@ -175,7 +175,7 @@ class DRLBotStrategy extends BotStrategy {
         }
 
         // HARD RULE: Use HardBot's proven play selection strategy
-        // Enhanced with Golden Score Joker Strategy from HardVince
+        // Keep it simple - this is what makes HardBot effective
         if (this.useHardRules) {
             const validPlays = CardAnalyzer.findAllValidPlays(hand);
 
@@ -183,48 +183,18 @@ class DRLBotStrategy extends BotStrategy {
                 return null;
             }
 
-            const isGoldenScore = gameState.isGoldenScore || false;
-            const minOpponentCards = this._getMinOpponentHandSize(gameState);
-
-            // Evaluate each play by resulting hand value (HardBot base)
+            // Evaluate each play by resulting hand value (exactly like HardBot)
             const evaluatedPlays = validPlays.map(play => {
                 const remainingHand = hand.filter(cardId => !play.includes(cardId));
                 const remainingValue = CardAnalyzer.calculateHandValue(remainingHand);
-                const playValue = CardAnalyzer.calculateHandValue(play);
                 const playSize = play.length;
-
-                // Check if play contains jokers
-                const hasJokerInPlay = play.some(cardId => cardId >= 52);
-
-                // Base score: prioritize plays that leave lowest hand value
-                let score = -remainingValue + (playSize * 0.5);
-
-                // GOLDEN SCORE JOKER STRATEGY (from HardVince):
-                // In Golden Score, NEVER play Jokers - hoard them to deny to opponent
-                if (hasJokerInPlay && isGoldenScore) {
-                    score -= 500; // Massive penalty - effectively blocks joker plays
-                }
-
-                // JOKER MANAGEMENT (from HardVince):
-                // If opponents have many cards, keep jokers for sequences
-                // If opponents close to zapzap, release jokers
-                if (hasJokerInPlay && !isGoldenScore) {
-                    if (minOpponentCards > 3) {
-                        // Opponents have many cards - slightly penalize joker plays
-                        score -= 20;
-                    } else {
-                        // Opponents close to zapzap - bonus for releasing jokers
-                        score += 30;
-                    }
-                }
 
                 return {
                     cards: play,
                     remainingValue,
-                    playValue,
                     playSize,
-                    hasJokerInPlay,
-                    score
+                    // Score: prioritize plays that leave lowest hand value, with bonus for larger plays
+                    score: -remainingValue + (playSize * 0.5)
                 };
             });
 
@@ -274,30 +244,9 @@ class DRLBotStrategy extends BotStrategy {
         }
 
         // HARD RULE: Use HardBot's proven draw strategy
-        // Enhanced with Golden Score Joker Pickup from HardVince
+        // Keep it simple - this is what makes HardBot effective
         if (this.useHardRules) {
-            const isGoldenScore = gameState.isGoldenScore || false;
-            const minOpponentCards = this._getMinOpponentHandSize(gameState);
-
-            // Check for jokers in discard
-            const jokersInDiscard = lastCardsPlayed.filter(cardId => cardId >= 52);
-
-            // GOLDEN SCORE JOKER PICKUP (from HardVince):
-            // In Golden Score, ALWAYS pick up Jokers - hoard them!
-            if (jokersInDiscard.length > 0 && isGoldenScore) {
-                this._clearCache();
-                return 'played';
-            }
-
-            // PRIORITY JOKER PICKUP (from HardVince):
-            // If opponents have many cards, pick up jokers
-            if (jokersInDiscard.length > 0 && minOpponentCards > 3) {
-                this._clearCache();
-                return 'played';
-            }
-
             // Evaluate each discard card's value
-            let bestDiscardCard = null;
             let bestImprovement = 0;
 
             for (const discardCard of lastCardsPlayed) {
@@ -305,12 +254,12 @@ class DRLBotStrategy extends BotStrategy {
 
                 if (improvement > bestImprovement) {
                     bestImprovement = improvement;
-                    bestDiscardCard = discardCard;
                 }
             }
 
             // If any discard card provides significant improvement, take it
-            if (bestImprovement > 5) {
+            // Optimized threshold: 3 (more aggressive pickup performs better)
+            if (bestImprovement > 3) {
                 this._clearCache();
                 return 'played';
             }

@@ -67,9 +67,10 @@ class User {
         }
 
         // Validate bot difficulty
+        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
         if (userType === 'bot') {
-            if (!botDifficulty || !['easy', 'medium', 'hard', 'hard_vince', 'ml'].includes(botDifficulty)) {
-                throw new Error('Bot difficulty must be "easy", "medium", "hard", "hard_vince", or "ml"');
+            if (!botDifficulty || !validDifficulties.includes(botDifficulty)) {
+                throw new Error(`Bot difficulty must be one of: ${validDifficulties.join(', ')}`);
             }
         }
 
@@ -196,12 +197,13 @@ class User {
     /**
      * Create a new Bot user
      * @param {string} username - Bot username
-     * @param {string} difficulty - Bot difficulty ('easy', 'medium', 'hard', 'hard_vince', 'ml')
+     * @param {string} difficulty - Bot difficulty ('easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm')
      * @returns {Promise<User>} New Bot user instance
      */
     static async createBot(username, difficulty) {
-        if (!difficulty || !['easy', 'medium', 'hard', 'hard_vince', 'ml'].includes(difficulty)) {
-            throw new Error('Bot difficulty must be "easy", "medium", "hard", "hard_vince", or "ml"');
+        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+        if (!difficulty || !validDifficulties.includes(difficulty)) {
+            throw new Error(`Bot difficulty must be one of: ${validDifficulties.join(', ')}`);
         }
 
         // Bots don't need real passwords, use a placeholder hash

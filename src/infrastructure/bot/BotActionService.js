@@ -11,14 +11,16 @@ class BotActionService {
     /**
      * @param {Object} useCases - Use cases for game actions
      * @param {Object} repositories - Repositories
+     * @param {Object} services - External services (optional)
      */
-    constructor(useCases, repositories) {
+    constructor(useCases, repositories, services = {}) {
         this.playCards = useCases.playCards;
         this.drawCard = useCases.drawCard;
         this.callZapZap = useCases.callZapZap;
         this.selectHandSize = useCases.selectHandSize;
         this.partyRepository = repositories.partyRepository;
         this.userRepository = repositories.userRepository;
+        this.bedrockService = services.bedrockService || null;
     }
 
     /**
@@ -66,7 +68,9 @@ class BotActionService {
             const botHand = gameState.hands[botPlayer.playerIndex] || [];
 
             // Get bot strategy
-            const strategy = BotStrategyFactory.create(botUser.botDifficulty);
+            const strategy = BotStrategyFactory.create(botUser.botDifficulty, {
+                bedrockService: this.bedrockService
+            });
 
             // Execute action based on current action state
             if (gameState.currentAction === 'selectHandSize') {
@@ -146,7 +150,12 @@ class BotActionService {
     async executeBotPlay(partyId, botUser, botHand, gameState, strategy) {
         try {
             // Check if bot should call zapzap
-            if (strategy.shouldZapZap(botHand, gameState)) {
+            // Support both sync and async strategies
+            const shouldCall = strategy.isAsync?.()
+                ? await strategy.shouldZapZapAsync(botHand, gameState)
+                : strategy.shouldZapZap(botHand, gameState);
+
+            if (shouldCall) {
                 logger.info('Bot calling zapzap', {
                     botId: botUser.id,
                     handValue: CardAnalyzer.calculateHandValue(botHand)
@@ -165,7 +174,10 @@ class BotActionService {
             }
 
             // Otherwise, select cards to play
-            const cardsToPlay = strategy.selectPlay(botHand, gameState);
+            // Support both sync and async strategies
+            const cardsToPlay = strategy.isAsync?.()
+                ? await strategy.selectPlayAsync(botHand, gameState)
+                : strategy.selectPlay(botHand, gameState);
 
             if (!cardsToPlay || cardsToPlay.length === 0) {
                 logger.warn('Bot strategy returned no cards to play', {
@@ -206,11 +218,10 @@ class BotActionService {
             const deckSize = gameState.deck ? gameState.deck.length : 0;
 
             // Decide draw source
-            let drawSource = strategy.selectDrawSource(
-                botHand,
-                lastCardsPlayed,
-                gameState
-            );
+            // Support both sync and async strategies
+            let drawSource = strategy.isAsync?.()
+                ? await strategy.selectDrawSourceAsync(botHand, lastCardsPlayed, gameState)
+                : strategy.selectDrawSource(botHand, lastCardsPlayed, gameState);
 
             let cardId = undefined;
 

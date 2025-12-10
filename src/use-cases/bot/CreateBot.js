@@ -28,8 +28,9 @@ class CreateBot {
                 throw new Error('Username is required');
             }
 
-            if (!difficulty || !['easy', 'medium', 'hard', 'hard_vince'].includes(difficulty.toLowerCase())) {
-                throw new Error('Difficulty must be "easy", "medium", "hard", or "hard_vince"');
+            const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+            if (!difficulty || !validDifficulties.includes(difficulty.toLowerCase())) {
+                throw new Error(`Difficulty must be one of: ${validDifficulties.join(', ')}`);
             }
 
             const trimmedUsername = username.trim();

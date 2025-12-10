@@ -29,3 +29,4 @@ Bugs et Problèmes Identifiés
   Nombre de bots identiques maximal à 2
 
 
+utiliser https://github.com/tensorflow/tfjs pour l'entrainement du bot DRL ?

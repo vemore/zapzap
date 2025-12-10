@@ -22,8 +22,9 @@ class ListBots {
     async execute({ difficulty = null } = {}) {
         try {
             // Validate difficulty if provided
-            if (difficulty && !['easy', 'medium', 'hard', 'hard_vince'].includes(difficulty.toLowerCase())) {
-                throw new Error('Invalid difficulty filter. Must be "easy", "medium", "hard", or "hard_vince"');
+            const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+            if (difficulty && !validDifficulties.includes(difficulty.toLowerCase())) {
+                throw new Error(`Invalid difficulty filter. Must be one of: ${validDifficulties.join(', ')}`);
             }
 
             // Get bots from repository

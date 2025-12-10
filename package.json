@@ -27,11 +27,13 @@
   },
   "homepage": "https://github.com/vemore/zapzap#readme",
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.948.0",
     "@tensorflow/tfjs": "^4.22.0",
     "bcryptjs": "^3.0.3",
     "cards": "^1.2.0",
     "cors": "^2.8.5",
     "deck-of-cards": "^0.1.8",
+    "dotenv": "^17.2.3",
     "ejs": "^3.0.2",
     "events": "^3.1.0",
     "express": "^4.17.1",

@@ -278,14 +278,20 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
     easy: { bg: 'bg-green-900/30', border: 'border-green-500/50', text: 'text-green-400', tabBg: 'bg-green-900/50' },
     medium: { bg: 'bg-yellow-900/30', border: 'border-yellow-500/50', text: 'text-yellow-400', tabBg: 'bg-yellow-900/50' },
     hard: { bg: 'bg-red-900/30', border: 'border-red-500/50', text: 'text-red-400', tabBg: 'bg-red-900/50' },
-    hard_vince: { bg: 'bg-purple-900/30', border: 'border-purple-500/50', text: 'text-purple-400', tabBg: 'bg-purple-900/50' }
+    hard_vince: { bg: 'bg-purple-900/30', border: 'border-purple-500/50', text: 'text-purple-400', tabBg: 'bg-purple-900/50' },
+    ml: { bg: 'bg-cyan-900/30', border: 'border-cyan-500/50', text: 'text-cyan-400', tabBg: 'bg-cyan-900/50' },
+    drl: { bg: 'bg-indigo-900/30', border: 'border-indigo-500/50', text: 'text-indigo-400', tabBg: 'bg-indigo-900/50' },
+    llm: { bg: 'bg-pink-900/30', border: 'border-pink-500/50', text: 'text-pink-400', tabBg: 'bg-pink-900/50' }
   };
 
   const difficultyLabels = {
     easy: 'Easy',
     medium: 'Medium',
     hard: 'Hard',
-    hard_vince: 'Hard Vince'
+    hard_vince: 'Hard Vince',
+    ml: 'ML (TensorFlow)',
+    drl: 'DRL (Deep RL)',
+    llm: 'LLM (Llama 3.3)'
   };
 
   const difficultyStrategies = {
@@ -304,6 +310,18 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
     hard_vince: {
       title: 'Advanced Vince Strategy',
       description: 'Builds on Hard strategy with Joker management: keeps Jokers for sequences when opponents have >3 cards, plays them when opponent is close to ZapZap. Tracks opponent card picks and played cards for probability-based decisions. Prioritizes picking up discarded Jokers strategically.'
+    },
+    ml: {
+      title: 'TensorFlow ML Strategy',
+      description: 'Uses a trained TensorFlow model to evaluate game states and select optimal plays. Learns patterns from game simulations to improve decision-making over time.'
+    },
+    drl: {
+      title: 'Deep Reinforcement Learning',
+      description: 'Employs deep Q-learning with experience replay. Learns optimal policies through self-play and exploration. Adapts strategy based on opponent behavior patterns.'
+    },
+    llm: {
+      title: 'Large Language Model (Llama 3.3)',
+      description: 'Powered by Llama 3.3 via AWS Bedrock. Uses natural language understanding of game rules and context to make strategic decisions. Analyzes hand, game state, and play history.'
     }
   };
 
@@ -366,7 +384,7 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
         >
           All Difficulties
         </button>
-        {['easy', 'medium', 'hard', 'hard_vince'].map(diff => (
+        {['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'].map(diff => (
           <button
             key={diff}
             onClick={() => setSelectedDifficulty(diff)}
