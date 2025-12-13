@@ -71,9 +71,14 @@ class DatabaseConnection {
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
+                password_hash TEXT,
                 user_type TEXT NOT NULL DEFAULT 'human' CHECK(user_type IN ('human', 'bot')),
                 bot_difficulty TEXT CHECK(bot_difficulty IN ('easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm')),
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                last_login_at INTEGER,
+                total_play_time_seconds INTEGER NOT NULL DEFAULT 0,
+                google_id TEXT,
+                email TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -258,6 +263,98 @@ class DatabaseConnection {
         } catch (error) {
             // Ignore errors for existing indexes
             logger.debug('Google OAuth indexes already exist or failed to create');
+        }
+
+        // Migration: Make password_hash nullable for Google OAuth users
+        // SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+        await this.migratePasswordHashNullable();
+    }
+
+    /**
+     * Migrate users table to make password_hash nullable (for Google OAuth users)
+     * @returns {Promise<void>}
+     */
+    async migratePasswordHashNullable() {
+        try {
+            // Check if migration is needed by looking at the schema
+            const tableInfo = await this.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
+
+            if (!tableInfo || !tableInfo.sql) {
+                logger.debug('Users table not found, skipping password_hash migration');
+                return;
+            }
+
+            // Check if password_hash is still NOT NULL
+            // If schema contains 'password_hash TEXT NOT NULL' we need to migrate
+            if (!tableInfo.sql.includes('password_hash TEXT NOT NULL')) {
+                logger.debug('password_hash is already nullable, skipping migration');
+                return;
+            }
+
+            logger.info('Starting migration: making password_hash nullable for Google OAuth support');
+
+            // Begin transaction for safety
+            await this.run('BEGIN TRANSACTION');
+
+            try {
+                // Create new table with nullable password_hash
+                await this.exec(`
+                    CREATE TABLE users_new (
+                        id TEXT PRIMARY KEY,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT,
+                        user_type TEXT NOT NULL DEFAULT 'human' CHECK(user_type IN ('human', 'bot')),
+                        bot_difficulty TEXT CHECK(bot_difficulty IN ('easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm')),
+                        is_admin INTEGER NOT NULL DEFAULT 0,
+                        last_login_at INTEGER,
+                        total_play_time_seconds INTEGER NOT NULL DEFAULT 0,
+                        google_id TEXT,
+                        email TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                `);
+
+                // Copy all data from old table
+                await this.exec(`
+                    INSERT INTO users_new (id, username, password_hash, user_type, bot_difficulty,
+                                          is_admin, last_login_at, total_play_time_seconds,
+                                          google_id, email, created_at, updated_at)
+                    SELECT id, username, password_hash,
+                           COALESCE(user_type, 'human'),
+                           bot_difficulty,
+                           COALESCE(is_admin, 0),
+                           last_login_at,
+                           COALESCE(total_play_time_seconds, 0),
+                           google_id, email,
+                           created_at, updated_at
+                    FROM users
+                `);
+
+                // Drop old table
+                await this.exec('DROP TABLE users');
+
+                // Rename new table
+                await this.exec('ALTER TABLE users_new RENAME TO users');
+
+                // Recreate indexes
+                await this.exec('CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)');
+                await this.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+                await this.exec('CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type)');
+
+                // Commit transaction
+                await this.run('COMMIT');
+
+                logger.info('Migration completed: password_hash is now nullable');
+            } catch (error) {
+                // Rollback on error
+                await this.run('ROLLBACK');
+                throw error;
+            }
+        } catch (error) {
+            logger.error('Failed to migrate password_hash to nullable', { error: error.message });
+            // Don't throw - allow app to start even if migration fails
+            // The app will fail on Google OAuth attempts but regular login will work
         }
     }
 
