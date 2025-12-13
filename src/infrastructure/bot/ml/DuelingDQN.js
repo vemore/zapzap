@@ -14,10 +14,20 @@
  *   - drawSource: 2 actions [deck, played]
  */
 
-// TensorFlow.js (pure JavaScript)
-// Note: tfjs-node requires Node.js < 22 due to deprecated util.isNullOrUndefined
-// Using pure JS backend which works with Node.js 24+
-const tf = require('@tensorflow/tfjs');
+// TensorFlow.js with fallback: CPU native (oneDNN) → Pure JS
+// Note: tfjs-node requires Node.js < 22 (v18/v20 LTS)
+let tf;
+let tfBackendType = 'unknown';
+
+try {
+    tf = require('@tensorflow/tfjs-node');
+    tfBackendType = 'CPU native (oneDNN AVX2+FMA)';
+} catch (e) {
+    tf = require('@tensorflow/tfjs');
+    tfBackendType = 'Pure JS';
+}
+
+console.log(`[DuelingDQN] TensorFlow.js backend: ${tfBackendType}`);
 
 class DuelingDQN {
     /**
