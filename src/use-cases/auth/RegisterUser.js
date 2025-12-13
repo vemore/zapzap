@@ -17,21 +17,77 @@ class RegisterUser {
     }
 
     /**
+     * Validate username format
+     * @param {string} username - Username to validate
+     * @returns {{valid: boolean, message: string|null}}
+     */
+    validateUsername(username) {
+        if (!username || typeof username !== 'string') {
+            return { valid: false, message: 'Le pseudo est requis' };
+        }
+
+        const trimmed = username.trim();
+
+        if (trimmed.length < 3) {
+            return { valid: false, message: 'Le pseudo doit contenir au moins 3 caractères' };
+        }
+
+        if (trimmed.length > 30) {
+            return { valid: false, message: 'Le pseudo ne peut pas dépasser 30 caractères' };
+        }
+
+        // Only allow letters, numbers, hyphens and underscores
+        const validUsernameRegex = /^[a-zA-Z0-9_-]+$/;
+        if (!validUsernameRegex.test(trimmed)) {
+            return {
+                valid: false,
+                message: 'Le pseudo ne peut contenir que des lettres, chiffres, tirets (-) et underscores (_)'
+            };
+        }
+
+        return { valid: true, message: null };
+    }
+
+    /**
+     * Validate password format
+     * @param {string} password - Password to validate
+     * @returns {{valid: boolean, message: string|null}}
+     */
+    validatePassword(password) {
+        if (!password || typeof password !== 'string') {
+            return { valid: false, message: 'Le mot de passe est requis' };
+        }
+
+        if (password.length < 6) {
+            return { valid: false, message: 'Le mot de passe doit contenir au moins 6 caractères' };
+        }
+
+        if (password.length > 100) {
+            return { valid: false, message: 'Le mot de passe ne peut pas dépasser 100 caractères' };
+        }
+
+        return { valid: true, message: null };
+    }
+
+    /**
      * Execute the use case
      * @param {Object} request - Registration request
-     * @param {string} request.username - Username (3-50 chars, alphanumeric)
-     * @param {string} request.password - Password (min 6 chars)
+     * @param {string} request.username - Username (3-30 chars, alphanumeric with - and _)
+     * @param {string} request.password - Password (6-100 chars)
      * @returns {Promise<Object>} Registration result with user and token
      */
     async execute({ username, password }) {
         try {
-            // Validate input
-            if (!username || typeof username !== 'string') {
-                throw new Error('Username is required');
+            // Validate username
+            const usernameValidation = this.validateUsername(username);
+            if (!usernameValidation.valid) {
+                throw new Error(usernameValidation.message);
             }
 
-            if (!password || typeof password !== 'string') {
-                throw new Error('Password is required');
+            // Validate password
+            const passwordValidation = this.validatePassword(password);
+            if (!passwordValidation.valid) {
+                throw new Error(passwordValidation.message);
             }
 
             const trimmedUsername = username.trim();
@@ -41,7 +97,7 @@ class RegisterUser {
 
             if (existingUser) {
                 logger.warn('Registration failed: username already exists', { username: trimmedUsername });
-                throw new Error('Username already exists');
+                throw new Error('Ce pseudo est déjà pris');
             }
 
             // Create new user (will hash password)

@@ -1,33 +1,54 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Loader } from 'lucide-react';
-import { register as registerUser } from '../../services/auth';
+import { register as registerUser, validateUsername, validatePassword } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
 
 function Register() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { setUser } = useAuth();
+
+  // Validate username on change (with debounce effect)
+  useEffect(() => {
+    if (username.length === 0) {
+      setUsernameError('');
+      return;
+    }
+    const validation = validateUsername(username);
+    setUsernameError(validation.valid ? '' : validation.message);
+  }, [username]);
+
+  // Validate password on change
+  useEffect(() => {
+    if (password.length === 0) {
+      setPasswordError('');
+      return;
+    }
+    const validation = validatePassword(password);
+    setPasswordError(validation.valid ? '' : validation.message);
+  }, [password]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Validation
-    if (!username.trim() || !password.trim()) {
+    // Final validation before submit
+    const usernameValidation = validateUsername(username);
+    const passwordValidation = validatePassword(password);
+
+    if (!usernameValidation.valid) {
+      setUsernameError(usernameValidation.message);
       return;
     }
 
-    if (username.trim().length < 3) {
-      setError('Username must be at least 3 characters');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (!passwordValidation.valid) {
+      setPasswordError(passwordValidation.message);
       return;
     }
 
@@ -38,7 +59,7 @@ function Register() {
       setUser(result.user);  // Update auth context with user data
       navigate('/parties');
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      setError(err.message || 'Inscription échouée');
     } finally {
       setLoading(false);
     }
@@ -55,7 +76,7 @@ function Register() {
           </div>
 
           <h2 className="text-xl font-semibold text-center text-gray-200 mb-6">
-            Create Account
+            Créer un compte
           </h2>
 
           {error && (
@@ -67,34 +88,46 @@ function Register() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-                Username
+                Pseudo
               </label>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Choose a username (min 3 characters)"
+                placeholder="Lettres, chiffres, tirets et underscores"
                 disabled={loading}
                 autoComplete="username"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                  usernameError ? 'border-red-500 focus:border-red-400' : 'border-slate-600 focus:border-amber-400'
+                }`}
               />
+              {usernameError && (
+                <p className="mt-1 text-sm text-red-400">{usernameError}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">3-30 caractères</p>
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-                Password
+                Mot de passe
               </label>
               <input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Choose a password (min 6 characters)"
+                placeholder="Minimum 6 caractères"
                 disabled={loading}
                 autoComplete="new-password"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                  passwordError ? 'border-red-500 focus:border-red-400' : 'border-slate-600 focus:border-amber-400'
+                }`}
               />
+              {passwordError && (
+                <p className="mt-1 text-sm text-red-400">{passwordError}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">6-100 caractères</p>
             </div>
 
             <button
@@ -105,18 +138,18 @@ function Register() {
               {loading ? (
                 <>
                   <Loader className="w-5 h-5 mr-2 animate-spin" />
-                  Registering...
+                  Inscription...
                 </>
               ) : (
-                'Register'
+                "S'inscrire"
               )}
             </button>
           </form>
 
           <p className="mt-6 text-center text-gray-400">
-            Already have an account?{' '}
+            Déjà un compte ?{' '}
             <Link to="/login" className="text-amber-400 hover:text-amber-300 font-medium transition-colors">
-              Login
+              Se connecter
             </Link>
           </p>
         </div>

@@ -35,18 +35,75 @@ export const login = async (username, password) => {
 };
 
 /**
+ * Validate username format
+ * @param {string} username - Username to validate
+ * @returns {{valid: boolean, message: string|null}}
+ */
+export const validateUsername = (username) => {
+  if (!username || typeof username !== 'string') {
+    return { valid: false, message: 'Le pseudo est requis' };
+  }
+
+  const trimmed = username.trim();
+
+  if (trimmed.length < 3) {
+    return { valid: false, message: 'Le pseudo doit contenir au moins 3 caractères' };
+  }
+
+  if (trimmed.length > 30) {
+    return { valid: false, message: 'Le pseudo ne peut pas dépasser 30 caractères' };
+  }
+
+  // Only allow letters, numbers, hyphens and underscores
+  const validUsernameRegex = /^[a-zA-Z0-9_-]+$/;
+  if (!validUsernameRegex.test(trimmed)) {
+    return {
+      valid: false,
+      message: 'Le pseudo ne peut contenir que des lettres, chiffres, tirets (-) et underscores (_)',
+    };
+  }
+
+  return { valid: true, message: null };
+};
+
+/**
+ * Validate password format
+ * @param {string} password - Password to validate
+ * @returns {{valid: boolean, message: string|null}}
+ */
+export const validatePassword = (password) => {
+  if (!password || typeof password !== 'string') {
+    return { valid: false, message: 'Le mot de passe est requis' };
+  }
+
+  if (password.length < 6) {
+    return { valid: false, message: 'Le mot de passe doit contenir au moins 6 caractères' };
+  }
+
+  if (password.length > 100) {
+    return { valid: false, message: 'Le mot de passe ne peut pas dépasser 100 caractères' };
+  }
+
+  return { valid: true, message: null };
+};
+
+/**
  * Register a new user
- * @param {string} username - Desired username (min 3 characters)
- * @param {string} password - Desired password (min 6 characters)
+ * @param {string} username - Desired username (3-30 chars, alphanumeric with - and _)
+ * @param {string} password - Desired password (6-100 chars)
  * @returns {Promise<{success: boolean, user: object, token: string}>}
  */
 export const register = async (username, password) => {
-  // Validation
-  if (!username || username.trim().length < 3) {
-    throw new Error('Username must be at least 3 characters');
+  // Validate username
+  const usernameValidation = validateUsername(username);
+  if (!usernameValidation.valid) {
+    throw new Error(usernameValidation.message);
   }
-  if (!password || password.length < 6) {
-    throw new Error('Password must be at least 6 characters');
+
+  // Validate password
+  const passwordValidation = validatePassword(password);
+  if (!passwordValidation.valid) {
+    throw new Error(passwordValidation.message);
   }
 
   try {
@@ -116,4 +173,6 @@ export default {
   getCurrentUser,
   isAuthenticated,
   getToken,
+  validateUsername,
+  validatePassword,
 };
