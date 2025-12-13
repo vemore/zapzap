@@ -166,6 +166,34 @@ export const getToken = () => {
   return localStorage.getItem('token');
 };
 
+/**
+ * Login or register with Google OAuth
+ * @param {string} credential - Google ID token
+ * @returns {Promise<{success: boolean, user: object, token: string, isNewUser: boolean}>}
+ */
+export const loginWithGoogle = async (credential) => {
+  if (!credential) {
+    throw new Error('Token Google requis');
+  }
+
+  try {
+    const response = await apiClient.post('/auth/google', {
+      credential,
+    });
+
+    const { token, user } = response.data;
+
+    // Store token and user in localStorage
+    setAuthToken(token);
+    localStorage.setItem('user', JSON.stringify(user));
+
+    return response.data;
+  } catch (error) {
+    const message = error.response?.data?.error || error.response?.data?.details || 'Connexion Google échouée';
+    throw new Error(message);
+  }
+};
+
 export default {
   login,
   register,
@@ -175,4 +203,5 @@ export default {
   getToken,
   validateUsername,
   validatePassword,
+  loginWithGoogle,
 };

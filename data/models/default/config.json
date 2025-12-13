@@ -1,0 +1,15 @@
+{
+  "inputDim": 45,
+  "hiddenUnits": [
+    256,
+    128,
+    64
+  ],
+  "learningRate": 0.0005,
+  "actionDims": {
+    "handSize": 7,
+    "zapzap": 2,
+    "playType": 5,
+    "drawSource": 2
+  }
+}

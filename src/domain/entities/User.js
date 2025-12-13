@@ -12,17 +12,19 @@ class User {
      * @param {Object} props - User properties
      * @param {string} props.id - User ID (UUID)
      * @param {string} props.username - Username (unique)
-     * @param {string} props.passwordHash - Hashed password
+     * @param {string} props.passwordHash - Hashed password (optional for OAuth users)
      * @param {string} props.userType - User type ('human' or 'bot')
      * @param {string} props.botDifficulty - Bot difficulty ('easy', 'medium', 'hard') - only for bots
      * @param {boolean} props.isAdmin - Whether user has admin privileges
      * @param {number} props.lastLoginAt - Last login timestamp
      * @param {number} props.totalPlayTimeSeconds - Total play time in seconds
+     * @param {string} props.googleId - Google OAuth user ID (optional)
+     * @param {string} props.email - User email (optional, from OAuth)
      * @param {number} props.createdAt - Creation timestamp
      * @param {number} props.updatedAt - Last update timestamp
      */
-    constructor({ id, username, passwordHash, userType = 'human', botDifficulty = null, isAdmin = false, lastLoginAt = null, totalPlayTimeSeconds = 0, createdAt, updatedAt }) {
-        this.validate(username, passwordHash, userType, botDifficulty);
+    constructor({ id, username, passwordHash = null, userType = 'human', botDifficulty = null, isAdmin = false, lastLoginAt = null, totalPlayTimeSeconds = 0, googleId = null, email = null, createdAt, updatedAt }) {
+        this.validate(username, passwordHash, userType, botDifficulty, googleId);
 
         this._id = id || crypto.randomUUID();
         this._username = username;
@@ -32,6 +34,8 @@ class User {
         this._isAdmin = isAdmin;
         this._lastLoginAt = lastLoginAt;
         this._totalPlayTimeSeconds = totalPlayTimeSeconds;
+        this._googleId = googleId;
+        this._email = email;
         this._createdAt = createdAt || Math.floor(Date.now() / 1000);
         this._updatedAt = updatedAt || Math.floor(Date.now() / 1000);
     }
@@ -40,7 +44,7 @@ class User {
      * Validate user properties
      * @private
      */
-    validate(username, passwordHash, userType, botDifficulty) {
+    validate(username, passwordHash, userType, botDifficulty, googleId = null) {
         if (!username || typeof username !== 'string') {
             throw new Error('Username is required and must be a string');
         }
@@ -57,8 +61,9 @@ class User {
             throw new Error('Username can only contain alphanumeric characters, hyphens, and underscores');
         }
 
-        if (!passwordHash || typeof passwordHash !== 'string') {
-            throw new Error('Password hash is required');
+        // Password is required unless user has Google OAuth
+        if (!googleId && (!passwordHash || typeof passwordHash !== 'string')) {
+            throw new Error('Password hash is required for non-OAuth users');
         }
 
         // Validate user type
@@ -120,6 +125,14 @@ class User {
         return this._totalPlayTimeSeconds;
     }
 
+    get googleId() {
+        return this._googleId;
+    }
+
+    get email() {
+        return this._email;
+    }
+
     /**
      * Check if user is a bot
      * @returns {boolean}
@@ -142,6 +155,14 @@ class User {
      */
     isAdminUser() {
         return this._isAdmin === true || this._isAdmin === 1;
+    }
+
+    /**
+     * Check if user is authenticated via Google OAuth
+     * @returns {boolean}
+     */
+    isGoogleUser() {
+        return !!this._googleId;
     }
 
     /**
@@ -191,6 +212,25 @@ class User {
             username: username.trim(),
             passwordHash,
             userType: 'human'
+        });
+    }
+
+    /**
+     * Create a new User from Google OAuth profile
+     * @param {Object} googleProfile - Google profile data
+     * @param {string} googleProfile.googleId - Google user ID
+     * @param {string} googleProfile.email - User email
+     * @param {string} googleProfile.name - User display name
+     * @param {string} username - Generated username
+     * @returns {User} New User instance
+     */
+    static createFromGoogle({ googleId, email, name }, username) {
+        return new User({
+            username: username.trim(),
+            passwordHash: null,
+            userType: 'human',
+            googleId,
+            email
         });
     }
 
@@ -281,6 +321,8 @@ class User {
             isAdmin: this._isAdmin,
             lastLoginAt: this._lastLoginAt,
             totalPlayTimeSeconds: this._totalPlayTimeSeconds,
+            googleId: this._googleId,
+            email: this._email,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -299,6 +341,8 @@ class User {
             isAdmin: this._isAdmin,
             lastLoginAt: this._lastLoginAt,
             totalPlayTimeSeconds: this._totalPlayTimeSeconds,
+            email: this._email,
+            isGoogleUser: !!this._googleId,
             createdAt: this._createdAt,
             updatedAt: this._updatedAt
         };
@@ -313,12 +357,14 @@ class User {
         return new User({
             id: record.id,
             username: record.username,
-            passwordHash: record.password_hash,
+            passwordHash: record.password_hash || null,
             userType: record.user_type || 'human',
             botDifficulty: record.bot_difficulty || null,
             isAdmin: record.is_admin === 1,
             lastLoginAt: record.last_login_at || null,
             totalPlayTimeSeconds: record.total_play_time_seconds || 0,
+            googleId: record.google_id || null,
+            email: record.email || null,
             createdAt: record.created_at,
             updatedAt: record.updated_at
         });

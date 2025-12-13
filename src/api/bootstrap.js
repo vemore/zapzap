@@ -9,11 +9,13 @@ const UserRepository = require('../infrastructure/database/sqlite/repositories/U
 const PartyRepository = require('../infrastructure/database/sqlite/repositories/PartyRepository');
 const JwtService = require('../infrastructure/services/JwtService');
 const BedrockService = require('../infrastructure/services/BedrockService');
+const GoogleOAuthService = require('../infrastructure/services/GoogleOAuthService');
 
 // Use Cases - Authentication
 const RegisterUser = require('../use-cases/auth/RegisterUser');
 const LoginUser = require('../use-cases/auth/LoginUser');
 const ValidateToken = require('../use-cases/auth/ValidateToken');
+const LoginWithGoogle = require('../use-cases/auth/LoginWithGoogle');
 
 // Use Cases - Party Management
 const CreateParty = require('../use-cases/party/CreateParty');
@@ -94,6 +96,17 @@ async function bootstrap(emitter = null) {
         const jwtService = new JwtService();
         container.register('jwtService', jwtService);
 
+        // Initialize Google OAuth service (if client ID is configured)
+        let googleOAuthService = null;
+        const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+        if (googleClientId) {
+            googleOAuthService = new GoogleOAuthService(googleClientId);
+            container.register('googleOAuthService', googleOAuthService);
+            logger.info('Google OAuth service initialized');
+        } else {
+            logger.warn('GOOGLE_OAUTH_CLIENT_ID not configured, Google auth disabled');
+        }
+
         // Initialize BedrockService for LLM bot (if enabled)
         let bedrockService = null;
         if (process.env.AWS_BEDROCK_ENABLED === 'true') {
@@ -120,6 +133,18 @@ async function bootstrap(emitter = null) {
         container.register('registerUser', new RegisterUser(userRepository, jwtService));
         container.register('loginUser', new LoginUser(userRepository, jwtService));
         container.register('validateToken', new ValidateToken(userRepository, jwtService));
+
+        // Register Google OAuth use case (only if service is configured)
+        if (googleOAuthService) {
+            container.register('loginWithGoogle', new LoginWithGoogle(userRepository, jwtService, googleOAuthService));
+        } else {
+            // Placeholder that throws error if Google auth is attempted without configuration
+            container.register('loginWithGoogle', {
+                execute: async () => {
+                    throw new Error('Google OAuth non configuré sur ce serveur');
+                }
+            });
+        }
 
         // Register party management use cases
         // Note: JoinParty must be registered before CreateParty for dependency injection

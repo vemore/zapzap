@@ -84,6 +84,54 @@ class UserRepository extends IUserRepository {
     }
 
     /**
+     * Find user by Google OAuth ID
+     * @param {string} googleId - Google OAuth user ID
+     * @returns {Promise<User|null>}
+     */
+    async findByGoogleId(googleId) {
+        try {
+            const record = await this.db.get(
+                'SELECT * FROM users WHERE google_id = ?',
+                [googleId]
+            );
+
+            if (!record) {
+                return null;
+            }
+
+            logger.debug('User found by Google ID', { googleId });
+            return User.fromDatabase(record);
+        } catch (error) {
+            logger.error('Error finding user by Google ID', { googleId, error: error.message });
+            throw new Error(`Failed to find user by Google ID: ${error.message}`);
+        }
+    }
+
+    /**
+     * Find user by email
+     * @param {string} email - User email
+     * @returns {Promise<User|null>}
+     */
+    async findByEmail(email) {
+        try {
+            const record = await this.db.get(
+                'SELECT * FROM users WHERE email = ?',
+                [email]
+            );
+
+            if (!record) {
+                return null;
+            }
+
+            logger.debug('User found by email', { email });
+            return User.fromDatabase(record);
+        } catch (error) {
+            logger.error('Error finding user by email', { email, error: error.message });
+            throw new Error(`Failed to find user by email: ${error.message}`);
+        }
+    }
+
+    /**
      * Save user (create or update)
      * @param {User} user - User entity
      * @returns {Promise<User>}
@@ -98,10 +146,12 @@ class UserRepository extends IUserRepository {
                 await this.db.run(
                     `UPDATE users
                      SET username = ?, password_hash = ?, user_type = ?, bot_difficulty = ?,
-                         is_admin = ?, last_login_at = ?, total_play_time_seconds = ?, updated_at = ?
+                         is_admin = ?, last_login_at = ?, total_play_time_seconds = ?,
+                         google_id = ?, email = ?, updated_at = ?
                      WHERE id = ?`,
                     [user.username, user.passwordHash, user.userType, user.botDifficulty,
-                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds, user.updatedAt, user.id]
+                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds,
+                     user.googleId, user.email, user.updatedAt, user.id]
                 );
 
                 logger.info('User updated', { userId: user.id, username: user.username, userType: user.userType });
@@ -109,10 +159,12 @@ class UserRepository extends IUserRepository {
                 // Insert new user
                 await this.db.run(
                     `INSERT INTO users (id, username, password_hash, user_type, bot_difficulty,
-                                        is_admin, last_login_at, total_play_time_seconds, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                        is_admin, last_login_at, total_play_time_seconds,
+                                        google_id, email, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [user.id, user.username, user.passwordHash, user.userType, user.botDifficulty,
-                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds, user.createdAt, user.updatedAt]
+                     user.isAdmin ? 1 : 0, user.lastLoginAt, user.totalPlayTimeSeconds,
+                     user.googleId, user.email, user.createdAt, user.updatedAt]
                 );
 
                 logger.info('User created', { userId: user.id, username: user.username, userType: user.userType });

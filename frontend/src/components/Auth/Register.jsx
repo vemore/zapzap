@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Loader } from 'lucide-react';
 import { register as registerUser, validateUsername, validatePassword } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
+import GoogleLoginButton from './GoogleLoginButton';
+
+// Check if Google OAuth is configured
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
 
 function Register() {
   const [username, setUsername] = useState('');
@@ -78,6 +82,18 @@ function Register() {
           <h2 className="text-xl font-semibold text-center text-gray-200 mb-6">
             Créer un compte
           </h2>
+
+          {/* Google Login Button */}
+          {GOOGLE_CLIENT_ID && (
+            <>
+              <GoogleLoginButton onError={setError} />
+              <div className="flex items-center my-4">
+                <div className="flex-1 border-t border-slate-600"></div>
+                <span className="px-4 text-sm text-gray-400">ou</span>
+                <div className="flex-1 border-t border-slate-600"></div>
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4" role="alert">

@@ -228,6 +228,14 @@ class DatabaseConnection {
             {
                 name: 'add_total_play_time_seconds_column',
                 sql: 'ALTER TABLE users ADD COLUMN total_play_time_seconds INTEGER NOT NULL DEFAULT 0'
+            },
+            {
+                name: 'add_google_id_column',
+                sql: 'ALTER TABLE users ADD COLUMN google_id TEXT'
+            },
+            {
+                name: 'add_email_column',
+                sql: 'ALTER TABLE users ADD COLUMN email TEXT'
             }
         ];
 
@@ -241,6 +249,15 @@ class DatabaseConnection {
                     throw error;
                 }
             }
+        }
+
+        // Create indexes for Google OAuth (separate try/catch as they might already exist)
+        try {
+            await this.run('CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)');
+            await this.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+        } catch (error) {
+            // Ignore errors for existing indexes
+            logger.debug('Google OAuth indexes already exist or failed to create');
         }
     }
 

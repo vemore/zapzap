@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Loader } from 'lucide-react';
 import { login as loginUser } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
+import GoogleLoginButton from './GoogleLoginButton';
+
+// Check if Google OAuth is configured
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -45,8 +49,20 @@ function Login() {
           </div>
 
           <h2 className="text-xl font-semibold text-center text-gray-200 mb-6">
-            Login to Play
+            Connexion
           </h2>
+
+          {/* Google Login Button */}
+          {GOOGLE_CLIENT_ID && (
+            <>
+              <GoogleLoginButton onError={setError} />
+              <div className="flex items-center my-4">
+                <div className="flex-1 border-t border-slate-600"></div>
+                <span className="px-4 text-sm text-gray-400">ou</span>
+                <div className="flex-1 border-t border-slate-600"></div>
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4" role="alert">
@@ -57,14 +73,14 @@ function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-                Username
+                Pseudo
               </label>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                placeholder="Entrez votre pseudo"
                 disabled={loading}
                 autoComplete="username"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
@@ -73,14 +89,14 @@ function Login() {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-                Password
+                Mot de passe
               </label>
               <input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Entrez votre mot de passe"
                 disabled={loading}
                 autoComplete="current-password"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
@@ -95,18 +111,18 @@ function Login() {
               {loading ? (
                 <>
                   <Loader className="w-5 h-5 mr-2 animate-spin" />
-                  Logging in...
+                  Connexion...
                 </>
               ) : (
-                'Login'
+                'Se connecter'
               )}
             </button>
           </form>
 
           <p className="mt-6 text-center text-gray-400">
-            Don't have an account?{' '}
+            Pas encore de compte ?{' '}
             <Link to="/register" className="text-amber-400 hover:text-amber-300 font-medium transition-colors">
-              Register
+              S'inscrire
             </Link>
           </p>
         </div>

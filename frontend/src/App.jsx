@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
@@ -17,11 +18,15 @@ import AdminPartyList from './components/Admin/Parties/AdminPartyList';
 import AdminStats from './components/Admin/Statistics/AdminStats';
 import './App.css';
 
+// Google OAuth Client ID from environment variable
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
+
 /**
  * Main App component with routing configuration
  */
 function App() {
-  return (
+  // Wrap with GoogleOAuthProvider only if client ID is configured
+  const content = (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -111,6 +116,17 @@ function App() {
       </BrowserRouter>
     </AuthProvider>
   );
+
+  // Wrap with GoogleOAuthProvider if client ID is configured
+  if (GOOGLE_CLIENT_ID) {
+    return (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        {content}
+      </GoogleOAuthProvider>
+    );
+  }
+
+  return content;
 }
 
 export default App;

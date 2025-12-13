@@ -14,6 +14,9 @@
  *   - drawSource: 2 actions [deck, played]
  */
 
+// TensorFlow.js (pure JavaScript)
+// Note: tfjs-node requires Node.js < 22 due to deprecated util.isNullOrUndefined
+// Using pure JS backend which works with Node.js 24+
 const tf = require('@tensorflow/tfjs');
 
 class DuelingDQN {
