@@ -116,3 +116,12 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Rust / Cargo
+native/target/
+native/Cargo.lock
+native/*.node
+**/*.rs.bk
+
+# NAPI-RS build artifacts
+native/artifacts/

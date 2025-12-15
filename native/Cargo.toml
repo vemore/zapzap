@@ -1,0 +1,21 @@
+[package]
+name = "zapzap-native"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust simulation engine for ZapZap DRL training"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi4"] }
+napi-derive = "2"
+rand = { version = "0.8", features = ["small_rng"] }
+smallvec = "1.11"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+opt-level = 3

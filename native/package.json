@@ -1,0 +1,35 @@
+{
+  "name": "zapzap-native",
+  "version": "0.1.0",
+  "description": "Native Rust simulation engine for ZapZap DRL training",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "zapzap-native",
+    "triples": {
+      "defaults": true,
+      "additional": []
+    }
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "cargo test",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ]
+}
