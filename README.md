@@ -605,7 +605,7 @@ if (player has lowest hand) {
 
 // Counteract penalty
 if (zapzap_called && someone_has_lower_or_equal) {
-  zapzap_caller_score = hand_points_with_joker + (num_players × 5)
+  zapzap_caller_score = hand_points_with_joker + ((active_players - 1) × 5)
 }
 ```
 
