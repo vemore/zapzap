@@ -14,17 +14,22 @@
  *   - drawSource: 2 actions [deck, played]
  */
 
-// TensorFlow.js with fallback: CPU native (oneDNN) → Pure JS
-// Note: tfjs-node requires Node.js < 22 (v18/v20 LTS)
+// TensorFlow.js with fallback: GPU (CUDA) → CPU native (oneDNN) → Pure JS
+// Note: tfjs-node/tfjs-node-gpu require Node.js < 22 (v18/v20 LTS)
 let tf;
 let tfBackendType = 'unknown';
 
 try {
-    tf = require('@tensorflow/tfjs-node');
-    tfBackendType = 'CPU native (oneDNN AVX2+FMA)';
-} catch (e) {
-    tf = require('@tensorflow/tfjs');
-    tfBackendType = 'Pure JS';
+    tf = require('@tensorflow/tfjs-node-gpu');
+    tfBackendType = 'GPU (CUDA)';
+} catch (e1) {
+    try {
+        tf = require('@tensorflow/tfjs-node');
+        tfBackendType = 'CPU native (oneDNN)';
+    } catch (e2) {
+        tf = require('@tensorflow/tfjs');
+        tfBackendType = 'Pure JS';
+    }
 }
 
 console.log(`[DuelingDQN] TensorFlow.js backend: ${tfBackendType}`);
