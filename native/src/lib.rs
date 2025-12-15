@@ -5,6 +5,7 @@
 #![deny(clippy::all)]
 
 pub mod card_analyzer;
+pub mod fast_dqn;
 pub mod feature_extractor;
 pub mod game_state;
 pub mod headless_engine;
@@ -224,6 +225,111 @@ pub fn run_games_batch(
         wins,
         avg_rounds: total_rounds as f64 / game_count as f64,
         total_time_ms: total_ms,
+        games_per_second,
+    }
+}
+
+/// Result of running games with transition collection
+#[napi(object)]
+pub struct TrainingBatchResult {
+    /// Total games played
+    pub games_played: u32,
+    /// Wins per player
+    pub wins: Vec<u32>,
+    /// Total transitions collected
+    pub transitions_collected: u32,
+    /// Games per second
+    pub games_per_second: f64,
+}
+
+/// Run multiple games with transition collection for DRL training
+/// Collects transitions and adds them directly to the trainer's replay buffer
+/// Automatically syncs weights from trainer to DRL strategies for each game
+#[napi]
+pub fn run_training_batch(
+    strategy_types: Vec<String>,
+    game_count: u32,
+    drl_player_index: u8,
+    epsilon: f64,
+    base_seed: Option<u32>,
+) -> TrainingBatchResult {
+    let strategies: Vec<StrategyType> = strategy_types
+        .iter()
+        .map(|s| match s.to_lowercase().as_str() {
+            "hard" | "hard_vince" => StrategyType::Hard,
+            "drl" => StrategyType::DRL,
+            _ => StrategyType::Random,
+        })
+        .collect();
+
+    let player_count = strategies.len();
+    let mut wins = vec![0u32; player_count];
+    let mut total_transitions = 0u32;
+
+    let start = std::time::Instant::now();
+
+    // Get current weights from trainer for DRL strategies
+    let trainer_weights: Option<Vec<f32>> = {
+        let trainer_guard = TRAINER.lock().unwrap();
+        trainer_guard.as_ref().map(|t| t.get_weights_flat())
+    };
+
+    for i in 0..game_count {
+        let seed = base_seed.map(|s| s as u64 + i as u64).unwrap_or(i as u64);
+        let mut engine = HeadlessGameEngine::with_seed(strategies.clone(), seed);
+
+        // Set epsilon for DRL strategies
+        engine.set_drl_epsilon(epsilon as f32);
+
+        // CRITICAL: Sync trained weights to DRL strategy before each game
+        if let Some(ref weights) = trainer_weights {
+            engine.set_drl_weights(weights);
+        }
+
+        // Run game with transition collection
+        let (result, transitions) = engine.run_game_with_collection(drl_player_index);
+
+        wins[result.winner as usize] += 1;
+
+        // Add transitions to trainer buffer
+        let transition_count = transitions.len() as u32;
+        total_transitions += transition_count;
+
+        // DIAG: Log first few transitions to verify reward structure
+        if i < 3 {
+            eprintln!("[DIAG] Game {} - {} transitions collected, winner={}", i, transition_count, result.winner);
+            for (j, t) in transitions.iter().enumerate().take(5) {
+                eprintln!("[DIAG]   T[{}]: reward={:.3}, done={}, dt={}, action={}",
+                    j, t.reward, t.done, t.decision_type, t.action);
+            }
+            if transitions.len() > 5 {
+                let last_idx = transitions.len() - 1;
+                let last = &transitions[last_idx];
+                eprintln!("[DIAG]   T[{}] (last): reward={:.3}, done={}, dt={}, action={}",
+                    last_idx, last.reward, last.done, last.decision_type, last.action);
+            }
+        }
+
+        let mut trainer_guard = TRAINER.lock().unwrap();
+        if let Some(trainer) = trainer_guard.as_mut() {
+            for transition in transitions {
+                trainer.add_transition(transition);
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    let total_ms = elapsed.as_secs_f64() * 1000.0;
+    let games_per_second = if total_ms > 0.0 {
+        (game_count as f64) / (total_ms / 1000.0)
+    } else {
+        0.0
+    };
+
+    TrainingBatchResult {
+        games_played: game_count,
+        wins,
+        transitions_collected: total_transitions,
         games_per_second,
     }
 }
@@ -632,6 +738,31 @@ pub fn trainer_buffer_size() -> u32 {
         .unwrap_or(0)
 }
 
+/// Perform N training steps and return average loss
+#[napi]
+pub fn trainer_train_steps(num_steps: u32, games_played: u32) -> TrainStepResult {
+    let mut trainer_guard = TRAINER.lock().unwrap();
+    if let Some(trainer) = trainer_guard.as_mut() {
+        let (total_loss, steps_done) = trainer.train_steps(num_steps as usize, games_played as u64);
+        TrainStepResult {
+            steps_completed: steps_done as u32,
+            avg_loss: if steps_done > 0 { (total_loss / steps_done as f32) as f64 } else { 0.0 },
+        }
+    } else {
+        TrainStepResult {
+            steps_completed: 0,
+            avg_loss: 0.0,
+        }
+    }
+}
+
+/// Result of training steps
+#[napi(object)]
+pub struct TrainStepResult {
+    pub steps_completed: u32,
+    pub avg_loss: f64,
+}
+
 /// Request training to stop
 #[napi]
 pub fn trainer_request_stop() -> bool {
@@ -721,11 +852,11 @@ pub fn drl_strategy_get_action(features: Vec<f64>, decision_type: String) -> u32
     };
 
     let dt = match decision_type.to_lowercase().as_str() {
-        "handsize" | "hand_size" => training::DecisionType::HandSize,
-        "zapzap" | "zap_zap" => training::DecisionType::ZapZap,
-        "playtype" | "play_type" => training::DecisionType::PlayType,
-        "drawsource" | "draw_source" => training::DecisionType::DrawSource,
-        _ => training::DecisionType::PlayType,
+        "handsize" | "hand_size" => fast_dqn::DecisionType::HandSize,
+        "zapzap" | "zap_zap" => fast_dqn::DecisionType::ZapZap,
+        "playtype" | "play_type" => fast_dqn::DecisionType::PlayType,
+        "drawsource" | "draw_source" => fast_dqn::DecisionType::DrawSource,
+        _ => fast_dqn::DecisionType::PlayType,
     };
 
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
@@ -734,15 +865,7 @@ pub fn drl_strategy_get_action(features: Vec<f64>, decision_type: String) -> u32
         features_arr[i] = v;
     }
 
-    // Use the correct decision type from lightweight_dqn
-    let lw_dt = match dt {
-        training::DecisionType::HandSize => lightweight_dqn::DecisionType::HandSize,
-        training::DecisionType::ZapZap => lightweight_dqn::DecisionType::ZapZap,
-        training::DecisionType::PlayType => lightweight_dqn::DecisionType::PlayType,
-        training::DecisionType::DrawSource => lightweight_dqn::DecisionType::DrawSource,
-    };
-
-    strategy.get_action(&features_arr, lw_dt) as u32
+    strategy.get_action(&features_arr, dt) as u32
 }
 
 // ============================================================================
@@ -861,6 +984,30 @@ pub fn model_load_with_metadata(path: String) -> Option<NativeModelLoadResult> {
 #[napi]
 pub fn model_exists(path: String) -> bool {
     ModelIO::model_exists(&path)
+}
+
+/// Save trainer's current model to file
+#[napi]
+pub fn trainer_save_model(path: String) -> bool {
+    let trainer_guard = TRAINER.lock().unwrap();
+    if let Some(trainer) = trainer_guard.as_ref() {
+        let weights = trainer.get_weights_flat();
+        let state = trainer.get_state();
+        let config = TrainingConfig::default();
+
+        ModelIO::save_checkpoint(
+            &path,
+            &weights,
+            &config,
+            state.steps,
+            state.games_played,
+            state.epsilon,
+            state.avg_loss,
+            state.win_rate,
+        ).is_ok()
+    } else {
+        false
+    }
 }
 
 /// Get model metadata without loading weights

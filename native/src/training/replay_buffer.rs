@@ -75,9 +75,9 @@ impl PrioritizedReplayBuffer {
         self.size = (self.size + 1).min(self.capacity);
     }
 
-    /// Sample a batch of transitions
+    /// Sample a batch of transitions matching a specific decision type
     ///
-    /// Returns None if not enough transitions in buffer
+    /// Returns None if not enough transitions of that type in buffer
     pub fn sample<B: Backend>(
         &self,
         batch_size: usize,
@@ -93,31 +93,57 @@ impl PrioritizedReplayBuffer {
             return None;
         }
 
-        let segment = total / batch_size as f32;
         let mut rng = rand::thread_rng();
-
         let mut indices = Vec::with_capacity(batch_size);
         let mut priorities = Vec::with_capacity(batch_size);
         let mut transitions = Vec::with_capacity(batch_size);
 
-        // Stratified sampling for better coverage
-        for i in 0..batch_size {
-            let low = segment * i as f32;
-            let high = segment * (i + 1) as f32;
-            let value = low + rng.gen::<f32>() * (high - low);
+        // Sample until we have enough transitions of the right decision type
+        // Use rejection sampling with a maximum number of attempts
+        let max_attempts = batch_size * 20; // Allow many attempts
+        let mut attempts = 0;
 
-            let (idx, priority) = self.tree.get(value.min(total - 0.0001));
+        while transitions.len() < batch_size && attempts < max_attempts {
+            attempts += 1;
 
-            // Skip if no data at this index (shouldn't happen but safety check)
+            // Random sampling (simpler than stratified for filtered sampling)
+            let value = rng.gen::<f32>() * (total - 0.0001);
+            let (idx, priority) = self.tree.get(value);
+
+            // Only accept transitions matching the decision type
             if let Some(ref t) = self.data[idx] {
-                indices.push(idx);
-                priorities.push(priority);
-                transitions.push(t.clone());
+                if t.decision_type == decision_type {
+                    // Avoid duplicates
+                    if !indices.contains(&idx) {
+                        indices.push(idx);
+                        priorities.push(priority);
+                        transitions.push(t.clone());
+                    }
+                }
             }
         }
 
+        // If we couldn't find enough transitions of this type, return None
         if transitions.len() < batch_size {
+            // DIAG: Log sampling failure
+            eprintln!("[DIAG] sample(batch={}, dt={}) FAILED - only found {} transitions after {} attempts",
+                batch_size, decision_type, transitions.len(), attempts);
             return None;
+        }
+
+        // DIAG: Log successful sampling periodically
+        static mut SAMPLE_COUNTER: u64 = 0;
+        unsafe {
+            SAMPLE_COUNTER += 1;
+            if SAMPLE_COUNTER % 200 == 1 {
+                // Count rewards in sampled transitions
+                let rewards_nonzero = transitions.iter().filter(|t| t.reward.abs() > 0.001).count();
+                let rewards_positive = transitions.iter().filter(|t| t.reward > 0.001).count();
+                let rewards_negative = transitions.iter().filter(|t| t.reward < -0.001).count();
+                let done_count = transitions.iter().filter(|t| t.done).count();
+                eprintln!("[DIAG] sample(batch={}, dt={}) OK - attempts={}, rewards: nonzero={}, pos={}, neg={}, done={}",
+                    batch_size, decision_type, attempts, rewards_nonzero, rewards_positive, rewards_negative, done_count);
+            }
         }
 
         // Calculate importance sampling weights

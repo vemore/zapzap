@@ -125,7 +125,15 @@ impl Trainer {
             self.config.batch_size,
             decision_type as u8,
             &self.device,
-        )?;
+        );
+
+        // DIAG: Log sampling result
+        if batch.is_none() {
+            eprintln!("[DIAG] train_step({:?}) - buffer.sample() returned None (buffer size: {})",
+                decision_type, self.buffer.len());
+            return None;
+        }
+        let batch = batch?;
 
         // Forward pass on online network
         let q_values = self.network.forward(batch.states.clone(), decision_type);
@@ -179,6 +187,22 @@ impl Trainer {
 
         // Return average loss
         let loss_val = weighted_loss.into_data().as_slice::<f32>().unwrap()[0];
+
+        // DIAG: Log loss and TD errors periodically
+        static mut DIAG_COUNTER: u64 = 0;
+        unsafe {
+            DIAG_COUNTER += 1;
+            if DIAG_COUNTER % 100 == 1 {
+                let td_mean: f32 = td_errors.iter().sum::<f32>() / td_errors.len() as f32;
+                let td_max = td_errors.iter().cloned().fold(0.0f32, f32::max);
+                let rewards_slice = batch.rewards.clone().into_data().as_slice::<f32>().unwrap().to_vec();
+                let reward_mean: f32 = rewards_slice.iter().sum::<f32>() / rewards_slice.len() as f32;
+                let rewards_nonzero = rewards_slice.iter().filter(|&&r| r.abs() > 0.001).count();
+                eprintln!("[DIAG] train_step({:?}) - loss={:.6}, td_mean={:.4}, td_max={:.4}, reward_mean={:.4}, rewards_nonzero={}/{}",
+                    decision_type, loss_val, td_mean, td_max, reward_mean, rewards_nonzero, rewards_slice.len());
+            }
+        }
+
         Some(loss_val)
     }
 
@@ -259,20 +283,121 @@ impl Trainer {
         self.buffer.push(transition);
     }
 
+    /// Perform N training steps and update state
+    /// Returns (total_loss, steps_completed)
+    pub fn train_steps(&mut self, num_steps: usize, games_played: u64) -> (f32, usize) {
+        let min_buffer_size = self.config.batch_size * 10;
+        if self.buffer.len() < min_buffer_size {
+            eprintln!("[DIAG] train_steps - buffer too small ({} < {})", self.buffer.len(), min_buffer_size);
+            return (0.0, 0);
+        }
+
+        // DIAG: Get weights before training
+        let weights_before = self.network.get_weights_flat();
+        let weights_before_sample: Vec<f32> = weights_before.iter().take(5).cloned().collect();
+
+        let mut total_loss = 0.0f32;
+        let mut steps_completed = 0usize;
+
+        // Update epsilon and beta based on games played
+        let current_epsilon = self.config.get_epsilon(games_played as usize);
+        let current_beta = self.config.get_beta(games_played as usize);
+        self.buffer.set_beta(current_beta);
+
+        for _ in 0..num_steps {
+            // Train on all 4 decision types per step
+            for dt in DecisionType::all() {
+                if let Some(loss) = self.train_step(dt) {
+                    total_loss += loss;
+                    steps_completed += 1;
+                }
+            }
+        }
+
+        // DIAG: Get weights after training
+        let weights_after = self.network.get_weights_flat();
+        let weights_after_sample: Vec<f32> = weights_after.iter().take(5).cloned().collect();
+        let weights_changed = weights_before_sample.iter()
+            .zip(weights_after_sample.iter())
+            .any(|(a, b)| (a - b).abs() > 1e-8);
+
+        // DIAG: Log every 10 calls
+        static mut TRAIN_STEPS_COUNTER: u64 = 0;
+        unsafe {
+            TRAIN_STEPS_COUNTER += 1;
+            if TRAIN_STEPS_COUNTER % 10 == 1 {
+                eprintln!("[DIAG] train_steps(num_steps={}, games={}) - steps_completed={}, avg_loss={:.6}, weights_changed={}",
+                    num_steps, games_played, steps_completed,
+                    if steps_completed > 0 { total_loss / steps_completed as f32 } else { 0.0 },
+                    weights_changed);
+                eprintln!("[DIAG]   weights_before[0..5]: {:?}", weights_before_sample);
+                eprintln!("[DIAG]   weights_after[0..5]:  {:?}", weights_after_sample);
+            }
+        }
+
+        // Update training state
+        {
+            let mut state = self.state.lock().unwrap();
+            state.steps += steps_completed as u64;
+            state.games_played = games_played;
+            state.epsilon = current_epsilon;
+            if steps_completed > 0 {
+                // Running average loss
+                state.avg_loss = 0.99 * state.avg_loss + 0.01 * (total_loss / steps_completed as f32);
+            }
+        }
+
+        (total_loss, steps_completed)
+    }
+
     /// Get weights as flat vector (for syncing to inference network)
     pub fn get_weights_flat(&self) -> Vec<f32> {
-        // Placeholder - would extract weights from network
-        Vec::new()
+        self.network.get_weights_flat()
     }
 
     /// Set weights from flat vector
-    pub fn set_weights_flat(&mut self, _weights: &[f32]) {
-        // Placeholder - would load weights into network
+    pub fn set_weights_flat(&mut self, weights: &[f32]) {
+        self.network.set_weights_flat(weights, &self.device);
     }
 
     /// Get buffer size
     pub fn buffer_size(&self) -> usize {
         self.buffer.len()
+    }
+
+    /// Select an action using the trained network with epsilon-greedy exploration
+    /// This allows using the trainer's network for inference during simulation
+    pub fn select_action(&self, features: &[f32], decision_type: DecisionType, epsilon: f32) -> u8 {
+        // Epsilon-greedy exploration
+        let mut rng_seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+        rng_seed ^= rng_seed << 13;
+        rng_seed ^= rng_seed >> 7;
+        rng_seed ^= rng_seed << 17;
+        let random_val = (rng_seed as f64 / u64::MAX as f64) as f32;
+
+        if random_val < epsilon {
+            // Random action
+            rng_seed ^= rng_seed << 13;
+            let action_dim = decision_type.action_dim();
+            ((rng_seed as f64 / u64::MAX as f64) * action_dim as f64) as u8
+        } else {
+            // Greedy action from network
+            let q_values = self.network.q_values(features, decision_type, &self.device);
+            q_values
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                .map(|(i, _)| i as u8)
+                .unwrap_or(0)
+        }
+    }
+
+    /// Get Q-values for a given state and decision type
+    pub fn get_q_values(&self, features: &[f32], decision_type: DecisionType) -> Vec<f32> {
+        self.network.q_values(features, decision_type, &self.device)
     }
 }
 
@@ -324,5 +449,67 @@ mod tests {
 
         trainer.add_transition(transition);
         assert_eq!(trainer.buffer_size(), 1);
+    }
+
+    #[test]
+    fn test_training_diagnostic() {
+        use super::DecisionType;
+
+        eprintln!("\n=== DIAGNOSTIC TEST START ===\n");
+
+        let config = TrainingConfig::fast();
+        let mut trainer = Trainer::new(config);
+
+        // Add transitions with correct action bounds for each decision type
+        // ACTION_DIMS: [7, 2, 5, 2] for [HandSize, ZapZap, PlayType, DrawSource]
+        let action_dims = [7u8, 2, 5, 2];
+
+        for i in 0..2000 {
+            let decision_type = (i % 4) as u8;
+            let action_dim = action_dims[decision_type as usize];
+            let action = (i as u8) % action_dim;  // Ensure action is within bounds
+
+            // ~20% transitions have non-zero reward
+            let reward = if i % 5 == 4 {
+                if i % 10 < 5 { 1.0 } else { -0.5 }
+            } else {
+                0.0
+            };
+            let done = i % 5 == 4;
+
+            let transition = super::super::transition::Transition::new(
+                [(i as f32 / 2000.0); FEATURE_DIM],
+                action,
+                reward,
+                [((i + 1) as f32 / 2000.0); FEATURE_DIM],
+                done,
+                decision_type,
+            );
+            trainer.add_transition(transition);
+        }
+
+        eprintln!("Buffer size: {}", trainer.buffer_size());
+
+        // Count transitions by type and rewards
+        eprintln!("\nTransitions by type:");
+        for dt in 0..4 {
+            eprintln!("  dt={}: ~{} total", dt, 2000 / 4);
+        }
+
+        // Run training steps
+        eprintln!("\n--- Training Step 1 ---");
+        let (loss1, steps1) = trainer.train_steps(1, 100);
+        eprintln!("Loss: {:.6}, Steps: {}", loss1, steps1);
+
+        eprintln!("\n--- Training Step 2 ---");
+        let (loss2, steps2) = trainer.train_steps(1, 200);
+        eprintln!("Loss: {:.6}, Steps: {}", loss2, steps2);
+
+        eprintln!("\n=== DIAGNOSTIC RESULTS ===");
+        eprintln!("Total steps: {}", steps1 + steps2);
+        eprintln!("Buffer size after: {}", trainer.buffer_size());
+        eprintln!("=== END ===\n");
+
+        assert!(trainer.buffer_size() >= 2000);
     }
 }

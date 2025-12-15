@@ -139,7 +139,9 @@ impl TransitionCollector {
         }
     }
 
-    /// Finalize game with simpler reward structure
+    /// Finalize game with discounted returns
+    /// Uses Monte Carlo-style returns: each transition gets gamma^(n-i) * game_reward
+    /// This ensures all transitions have meaningful reward signals for learning
     pub fn finalize_simple(
         &mut self,
         final_state: &GameState,
@@ -153,6 +155,7 @@ impl TransitionCollector {
         self.game_reward = Some(game_reward);
 
         let n = self.pending.len();
+        let gamma = 0.99f32;
 
         // Store next states before consuming pending
         let next_states: Vec<[f32; FEATURE_DIM]> = (0..n)
@@ -165,12 +168,13 @@ impl TransitionCollector {
             })
             .collect();
 
+        // Compute discounted returns for each transition
+        // Return at step i = gamma^(n-1-i) * game_reward
+        // This assigns higher rewards to transitions closer to game end
         for (i, pending) in self.pending.drain(..).enumerate() {
-            let reward = if i == n - 1 {
-                game_reward // Final step gets game reward
-            } else {
-                0.0 // Intermediate steps get 0
-            };
+            let steps_to_end = (n - 1 - i) as i32;
+            let discount = gamma.powi(steps_to_end);
+            let reward = discount * game_reward;
 
             self.transitions.push(Transition::new(
                 pending.state,
@@ -296,16 +300,19 @@ mod tests {
         assert_eq!(collector.pending_count(), 0);
         assert_eq!(collector.game_reward(), Some(1.0));
 
-        // Check transitions
+        // Check transitions - now all have discounted rewards
         let transitions: Vec<_> = collector.drain().collect();
         assert_eq!(transitions.len(), 3);
 
-        // Only last transition should have reward and done flag
-        assert_eq!(transitions[0].reward, 0.0);
+        // Discounted rewards: gamma=0.99
+        // Transition 0: steps_to_end=2, reward = 0.99^2 * 1.0 ≈ 0.9801
+        // Transition 1: steps_to_end=1, reward = 0.99^1 * 1.0 = 0.99
+        // Transition 2: steps_to_end=0, reward = 0.99^0 * 1.0 = 1.0
+        assert!((transitions[0].reward - 0.9801).abs() < 0.001);
         assert!(!transitions[0].done);
-        assert_eq!(transitions[1].reward, 0.0);
+        assert!((transitions[1].reward - 0.99).abs() < 0.001);
         assert!(!transitions[1].done);
-        assert_eq!(transitions[2].reward, 1.0);
+        assert!((transitions[2].reward - 1.0).abs() < 0.001);
         assert!(transitions[2].done);
     }
 

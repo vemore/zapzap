@@ -3,8 +3,10 @@
 //! Runs complete games without I/O overhead for training.
 
 use crate::card_analyzer;
+use crate::feature_extractor::FeatureExtractor;
 use crate::game_state::{GameAction, GameState, LastAction, MAX_PLAYERS};
 use crate::strategies::{BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy};
+use crate::training::{TransitionCollector, Transition};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rand::seq::SliceRandom;
@@ -81,6 +83,13 @@ impl HeadlessGameEngine {
         }
     }
 
+    /// Set weights for all DRL strategies (sync from training network)
+    pub fn set_drl_weights(&mut self, weights: &[f32]) {
+        for (_, drl) in &mut self.drl_strategies {
+            drl.set_weights_flat(weights);
+        }
+    }
+
     /// Get mutable DRL strategy for a player (if they're using DRL)
     fn get_drl_strategy_mut(&mut self, player: u8) -> Option<&mut DRLStrategy> {
         self.drl_strategies
@@ -118,6 +127,178 @@ impl HeadlessGameEngine {
             final_scores: state.scores,
             was_golden_score: state.is_golden_score,
             player_count: self.player_count,
+        }
+    }
+
+    /// Run a complete game with transition collection for DRL training
+    /// Returns (game_result, collected_transitions)
+    pub fn run_game_with_collection(&mut self, drl_player_index: u8) -> (GameResult, Vec<Transition>) {
+        let mut state = GameState::new(self.player_count);
+        let mut collector = TransitionCollector::new(drl_player_index);
+
+        let mut round_number = 1u16;
+        let max_rounds = 100;
+
+        while !self.is_game_finished(&state) && round_number < max_rounds {
+            state = self.run_round_with_collection(state, round_number, drl_player_index, &mut collector);
+            round_number += 1;
+            state = self.process_round_end(state);
+        }
+
+        let winner = self.determine_winner(&state);
+
+        // Finalize transitions with game outcome
+        let game_reward = if winner == drl_player_index { 1.0 } else { -0.5 };
+        collector.finalize_simple(&state, game_reward);
+
+        let result = GameResult {
+            winner,
+            total_rounds: round_number - 1,
+            final_scores: state.scores,
+            was_golden_score: state.is_golden_score,
+            player_count: self.player_count,
+        };
+
+        (result, collector.take_transitions())
+    }
+
+    /// Run a single round with transition collection
+    fn run_round_with_collection(
+        &mut self,
+        mut state: GameState,
+        round_number: u16,
+        drl_player_index: u8,
+        collector: &mut TransitionCollector,
+    ) -> GameState {
+        let active_players = state.active_players();
+        let mut current_player = state.current_turn;
+
+        // Skip to active player
+        while state.is_eliminated(current_player) {
+            current_player = (current_player + 1) % self.player_count;
+        }
+
+        // Select hand size
+        let my_score = state.scores[current_player as usize];
+        let hand_size = self.get_strategy_hand_size(
+            current_player,
+            active_players.len() as u8,
+            state.is_golden_score,
+            my_score,
+        );
+
+        // Record hand size decision for DRL player
+        if current_player == drl_player_index && self.strategies[current_player as usize] == StrategyType::DRL {
+            let features = FeatureExtractor::extract_hand_size_features(
+                active_players.len() as u8,
+                state.is_golden_score,
+                my_score,
+            );
+            let action = hand_size.saturating_sub(4).min(6); // Map 4-10 to 0-6
+            collector.record_action_with_features(features, action, 0); // 0 = HandSize decision
+        }
+
+        let valid_hand_size = self.validate_hand_size(hand_size, state.is_golden_score);
+
+        // Deal cards
+        state = self.deal_cards(state, valid_hand_size, &active_players, round_number, current_player);
+
+        // Play turns
+        let max_turns = 1000;
+        let mut turn_count = 0;
+
+        while state.current_action != GameAction::Finished && turn_count < max_turns {
+            current_player = state.current_turn;
+
+            if state.is_eliminated(current_player) {
+                state.advance_turn();
+                turn_count += 1;
+                continue;
+            }
+
+            let hand: SmallVec<[u8; 10]> = state.get_hand(current_player).clone();
+            let is_drl_player = current_player == drl_player_index
+                && self.strategies[current_player as usize] == StrategyType::DRL;
+
+            // Check for ZapZap
+            if card_analyzer::can_call_zapzap(&hand)
+                && self.should_strategy_zapzap(current_player, &hand, &state)
+            {
+                // Record ZapZap decision for DRL player
+                if is_drl_player {
+                    collector.record_action(&state, 1, 1); // action=1 (zapzap), decision_type=1 (ZapZap)
+                }
+                state = self.execute_zapzap(state, current_player, &active_players);
+                break;
+            }
+
+            // Play phase
+            if let Some(cards_to_play) = self.get_strategy_play(current_player, &hand, &state) {
+                // Record play decision for DRL player
+                if is_drl_player {
+                    // Determine play type action (0=optimal, 1=single_high, 2=multi_high, 3=avoid_joker, 4=use_joker)
+                    let play_action = self.classify_play_action(&cards_to_play, &hand);
+                    collector.record_action(&state, play_action, 2); // decision_type=2 (PlayType)
+                }
+                state = self.execute_play(state, current_player, &cards_to_play);
+            } else {
+                // Fallback: play first card
+                if !hand.is_empty() {
+                    if is_drl_player {
+                        collector.record_action(&state, 0, 2); // action=0 (optimal fallback)
+                    }
+                    let fallback: SmallVec<[u8; 8]> = SmallVec::from_slice(&[hand[0]]);
+                    state = self.execute_play(state, current_player, &fallback);
+                }
+            }
+
+            // Draw phase
+            let draw_from_deck = self.get_strategy_draw_source(
+                current_player,
+                state.get_hand(current_player),
+                &state.last_cards_played,
+                &state,
+            );
+
+            // Record draw decision for DRL player
+            if is_drl_player {
+                let draw_action = if draw_from_deck { 0 } else { 1 }; // 0=deck, 1=discard
+                collector.record_action(&state, draw_action, 3); // decision_type=3 (DrawSource)
+            }
+
+            state = self.execute_draw(state, current_player, draw_from_deck);
+
+            turn_count += 1;
+        }
+
+        state
+    }
+
+    /// Classify the play action type for transition recording
+    fn classify_play_action(&self, play: &[u8], hand: &[u8]) -> u8 {
+        let has_joker = play.iter().any(|&c| card_analyzer::is_joker(c));
+        let is_multi = play.len() > 1;
+
+        if has_joker && is_multi {
+            4 // use_joker_combo
+        } else if has_joker {
+            3 // avoid_joker (playing single joker, which is unusual)
+        } else if is_multi {
+            // Check if it removes high value
+            let play_value: u16 = play.iter().map(|&c| card_analyzer::get_card_points(c) as u16).sum();
+            if play_value > 10 {
+                2 // multi_high
+            } else {
+                0 // optimal
+            }
+        } else {
+            // Single card
+            let card_value = card_analyzer::get_card_points(play[0]);
+            if card_value >= 10 {
+                1 // single_high
+            } else {
+                0 // optimal
+            }
         }
     }
 

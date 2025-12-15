@@ -68,6 +68,23 @@ export interface BatchGameStats {
  * Strategy types: "random", "hard", "hard_vince", "drl"
  */
 export declare function runGamesBatch(strategyTypes: Array<string>, gameCount: number, baseSeed?: number | undefined | null): BatchGameStats
+/** Result of running games with transition collection */
+export interface TrainingBatchResult {
+  /** Total games played */
+  gamesPlayed: number
+  /** Wins per player */
+  wins: Array<number>
+  /** Total transitions collected */
+  transitionsCollected: number
+  /** Games per second */
+  gamesPerSecond: number
+}
+/**
+ * Run multiple games with transition collection for DRL training
+ * Collects transitions and adds them directly to the trainer's replay buffer
+ * Automatically syncs weights from trainer to DRL strategies for each game
+ */
+export declare function runTrainingBatch(strategyTypes: Array<string>, gameCount: number, drlPlayerIndex: number, epsilon: number, baseSeed?: number | undefined | null): TrainingBatchResult
 /** Benchmark game simulation performance */
 export declare function benchmarkSimulation(playerCount: number, gameCount: number): number
 /** Get feature dimension (45) */
@@ -146,6 +163,13 @@ export declare function trainerGetState(): NativeTrainingState | null
 export declare function trainerAddTransition(state: Array<number>, action: number, reward: number, nextState: Array<number>, done: boolean, decisionType: number): boolean
 /** Get current replay buffer size */
 export declare function trainerBufferSize(): number
+/** Perform N training steps and return average loss */
+export declare function trainerTrainSteps(numSteps: number, gamesPlayed: number): TrainStepResult
+/** Result of training steps */
+export interface TrainStepResult {
+  stepsCompleted: number
+  avgLoss: number
+}
 /** Request training to stop */
 export declare function trainerRequestStop(): boolean
 /** Check if training should stop */
@@ -202,5 +226,7 @@ export declare function modelLoad(path: string): Array<number> | null
 export declare function modelLoadWithMetadata(path: string): NativeModelLoadResult | null
 /** Check if model file exists */
 export declare function modelExists(path: string): boolean
+/** Save trainer's current model to file */
+export declare function trainerSaveModel(path: string): boolean
 /** Get model metadata without loading weights */
 export declare function modelGetMetadata(path: string): NativeModelMetadata | null

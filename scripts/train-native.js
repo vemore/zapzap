@@ -190,7 +190,8 @@ async function runTraining(native, args) {
     console.log('\n=== Full Rust DRL Training ===\n');
     console.log('Configuration:');
     console.log(`  Total games: ${formatNumber(args.games)}`);
-    console.log(`  Batch size: ${args.batchSize}`);
+    console.log(`  Games per batch: ${args.gamesPerBatch}`);
+    console.log(`  Training batch size: ${args.batchSize}`);
     console.log(`  Learning rate: ${args.learningRate}`);
     console.log(`  Epsilon: ${args.epsilonStart} -> ${args.epsilonEnd} over ${formatNumber(args.epsilonDecay)} steps`);
     console.log(`  Gamma: ${args.gamma}`);
@@ -240,36 +241,129 @@ async function runTraining(native, args) {
         }
     }
 
-    // Run simulation to demonstrate performance
-    console.log('\nRunning simulation benchmark...\n');
-    const simStart = Date.now();
-    const results = native.runGamesBatch(args.strategies, Math.min(args.games, 10000), Date.now());
-    const simElapsed = Date.now() - simStart;
+    // Find DRL player index in strategies
+    const drlPlayerIndex = args.strategies.findIndex(s => s === 'drl');
+    if (drlPlayerIndex === -1) {
+        console.error('Error: No DRL player in strategies. Use -s drl,hard,hard,hard');
+        process.exit(1);
+    }
+    console.log(`DRL player index: ${drlPlayerIndex}`);
 
-    console.log('Simulation Results:');
-    console.log(`  Games: ${formatNumber(results.gamesPlayed)}`);
-    console.log(`  Time: ${(simElapsed / 1000).toFixed(2)}s`);
-    console.log(`  Speed: ${formatNumber(Math.round(results.gamesPerSecond))} games/sec`);
-    console.log('');
-    console.log('Win Distribution:');
-    for (let i = 0; i < results.wins.length; i++) {
-        const winRate = (results.wins[i] / results.gamesPlayed * 100).toFixed(1);
-        const strategy = args.strategies[i] || `Player ${i}`;
-        console.log(`  ${strategy}: ${formatNumber(results.wins[i])} wins (${winRate}%)`);
+    // Training loop
+    console.log('\n--- Starting Training Loop ---\n');
+
+    const totalBatches = Math.ceil(args.games / args.gamesPerBatch);
+    let totalGamesPlayed = 0;
+    let totalTransitions = 0;
+    let totalDrlWins = 0;
+    const startTime = Date.now();
+    let lastLogTime = startTime;
+    let lastGamesCount = 0;
+
+    for (let batch = 0; batch < totalBatches; batch++) {
+        const gamesToPlay = Math.min(args.gamesPerBatch, args.games - totalGamesPlayed);
+
+        // Get current epsilon from trainer state
+        const currentState = native.trainerGetState(trainerId);
+        const currentEpsilon = currentState ? currentState.epsilon : args.epsilonStart;
+
+        // Run batch with transition collection
+        const batchResult = native.runTrainingBatch(
+            args.strategies,
+            gamesToPlay,
+            drlPlayerIndex,
+            currentEpsilon,
+            Date.now() + batch  // Unique seed per batch
+        );
+
+        totalGamesPlayed += batchResult.gamesPlayed;
+        totalTransitions += batchResult.transitionsCollected;
+        totalDrlWins += batchResult.wins[drlPlayerIndex] || 0;
+
+        // Get trainer state and buffer size
+        const bufferSize = native.trainerBufferSize(trainerId);
+
+        // Perform training steps if buffer has enough samples
+        const minBufferSize = args.batchSize * 10;
+        let trainingLoss = 0;
+        let trainStepsCompleted = 0;
+        if (bufferSize >= minBufferSize) {
+            // Train for multiple steps per batch
+            const stepsToTrain = Math.min(10, Math.floor(bufferSize / args.batchSize));
+            const trainResult = native.trainerTrainSteps(stepsToTrain, totalGamesPlayed);
+            trainingLoss = trainResult.avgLoss;
+            trainStepsCompleted = trainResult.stepsCompleted;
+        }
+
+        // Get updated trainer state
+        const state = native.trainerGetState(trainerId);
+
+        // Progress logging every 5 seconds
+        const now = Date.now();
+        if (now - lastLogTime >= 5000 || batch === totalBatches - 1) {
+            const elapsed = (now - startTime) / 1000;
+            const gamesPerSec = (totalGamesPlayed - lastGamesCount) / ((now - lastLogTime) / 1000);
+            const winRate = totalGamesPlayed > 0 ? (totalDrlWins / totalGamesPlayed * 100).toFixed(1) : '0.0';
+            const progress = (totalGamesPlayed / args.games * 100).toFixed(1);
+            const eta = totalGamesPlayed > 0
+                ? ((args.games - totalGamesPlayed) / (totalGamesPlayed / elapsed)).toFixed(0)
+                : '?';
+
+            const lossStr = state && state.avgLoss > 0 ? state.avgLoss.toFixed(4) : '-';
+            console.log(
+                `[${progress}%] Games: ${formatNumber(totalGamesPlayed)} | ` +
+                `Steps: ${state ? formatNumber(state.steps) : 0} | ` +
+                `Loss: ${lossStr} | ` +
+                `DRL Win: ${winRate}% | ` +
+                `Speed: ${gamesPerSec.toFixed(0)} g/s | ` +
+                `ε: ${state ? state.epsilon.toFixed(3) : '?'} | ` +
+                `ETA: ${eta}s`
+            );
+
+            lastLogTime = now;
+            lastGamesCount = totalGamesPlayed;
+        }
+
+        // Save checkpoint
+        if (args.saveInterval > 0 && totalGamesPlayed % args.saveInterval < args.gamesPerBatch) {
+            const checkpointPath = `${args.savePath}_checkpoint_${totalGamesPlayed}.safetensors`;
+            const checkpointSaved = native.trainerSaveModel(checkpointPath);
+            if (checkpointSaved) {
+                console.log(`  [Checkpoint saved: ${checkpointPath}]`);
+            }
+        }
     }
 
-    // Get trainer state
-    const state = native.trainerGetState(trainerId);
-    if (state) {
-        console.log('\nTrainer State:');
-        console.log(`  Buffer size: ${native.trainerBufferSize(trainerId)}`);
-        console.log(`  Games played: ${formatNumber(state.gamesPlayed)}`);
-        console.log(`  Steps: ${formatNumber(state.steps)}`);
-        console.log(`  Epsilon: ${state.epsilon.toFixed(4)}`);
+    // Final statistics
+    const totalElapsed = (Date.now() - startTime) / 1000;
+    console.log('\n--- Training Complete ---\n');
+    console.log('Final Statistics:');
+    console.log(`  Total games: ${formatNumber(totalGamesPlayed)}`);
+    console.log(`  Total transitions: ${formatNumber(totalTransitions)}`);
+    console.log(`  Total time: ${totalElapsed.toFixed(1)}s`);
+    console.log(`  Average speed: ${(totalGamesPlayed / totalElapsed).toFixed(0)} games/sec`);
+    console.log(`  DRL win rate: ${(totalDrlWins / totalGamesPlayed * 100).toFixed(2)}%`);
+
+    // Final buffer state
+    const finalState = native.trainerGetState(trainerId);
+    const finalBufferSize = native.trainerBufferSize(trainerId);
+    if (finalState) {
+        console.log('\nFinal Trainer State:');
+        console.log(`  Buffer size: ${formatNumber(finalBufferSize)}`);
+        console.log(`  Training steps: ${formatNumber(finalState.steps)}`);
+        console.log(`  Final epsilon: ${finalState.epsilon.toFixed(4)}`);
     }
 
-    console.log(`\nModel save path: ${args.savePath}.safetensors`);
-    console.log('(Full training loop integration in progress)');
+    // Save final model
+    const finalModelPath = args.savePath.endsWith('.safetensors')
+        ? args.savePath
+        : args.savePath + '.safetensors';
+    const saved = native.trainerSaveModel(finalModelPath);
+    if (saved) {
+        console.log(`\nModel saved to: ${finalModelPath}`);
+    } else {
+        console.log(`\nWarning: Failed to save model to: ${finalModelPath}`);
+    }
     console.log('\n=== Training Session Complete ===\n');
 }
 
