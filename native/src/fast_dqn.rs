@@ -563,36 +563,24 @@ impl FastDQN {
     }
 
     /// Get all weights as flat vector for serialization
-    /// Format matches DuelingDQN (burn) extraction order
+    /// Format: [out, in] - same as internal storage and DuelingDQN.get_weights_flat() output
+    /// This allows direct round-trip with set_weights_flat()
     pub fn get_weights_flat(&self) -> Vec<f32> {
         let mut weights = Vec::with_capacity(40000);
 
-        // Shared1 weights (45*128 + 128)
+        // Shared1 weights (45*128 + 128) - already in [out, in] format
         let (w, b) = self.shared1.get_weights();
-        // Transpose from [out, in] to [in, out]
-        for i in 0..FEATURE_DIM {
-            for o in 0..HIDDEN1 {
-                weights.push(w[o * FEATURE_DIM + i]);
-            }
-        }
+        weights.extend_from_slice(w);
         weights.extend_from_slice(b);
 
         // Shared2 weights (128*64 + 64)
         let (w, b) = self.shared2.get_weights();
-        for i in 0..HIDDEN1 {
-            for o in 0..HIDDEN2 {
-                weights.push(w[o * HIDDEN1 + i]);
-            }
-        }
+        weights.extend_from_slice(w);
         weights.extend_from_slice(b);
 
         // Value stream layer1 (64*32 + 32)
         let (w1, b1, w2, b2) = self.value.get_weights();
-        for i in 0..HIDDEN2 {
-            for o in 0..ADV_HIDDEN {
-                weights.push(w1[o * HIDDEN2 + i]);
-            }
-        }
+        weights.extend_from_slice(w1);
         weights.extend_from_slice(b1);
 
         // Value stream layer2 (32*1 + 1)
@@ -609,27 +597,20 @@ impl FastDQN {
             let (w1, b1, w2, b2) = head.get_weights();
 
             // Layer1 (64*32 + 32)
-            for i in 0..HIDDEN2 {
-                for o in 0..ADV_HIDDEN {
-                    weights.push(w1[o * HIDDEN2 + i]);
-                }
-            }
+            weights.extend_from_slice(w1);
             weights.extend_from_slice(b1);
 
             // Layer2 (32*action_dim + action_dim)
-            for i in 0..ADV_HIDDEN {
-                for a in 0..action_dim {
-                    weights.push(w2[a * ADV_HIDDEN + i]);
-                }
-            }
-            weights.extend_from_slice(b2);
+            weights.extend_from_slice(&w2[..ADV_HIDDEN * action_dim]);
+            weights.extend_from_slice(&b2[..action_dim]);
         }
 
         weights
     }
 
-    /// Set weights from flat vector (from DuelingDQN training)
-    /// Must match the format from DuelingDQN.get_weights_flat()
+    /// Set weights from flat vector (from get_weights_flat or DuelingDQN training)
+    /// Input format is already [out, in] (DuelingDQN.get_weights_flat() pre-transposes)
+    /// This matches FastDQN's internal storage format, so NO transposition needed
     pub fn set_weights_flat(&mut self, weights: &[f32]) {
         if weights.is_empty() {
             return;
@@ -645,7 +626,7 @@ impl FastDQN {
             &weights[start..end]
         }
 
-        // Shared1 (45*128 weights + 128 bias)
+        // Shared1 (45*128 weights + 128 bias) - weights arrive in [out, in] format
         let w1_size = FEATURE_DIM * HIDDEN1;
         let s1_w = take_slice(weights, &mut idx, w1_size);
         let s1_b = take_slice(weights, &mut idx, HIDDEN1);
@@ -660,7 +641,7 @@ impl FastDQN {
         // Value stream layer1 (64*32 + 32)
         let v1_w = take_slice(weights, &mut idx, HIDDEN2 * ADV_HIDDEN);
         let v1_b = take_slice(weights, &mut idx, ADV_HIDDEN);
-        // Value stream layer2 (32 + 1)
+        // Value stream layer2 (32*1 + 1)
         let v2_w = take_slice(weights, &mut idx, ADV_HIDDEN);
         let v2_b = if idx < weights.len() { weights[idx] } else { 0.0 };
         idx += 1;

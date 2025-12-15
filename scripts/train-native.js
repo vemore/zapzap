@@ -288,8 +288,11 @@ async function runTraining(native, args) {
         let trainingLoss = 0;
         let trainStepsCompleted = 0;
         if (bufferSize >= minBufferSize) {
-            // Train for multiple steps per batch
-            const stepsToTrain = Math.min(10, Math.floor(bufferSize / args.batchSize));
+            // Train for many steps per batch to ensure adequate learning
+            // With ~170 transitions per game and 100 games/batch = ~17k transitions
+            // We want to train on a significant fraction of these
+            // Target: ~100 steps per batch (6400 samples from ~17k transitions)
+            const stepsToTrain = Math.min(100, Math.floor(bufferSize / args.batchSize / 4));
             const trainResult = native.trainerTrainSteps(stepsToTrain, totalGamesPlayed);
             trainingLoss = trainResult.avgLoss;
             trainStepsCompleted = trainResult.stepsCompleted;
