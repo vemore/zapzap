@@ -8,13 +8,38 @@ description = "Native Rust simulation engine for ZapZap DRL training"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", features = ["napi4"] }
+# N-API bindings
+napi = { version = "2", features = ["napi4", "serde-json"] }
 napi-derive = "2"
+
+# Existing
 rand = { version = "0.8", features = ["small_rng"] }
 smallvec = "1.11"
 
+# Burn ML framework for DRL training
+burn = { version = "0.16", default-features = false }
+burn-core = { version = "0.16", features = ["std"] }
+burn-ndarray = { version = "0.16" }
+burn-autodiff = { version = "0.16" }
+
+# Parallelization
+rayon = "1.10"
+num_cpus = "1.16"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Model I/O
+safetensors = "0.4"
+
 [build-dependencies]
 napi-build = "2"
+
+[features]
+default = ["cpu"]
+cpu = []
+# GPU support can be added later with burn-wgpu
 
 [profile.release]
 lto = true

@@ -10,6 +10,7 @@ pub mod game_state;
 pub mod headless_engine;
 pub mod lightweight_dqn;
 pub mod strategies;
+pub mod training;
 
 use headless_engine::{HeadlessGameEngine, StrategyType};
 use napi_derive::napi;
@@ -140,13 +141,14 @@ pub struct NativeGameResult {
 }
 
 /// Run a single game with specified strategies
-/// Strategy types: "random", "hard"
+/// Strategy types: "random", "hard", "hard_vince", "drl"
 #[napi]
 pub fn run_game(strategy_types: Vec<String>, seed: Option<u32>) -> NativeGameResult {
     let strategies: Vec<StrategyType> = strategy_types
         .iter()
         .map(|s| match s.to_lowercase().as_str() {
-            "hard" => StrategyType::Hard,
+            "hard" | "hard_vince" => StrategyType::Hard,
+            "drl" => StrategyType::DRL,
             _ => StrategyType::Random,
         })
         .collect();
@@ -178,6 +180,7 @@ pub struct BatchGameStats {
 }
 
 /// Run multiple games in batch for performance testing
+/// Strategy types: "random", "hard", "hard_vince", "drl"
 #[napi]
 pub fn run_games_batch(
     strategy_types: Vec<String>,
@@ -187,7 +190,8 @@ pub fn run_games_batch(
     let strategies: Vec<StrategyType> = strategy_types
         .iter()
         .map(|s| match s.to_lowercase().as_str() {
-            "hard" => StrategyType::Hard,
+            "hard" | "hard_vince" => StrategyType::Hard,
+            "drl" => StrategyType::DRL,
             _ => StrategyType::Random,
         })
         .collect();
@@ -435,4 +439,435 @@ pub fn benchmark_dqn_inference(iterations: u32) -> f64 {
     } else {
         0.0
     }
+}
+
+// ============================================================================
+// Training Module Exports
+// ============================================================================
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use training::{Trainer, TrainingConfig, TrainingState as InternalTrainingState};
+
+/// Training configuration exposed to JS
+#[napi(object)]
+pub struct NativeTrainingConfig {
+    /// Total number of games to train on
+    pub total_games: u32,
+    /// Number of games per batch
+    pub games_per_batch: u32,
+    /// Batch size for training
+    pub batch_size: u32,
+    /// Learning rate
+    pub learning_rate: f64,
+    /// Starting epsilon for exploration
+    pub epsilon_start: f64,
+    /// Ending epsilon for exploration
+    pub epsilon_end: f64,
+    /// Number of games over which to decay epsilon
+    pub epsilon_decay: u32,
+    /// Discount factor (gamma)
+    pub gamma: f64,
+    /// Soft update rate (tau)
+    pub tau: f64,
+    /// Replay buffer capacity
+    pub buffer_capacity: u32,
+    /// Target network update frequency
+    pub target_update_freq: u32,
+}
+
+impl Default for NativeTrainingConfig {
+    fn default() -> Self {
+        Self {
+            total_games: 100000,
+            games_per_batch: 100,
+            batch_size: 64,
+            learning_rate: 0.0005,
+            epsilon_start: 1.0,
+            epsilon_end: 0.01,
+            epsilon_decay: 50000,
+            gamma: 0.99,
+            tau: 0.005,
+            buffer_capacity: 100000,
+            target_update_freq: 1000,
+        }
+    }
+}
+
+/// Training state exposed to JS
+#[napi(object)]
+pub struct NativeTrainingState {
+    /// Number of games played
+    pub games_played: u32,
+    /// Number of training steps
+    pub steps: u32,
+    /// Current epsilon value
+    pub epsilon: f64,
+    /// Average loss (recent)
+    pub avg_loss: f64,
+    /// Average reward (recent)
+    pub avg_reward: f64,
+    /// Win rate (recent)
+    pub win_rate: f64,
+    /// Games per second
+    pub games_per_second: f64,
+    /// Whether training is currently running
+    pub is_training: bool,
+}
+
+impl From<InternalTrainingState> for NativeTrainingState {
+    fn from(state: InternalTrainingState) -> Self {
+        Self {
+            games_played: state.games_played as u32,
+            steps: state.steps as u32,
+            epsilon: state.epsilon as f64,
+            avg_loss: state.avg_loss as f64,
+            avg_reward: state.avg_reward as f64,
+            win_rate: state.win_rate as f64,
+            games_per_second: state.games_per_second as f64,
+            is_training: state.is_training,
+        }
+    }
+}
+
+// Global trainer instance
+static TRAINER: Mutex<Option<Trainer>> = Mutex::new(None);
+static TRAINING_STOP_FLAG: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+/// Create a new trainer with the given configuration
+#[napi]
+pub fn trainer_create(config: NativeTrainingConfig) -> bool {
+    let training_config = TrainingConfig {
+        input_dim: 45,
+        hidden_dim: 128,
+        value_hidden: 64,
+        advantage_hidden: 32,
+        learning_rate: config.learning_rate,
+        batch_size: config.batch_size as usize,
+        buffer_capacity: config.buffer_capacity as usize,
+        gamma: config.gamma as f32,
+        tau: config.tau as f32,
+        gradient_clip: 1.0,
+        epsilon_start: config.epsilon_start as f32,
+        epsilon_end: config.epsilon_end as f32,
+        epsilon_decay_steps: config.epsilon_decay as usize,
+        per_alpha: 0.6,
+        per_beta_start: 0.4,
+        per_beta_end: 1.0,
+        per_epsilon: 0.01,
+        target_update_freq: config.target_update_freq as usize,
+        games_per_batch: config.games_per_batch as usize,
+        train_interval: 10,
+        save_interval: 10000,
+        num_workers: num_cpus::get(),
+    };
+
+    let trainer = Trainer::new(training_config);
+    let stop_flag = trainer.stop_flag();
+
+    *TRAINER.lock().unwrap() = Some(trainer);
+    *TRAINING_STOP_FLAG.lock().unwrap() = Some(stop_flag);
+
+    true
+}
+
+/// Get current training state
+#[napi]
+pub fn trainer_get_state() -> Option<NativeTrainingState> {
+    TRAINER
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.get_state().into())
+}
+
+/// Add a transition to the replay buffer
+#[napi]
+pub fn trainer_add_transition(
+    state: Vec<f64>,
+    action: u8,
+    reward: f64,
+    next_state: Vec<f64>,
+    done: bool,
+    decision_type: u8,
+) -> bool {
+    let mut trainer_guard = TRAINER.lock().unwrap();
+    let trainer = match trainer_guard.as_mut() {
+        Some(t) => t,
+        None => return false,
+    };
+
+    // Convert to fixed-size arrays
+    let mut state_arr = [0.0f32; 45];
+    let mut next_state_arr = [0.0f32; 45];
+
+    for (i, &v) in state.iter().take(45).enumerate() {
+        state_arr[i] = v as f32;
+    }
+    for (i, &v) in next_state.iter().take(45).enumerate() {
+        next_state_arr[i] = v as f32;
+    }
+
+    let transition = training::Transition::new(
+        state_arr,
+        action,
+        reward as f32,
+        next_state_arr,
+        done,
+        decision_type,
+    );
+
+    trainer.add_transition(transition);
+    true
+}
+
+/// Get current replay buffer size
+#[napi]
+pub fn trainer_buffer_size() -> u32 {
+    TRAINER
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.buffer_size() as u32)
+        .unwrap_or(0)
+}
+
+/// Request training to stop
+#[napi]
+pub fn trainer_request_stop() -> bool {
+    if let Some(flag) = TRAINING_STOP_FLAG.lock().unwrap().as_ref() {
+        flag.store(true, Ordering::SeqCst);
+        true
+    } else {
+        false
+    }
+}
+
+/// Check if training should stop
+#[napi]
+pub fn trainer_should_stop() -> bool {
+    TRAINING_STOP_FLAG
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|f| f.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+/// Get weights as flat vector
+#[napi]
+pub fn trainer_get_weights() -> Vec<f64> {
+    TRAINER
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.get_weights_flat().into_iter().map(|x| x as f64).collect())
+        .unwrap_or_default()
+}
+
+/// Set weights from flat vector
+#[napi]
+pub fn trainer_set_weights(weights: Vec<f64>) -> bool {
+    let mut trainer_guard = TRAINER.lock().unwrap();
+    let trainer = match trainer_guard.as_mut() {
+        Some(t) => t,
+        None => return false,
+    };
+
+    let weights_f32: Vec<f32> = weights.iter().map(|&x| x as f32).collect();
+    trainer.set_weights_flat(&weights_f32);
+    true
+}
+
+// ============================================================================
+// DRL Strategy Exports
+// ============================================================================
+
+use strategies::DRLStrategy;
+
+static DRL_STRATEGY: Mutex<Option<DRLStrategy>> = Mutex::new(None);
+
+/// Initialize DRL strategy for a player
+#[napi]
+pub fn drl_strategy_init(player_index: u8, epsilon: f64, seed: Option<u32>) -> bool {
+    let mut strategy = match seed {
+        Some(s) => DRLStrategy::with_seed(player_index, s as u64),
+        None => DRLStrategy::new(player_index),
+    };
+    strategy.set_epsilon(epsilon as f32);
+
+    *DRL_STRATEGY.lock().unwrap() = Some(strategy);
+    true
+}
+
+/// Set epsilon for DRL strategy
+#[napi]
+pub fn drl_strategy_set_epsilon(epsilon: f64) -> bool {
+    if let Some(strategy) = DRL_STRATEGY.lock().unwrap().as_mut() {
+        strategy.set_epsilon(epsilon as f32);
+        true
+    } else {
+        false
+    }
+}
+
+/// Get action from DRL strategy given features
+#[napi]
+pub fn drl_strategy_get_action(features: Vec<f64>, decision_type: String) -> u32 {
+    let mut strategy_guard = DRL_STRATEGY.lock().unwrap();
+    let strategy = match strategy_guard.as_mut() {
+        Some(s) => s,
+        None => return 0,
+    };
+
+    let dt = match decision_type.to_lowercase().as_str() {
+        "handsize" | "hand_size" => training::DecisionType::HandSize,
+        "zapzap" | "zap_zap" => training::DecisionType::ZapZap,
+        "playtype" | "play_type" => training::DecisionType::PlayType,
+        "drawsource" | "draw_source" => training::DecisionType::DrawSource,
+        _ => training::DecisionType::PlayType,
+    };
+
+    let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
+    let mut features_arr = [0.0f32; 45];
+    for (i, &v) in features_f32.iter().take(45).enumerate() {
+        features_arr[i] = v;
+    }
+
+    // Use the correct decision type from lightweight_dqn
+    let lw_dt = match dt {
+        training::DecisionType::HandSize => lightweight_dqn::DecisionType::HandSize,
+        training::DecisionType::ZapZap => lightweight_dqn::DecisionType::ZapZap,
+        training::DecisionType::PlayType => lightweight_dqn::DecisionType::PlayType,
+        training::DecisionType::DrawSource => lightweight_dqn::DecisionType::DrawSource,
+    };
+
+    strategy.get_action(&features_arr, lw_dt) as u32
+}
+
+// ============================================================================
+// Model I/O Exports
+// ============================================================================
+
+use training::{ModelIO, ModelMetadata};
+
+/// Model metadata exposed to JS
+#[napi(object)]
+pub struct NativeModelMetadata {
+    /// Model version
+    pub version: String,
+    /// Input dimension
+    pub input_dim: u32,
+    /// Hidden layer dimension
+    pub hidden_dim: u32,
+    /// Value stream hidden dimension
+    pub value_hidden: u32,
+    /// Advantage stream hidden dimension
+    pub advantage_hidden: u32,
+    /// Number of training steps
+    pub training_steps: u32,
+    /// Number of games played
+    pub games_played: u32,
+    /// Final epsilon value
+    pub final_epsilon: f64,
+    /// Average loss at save time
+    pub avg_loss: f64,
+    /// Win rate at save time
+    pub win_rate: f64,
+    /// Timestamp of save
+    pub timestamp: String,
+}
+
+impl From<ModelMetadata> for NativeModelMetadata {
+    fn from(meta: ModelMetadata) -> Self {
+        Self {
+            version: meta.version,
+            input_dim: meta.input_dim as u32,
+            hidden_dim: meta.hidden_dim as u32,
+            value_hidden: meta.value_hidden as u32,
+            advantage_hidden: meta.advantage_hidden as u32,
+            training_steps: meta.training_steps as u32,
+            games_played: meta.games_played as u32,
+            final_epsilon: meta.final_epsilon as f64,
+            avg_loss: meta.avg_loss as f64,
+            win_rate: meta.win_rate as f64,
+            timestamp: meta.timestamp,
+        }
+    }
+}
+
+/// Result of loading model weights with metadata (NAPI-compatible)
+#[napi(object)]
+pub struct NativeModelLoadResult {
+    /// Model weights as f64 array
+    pub weights: Vec<f64>,
+    /// Optional metadata if available
+    pub metadata: Option<NativeModelMetadata>,
+}
+
+/// Save model weights to file
+#[napi]
+pub fn model_save(path: String, weights: Vec<f64>) -> bool {
+    let weights_f32: Vec<f32> = weights.iter().map(|&x| x as f32).collect();
+    ModelIO::save_weights(&path, &weights_f32, None).is_ok()
+}
+
+/// Save model checkpoint with metadata
+#[napi]
+pub fn model_save_checkpoint(
+    path: String,
+    weights: Vec<f64>,
+    training_steps: u32,
+    games_played: u32,
+    epsilon: f64,
+    avg_loss: f64,
+    win_rate: f64,
+) -> bool {
+    let weights_f32: Vec<f32> = weights.iter().map(|&x| x as f32).collect();
+    let config = TrainingConfig::default();
+
+    ModelIO::save_checkpoint(
+        &path,
+        &weights_f32,
+        &config,
+        training_steps as u64,
+        games_played as u64,
+        epsilon as f32,
+        avg_loss as f32,
+        win_rate as f32,
+    ).is_ok()
+}
+
+/// Load model weights from file
+#[napi]
+pub fn model_load(path: String) -> Option<Vec<f64>> {
+    ModelIO::load_weights(&path)
+        .ok()
+        .map(|(weights, _)| weights.into_iter().map(|x| x as f64).collect())
+}
+
+/// Load model weights and metadata from file
+#[napi]
+pub fn model_load_with_metadata(path: String) -> Option<NativeModelLoadResult> {
+    ModelIO::load_weights(&path)
+        .ok()
+        .map(|(weights, meta)| NativeModelLoadResult {
+            weights: weights.into_iter().map(|x| x as f64).collect(),
+            metadata: meta.map(|m| m.into()),
+        })
+}
+
+/// Check if model file exists
+#[napi]
+pub fn model_exists(path: String) -> bool {
+    ModelIO::model_exists(&path)
+}
+
+/// Get model metadata without loading weights
+#[napi]
+pub fn model_get_metadata(path: String) -> Option<NativeModelMetadata> {
+    ModelIO::get_metadata(&path)
+        .ok()
+        .flatten()
+        .map(|m| m.into())
 }

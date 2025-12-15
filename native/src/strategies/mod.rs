@@ -1,7 +1,9 @@
 //! Bot strategies module
 
+mod drl_strategy;
 mod hard_bot;
 
+pub use drl_strategy::DRLStrategy;
 pub use hard_bot::HardBotStrategy;
 
 use crate::game_state::GameState;

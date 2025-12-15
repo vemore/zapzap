@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { getCardPoints, getRank, getSuit, isJoker, calculateHandValue, calculateHandScore, canCallZapzap, isValidSameRank, isValidSequence, isValidPlay, findSameRankPlays, findSequencePlays, findAllValidPlays, findMaxPointPlay, benchmarkFindAllValidPlays, runGame, runGamesBatch, benchmarkSimulation, getFeatureDimension, extractFeatures, extractHandSizeFeatures, benchmarkFeatureExtraction, dqnInit, dqnPredict, dqnSelectAction, dqnGreedyAction, benchmarkDqnInference } = nativeBinding
+const { getCardPoints, getRank, getSuit, isJoker, calculateHandValue, calculateHandScore, canCallZapzap, isValidSameRank, isValidSequence, isValidPlay, findSameRankPlays, findSequencePlays, findAllValidPlays, findMaxPointPlay, benchmarkFindAllValidPlays, runGame, runGamesBatch, benchmarkSimulation, getFeatureDimension, extractFeatures, extractHandSizeFeatures, benchmarkFeatureExtraction, dqnInit, dqnPredict, dqnSelectAction, dqnGreedyAction, benchmarkDqnInference, trainerCreate, trainerGetState, trainerAddTransition, trainerBufferSize, trainerRequestStop, trainerShouldStop, trainerGetWeights, trainerSetWeights, drlStrategyInit, drlStrategySetEpsilon, drlStrategyGetAction, modelSave, modelSaveCheckpoint, modelLoad, modelLoadWithMetadata, modelExists, modelGetMetadata } = nativeBinding
 
 module.exports.getCardPoints = getCardPoints
 module.exports.getRank = getRank
@@ -339,3 +339,20 @@ module.exports.dqnPredict = dqnPredict
 module.exports.dqnSelectAction = dqnSelectAction
 module.exports.dqnGreedyAction = dqnGreedyAction
 module.exports.benchmarkDqnInference = benchmarkDqnInference
+module.exports.trainerCreate = trainerCreate
+module.exports.trainerGetState = trainerGetState
+module.exports.trainerAddTransition = trainerAddTransition
+module.exports.trainerBufferSize = trainerBufferSize
+module.exports.trainerRequestStop = trainerRequestStop
+module.exports.trainerShouldStop = trainerShouldStop
+module.exports.trainerGetWeights = trainerGetWeights
+module.exports.trainerSetWeights = trainerSetWeights
+module.exports.drlStrategyInit = drlStrategyInit
+module.exports.drlStrategySetEpsilon = drlStrategySetEpsilon
+module.exports.drlStrategyGetAction = drlStrategyGetAction
+module.exports.modelSave = modelSave
+module.exports.modelSaveCheckpoint = modelSaveCheckpoint
+module.exports.modelLoad = modelLoad
+module.exports.modelLoadWithMetadata = modelLoadWithMetadata
+module.exports.modelExists = modelExists
+module.exports.modelGetMetadata = modelGetMetadata

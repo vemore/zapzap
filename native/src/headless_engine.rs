@@ -4,7 +4,7 @@
 
 use crate::card_analyzer;
 use crate::game_state::{GameAction, GameState, LastAction, MAX_PLAYERS};
-use crate::strategies::{BotStrategy, HardBotStrategy, RandomBotStrategy};
+use crate::strategies::{BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rand::seq::SliceRandom;
@@ -15,6 +15,7 @@ use smallvec::SmallVec;
 pub enum StrategyType {
     Random,
     Hard,
+    DRL,
 }
 
 /// Game result
@@ -32,27 +33,68 @@ pub struct HeadlessGameEngine {
     player_count: u8,
     strategies: Vec<StrategyType>,
     rng: SmallRng,
+    /// DRL strategies for each DRL player (keyed by player index)
+    drl_strategies: Vec<(u8, DRLStrategy)>,
 }
 
 impl HeadlessGameEngine {
     /// Create new engine with given strategies
     pub fn new(strategies: Vec<StrategyType>) -> Self {
         let player_count = strategies.len() as u8;
+        // Create DRL strategies for DRL players
+        let drl_strategies: Vec<(u8, DRLStrategy)> = strategies
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| **s == StrategyType::DRL)
+            .map(|(i, _)| (i as u8, DRLStrategy::new(i as u8)))
+            .collect();
         HeadlessGameEngine {
             player_count,
             strategies,
             rng: SmallRng::from_entropy(),
+            drl_strategies,
         }
     }
 
     /// Create engine with seed for reproducibility
     pub fn with_seed(strategies: Vec<StrategyType>, seed: u64) -> Self {
         let player_count = strategies.len() as u8;
+        // Create DRL strategies for DRL players
+        let drl_strategies: Vec<(u8, DRLStrategy)> = strategies
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| **s == StrategyType::DRL)
+            .map(|(i, _)| (i as u8, DRLStrategy::with_seed(i as u8, seed + i as u64)))
+            .collect();
         HeadlessGameEngine {
             player_count,
             strategies,
             rng: SmallRng::seed_from_u64(seed),
+            drl_strategies,
         }
+    }
+
+    /// Set epsilon for all DRL strategies
+    pub fn set_drl_epsilon(&mut self, epsilon: f32) {
+        for (_, drl) in &mut self.drl_strategies {
+            drl.set_epsilon(epsilon);
+        }
+    }
+
+    /// Get mutable DRL strategy for a player (if they're using DRL)
+    fn get_drl_strategy_mut(&mut self, player: u8) -> Option<&mut DRLStrategy> {
+        self.drl_strategies
+            .iter_mut()
+            .find(|(p, _)| *p == player)
+            .map(|(_, s)| s)
+    }
+
+    /// Get DRL strategy for a player (if they're using DRL)
+    fn get_drl_strategy(&self, player: u8) -> Option<&DRLStrategy> {
+        self.drl_strategies
+            .iter()
+            .find(|(p, _)| *p == player)
+            .map(|(_, s)| s)
     }
 
     /// Run a complete game
@@ -90,10 +132,12 @@ impl HeadlessGameEngine {
         }
 
         // Select hand size
+        let my_score = state.scores[current_player as usize];
         let hand_size = self.get_strategy_hand_size(
             current_player,
             active_players.len() as u8,
             state.is_golden_score,
+            my_score,
         );
         let valid_hand_size = self.validate_hand_size(hand_size, state.is_golden_score);
 
@@ -414,18 +458,25 @@ impl HeadlessGameEngine {
 
     // Strategy dispatch methods
 
-    fn get_strategy_hand_size(&mut self, player: u8, active_count: u8, is_golden_score: bool) -> u8 {
+    fn get_strategy_hand_size(&mut self, player: u8, active_count: u8, is_golden_score: bool, my_score: u16) -> u8 {
         match self.strategies[player as usize] {
             StrategyType::Random => 5,
             StrategyType::Hard => {
                 let mut s = HardBotStrategy::with_seed(self.rng.gen());
                 s.select_hand_size_mut(active_count, is_golden_score)
             }
+            StrategyType::DRL => {
+                if let Some(drl) = self.get_drl_strategy_mut(player) {
+                    drl.select_hand_size_mut(active_count, is_golden_score, my_score)
+                } else {
+                    5 // Fallback
+                }
+            }
         }
     }
 
     fn get_strategy_play(
-        &self,
+        &mut self,
         player: u8,
         hand: &[u8],
         state: &GameState,
@@ -433,18 +484,32 @@ impl HeadlessGameEngine {
         match self.strategies[player as usize] {
             StrategyType::Random => RandomBotStrategy.select_play(hand, state),
             StrategyType::Hard => HardBotStrategy::new().select_play(hand, state),
+            StrategyType::DRL => {
+                if let Some(drl) = self.get_drl_strategy_mut(player) {
+                    drl.select_play_mut(hand, state)
+                } else {
+                    RandomBotStrategy.select_play(hand, state)
+                }
+            }
         }
     }
 
-    fn should_strategy_zapzap(&self, player: u8, hand: &[u8], state: &GameState) -> bool {
+    fn should_strategy_zapzap(&mut self, player: u8, hand: &[u8], state: &GameState) -> bool {
         match self.strategies[player as usize] {
             StrategyType::Random => RandomBotStrategy.should_zapzap(hand, state),
             StrategyType::Hard => HardBotStrategy::new().should_zapzap(hand, state),
+            StrategyType::DRL => {
+                if let Some(drl) = self.get_drl_strategy_mut(player) {
+                    drl.should_zapzap_mut(hand, state)
+                } else {
+                    RandomBotStrategy.should_zapzap(hand, state)
+                }
+            }
         }
     }
 
     fn get_strategy_draw_source(
-        &self,
+        &mut self,
         player: u8,
         hand: &SmallVec<[u8; 10]>,
         last_played: &SmallVec<[u8; 8]>,
@@ -453,6 +518,13 @@ impl HeadlessGameEngine {
         match self.strategies[player as usize] {
             StrategyType::Random => RandomBotStrategy.select_draw_source(hand, last_played, state),
             StrategyType::Hard => HardBotStrategy::new().select_draw_source(hand, last_played, state),
+            StrategyType::DRL => {
+                if let Some(drl) = self.get_drl_strategy_mut(player) {
+                    drl.select_draw_source_mut(hand, last_played, state)
+                } else {
+                    RandomBotStrategy.select_draw_source(hand, last_played, state)
+                }
+            }
         }
     }
 }

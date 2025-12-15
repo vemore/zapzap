@@ -52,7 +52,7 @@ export interface NativeGameResult {
 }
 /**
  * Run a single game with specified strategies
- * Strategy types: "random", "hard"
+ * Strategy types: "random", "hard", "hard_vince", "drl"
  */
 export declare function runGame(strategyTypes: Array<string>, seed?: number | undefined | null): NativeGameResult
 /** Run multiple games and return statistics */
@@ -63,7 +63,10 @@ export interface BatchGameStats {
   totalTimeMs: number
   gamesPerSecond: number
 }
-/** Run multiple games in batch for performance testing */
+/**
+ * Run multiple games in batch for performance testing
+ * Strategy types: "random", "hard", "hard_vince", "drl"
+ */
 export declare function runGamesBatch(strategyTypes: Array<string>, gameCount: number, baseSeed?: number | undefined | null): BatchGameStats
 /** Benchmark game simulation performance */
 export declare function benchmarkSimulation(playerCount: number, gameCount: number): number
@@ -91,3 +94,113 @@ export declare function dqnSelectAction(features: Array<number>, decisionType: s
 export declare function dqnGreedyAction(features: Array<number>, decisionType: string): number
 /** Benchmark DQN inference */
 export declare function benchmarkDqnInference(iterations: number): number
+/** Training configuration exposed to JS */
+export interface NativeTrainingConfig {
+  /** Total number of games to train on */
+  totalGames: number
+  /** Number of games per batch */
+  gamesPerBatch: number
+  /** Batch size for training */
+  batchSize: number
+  /** Learning rate */
+  learningRate: number
+  /** Starting epsilon for exploration */
+  epsilonStart: number
+  /** Ending epsilon for exploration */
+  epsilonEnd: number
+  /** Number of games over which to decay epsilon */
+  epsilonDecay: number
+  /** Discount factor (gamma) */
+  gamma: number
+  /** Soft update rate (tau) */
+  tau: number
+  /** Replay buffer capacity */
+  bufferCapacity: number
+  /** Target network update frequency */
+  targetUpdateFreq: number
+}
+/** Training state exposed to JS */
+export interface NativeTrainingState {
+  /** Number of games played */
+  gamesPlayed: number
+  /** Number of training steps */
+  steps: number
+  /** Current epsilon value */
+  epsilon: number
+  /** Average loss (recent) */
+  avgLoss: number
+  /** Average reward (recent) */
+  avgReward: number
+  /** Win rate (recent) */
+  winRate: number
+  /** Games per second */
+  gamesPerSecond: number
+  /** Whether training is currently running */
+  isTraining: boolean
+}
+/** Create a new trainer with the given configuration */
+export declare function trainerCreate(config: NativeTrainingConfig): boolean
+/** Get current training state */
+export declare function trainerGetState(): NativeTrainingState | null
+/** Add a transition to the replay buffer */
+export declare function trainerAddTransition(state: Array<number>, action: number, reward: number, nextState: Array<number>, done: boolean, decisionType: number): boolean
+/** Get current replay buffer size */
+export declare function trainerBufferSize(): number
+/** Request training to stop */
+export declare function trainerRequestStop(): boolean
+/** Check if training should stop */
+export declare function trainerShouldStop(): boolean
+/** Get weights as flat vector */
+export declare function trainerGetWeights(): Array<number>
+/** Set weights from flat vector */
+export declare function trainerSetWeights(weights: Array<number>): boolean
+/** Initialize DRL strategy for a player */
+export declare function drlStrategyInit(playerIndex: number, epsilon: number, seed?: number | undefined | null): boolean
+/** Set epsilon for DRL strategy */
+export declare function drlStrategySetEpsilon(epsilon: number): boolean
+/** Get action from DRL strategy given features */
+export declare function drlStrategyGetAction(features: Array<number>, decisionType: string): number
+/** Model metadata exposed to JS */
+export interface NativeModelMetadata {
+  /** Model version */
+  version: string
+  /** Input dimension */
+  inputDim: number
+  /** Hidden layer dimension */
+  hiddenDim: number
+  /** Value stream hidden dimension */
+  valueHidden: number
+  /** Advantage stream hidden dimension */
+  advantageHidden: number
+  /** Number of training steps */
+  trainingSteps: number
+  /** Number of games played */
+  gamesPlayed: number
+  /** Final epsilon value */
+  finalEpsilon: number
+  /** Average loss at save time */
+  avgLoss: number
+  /** Win rate at save time */
+  winRate: number
+  /** Timestamp of save */
+  timestamp: string
+}
+/** Result of loading model weights with metadata (NAPI-compatible) */
+export interface NativeModelLoadResult {
+  /** Model weights as f64 array */
+  weights: Array<number>
+  /** Optional metadata if available */
+  metadata?: NativeModelMetadata
+}
+/** Save model weights to file */
+export declare function modelSave(path: string, weights: Array<number>): boolean
+/** Save model checkpoint with metadata */
+export declare function modelSaveCheckpoint(path: string, weights: Array<number>, trainingSteps: number, gamesPlayed: number, epsilon: number, avgLoss: number, winRate: number): boolean
+/** Load model weights from file */
+export declare function modelLoad(path: string): Array<number> | null
+/** Load model weights and metadata from file */
+export declare function modelLoadWithMetadata(path: string): NativeModelLoadResult | null
+/** Check if model file exists */
+export declare function modelExists(path: string): boolean
+/** Get model metadata without loading weights */
+export declare function modelGetMetadata(path: string): NativeModelMetadata | null
