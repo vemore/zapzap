@@ -626,7 +626,7 @@ Result:
 Final Scores:
 Player 0: 6 points
 Player 1: 0 points (lowest, but note: Joker now worth 25 if counted)
-Player 2: 29 points (4 + (5 × 5) = 29 points penalty!)
+Player 2: 24 points (4 + ((5-1) × 5) = 24 points penalty!)
 Player 3: 25 points
 Player 4: 10 points
 ```
