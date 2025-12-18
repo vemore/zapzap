@@ -299,6 +299,288 @@ pub fn find_max_point_play(hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
         })
 }
 
+/// Multi-turn planning: Check if playing single + drawing a card could enable a better combo next turn
+/// Example: Hand K♠ K♥ Q♥, last_played has J♥
+/// -> Play K♠ (single), take J♥, next turn play Q♥ J♥ (sequence) or even K♥ Q♥ J♥
+/// Returns: (card_to_play, card_to_take, future_combo_value)
+pub fn find_setup_play(hand: &[u8], available_cards: &[u8]) -> Option<(u8, u8, u16)> {
+    if available_cards.is_empty() || hand.len() < 2 {
+        return None;
+    }
+
+    let mut best_setup: Option<(u8, u8, u16)> = None;
+    let mut best_value = 0u16;
+
+    // For each card we could take from available
+    for &take_card in available_cards {
+        // Simulate adding this card to hand
+        let mut future_hand: SmallVec<[u8; 12]> = hand.iter().copied().collect();
+        future_hand.push(take_card);
+
+        // Find all combos in future hand
+        let future_combos = find_same_rank_plays(&future_hand);
+        let future_sequences = find_sequence_plays(&future_hand);
+
+        // Check if taking this card creates a valuable combo
+        for combo in future_combos.iter().chain(future_sequences.iter()) {
+            if combo.contains(&take_card) && combo.len() >= 3 {
+                let combo_value: u16 = combo.iter().map(|&c| get_card_points(c) as u16).sum();
+
+                if combo_value > best_value {
+                    // Find a card to sacrifice (play now) that's NOT in the future combo
+                    for &sacrifice in hand {
+                        if !combo.contains(&sacrifice) {
+                            best_setup = Some((sacrifice, take_card, combo_value));
+                            best_value = combo_value;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    best_setup
+}
+
+/// Check if taking a specific card would complete a sequence
+/// Example: Hand has Q♥, K♥ and J♥ is available -> returns true
+pub fn would_complete_sequence(hand: &[u8], card: u8) -> bool {
+    if is_joker(card) {
+        return true; // Jokers always useful
+    }
+
+    let card_suit = get_suit(card);
+    let card_rank = get_rank(card) as i8;
+
+    // Get all cards of same suit in hand
+    let same_suit: SmallVec<[i8; 10]> = hand.iter()
+        .filter(|&&c| !is_joker(c) && get_suit(c) == card_suit)
+        .map(|&c| get_rank(c) as i8)
+        .collect();
+
+    if same_suit.is_empty() {
+        return false;
+    }
+
+    // Check if card is adjacent to any 2+ cards that form a sequence
+    let mut potential_sequence = 0;
+    for &rank in &same_suit {
+        let diff = (rank - card_rank).abs();
+        if diff <= 2 {
+            potential_sequence += 1;
+        }
+    }
+
+    potential_sequence >= 2
+}
+
+/// Check if taking a specific card would complete a pair/set
+pub fn would_complete_pair(hand: &[u8], card: u8) -> bool {
+    if is_joker(card) {
+        return true; // Jokers always useful
+    }
+
+    let card_rank = get_rank(card);
+
+    // Count cards of same rank in hand
+    let same_rank_count = hand.iter()
+        .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank)
+        .count();
+
+    same_rank_count >= 1
+}
+
+// ========================================
+// CARD COUNTING - Probability-based decisions
+// ========================================
+
+/// Count how many cards can extend a sequence containing a Joker
+/// Example: 6♠, 7♠, Joker -> Joker can be 5♠ or 8♠, so 5♠ OR 4♠ OR 8♠ OR 9♠ can extend (4 cards!)
+/// Example: 6♠, 7♠, 8♠ -> only 5♠ or 9♠ can extend (2 cards)
+/// Returns the number of DIFFERENT ranks that can extend the sequence
+pub fn count_sequence_extension_potential(hand: &[u8]) -> u8 {
+    let has_joker = hand.iter().any(|&c| is_joker(c));
+    if !has_joker {
+        return 0; // This function is specifically for Joker advantage
+    }
+
+    let mut potential = 0u8;
+
+    // Group cards by suit (excluding jokers)
+    for suit in 0..4u8 {
+        let mut ranks_in_suit: SmallVec<[u8; 10]> = hand.iter()
+            .filter(|&&c| !is_joker(c) && get_suit(c) == suit)
+            .map(|&c| get_rank(c))
+            .collect();
+
+        if ranks_in_suit.len() < 2 {
+            continue; // Need at least 2 cards + joker for a sequence
+        }
+
+        ranks_in_suit.sort_unstable();
+
+        // Check for consecutive pairs that could form sequence with joker
+        for i in 0..ranks_in_suit.len() - 1 {
+            let r1 = ranks_in_suit[i];
+            let r2 = ranks_in_suit[i + 1];
+            let gap = r2 - r1;
+
+            // Consecutive (e.g., 6,7) or gap of 2 (e.g., 6,8 with joker as 7)
+            if gap <= 2 {
+                // With joker, we have more extension points
+                // Lower extension: r1-1 and r1-2 (joker can slide)
+                if r1 >= 1 {
+                    potential += 1; // r1-1 extends
+                }
+                if r1 >= 2 {
+                    potential += 1; // r1-2 extends (joker slides to r1-1)
+                }
+                // Upper extension: r2+1 and r2+2
+                if r2 <= 11 {
+                    potential += 1; // r2+1 extends
+                }
+                if r2 <= 10 {
+                    potential += 1; // r2+2 extends (joker slides to r2+1)
+                }
+            }
+        }
+    }
+
+    potential
+}
+
+/// Evaluate how "keepable" a card is based on pair AND sequence potential
+/// Returns a score: higher = more worth keeping
+/// Takes into account:
+/// - How many of this rank are in hand (existing pairs)
+/// - How many of this rank are still drawable (probability of completing)
+/// - Card points (prefer keeping low cards)
+/// - Sequence potential with Joker (KEY INSIGHT: Joker doubles extension possibilities!)
+pub fn card_keep_score(card: u8, hand: &[u8], drawable_count: u8) -> i32 {
+    if is_joker(card) {
+        return 1000; // Always keep jokers
+    }
+
+    let card_rank = get_rank(card);
+    let card_suit = get_suit(card);
+    let card_points = get_card_points(card) as i32;
+
+    // Count same rank in hand
+    let same_rank_in_hand = hand.iter()
+        .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank)
+        .count() as i32;
+
+    // Base score: negative of card points (prefer low cards)
+    let mut score = -card_points;
+
+    // Bonus for existing pairs/sets
+    if same_rank_in_hand >= 2 {
+        score += 50; // Already have a pair
+    } else if same_rank_in_hand == 1 {
+        // Have one other - check if pair is possible
+        if drawable_count >= 1 {
+            score += 20; // Pair completion possible
+        } else {
+            score -= 30; // Rank is DEAD - discard this card!
+        }
+    } else {
+        // Only have this card - check if pair can be made
+        if drawable_count >= 2 {
+            score += 10; // Good chance for pair
+        } else if drawable_count == 1 {
+            score += 0; // Low chance
+        } else {
+            score -= 20; // No chance - consider discarding
+        }
+    }
+
+    // SEQUENCE POTENTIAL with Joker
+    // Check if this card is part of a potential sequence with joker
+    let has_joker = hand.iter().any(|&c| is_joker(c));
+    if has_joker {
+        // Count same suit cards in hand (excluding this card and jokers)
+        let same_suit_cards: SmallVec<[u8; 10]> = hand.iter()
+            .filter(|&&c| c != card && !is_joker(c) && get_suit(c) == card_suit)
+            .map(|&c| get_rank(c))
+            .collect();
+
+        // Check if this card is adjacent to another card of same suit
+        for &other_rank in &same_suit_cards {
+            let diff = (card_rank as i8 - other_rank as i8).abs();
+            if diff <= 2 {
+                // This card + other card + joker = potential sequence!
+                // With joker, we have 4 extension possibilities instead of 2
+                score += 40; // High bonus for sequence potential with joker
+                break;
+            }
+        }
+    } else {
+        // Without joker, check for existing sequence potential
+        let same_suit_cards: SmallVec<[u8; 10]> = hand.iter()
+            .filter(|&&c| c != card && !is_joker(c) && get_suit(c) == card_suit)
+            .map(|&c| get_rank(c))
+            .collect();
+
+        let mut adjacent_count = 0;
+        for &other_rank in &same_suit_cards {
+            let diff = (card_rank as i8 - other_rank as i8).abs();
+            if diff == 1 {
+                adjacent_count += 1;
+            }
+        }
+
+        if adjacent_count >= 2 {
+            score += 30; // Part of existing sequence
+        } else if adjacent_count == 1 {
+            score += 15; // Potential sequence (need one more)
+        }
+    }
+
+    score
+}
+
+/// Find the best card to discard from hand based on card counting
+/// Prefers discarding cards with "dead" ranks (all 4 in discard)
+/// and high-value cards with low pair potential
+pub fn find_best_discard(hand: &[u8], get_drawable: impl Fn(u8) -> u8) -> Option<u8> {
+    if hand.is_empty() {
+        return None;
+    }
+
+    hand.iter()
+        .copied()
+        .filter(|&c| !is_joker(c)) // Never discard jokers
+        .min_by_key(|&card| {
+            let rank = get_rank(card);
+            let drawable = get_drawable(rank);
+            card_keep_score(card, hand, drawable)
+        })
+}
+
+/// Check if keeping a card for pair is worthwhile given card counting
+/// Example: Have 6♠, 3 other 6s are in discard -> NOT worth keeping
+pub fn is_pair_viable(card: u8, hand: &[u8], drawable_count: u8) -> bool {
+    if is_joker(card) {
+        return true;
+    }
+
+    let card_rank = get_rank(card);
+
+    // Count same rank in hand (excluding this card)
+    let same_rank_in_hand = hand.iter()
+        .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank && c != card)
+        .count();
+
+    // Already have pair
+    if same_rank_in_hand >= 1 {
+        return true;
+    }
+
+    // Need to draw another - is it possible?
+    drawable_count >= 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

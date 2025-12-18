@@ -2,9 +2,11 @@
 
 mod drl_strategy;
 mod hard_bot;
+pub mod thibot;
 
 pub use drl_strategy::DRLStrategy;
 pub use hard_bot::HardBotStrategy;
+pub use thibot::ThibotStrategy;
 
 use crate::game_state::GameState;
 use smallvec::SmallVec;

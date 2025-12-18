@@ -11,10 +11,12 @@ pub mod game_state;
 pub mod headless_engine;
 pub mod lightweight_dqn;
 pub mod strategies;
+pub mod trace_config;
 pub mod training;
 
 use headless_engine::{HeadlessGameEngine, StrategyType};
 use napi_derive::napi;
+use trace_config::{set_trace_flags, is_trace_enabled, TraceLevel};
 
 // ============================================================================
 // Card Analyzer Exports
@@ -142,7 +144,7 @@ pub struct NativeGameResult {
 }
 
 /// Run a single game with specified strategies
-/// Strategy types: "random", "hard", "hard_vince", "drl"
+/// Strategy types: "random", "hard", "hard_vince", "drl", "thibot"
 #[napi]
 pub fn run_game(strategy_types: Vec<String>, seed: Option<u32>) -> NativeGameResult {
     let strategies: Vec<StrategyType> = strategy_types
@@ -150,6 +152,7 @@ pub fn run_game(strategy_types: Vec<String>, seed: Option<u32>) -> NativeGameRes
         .map(|s| match s.to_lowercase().as_str() {
             "hard" | "hard_vince" => StrategyType::Hard,
             "drl" => StrategyType::DRL,
+            "thibot" => StrategyType::Thibot,
             _ => StrategyType::Random,
         })
         .collect();
@@ -181,7 +184,7 @@ pub struct BatchGameStats {
 }
 
 /// Run multiple games in batch for performance testing
-/// Strategy types: "random", "hard", "hard_vince", "drl"
+/// Strategy types: "random", "hard", "hard_vince", "drl", "thibot"
 #[napi]
 pub fn run_games_batch(
     strategy_types: Vec<String>,
@@ -193,6 +196,7 @@ pub fn run_games_batch(
         .map(|s| match s.to_lowercase().as_str() {
             "hard" | "hard_vince" => StrategyType::Hard,
             "drl" => StrategyType::DRL,
+            "thibot" => StrategyType::Thibot,
             _ => StrategyType::Random,
         })
         .collect();
@@ -258,6 +262,7 @@ pub fn run_training_batch(
         .map(|s| match s.to_lowercase().as_str() {
             "hard" | "hard_vince" => StrategyType::Hard,
             "drl" => StrategyType::DRL,
+            "thibot" => StrategyType::Thibot,
             _ => StrategyType::Random,
         })
         .collect();
@@ -273,6 +278,28 @@ pub fn run_training_batch(
         let trainer_guard = TRAINER.lock().unwrap();
         trainer_guard.as_ref().map(|t| t.get_weights_flat())
     };
+
+    // Trace: Log weight statistics for sync verification
+    if is_trace_enabled(TraceLevel::Weights) {
+        if let Some(ref weights) = trainer_weights {
+            let sum: f32 = weights.iter().sum();
+            let mean = sum / weights.len() as f32;
+            let sq_sum: f32 = weights.iter().map(|w| (w - mean).powi(2)).sum();
+            let std = (sq_sum / weights.len() as f32).sqrt();
+            let min = weights.iter().cloned().fold(f32::MAX, f32::min);
+            let max = weights.iter().cloned().fold(f32::MIN, f32::max);
+            let nan_count = weights.iter().filter(|w| w.is_nan()).count();
+            let inf_count = weights.iter().filter(|w| w.is_infinite()).count();
+
+            eprintln!("[WEIGHTS] Trainer→DRL sync: {} weights, mean={:.6}, std={:.6}, min={:.4}, max={:.4}",
+                weights.len(), mean, std, min, max);
+            if nan_count > 0 || inf_count > 0 {
+                eprintln!("[WEIGHTS] WARNING: NaN={}, Inf={}", nan_count, inf_count);
+            }
+        } else {
+            eprintln!("[WEIGHTS] No trainer weights available for sync");
+        }
+    }
 
     for i in 0..game_count {
         let seed = base_seed.map(|s| s as u64 + i as u64).unwrap_or(i as u64);
@@ -295,18 +322,35 @@ pub fn run_training_batch(
         let transition_count = transitions.len() as u32;
         total_transitions += transition_count;
 
-        // DIAG: Log first few transitions to verify reward structure
-        if i < 3 {
-            eprintln!("[DIAG] Game {} - {} transitions collected, winner={}", i, transition_count, result.winner);
-            for (j, t) in transitions.iter().enumerate().take(5) {
-                eprintln!("[DIAG]   T[{}]: reward={:.3}, done={}, dt={}, action={}",
-                    j, t.reward, t.done, t.decision_type, t.action);
+        // Trace: Log transitions collected per game
+        if is_trace_enabled(TraceLevel::Game) {
+            // Count decision types
+            let mut dt_counts = [0u32; 4];
+            for t in &transitions {
+                if t.decision_type < 4 {
+                    dt_counts[t.decision_type as usize] += 1;
+                }
             }
-            if transitions.len() > 5 {
-                let last_idx = transitions.len() - 1;
-                let last = &transitions[last_idx];
-                eprintln!("[DIAG]   T[{}] (last): reward={:.3}, done={}, dt={}, action={}",
-                    last_idx, last.reward, last.done, last.decision_type, last.action);
+            let rewards_nz = transitions.iter().filter(|t| t.reward.abs() > 0.001).count();
+            let rewards_pos = transitions.iter().filter(|t| t.reward > 0.001).count();
+            let rewards_neg = transitions.iter().filter(|t| t.reward < -0.001).count();
+
+            eprintln!("[GAME] Game#{} winner={} trans={} dt=[HS:{},ZZ:{},PT:{},DS:{}] rewards=[nz:{},+:{},−:{}]",
+                i, result.winner, transition_count,
+                dt_counts[0], dt_counts[1], dt_counts[2], dt_counts[3],
+                rewards_nz, rewards_pos, rewards_neg);
+
+            // Log first 3 and last transition for detailed debugging
+            if i < 3 {
+                for (j, t) in transitions.iter().enumerate().take(3) {
+                    eprintln!("[GAME]   T[{}]: dt={} action={} reward={:.3} done={}",
+                        j, t.decision_type, t.action, t.reward, t.done);
+                }
+                if transitions.len() > 3 {
+                    let last = &transitions[transitions.len() - 1];
+                    eprintln!("[GAME]   T[{}]: dt={} action={} reward={:.3} done={} (terminal)",
+                        transitions.len() - 1, last.decision_type, last.action, last.reward, last.done);
+                }
             }
         }
 
@@ -1017,4 +1061,164 @@ pub fn model_get_metadata(path: String) -> Option<NativeModelMetadata> {
         .ok()
         .flatten()
         .map(|m| m.into())
+}
+
+// ============================================================================
+// Trace Configuration Exports
+// ============================================================================
+
+/// Trace configuration for diagnostic output
+#[napi(object)]
+pub struct NativeTraceConfig {
+    /// Game/transition collection: decisions, actions, rewards
+    pub game: bool,
+    /// Replay buffer: sampling stats, priority distribution
+    pub buffer: bool,
+    /// Training step: Q-values, TD errors, loss, gradients
+    pub training: bool,
+    /// Weight synchronization: DuelingDQN <-> FastDQN
+    pub weights: bool,
+    /// Feature extraction: validation, NaN/Inf checks
+    pub features: bool,
+}
+
+/// Set trace configuration for diagnostic output
+/// Use --trace=game,training,buffer or --debug for all
+#[napi]
+pub fn set_trace_config(config: NativeTraceConfig) {
+    set_trace_flags(
+        config.game,
+        config.buffer,
+        config.training,
+        config.weights,
+        config.features,
+    );
+
+    // Log active configuration
+    let mut active = Vec::new();
+    if config.game { active.push("game"); }
+    if config.buffer { active.push("buffer"); }
+    if config.training { active.push("training"); }
+    if config.weights { active.push("weights"); }
+    if config.features { active.push("features"); }
+
+    if !active.is_empty() {
+        eprintln!("[TRACE] Configuration: {}", active.join(", "));
+    }
+}
+
+// ============================================================================
+// Thibot Strategy Parameters Exports
+// ============================================================================
+
+use strategies::thibot::{set_thibot_params, ThibotParams};
+
+/// Thibot parameters for genetic optimization
+#[napi(object)]
+pub struct NativeThibotParams {
+    // Card Potential Evaluation
+    pub joker_keep_score: i32,
+    pub existing_pair_bonus: i32,
+    pub good_pair_chance_bonus: i32,
+    pub low_pair_chance_bonus: i32,
+    pub dead_rank_penalty: i32,
+    pub sequence_part_bonus: i32,
+    pub potential_sequence_bonus: i32,
+    pub joker_sequence_bonus: i32,
+    pub close_with_joker_bonus: i32,
+    // Play Selection (Offensive)
+    pub value_score_weight: i32,
+    pub cards_score_weight: i32,
+    pub potential_divisor: i32,
+    pub joker_play_penalty: i32,
+    pub zapzap_potential_bonus: i32,
+    // Draw Source Evaluation
+    pub discard_joker_score: i32,
+    pub low_points_base: i32,
+    pub pair_completion_bonus: i32,
+    pub three_of_kind_bonus: i32,
+    pub sequence_completion_bonus: i32,
+    pub dead_rank_discard_penalty: i32,
+    pub discard_threshold: i32,
+    // Defensive Mode
+    pub defensive_threshold: i32,
+    // ZapZap Decision
+    pub zapzap_safe_hand_size: i32,
+    pub zapzap_moderate_hand_size: i32,
+    pub zapzap_moderate_value_threshold: i32,
+    pub zapzap_risky_hand_size: i32,
+    pub zapzap_risky_value_threshold: i32,
+    pub zapzap_safe_value_threshold: i32,
+}
+
+/// Set Thibot parameters for genetic optimization
+#[napi]
+pub fn thibot_set_params(params: NativeThibotParams) {
+    let thibot_params = ThibotParams {
+        joker_keep_score: params.joker_keep_score,
+        existing_pair_bonus: params.existing_pair_bonus,
+        good_pair_chance_bonus: params.good_pair_chance_bonus,
+        low_pair_chance_bonus: params.low_pair_chance_bonus,
+        dead_rank_penalty: params.dead_rank_penalty,
+        sequence_part_bonus: params.sequence_part_bonus,
+        potential_sequence_bonus: params.potential_sequence_bonus,
+        joker_sequence_bonus: params.joker_sequence_bonus,
+        close_with_joker_bonus: params.close_with_joker_bonus,
+        value_score_weight: params.value_score_weight,
+        cards_score_weight: params.cards_score_weight,
+        potential_divisor: params.potential_divisor,
+        joker_play_penalty: params.joker_play_penalty,
+        zapzap_potential_bonus: params.zapzap_potential_bonus,
+        discard_joker_score: params.discard_joker_score,
+        low_points_base: params.low_points_base,
+        pair_completion_bonus: params.pair_completion_bonus,
+        three_of_kind_bonus: params.three_of_kind_bonus,
+        sequence_completion_bonus: params.sequence_completion_bonus,
+        dead_rank_discard_penalty: params.dead_rank_discard_penalty,
+        discard_threshold: params.discard_threshold,
+        defensive_threshold: params.defensive_threshold as usize,
+        zapzap_safe_hand_size: params.zapzap_safe_hand_size as usize,
+        zapzap_moderate_hand_size: params.zapzap_moderate_hand_size as usize,
+        zapzap_moderate_value_threshold: params.zapzap_moderate_value_threshold as u16,
+        zapzap_risky_hand_size: params.zapzap_risky_hand_size as usize,
+        zapzap_risky_value_threshold: params.zapzap_risky_value_threshold as u16,
+        zapzap_safe_value_threshold: params.zapzap_safe_value_threshold as u16,
+    };
+    set_thibot_params(thibot_params);
+}
+
+/// Get default Thibot parameters
+#[napi]
+pub fn thibot_get_default_params() -> NativeThibotParams {
+    let defaults = ThibotParams::default();
+    NativeThibotParams {
+        joker_keep_score: defaults.joker_keep_score,
+        existing_pair_bonus: defaults.existing_pair_bonus,
+        good_pair_chance_bonus: defaults.good_pair_chance_bonus,
+        low_pair_chance_bonus: defaults.low_pair_chance_bonus,
+        dead_rank_penalty: defaults.dead_rank_penalty,
+        sequence_part_bonus: defaults.sequence_part_bonus,
+        potential_sequence_bonus: defaults.potential_sequence_bonus,
+        joker_sequence_bonus: defaults.joker_sequence_bonus,
+        close_with_joker_bonus: defaults.close_with_joker_bonus,
+        value_score_weight: defaults.value_score_weight,
+        cards_score_weight: defaults.cards_score_weight,
+        potential_divisor: defaults.potential_divisor,
+        joker_play_penalty: defaults.joker_play_penalty,
+        zapzap_potential_bonus: defaults.zapzap_potential_bonus,
+        discard_joker_score: defaults.discard_joker_score,
+        low_points_base: defaults.low_points_base,
+        pair_completion_bonus: defaults.pair_completion_bonus,
+        three_of_kind_bonus: defaults.three_of_kind_bonus,
+        sequence_completion_bonus: defaults.sequence_completion_bonus,
+        dead_rank_discard_penalty: defaults.dead_rank_discard_penalty,
+        discard_threshold: defaults.discard_threshold,
+        defensive_threshold: defaults.defensive_threshold as i32,
+        zapzap_safe_hand_size: defaults.zapzap_safe_hand_size as i32,
+        zapzap_moderate_hand_size: defaults.zapzap_moderate_hand_size as i32,
+        zapzap_moderate_value_threshold: defaults.zapzap_moderate_value_threshold as i32,
+        zapzap_risky_hand_size: defaults.zapzap_risky_hand_size as i32,
+        zapzap_risky_value_threshold: defaults.zapzap_risky_value_threshold as i32,
+        zapzap_safe_value_threshold: defaults.zapzap_safe_value_threshold as i32,
+    }
 }

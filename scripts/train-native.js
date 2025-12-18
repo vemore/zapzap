@@ -56,7 +56,10 @@ function parseArgs(argv) {
         savePath: 'data/models/rust-drl',
         loadPath: null,
         saveInterval: 10000,
-        gamesPerBatch: 100
+        gamesPerBatch: 100,
+
+        // Tracing/Debugging
+        trace: []  // Array of trace levels: game, buffer, training, weights, features
     };
 
     for (let i = 2; i < argv.length; i++) {
@@ -106,6 +109,21 @@ function parseArgs(argv) {
         } else if (arg === '--games-per-batch') {
             args.gamesPerBatch = parseInt(argv[++i], 10);
         }
+        // Tracing/Debugging
+        // Supports both --trace=game,training and --trace game,training
+        else if (arg === '--trace' || arg === '-T') {
+            const levels = argv[++i].split(',').map(s => s.trim().toLowerCase());
+            args.trace = levels;
+        } else if (arg.startsWith('--trace=')) {
+            const levels = arg.slice('--trace='.length).split(',').map(s => s.trim().toLowerCase());
+            args.trace = levels;
+        } else if (arg.startsWith('-T=')) {
+            const levels = arg.slice('-T='.length).split(',').map(s => s.trim().toLowerCase());
+            args.trace = levels;
+        } else if (arg === '--debug') {
+            // --debug is shorthand for --trace=all
+            args.trace = ['all'];
+        }
     }
 
     return args;
@@ -138,6 +156,11 @@ TRAINING OPTIONS:
   --save-path, -o <p>   Model save path (default: data/models/rust-drl)
   --load, -l <p>        Load model for continued training
   --save-interval <n>   Save every N games (default: 10000)
+
+DIAGNOSTIC OPTIONS:
+  --trace, -T <levels>  Enable trace output (comma-separated)
+                        Levels: game, buffer, training, weights, features, all
+  --debug               Enable all trace levels (alias for --trace=all)
 
 EXAMPLES:
   # Run simulation benchmark
@@ -188,6 +211,24 @@ async function runBenchmark(native) {
 // Run DRL training (Full Rust)
 async function runTraining(native, args) {
     console.log('\n=== Full Rust DRL Training ===\n');
+
+    // Configure tracing if enabled
+    if (args.trace.length > 0) {
+        const traceConfig = {
+            game: args.trace.includes('game') || args.trace.includes('all'),
+            buffer: args.trace.includes('buffer') || args.trace.includes('all'),
+            training: args.trace.includes('training') || args.trace.includes('all'),
+            weights: args.trace.includes('weights') || args.trace.includes('all'),
+            features: args.trace.includes('features') || args.trace.includes('all'),
+        };
+        native.setTraceConfig(traceConfig);
+        const activeTraces = Object.entries(traceConfig)
+            .filter(([, v]) => v)
+            .map(([k]) => k);
+        console.log(`Trace levels enabled: ${activeTraces.join(', ')}`);
+        console.log('');
+    }
+
     console.log('Configuration:');
     console.log(`  Total games: ${formatNumber(args.games)}`);
     console.log(`  Games per batch: ${args.gamesPerBatch}`);

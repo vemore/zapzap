@@ -477,6 +477,63 @@ class CardAnalyzer {
     static canCallZapZap(hand) {
         return this.calculateHandValue(hand) <= 5;
     }
+
+    /**
+     * Check if taking a specific card would complete a pair/set
+     * @param {Array<number>} hand - Array of card IDs
+     * @param {number} card - Card ID to check
+     * @returns {boolean}
+     */
+    static wouldCompletePair(hand, card) {
+        if (this.isJoker(card)) {
+            return true; // Jokers are always useful
+        }
+
+        const cardRank = this.getRank(card);
+
+        // Count cards of same rank in hand
+        const sameRankCount = hand.filter(c =>
+            !this.isJoker(c) && this.getRank(c) === cardRank
+        ).length;
+
+        return sameRankCount >= 1;
+    }
+
+    /**
+     * Check if taking a specific card would complete a sequence
+     * Example: Hand has Q♥, K♥ and J♥ is available -> returns true
+     * @param {Array<number>} hand - Array of card IDs
+     * @param {number} card - Card ID to check
+     * @returns {boolean}
+     */
+    static wouldCompleteSequence(hand, card) {
+        if (this.isJoker(card)) {
+            return true; // Jokers are always useful
+        }
+
+        const cardSuit = this.getSuit(card);
+        const cardRank = this.getRank(card);
+
+        // Get all cards of same suit in hand
+        const sameSuitRanks = hand
+            .filter(c => !this.isJoker(c) && this.getSuit(c) === cardSuit)
+            .map(c => this.getRank(c));
+
+        if (sameSuitRanks.length === 0) {
+            return false;
+        }
+
+        // Check if card is adjacent to any 2+ cards that form a sequence
+        let potentialSequence = 0;
+        for (const rank of sameSuitRanks) {
+            const diff = Math.abs(rank - cardRank);
+            if (diff <= 2) {
+                potentialSequence++;
+            }
+        }
+
+        return potentialSequence >= 2;
+    }
 }
 
 module.exports = CardAnalyzer;

@@ -1212,6 +1212,207 @@ class PartyRepository extends IPartyRepository {
             throw new Error(`Failed to get most active users: ${error.message}`);
         }
     }
+
+    // ========================================================================
+    // GAME ACTION RECORDING (for replay analysis and strategy learning)
+    // ========================================================================
+
+    /**
+     * Record a game action for replay analysis
+     * @param {Object} action - Action details
+     * @returns {Promise<number>} - Action ID
+     */
+    async recordGameAction(action) {
+        try {
+            const result = await this.db.run(
+                `INSERT INTO game_actions (
+                    party_id, round_number, turn_number, player_index, user_id, is_human,
+                    action_type, action_data,
+                    hand_before, hand_value_before, scores_before,
+                    opponent_hand_sizes, deck_size, last_cards_played,
+                    hand_after, hand_value_after
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    action.partyId,
+                    action.roundNumber,
+                    action.turnNumber,
+                    action.playerIndex,
+                    action.userId,
+                    action.isHuman ? 1 : 0,
+                    action.actionType,
+                    JSON.stringify(action.actionData),
+                    JSON.stringify(action.handBefore),
+                    action.handValueBefore,
+                    JSON.stringify(action.scoresBefore),
+                    JSON.stringify(action.opponentHandSizes),
+                    action.deckSize,
+                    JSON.stringify(action.lastCardsPlayed),
+                    action.handAfter ? JSON.stringify(action.handAfter) : null,
+                    action.handValueAfter !== undefined ? action.handValueAfter : null
+                ]
+            );
+
+            logger.debug('Game action recorded', {
+                partyId: action.partyId,
+                actionType: action.actionType,
+                isHuman: action.isHuman
+            });
+
+            return result.lastID;
+        } catch (error) {
+            logger.error('Error recording game action', { error: error.message });
+            throw new Error(`Failed to record game action: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get all actions for a party
+     * @param {string} partyId - Party ID
+     * @returns {Promise<Array>}
+     */
+    async getGameActions(partyId) {
+        try {
+            const records = await this.db.all(
+                `SELECT * FROM game_actions WHERE party_id = ? ORDER BY round_number, turn_number, id`,
+                [partyId]
+            );
+
+            return records.map(r => ({
+                id: r.id,
+                partyId: r.party_id,
+                roundNumber: r.round_number,
+                turnNumber: r.turn_number,
+                playerIndex: r.player_index,
+                userId: r.user_id,
+                isHuman: r.is_human === 1,
+                actionType: r.action_type,
+                actionData: JSON.parse(r.action_data),
+                handBefore: JSON.parse(r.hand_before),
+                handValueBefore: r.hand_value_before,
+                scoresBefore: JSON.parse(r.scores_before),
+                opponentHandSizes: JSON.parse(r.opponent_hand_sizes),
+                deckSize: r.deck_size,
+                lastCardsPlayed: JSON.parse(r.last_cards_played),
+                handAfter: r.hand_after ? JSON.parse(r.hand_after) : null,
+                handValueAfter: r.hand_value_after,
+                createdAt: r.created_at
+            }));
+        } catch (error) {
+            logger.error('Error getting game actions', { partyId, error: error.message });
+            throw new Error(`Failed to get game actions: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get human player actions for analysis
+     * @param {string} userId - Optional user ID filter
+     * @param {number} limit - Max results
+     * @returns {Promise<Array>}
+     */
+    async getHumanActions(userId = null, limit = 1000) {
+        try {
+            let query = `SELECT ga.*, u.username
+                         FROM game_actions ga
+                         JOIN users u ON ga.user_id = u.id
+                         WHERE ga.is_human = 1`;
+            const params = [];
+
+            if (userId) {
+                query += ` AND ga.user_id = ?`;
+                params.push(userId);
+            }
+
+            query += ` ORDER BY ga.created_at DESC LIMIT ?`;
+            params.push(limit);
+
+            const records = await this.db.all(query, params);
+
+            return records.map(r => ({
+                id: r.id,
+                partyId: r.party_id,
+                roundNumber: r.round_number,
+                turnNumber: r.turn_number,
+                playerIndex: r.player_index,
+                userId: r.user_id,
+                username: r.username,
+                actionType: r.action_type,
+                actionData: JSON.parse(r.action_data),
+                handBefore: JSON.parse(r.hand_before),
+                handValueBefore: r.hand_value_before,
+                scoresBefore: JSON.parse(r.scores_before),
+                opponentHandSizes: JSON.parse(r.opponent_hand_sizes),
+                deckSize: r.deck_size,
+                lastCardsPlayed: JSON.parse(r.last_cards_played),
+                handAfter: r.hand_after ? JSON.parse(r.hand_after) : null,
+                handValueAfter: r.hand_value_after,
+                createdAt: r.created_at
+            }));
+        } catch (error) {
+            logger.error('Error getting human actions', { userId, error: error.message });
+            throw new Error(`Failed to get human actions: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get action statistics for analysis
+     * @param {string} userId - Optional user ID filter
+     * @returns {Promise<Object>}
+     */
+    async getActionStats(userId = null) {
+        try {
+            let whereClause = 'WHERE is_human = 1';
+            const params = [];
+
+            if (userId) {
+                whereClause += ' AND user_id = ?';
+                params.push(userId);
+            }
+
+            // Get action type distribution
+            const actionDist = await this.db.all(
+                `SELECT action_type, COUNT(*) as count FROM game_actions ${whereClause} GROUP BY action_type`,
+                params
+            );
+
+            // Get play action details (what cards are played)
+            const playStats = await this.db.all(
+                `SELECT action_data, hand_value_before, hand_value_after
+                 FROM game_actions ${whereClause} AND action_type = 'play'`,
+                params
+            );
+
+            // Get ZapZap success rate
+            const zapzapStats = await this.db.get(
+                `SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN json_extract(action_data, '$.success') = 1 THEN 1 ELSE 0 END) as successful
+                 FROM game_actions ${whereClause} AND action_type = 'zapzap'`,
+                params
+            );
+
+            // Get draw source preferences
+            const drawStats = await this.db.all(
+                `SELECT json_extract(action_data, '$.source') as source, COUNT(*) as count
+                 FROM game_actions ${whereClause} AND action_type = 'draw'
+                 GROUP BY source`,
+                params
+            );
+
+            return {
+                actionDistribution: actionDist,
+                playStats: playStats.map(p => ({
+                    ...JSON.parse(p.action_data),
+                    handValueBefore: p.hand_value_before,
+                    handValueAfter: p.hand_value_after
+                })),
+                zapzapStats: zapzapStats,
+                drawStats: drawStats
+            };
+        } catch (error) {
+            logger.error('Error getting action stats', { userId, error: error.message });
+            throw new Error(`Failed to get action stats: ${error.message}`);
+        }
+    }
 }
 
 module.exports = PartyRepository;

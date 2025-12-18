@@ -1,0 +1,442 @@
+{
+  "baseline": {
+    "params": {
+      "jokerKeepScore": 923,
+      "existingPairBonus": 54,
+      "goodPairChanceBonus": 25,
+      "lowPairChanceBonus": 14,
+      "deadRankPenalty": 34,
+      "sequencePartBonus": 52,
+      "potentialSequenceBonus": 33,
+      "jokerSequenceBonus": 31,
+      "closeWithJokerBonus": 13,
+      "valueScoreWeight": 19,
+      "cardsScoreWeight": 14,
+      "potentialDivisor": 15,
+      "jokerPlayPenalty": 50,
+      "zapzapPotentialBonus": 122,
+      "discardJokerScore": 177,
+      "lowPointsBase": 9,
+      "pairCompletionBonus": 133,
+      "threeOfKindBonus": 25,
+      "sequenceCompletionBonus": 52,
+      "deadRankDiscardPenalty": 46,
+      "discardThreshold": 14,
+      "defensiveThreshold": 4,
+      "zapzapSafeHandSize": 2,
+      "zapzapModerateHandSize": 5,
+      "zapzapModerateValueThreshold": 5,
+      "zapzapRiskyHandSize": 2,
+      "zapzapRiskyValueThreshold": 2,
+      "zapzapSafeValueThreshold": 1
+    },
+    "winRate": 0.4066,
+    "avgRounds": 12.7126,
+    "games": 5000
+  },
+  "optimized": {
+    "params": {
+      "jokerKeepScore": 786,
+      "existingPairBonus": 56,
+      "goodPairChanceBonus": 32,
+      "lowPairChanceBonus": 15,
+      "deadRankPenalty": 40,
+      "sequencePartBonus": 53,
+      "potentialSequenceBonus": 31,
+      "jokerSequenceBonus": 41,
+      "closeWithJokerBonus": 14,
+      "valueScoreWeight": 27,
+      "cardsScoreWeight": 15,
+      "potentialDivisor": 17,
+      "jokerPlayPenalty": 47,
+      "zapzapPotentialBonus": 139,
+      "discardJokerScore": 223,
+      "lowPointsBase": 9,
+      "pairCompletionBonus": 100,
+      "threeOfKindBonus": 31,
+      "sequenceCompletionBonus": 72,
+      "deadRankDiscardPenalty": 32,
+      "discardThreshold": 14,
+      "defensiveThreshold": 3,
+      "zapzapSafeHandSize": 2,
+      "zapzapModerateHandSize": 5,
+      "zapzapModerateValueThreshold": 5,
+      "zapzapRiskyHandSize": 1,
+      "zapzapRiskyValueThreshold": 2,
+      "zapzapSafeValueThreshold": 1
+    },
+    "winRate": 0.4019,
+    "avgRounds": 12.6929,
+    "games": 10000,
+    "improvementOverBaseline": -0.0047000000000000375
+  },
+  "config": {
+    "generations": 50,
+    "population": 20,
+    "elite": 2,
+    "mutationRate": 0.1,
+    "mutationRange": 0.3,
+    "crossoverRate": 0.7,
+    "gamesPerEval": 5000
+  },
+  "generationStats": [
+    {
+      "generation": 0,
+      "bestFitness": 0.4088,
+      "bestWinRate": 0.4088,
+      "avgFitness": 0.3218500000000001,
+      "diversity": 0.4220554287719144
+    },
+    {
+      "generation": 1,
+      "bestFitness": 0.41,
+      "bestWinRate": 0.41,
+      "avgFitness": 0.40121,
+      "diversity": 0.1644445693734857
+    },
+    {
+      "generation": 2,
+      "bestFitness": 0.41,
+      "bestWinRate": 0.41,
+      "avgFitness": 0.40042,
+      "diversity": 0.13562367537893402
+    },
+    {
+      "generation": 3,
+      "bestFitness": 0.4102,
+      "bestWinRate": 0.4102,
+      "avgFitness": 0.4088000000000001,
+      "diversity": 0.11806239752881356
+    },
+    {
+      "generation": 4,
+      "bestFitness": 0.4102,
+      "bestWinRate": 0.4102,
+      "avgFitness": 0.40829000000000004,
+      "diversity": 0.12050858463933675
+    },
+    {
+      "generation": 5,
+      "bestFitness": 0.4104,
+      "bestWinRate": 0.4104,
+      "avgFitness": 0.40942000000000006,
+      "diversity": 0.11041021734102478
+    },
+    {
+      "generation": 6,
+      "bestFitness": 0.4104,
+      "bestWinRate": 0.4104,
+      "avgFitness": 0.4046200000000001,
+      "diversity": 0.10525869006066128
+    },
+    {
+      "generation": 7,
+      "bestFitness": 0.4106,
+      "bestWinRate": 0.4106,
+      "avgFitness": 0.39676000000000006,
+      "diversity": 0.0987673026896064
+    },
+    {
+      "generation": 8,
+      "bestFitness": 0.4108,
+      "bestWinRate": 0.4108,
+      "avgFitness": 0.41023,
+      "diversity": 0.07699878479376941
+    },
+    {
+      "generation": 9,
+      "bestFitness": 0.4108,
+      "bestWinRate": 0.4108,
+      "avgFitness": 0.40969000000000005,
+      "diversity": 0.08909785010611738
+    },
+    {
+      "generation": 10,
+      "bestFitness": 0.4108,
+      "bestWinRate": 0.4108,
+      "avgFitness": 0.40650000000000003,
+      "diversity": 0.09675561995422681
+    },
+    {
+      "generation": 11,
+      "bestFitness": 0.4108,
+      "bestWinRate": 0.4108,
+      "avgFitness": 0.41039999999999993,
+      "diversity": 0.09317917704640609
+    },
+    {
+      "generation": 12,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40865999999999997,
+      "diversity": 0.1046527479271637
+    },
+    {
+      "generation": 13,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40409999999999996,
+      "diversity": 0.0978217306175311
+    },
+    {
+      "generation": 14,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.4073199999999999,
+      "diversity": 0.0877994644409099
+    },
+    {
+      "generation": 15,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40937,
+      "diversity": 0.09921163890579855
+    },
+    {
+      "generation": 16,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.4078799999999999,
+      "diversity": 0.1042895938169491
+    },
+    {
+      "generation": 17,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40793999999999986,
+      "diversity": 0.10486715586453556
+    },
+    {
+      "generation": 18,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41013,
+      "diversity": 0.09226799075734261
+    },
+    {
+      "generation": 19,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.4064199999999999,
+      "diversity": 0.0943187013677459
+    },
+    {
+      "generation": 20,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40644,
+      "diversity": 0.08919353226696167
+    },
+    {
+      "generation": 21,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41007999999999994,
+      "diversity": 0.09772772132432819
+    },
+    {
+      "generation": 22,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41063,
+      "diversity": 0.09089655145132727
+    },
+    {
+      "generation": 23,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41007,
+      "diversity": 0.09835039538265523
+    },
+    {
+      "generation": 24,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41069999999999995,
+      "diversity": 0.09363985192915747
+    },
+    {
+      "generation": 25,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40459999999999996,
+      "diversity": 0.10267993382732236
+    },
+    {
+      "generation": 26,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40352,
+      "diversity": 0.10316290996222378
+    },
+    {
+      "generation": 27,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41007,
+      "diversity": 0.09828528509609806
+    },
+    {
+      "generation": 28,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40713,
+      "diversity": 0.08693094823768728
+    },
+    {
+      "generation": 29,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41015999999999997,
+      "diversity": 0.09590665547273426
+    },
+    {
+      "generation": 30,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40429999999999994,
+      "diversity": 0.08707728256615122
+    },
+    {
+      "generation": 31,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41094999999999987,
+      "diversity": 0.0795550862535508
+    },
+    {
+      "generation": 32,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40532999999999986,
+      "diversity": 0.07858799231968493
+    },
+    {
+      "generation": 33,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40129000000000004,
+      "diversity": 0.08600317904081942
+    },
+    {
+      "generation": 34,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40451999999999994,
+      "diversity": 0.092869470701596
+    },
+    {
+      "generation": 35,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40632,
+      "diversity": 0.09534405353423532
+    },
+    {
+      "generation": 36,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40364999999999995,
+      "diversity": 0.09874447771027105
+    },
+    {
+      "generation": 37,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40356,
+      "diversity": 0.09925803853175796
+    },
+    {
+      "generation": 38,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41079999999999994,
+      "diversity": 0.08706362430753826
+    },
+    {
+      "generation": 39,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41084999999999994,
+      "diversity": 0.08281351069077435
+    },
+    {
+      "generation": 40,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.4069299999999999,
+      "diversity": 0.10417163404452952
+    },
+    {
+      "generation": 41,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41008999999999995,
+      "diversity": 0.09557671018864981
+    },
+    {
+      "generation": 42,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40996,
+      "diversity": 0.09265573530012151
+    },
+    {
+      "generation": 43,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40047,
+      "diversity": 0.09354250604968595
+    },
+    {
+      "generation": 44,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40937999999999997,
+      "diversity": 0.0967112293036483
+    },
+    {
+      "generation": 45,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40637,
+      "diversity": 0.10261084309789245
+    },
+    {
+      "generation": 46,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.39875,
+      "diversity": 0.10469102165449674
+    },
+    {
+      "generation": 47,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41017000000000003,
+      "diversity": 0.10159755652568449
+    },
+    {
+      "generation": 48,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41023,
+      "diversity": 0.11342288416992961
+    },
+    {
+      "generation": 49,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.40024,
+      "diversity": 0.11430717404230946
+    },
+    {
+      "generation": 50,
+      "bestFitness": 0.4112,
+      "bestWinRate": 0.4112,
+      "avgFitness": 0.41003999999999996,
+      "diversity": 0.11061721932700357
+    }
+  ],
+  "timestamp": "2025-12-17T20:30:43.195Z"
+}

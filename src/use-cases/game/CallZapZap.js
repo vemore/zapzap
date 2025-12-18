@@ -339,6 +339,41 @@ class CallZapZap {
 
             await this.partyRepository.saveGameState(partyId, newGameState);
 
+            // Record action for replay analysis (only for human players)
+            const isHuman = user.userType === 'human';
+            if (isHuman) {
+                const opponentHandSizes = Object.entries(gameState.hands)
+                    .filter(([idx]) => parseInt(idx) !== player.playerIndex)
+                    .map(([, hand]) => hand.length);
+
+                await this.partyRepository.recordGameAction({
+                    partyId,
+                    roundNumber: round.roundNumber,
+                    turnNumber: gameState.currentTurn,
+                    playerIndex: player.playerIndex,
+                    userId,
+                    isHuman: true,
+                    actionType: 'zapzap',
+                    actionData: {
+                        handPoints,
+                        success: !counteracted,
+                        counteracted,
+                        counteractedBy: counteracted ? counteractPlayer?.playerIndex : null,
+                        opponentBasePoints: Object.entries(baseHandPoints)
+                            .filter(([idx]) => parseInt(idx) !== player.playerIndex)
+                            .map(([idx, pts]) => ({ playerIndex: parseInt(idx), points: pts }))
+                    },
+                    handBefore: playerHand,
+                    handValueBefore: handPoints,
+                    scoresBefore: gameState.scores,
+                    opponentHandSizes,
+                    deckSize: gameState.deck.length,
+                    lastCardsPlayed: gameState.lastCardsPlayed,
+                    handAfter: null, // ZapZap ends round, no hand after
+                    handValueAfter: null
+                });
+            }
+
             // Archive round scores
             if (this.saveRoundScores) {
                 // Find the lowest hand player index (among active players)

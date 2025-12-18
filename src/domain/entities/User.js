@@ -72,7 +72,7 @@ class User {
         }
 
         // Validate bot difficulty
-        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm', 'thibot'];
         if (userType === 'bot') {
             if (!botDifficulty || !validDifficulties.includes(botDifficulty)) {
                 throw new Error(`Bot difficulty must be one of: ${validDifficulties.join(', ')}`);
@@ -237,11 +237,11 @@ class User {
     /**
      * Create a new Bot user
      * @param {string} username - Bot username
-     * @param {string} difficulty - Bot difficulty ('easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm')
+     * @param {string} difficulty - Bot difficulty ('easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm', 'thibot')
      * @returns {Promise<User>} New Bot user instance
      */
     static async createBot(username, difficulty) {
-        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+        const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm', 'thibot'];
         if (!difficulty || !validDifficulties.includes(difficulty)) {
             throw new Error(`Bot difficulty must be one of: ${validDifficulties.join(', ')}`);
         }

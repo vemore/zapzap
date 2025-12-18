@@ -26,7 +26,9 @@ async function initBots() {
             { username: 'MediumBot1', difficulty: 'medium' },
             { username: 'MediumBot2', difficulty: 'medium' },
             { username: 'HardBot1', difficulty: 'hard' },
-            { username: 'HardBot2', difficulty: 'hard' }
+            { username: 'HardBot2', difficulty: 'hard' },
+            { username: 'Thibot1', difficulty: 'thibot' },
+            { username: 'Thibot2', difficulty: 'thibot' }
         ];
 
         const createdBots = [];
@@ -55,7 +57,8 @@ async function initBots() {
         const byDifficulty = {
             easy: createdBots.filter(b => b.botDifficulty === 'easy'),
             medium: createdBots.filter(b => b.botDifficulty === 'medium'),
-            hard: createdBots.filter(b => b.botDifficulty === 'hard')
+            hard: createdBots.filter(b => b.botDifficulty === 'hard'),
+            thibot: createdBots.filter(b => b.botDifficulty === 'thibot')
         };
 
         console.log('Easy Bots:');
@@ -70,6 +73,11 @@ async function initBots() {
 
         console.log('\nHard Bots:');
         byDifficulty.hard.forEach(bot => {
+            console.log(`  - ${bot.username} (ID: ${bot.id})`);
+        });
+
+        console.log('\nThibot Bots:');
+        byDifficulty.thibot.forEach(bot => {
             console.log(`  - ${bot.username} (ID: ${bot.id})`);
         });
 

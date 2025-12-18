@@ -5,7 +5,7 @@
 use crate::card_analyzer;
 use crate::feature_extractor::FeatureExtractor;
 use crate::game_state::{GameAction, GameState, LastAction, MAX_PLAYERS};
-use crate::strategies::{BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy};
+use crate::strategies::{BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy, ThibotStrategy};
 use crate::training::{TransitionCollector, Transition};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -18,6 +18,7 @@ pub enum StrategyType {
     Random,
     Hard,
     DRL,
+    Thibot,
 }
 
 /// Game result
@@ -147,8 +148,9 @@ impl HeadlessGameEngine {
 
         let winner = self.determine_winner(&state);
 
-        // Finalize transitions with game outcome
-        let game_reward = if winner == drl_player_index { 1.0 } else { -0.5 };
+        // Finalize transitions with sparse rewards (only terminal reward)
+        // Asymmetric: win=+1.0, lose=-0.25 to reduce negative bias
+        let game_reward = if winner == drl_player_index { 1.0 } else { -0.25 };
         collector.finalize_simple(&state, game_reward);
 
         let result = GameResult {
@@ -232,21 +234,27 @@ impl HeadlessGameEngine {
                 break;
             }
 
-            // Play phase
-            if let Some(cards_to_play) = self.get_strategy_play(current_player, &hand, &state) {
-                // Record play decision for DRL player
-                if is_drl_player {
-                    // Determine play type action (0=optimal, 1=single_high, 2=multi_high, 3=avoid_joker, 4=use_joker)
-                    let play_action = self.classify_play_action(&cards_to_play, &hand);
+            // Play phase - different handling for DRL vs other strategies
+            if is_drl_player {
+                // For DRL, get both the play and the action chosen to record correctly
+                let (maybe_cards, play_action) = self.get_drl_play_with_action(current_player, &hand, &state);
+                if let Some(cards_to_play) = maybe_cards {
+                    // Record the ACTUAL action chosen by the DRL, not a classification
                     collector.record_action(&state, play_action, 2); // decision_type=2 (PlayType)
-                }
-                state = self.execute_play(state, current_player, &cards_to_play);
-            } else {
-                // Fallback: play first card
-                if !hand.is_empty() {
-                    if is_drl_player {
+                    state = self.execute_play(state, current_player, &cards_to_play);
+                } else {
+                    // Fallback: play first card
+                    if !hand.is_empty() {
                         collector.record_action(&state, 0, 2); // action=0 (optimal fallback)
+                        let fallback: SmallVec<[u8; 8]> = SmallVec::from_slice(&[hand[0]]);
+                        state = self.execute_play(state, current_player, &fallback);
                     }
+                }
+            } else {
+                // For non-DRL strategies, just get the play
+                if let Some(cards_to_play) = self.get_strategy_play(current_player, &hand, &state) {
+                    state = self.execute_play(state, current_player, &cards_to_play);
+                } else if !hand.is_empty() {
                     let fallback: SmallVec<[u8; 8]> = SmallVec::from_slice(&[hand[0]]);
                     state = self.execute_play(state, current_player, &fallback);
                 }
@@ -492,6 +500,9 @@ impl HeadlessGameEngine {
         player_index: u8,
         card_ids: &[u8],
     ) -> GameState {
+        // Track cards played (removes from opponent hand prediction)
+        state.track_cards_played(player_index, card_ids);
+
         // Remove cards from hand
         let hand = state.get_hand_mut(player_index);
         hand.retain(|id| !card_ids.contains(id));
@@ -523,6 +534,7 @@ impl HeadlessGameEngine {
         from_deck: bool,
     ) -> GameState {
         let drawn_card;
+        let drew_from_played;
 
         if from_deck || state.last_cards_played.is_empty() {
             // Draw from deck
@@ -539,9 +551,16 @@ impl HeadlessGameEngine {
                 state.deck.shuffle(&mut self.rng);
             }
             drawn_card = state.deck.pop().unwrap();
+            drew_from_played = false;
         } else {
             // Draw from played cards
             drawn_card = state.last_cards_played.pop().unwrap();
+            drew_from_played = true;
+        }
+
+        // Track card taken from played pile (for opponent hand prediction)
+        if drew_from_played {
+            state.track_card_taken(player_index, drawn_card);
         }
 
         // Add to hand
@@ -708,7 +727,7 @@ impl HeadlessGameEngine {
 
     // Strategy dispatch methods
 
-    fn get_strategy_hand_size(&mut self, player: u8, active_count: u8, is_golden_score: bool, my_score: u16) -> u8 {
+    fn get_strategy_hand_size(&mut self, player: u8, active_count: u8, is_golden_score: bool, _my_score: u16) -> u8 {
         match self.strategies[player as usize] {
             StrategyType::Random => 5,
             StrategyType::Hard => {
@@ -717,10 +736,14 @@ impl HeadlessGameEngine {
             }
             StrategyType::DRL => {
                 if let Some(drl) = self.get_drl_strategy_mut(player) {
-                    drl.select_hand_size_mut(active_count, is_golden_score, my_score)
+                    drl.select_hand_size_mut(active_count, is_golden_score, _my_score)
                 } else {
-                    5 // Fallback
+                    5
                 }
+            }
+            StrategyType::Thibot => {
+                let mut s = ThibotStrategy::with_seed(self.rng.gen());
+                s.select_hand_size_mut(active_count, is_golden_score)
             }
         }
     }
@@ -735,12 +758,29 @@ impl HeadlessGameEngine {
             StrategyType::Random => RandomBotStrategy.select_play(hand, state),
             StrategyType::Hard => HardBotStrategy::new().select_play(hand, state),
             StrategyType::DRL => {
+                // TEST: Re-enable DRL for PlayType only
                 if let Some(drl) = self.get_drl_strategy_mut(player) {
                     drl.select_play_mut(hand, state)
                 } else {
-                    RandomBotStrategy.select_play(hand, state)
+                    HardBotStrategy::new().select_play(hand, state)
                 }
             }
+            StrategyType::Thibot => ThibotStrategy::new().select_play(hand, state),
+        }
+    }
+
+    /// Get strategy play for DRL player, returning both the play and the action chosen
+    /// This is used during training to record the correct action
+    fn get_drl_play_with_action(
+        &mut self,
+        player: u8,
+        hand: &[u8],
+        state: &GameState,
+    ) -> (Option<SmallVec<[u8; 8]>>, u8) {
+        if let Some(drl) = self.get_drl_strategy_mut(player) {
+            drl.select_play_with_action(hand, state)
+        } else {
+            (RandomBotStrategy.select_play(hand, state), 0)
         }
     }
 
@@ -752,9 +792,10 @@ impl HeadlessGameEngine {
                 if let Some(drl) = self.get_drl_strategy_mut(player) {
                     drl.should_zapzap_mut(hand, state)
                 } else {
-                    RandomBotStrategy.should_zapzap(hand, state)
+                    false
                 }
             }
+            StrategyType::Thibot => ThibotStrategy::new().should_zapzap(hand, state),
         }
     }
 
@@ -772,9 +813,10 @@ impl HeadlessGameEngine {
                 if let Some(drl) = self.get_drl_strategy_mut(player) {
                     drl.select_draw_source_mut(hand, last_played, state)
                 } else {
-                    RandomBotStrategy.select_draw_source(hand, last_played, state)
+                    true
                 }
             }
+            StrategyType::Thibot => ThibotStrategy::new().select_draw_source(hand, last_played, state),
         }
     }
 }

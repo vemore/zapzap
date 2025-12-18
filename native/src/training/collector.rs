@@ -1,11 +1,20 @@
 //! TransitionCollector - Collects transitions during game simulation for training
 //!
 //! Records state-action pairs during gameplay and computes rewards at game end.
+//!
+//! ## Reward Strategy (Dense Rewards)
+//!
+//! Uses potential-based reward shaping to provide learning signal at every step:
+//! - **Potential function**: Φ(s) = -hand_value / 100 (lower hand = better)
+//! - **Shaping reward**: F(s,s') = γ·Φ(s') - Φ(s)
+//! - **Terminal reward**: Win = +1.0, Lose = -0.25 (asymmetric to reduce negative bias)
 
 use super::transition::Transition;
 use super::FEATURE_DIM;
+use crate::card_analyzer;
 use crate::feature_extractor::FeatureExtractor;
 use crate::game_state::GameState;
+use crate::trace_config::{is_trace_enabled, TraceLevel};
 
 /// Pending state-action pair (before reward is known)
 #[derive(Clone, Debug)]
@@ -16,6 +25,8 @@ struct PendingTransition {
     action: u8,
     /// Decision type (0=handSize, 1=zapzap, 2=playType, 3=drawSource)
     decision_type: u8,
+    /// Hand value at this state (for reward shaping)
+    hand_value: f32,
 }
 
 /// Collects transitions during a game for DRL training
@@ -50,10 +61,13 @@ impl TransitionCollector {
         decision_type: u8,
     ) {
         let features = FeatureExtractor::extract(state, self.player_index);
+        let hand = state.get_hand(self.player_index);
+        let hand_value = card_analyzer::calculate_hand_value(hand) as f32;
         self.pending.push(PendingTransition {
             state: features,
             action,
             decision_type,
+            hand_value,
         });
     }
 
@@ -64,10 +78,13 @@ impl TransitionCollector {
         action: u8,
         decision_type: u8,
     ) {
+        // When features are pre-computed, hand_value is encoded in features[0] * 100
+        let hand_value = features[0] * 100.0;
         self.pending.push(PendingTransition {
             state: features,
             action,
             decision_type,
+            hand_value,
         });
     }
 
@@ -184,6 +201,142 @@ impl TransitionCollector {
                 i == n - 1,
                 pending.decision_type,
             ));
+        }
+
+        // Trace: Log finalization details
+        if is_trace_enabled(TraceLevel::Game) {
+            let mut dt_counts = [0u32; 4];
+            for t in &self.transitions {
+                if t.decision_type < 4 {
+                    dt_counts[t.decision_type as usize] += 1;
+                }
+            }
+            eprintln!("[GAME] finalize_simple: {} transitions, game_reward={:.2}, dt=[HS:{},ZZ:{},PT:{},DS:{}]",
+                n, game_reward, dt_counts[0], dt_counts[1], dt_counts[2], dt_counts[3]);
+        }
+    }
+
+    /// Finalize game with dense rewards using potential-based reward shaping
+    ///
+    /// This method addresses the sparse reward problem by:
+    /// 1. Using asymmetric rewards: win=+1.0, lose=-0.25 (reduces negative bias)
+    /// 2. Adding potential-based shaping: rewards for reducing hand value
+    ///
+    /// The shaping reward F(s,s') = γ·Φ(s') - Φ(s) where Φ(s) = -hand_value/100
+    /// This is provably optimal-policy-preserving (Ng et al., 1999)
+    ///
+    /// # Arguments
+    /// * `final_state` - Game state at end
+    /// * `won` - Whether this player won the game
+    /// * `gamma` - Discount factor for potential shaping (typically 0.99)
+    pub fn finalize_dense(
+        &mut self,
+        final_state: &GameState,
+        won: bool,
+        gamma: f32,
+    ) {
+        if self.pending.is_empty() {
+            return;
+        }
+
+        let final_features = FeatureExtractor::extract(final_state, self.player_index);
+        let final_hand = final_state.get_hand(self.player_index);
+        let final_hand_value = card_analyzer::calculate_hand_value(final_hand) as f32;
+
+        // Asymmetric terminal rewards (C): less negative for losses
+        let terminal_reward = if won { 1.0 } else { -0.25 };
+        self.game_reward = Some(terminal_reward);
+
+        let n = self.pending.len();
+
+        // Pre-compute next states and hand values
+        let next_states: Vec<[f32; FEATURE_DIM]> = (0..n)
+            .map(|i| {
+                if i < n - 1 {
+                    self.pending[i + 1].state
+                } else {
+                    final_features
+                }
+            })
+            .collect();
+
+        let next_hand_values: Vec<f32> = (0..n)
+            .map(|i| {
+                if i < n - 1 {
+                    self.pending[i + 1].hand_value
+                } else {
+                    final_hand_value
+                }
+            })
+            .collect();
+
+        // Statistics for tracing
+        let mut total_shaping = 0.0f32;
+        let mut positive_shaping = 0u32;
+        let mut negative_shaping = 0u32;
+
+        for (i, pending) in self.pending.drain(..).enumerate() {
+            let is_terminal = i == n - 1;
+
+            // Potential-based reward shaping (A)
+            // Φ(s) = -hand_value / 100 (lower hand = higher potential = better)
+            let phi_current = -pending.hand_value / 100.0;
+            let phi_next = -next_hand_values[i] / 100.0;
+
+            // Shaping reward: F = γ·Φ(s') - Φ(s)
+            // When hand value decreases, phi_next > phi_current, so F > 0 (reward)
+            //
+            // IMPORTANT: Skip shaping for DrawSource (dt=3) because:
+            // - Drawing is mandatory after playing
+            // - Drawing always increases hand value (adds a card)
+            // - The choice is WHICH source, not WHETHER to draw
+            // - Applying shaping would create systematic negative bias
+            let shaping_reward = if pending.decision_type == 3 {
+                // DrawSource: no shaping, just let TD learning handle it
+                0.0
+            } else {
+                gamma * phi_next - phi_current
+            };
+
+            // Total reward = shaping + terminal (only at end)
+            let reward = if is_terminal {
+                terminal_reward + shaping_reward
+            } else {
+                shaping_reward
+            };
+
+            // Track statistics
+            total_shaping += shaping_reward;
+            if shaping_reward > 0.001 {
+                positive_shaping += 1;
+            } else if shaping_reward < -0.001 {
+                negative_shaping += 1;
+            }
+
+            self.transitions.push(Transition::new(
+                pending.state,
+                pending.action,
+                reward,
+                next_states[i],
+                is_terminal,
+                pending.decision_type,
+            ));
+        }
+
+        // Trace: Log finalization with shaping statistics
+        if is_trace_enabled(TraceLevel::Game) {
+            let mut dt_counts = [0u32; 4];
+            for t in &self.transitions {
+                if t.decision_type < 4 {
+                    dt_counts[t.decision_type as usize] += 1;
+                }
+            }
+            let avg_shaping = if n > 0 { total_shaping / n as f32 } else { 0.0 };
+            eprintln!(
+                "[GAME] finalize_dense: {} trans, won={}, terminal={:.2}, shaping=[sum:{:.3},avg:{:.4},+:{},−:{}], dt=[HS:{},ZZ:{},PT:{},DS:{}]",
+                n, won, terminal_reward, total_shaping, avg_shaping, positive_shaping, negative_shaping,
+                dt_counts[0], dt_counts[1], dt_counts[2], dt_counts[3]
+            );
         }
     }
 

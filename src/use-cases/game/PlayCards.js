@@ -150,6 +150,41 @@ class PlayCards {
             // Save game state
             await this.partyRepository.saveGameState(partyId, newGameState);
 
+            // Record action for replay analysis (only for human players)
+            const isHuman = user.userType === 'human';
+            if (isHuman) {
+                const opponentHandSizes = Object.entries(gameState.hands)
+                    .filter(([idx]) => parseInt(idx) !== player.playerIndex)
+                    .map(([, hand]) => hand.length);
+
+                const handValueBefore = CardAnalyzer.calculateHandValue(playerHand);
+                const handValueAfter = CardAnalyzer.calculateHandValue(newHand);
+
+                await this.partyRepository.recordGameAction({
+                    partyId,
+                    roundNumber: round.roundNumber,
+                    turnNumber: gameState.currentTurn,
+                    playerIndex: player.playerIndex,
+                    userId,
+                    isHuman: true,
+                    actionType: 'play',
+                    actionData: {
+                        cardIds,
+                        playSize: cardIds.length,
+                        isSingle: cardIds.length === 1,
+                        isMulti: cardIds.length > 1
+                    },
+                    handBefore: playerHand,
+                    handValueBefore,
+                    scoresBefore: gameState.scores,
+                    opponentHandSizes,
+                    deckSize: gameState.deck.length,
+                    lastCardsPlayed: gameState.lastCardsPlayed,
+                    handAfter: newHand,
+                    handValueAfter
+                });
+            }
+
             logger.info('Cards played', {
                 userId: userId,
                 username: user.username,

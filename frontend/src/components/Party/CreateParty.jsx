@@ -239,6 +239,7 @@ function CreateParty() {
                     const hardCount = getAvailableCountForSlot('hard');
                     const hardVinceCount = getAvailableCountForSlot('hard_vince');
                     const llmCount = getAvailableCountForSlot('llm');
+                    const thibotCount = getAvailableCountForSlot('thibot');
 
                     return (
                       <div key={slot.index} className="p-3 bg-slate-800 rounded-lg border border-slate-600">
@@ -280,6 +281,9 @@ function CreateParty() {
                             </option>
                             <option value="bot-llm" disabled={llmCount === 0}>
                               Bot - LLM (Llama 3.3) {llmCount === 0 && '(None available)'}
+                            </option>
+                            <option value="bot-thibot" disabled={thibotCount === 0}>
+                              Bot - Thibot {thibotCount === 0 && '(None available)'}
                             </option>
                           </select>
                         </div>

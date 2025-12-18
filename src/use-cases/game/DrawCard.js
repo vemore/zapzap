@@ -3,6 +3,7 @@
  * Handles drawing cards from deck or last played cards
  */
 
+const CardAnalyzer = require('../../infrastructure/bot/CardAnalyzer');
 const logger = require('../../../logger');
 
 class DrawCard {
@@ -179,6 +180,42 @@ class DrawCard {
 
             // Save game state
             await this.partyRepository.saveGameState(partyId, newGameState);
+
+            // Record action for replay analysis (only for human players)
+            const isHuman = user.userType === 'human';
+            if (isHuman) {
+                const opponentHandSizes = Object.entries(gameState.hands)
+                    .filter(([idx]) => parseInt(idx) !== player.playerIndex)
+                    .map(([, hand]) => hand.length);
+
+                const handValueBefore = CardAnalyzer.calculateHandValue(playerHand);
+                const handValueAfter = CardAnalyzer.calculateHandValue(newHand);
+
+                await this.partyRepository.recordGameAction({
+                    partyId,
+                    roundNumber: round.roundNumber,
+                    turnNumber: gameState.currentTurn,
+                    playerIndex: player.playerIndex,
+                    userId,
+                    isHuman: true,
+                    actionType: 'draw',
+                    actionData: {
+                        source,
+                        cardDrawn: drawnCard,
+                        fromDeck: source === 'deck',
+                        fromPlayed: source === 'played',
+                        availablePlayedCards: gameState.lastCardsPlayed.length
+                    },
+                    handBefore: playerHand,
+                    handValueBefore,
+                    scoresBefore: gameState.scores,
+                    opponentHandSizes,
+                    deckSize: gameState.deck.length,
+                    lastCardsPlayed: gameState.lastCardsPlayed,
+                    handAfter: newHand,
+                    handValueAfter
+                });
+            }
 
             logger.info('Card drawn', {
                 userId: userId,

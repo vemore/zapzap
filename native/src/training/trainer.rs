@@ -16,6 +16,8 @@ use super::config::TrainingConfig;
 use super::dueling_dqn::{DecisionType, DuelingDQN, DuelingDQNConfig};
 use super::replay_buffer::PrioritizedReplayBuffer;
 use super::{CpuBackend, TrainingBackend};
+use crate::trace_config::{is_trace_enabled, TraceLevel};
+use crate::trace_log;
 
 /// Training state for progress reporting
 #[derive(Clone, Debug, Default)]
@@ -118,18 +120,37 @@ impl Trainer {
         self.stop_flag.load(Ordering::SeqCst)
     }
 
+    /// Get adaptive batch size for decision type
+    ///
+    /// Uses smaller batches for rare decision types to enable training
+    /// even when there are fewer samples in the buffer.
+    fn get_adaptive_batch_size(&self, decision_type: DecisionType) -> usize {
+        match decision_type {
+            // HandSize is rare (~3% of transitions)
+            DecisionType::HandSize => (self.config.batch_size / 4).max(8),
+            // ZapZap is very rare (<1% of transitions)
+            DecisionType::ZapZap => (self.config.batch_size / 8).max(4),
+            // PlayType and DrawSource are common (~48% each)
+            DecisionType::PlayType | DecisionType::DrawSource => self.config.batch_size,
+        }
+    }
+
     /// Perform a single training step for a decision type
     fn train_step(&mut self, decision_type: DecisionType) -> Option<f32> {
+        // Use adaptive batch size based on decision type rarity (B)
+        let batch_size = self.get_adaptive_batch_size(decision_type);
+
         // Sample batch
         let batch = self.buffer.sample::<TrainingBackend>(
-            self.config.batch_size,
+            batch_size,
             decision_type as u8,
             &self.device,
         );
 
-        // DIAG: Log sampling result
+        // Log sampling failure
         if batch.is_none() {
-            eprintln!("[DIAG] train_step({:?}) - buffer.sample() returned None (buffer size: {})",
+            trace_log!(TraceLevel::Training,
+                "train_step({:?}) - buffer.sample() returned None (buffer size: {})",
                 decision_type, self.buffer.len());
             return None;
         }
@@ -138,13 +159,19 @@ impl Trainer {
         // Forward pass on online network
         let q_values = self.network.forward(batch.states.clone(), decision_type);
 
+        // Clone Q-values for tracing before they're consumed
+        let q_values_for_trace = if is_trace_enabled(TraceLevel::Training) {
+            Some(q_values.clone())
+        } else {
+            None
+        };
+
         // Gather Q-values for taken actions
         let q_taken = q_values.gather(1, batch.actions.clone());
 
         // Double DQN: use online network to select actions, target network for values
         // For now, simplified version using same network for both
         let next_q = self.network.forward(batch.next_states.clone(), decision_type);
-        let batch_size = self.config.batch_size;
         let next_actions = next_q.argmax(1).reshape([batch_size, 1]);
 
         // Get target Q-values (using CPU backend for target network)
@@ -188,19 +215,23 @@ impl Trainer {
         // Return average loss
         let loss_val = weighted_loss.into_data().as_slice::<f32>().unwrap()[0];
 
-        // DIAG: Log loss and TD errors periodically
-        static mut DIAG_COUNTER: u64 = 0;
-        unsafe {
-            DIAG_COUNTER += 1;
-            if DIAG_COUNTER % 100 == 1 {
-                let td_mean: f32 = td_errors.iter().sum::<f32>() / td_errors.len() as f32;
-                let td_max = td_errors.iter().cloned().fold(0.0f32, f32::max);
-                let rewards_slice = batch.rewards.clone().into_data().as_slice::<f32>().unwrap().to_vec();
-                let reward_mean: f32 = rewards_slice.iter().sum::<f32>() / rewards_slice.len() as f32;
-                let rewards_nonzero = rewards_slice.iter().filter(|&&r| r.abs() > 0.001).count();
-                eprintln!("[DIAG] train_step({:?}) - loss={:.6}, td_mean={:.4}, td_max={:.4}, reward_mean={:.4}, rewards_nonzero={}/{}",
-                    decision_type, loss_val, td_mean, td_max, reward_mean, rewards_nonzero, rewards_slice.len());
-            }
+        // Trace: Log training step details
+        if let Some(q_values_trace) = q_values_for_trace {
+            let td_mean: f32 = td_errors.iter().sum::<f32>() / td_errors.len() as f32;
+            let td_max = td_errors.iter().cloned().fold(0.0f32, f32::max);
+            let td_min = td_errors.iter().cloned().fold(f32::MAX, f32::min);
+            let rewards_slice = batch.rewards.clone().into_data().as_slice::<f32>().unwrap().to_vec();
+            let rewards_nonzero = rewards_slice.iter().filter(|&&r| r.abs() > 0.001).count();
+            let rewards_pos = rewards_slice.iter().filter(|&&r| r > 0.001).count();
+            let rewards_neg = rewards_slice.iter().filter(|&&r| r < -0.001).count();
+
+            // Get Q-value sample from batch
+            let q_slice = q_values_trace.into_data().as_slice::<f32>().unwrap().to_vec();
+            let q_sample: Vec<f32> = q_slice.iter().take(5).cloned().collect();
+
+            eprintln!("[TRAIN] dt={:?} loss={:.6} TD=[mean:{:.4},max:{:.4},min:{:.4}] rewards=[nz:{},+:{},−:{}] Q[0..5]={:?}",
+                decision_type, loss_val, td_mean, td_max, td_min,
+                rewards_nonzero, rewards_pos, rewards_neg, q_sample);
         }
 
         Some(loss_val)
@@ -288,13 +319,17 @@ impl Trainer {
     pub fn train_steps(&mut self, num_steps: usize, games_played: u64) -> (f32, usize) {
         let min_buffer_size = self.config.batch_size * 10;
         if self.buffer.len() < min_buffer_size {
-            eprintln!("[DIAG] train_steps - buffer too small ({} < {})", self.buffer.len(), min_buffer_size);
+            trace_log!(TraceLevel::Training,
+                "train_steps - buffer too small ({} < {})", self.buffer.len(), min_buffer_size);
             return (0.0, 0);
         }
 
-        // DIAG: Get weights before training
-        let weights_before = self.network.get_weights_flat();
-        let weights_before_sample: Vec<f32> = weights_before.iter().take(5).cloned().collect();
+        // Capture weights before training for comparison
+        let weights_before_sample: Vec<f32> = if is_trace_enabled(TraceLevel::Weights) {
+            self.network.get_weights_flat().iter().take(10).cloned().collect()
+        } else {
+            Vec::new()
+        };
 
         let mut total_loss = 0.0f32;
         let mut steps_completed = 0usize;
@@ -314,26 +349,32 @@ impl Trainer {
             }
         }
 
-        // DIAG: Get weights after training
-        let weights_after = self.network.get_weights_flat();
-        let weights_after_sample: Vec<f32> = weights_after.iter().take(5).cloned().collect();
-        let weights_changed = weights_before_sample.iter()
-            .zip(weights_after_sample.iter())
-            .any(|(a, b)| (a - b).abs() > 1e-8);
+        // Trace weights changes
+        if is_trace_enabled(TraceLevel::Weights) && !weights_before_sample.is_empty() {
+            let weights_after = self.network.get_weights_flat();
+            let weights_after_sample: Vec<f32> = weights_after.iter().take(10).cloned().collect();
 
-        // DIAG: Log every 10 calls
-        static mut TRAIN_STEPS_COUNTER: u64 = 0;
-        unsafe {
-            TRAIN_STEPS_COUNTER += 1;
-            if TRAIN_STEPS_COUNTER % 10 == 1 {
-                eprintln!("[DIAG] train_steps(num_steps={}, games={}) - steps_completed={}, avg_loss={:.6}, weights_changed={}",
-                    num_steps, games_played, steps_completed,
-                    if steps_completed > 0 { total_loss / steps_completed as f32 } else { 0.0 },
-                    weights_changed);
-                eprintln!("[DIAG]   weights_before[0..5]: {:?}", weights_before_sample);
-                eprintln!("[DIAG]   weights_after[0..5]:  {:?}", weights_after_sample);
+            // Calculate weight change magnitude
+            let mut total_delta = 0.0f32;
+            let mut max_delta = 0.0f32;
+            for (before, after) in weights_before_sample.iter().zip(weights_after_sample.iter()) {
+                let delta = (after - before).abs();
+                total_delta += delta;
+                max_delta = max_delta.max(delta);
             }
+            let mean_delta = total_delta / weights_before_sample.len() as f32;
+
+            eprintln!("[WEIGHTS] train_steps games={} steps={} weight_delta=[mean:{:.8},max:{:.8}]",
+                games_played, steps_completed, mean_delta, max_delta);
+            eprintln!("[WEIGHTS]   before[0..5]: {:?}", &weights_before_sample[..5]);
+            eprintln!("[WEIGHTS]   after[0..5]:  {:?}", &weights_after_sample[..5]);
         }
+
+        // Trace training summary
+        trace_log!(TraceLevel::Training,
+            "train_steps games={} steps={} avg_loss={:.6}",
+            games_played, steps_completed,
+            if steps_completed > 0 { total_loss / steps_completed as f32 } else { 0.0 });
 
         // Update training state
         {

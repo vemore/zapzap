@@ -4,6 +4,7 @@
 
 use crate::card_analyzer;
 use crate::game_state::GameState;
+use crate::trace_config::{is_trace_enabled, TraceLevel};
 
 /// Feature dimension (must match JS FeatureExtractor)
 pub const FEATURE_DIM: usize = 45;
@@ -198,7 +199,7 @@ impl FeatureExtractor {
         let rank_spread = Self::calculate_rank_spread(hand);
 
         // Build 45-dimensional feature vector (normalized)
-        [
+        let result = [
             // Hand features (10)
             (hand_value / 100.0).min(1.0),
             (hand_size / 10.0).min(1.0),
@@ -250,7 +251,33 @@ impl FeatureExtractor {
             // Advanced hand quality (2)
             suit_concentration,
             rank_spread,
-        ]
+        ];
+
+        // Validate features when tracing is enabled
+        if is_trace_enabled(TraceLevel::Features) {
+            Self::validate_features(&result, player_index);
+        }
+
+        result
+    }
+
+    /// Validate feature values for debugging
+    fn validate_features(features: &Features, player_index: u8) {
+        let mut issues = Vec::new();
+
+        for (i, &f) in features.iter().enumerate() {
+            if f.is_nan() {
+                issues.push(format!("f[{}]=NaN", i));
+            } else if f.is_infinite() {
+                issues.push(format!("f[{}]=Inf", i));
+            } else if f < -1.5 || f > 2.0 {
+                issues.push(format!("f[{}]={:.3}(OOR)", i, f));
+            }
+        }
+
+        if !issues.is_empty() {
+            eprintln!("[FEATURES] P{} ISSUES: {}", player_index, issues.join(", "));
+        }
     }
 
     /// Extract features for hand size decision (before cards are dealt)

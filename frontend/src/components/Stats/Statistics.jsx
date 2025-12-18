@@ -281,7 +281,8 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
     hard_vince: { bg: 'bg-purple-900/30', border: 'border-purple-500/50', text: 'text-purple-400', tabBg: 'bg-purple-900/50' },
     ml: { bg: 'bg-cyan-900/30', border: 'border-cyan-500/50', text: 'text-cyan-400', tabBg: 'bg-cyan-900/50' },
     drl: { bg: 'bg-indigo-900/30', border: 'border-indigo-500/50', text: 'text-indigo-400', tabBg: 'bg-indigo-900/50' },
-    llm: { bg: 'bg-pink-900/30', border: 'border-pink-500/50', text: 'text-pink-400', tabBg: 'bg-pink-900/50' }
+    llm: { bg: 'bg-pink-900/30', border: 'border-pink-500/50', text: 'text-pink-400', tabBg: 'bg-pink-900/50' },
+    thibot: { bg: 'bg-orange-900/30', border: 'border-orange-500/50', text: 'text-orange-400', tabBg: 'bg-orange-900/50' }
   };
 
   const difficultyLabels = {
@@ -291,7 +292,8 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
     hard_vince: 'Hard Vince',
     ml: 'ML (TensorFlow)',
     drl: 'DRL (Deep RL)',
-    llm: 'LLM (Llama 3.3)'
+    llm: 'LLM (Llama 3.3)',
+    thibot: 'Thibot'
   };
 
   const difficultyStrategies = {
@@ -322,6 +324,10 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
     llm: {
       title: 'Large Language Model (Llama 3.3)',
       description: 'Powered by Llama 3.3 via AWS Bedrock. Uses natural language understanding of game rules and context to make strategic decisions. Analyzes hand, game state, and play history.'
+    },
+    thibot: {
+      title: 'Probability-Based Strategy',
+      description: 'Tracks all played cards and opponent picks for probability calculations. Uses genetically optimized parameters (~40% winrate vs HardBots). Maximizes points removed per turn. Defensive mode when opponents are close to ZapZap.'
     }
   };
 
@@ -384,7 +390,7 @@ function BotStatistics({ botStats, loading, selectedDifficulty, setSelectedDiffi
         >
           All Difficulties
         </button>
-        {['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'].map(diff => (
+        {['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm', 'thibot'].map(diff => (
           <button
             key={diff}
             onClick={() => setSelectedDifficulty(diff)}

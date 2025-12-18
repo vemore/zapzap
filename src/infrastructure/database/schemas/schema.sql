@@ -118,3 +118,44 @@ AFTER UPDATE ON game_state
 BEGIN
     UPDATE game_state SET updated_at = strftime('%s', 'now') WHERE party_id = NEW.party_id;
 END;
+
+-- ============================================================================
+-- GAME_ACTIONS TABLE (Records every action for replay analysis)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS game_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    party_id TEXT NOT NULL,
+    round_number INTEGER NOT NULL,
+    turn_number INTEGER NOT NULL,
+    player_index INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    is_human INTEGER NOT NULL DEFAULT 0, -- 1 if human player, 0 if bot
+
+    -- Action details
+    action_type TEXT NOT NULL CHECK(action_type IN ('hand_size', 'play', 'draw', 'zapzap')),
+    action_data TEXT NOT NULL, -- JSON with action-specific data
+
+    -- State before action (for analysis)
+    hand_before TEXT NOT NULL, -- JSON array of card IDs
+    hand_value_before INTEGER NOT NULL,
+    scores_before TEXT NOT NULL, -- JSON array of scores
+    opponent_hand_sizes TEXT NOT NULL, -- JSON array
+    deck_size INTEGER NOT NULL,
+    last_cards_played TEXT NOT NULL, -- JSON array
+
+    -- Outcome (filled after action)
+    hand_after TEXT, -- JSON array of card IDs (null for zapzap)
+    hand_value_after INTEGER,
+
+    -- Timestamps
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+
+    FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_game_actions_party ON game_actions(party_id);
+CREATE INDEX idx_game_actions_user ON game_actions(user_id);
+CREATE INDEX idx_game_actions_human ON game_actions(is_human);
+CREATE INDEX idx_game_actions_type ON game_actions(action_type);
+CREATE INDEX idx_game_actions_party_round ON game_actions(party_id, round_number);

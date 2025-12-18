@@ -52,7 +52,7 @@ export interface NativeGameResult {
 }
 /**
  * Run a single game with specified strategies
- * Strategy types: "random", "hard", "hard_vince", "drl"
+ * Strategy types: "random", "hard", "hard_vince", "drl", "thibot"
  */
 export declare function runGame(strategyTypes: Array<string>, seed?: number | undefined | null): NativeGameResult
 /** Run multiple games and return statistics */
@@ -65,7 +65,7 @@ export interface BatchGameStats {
 }
 /**
  * Run multiple games in batch for performance testing
- * Strategy types: "random", "hard", "hard_vince", "drl"
+ * Strategy types: "random", "hard", "hard_vince", "drl", "thibot"
  */
 export declare function runGamesBatch(strategyTypes: Array<string>, gameCount: number, baseSeed?: number | undefined | null): BatchGameStats
 /** Result of running games with transition collection */
@@ -230,3 +230,56 @@ export declare function modelExists(path: string): boolean
 export declare function trainerSaveModel(path: string): boolean
 /** Get model metadata without loading weights */
 export declare function modelGetMetadata(path: string): NativeModelMetadata | null
+/** Trace configuration for diagnostic output */
+export interface NativeTraceConfig {
+  /** Game/transition collection: decisions, actions, rewards */
+  game: boolean
+  /** Replay buffer: sampling stats, priority distribution */
+  buffer: boolean
+  /** Training step: Q-values, TD errors, loss, gradients */
+  training: boolean
+  /** Weight synchronization: DuelingDQN <-> FastDQN */
+  weights: boolean
+  /** Feature extraction: validation, NaN/Inf checks */
+  features: boolean
+}
+/**
+ * Set trace configuration for diagnostic output
+ * Use --trace=game,training,buffer or --debug for all
+ */
+export declare function setTraceConfig(config: NativeTraceConfig): void
+/** Thibot parameters for genetic optimization */
+export interface NativeThibotParams {
+  jokerKeepScore: number
+  existingPairBonus: number
+  goodPairChanceBonus: number
+  lowPairChanceBonus: number
+  deadRankPenalty: number
+  sequencePartBonus: number
+  potentialSequenceBonus: number
+  jokerSequenceBonus: number
+  closeWithJokerBonus: number
+  valueScoreWeight: number
+  cardsScoreWeight: number
+  potentialDivisor: number
+  jokerPlayPenalty: number
+  zapzapPotentialBonus: number
+  discardJokerScore: number
+  lowPointsBase: number
+  pairCompletionBonus: number
+  threeOfKindBonus: number
+  sequenceCompletionBonus: number
+  deadRankDiscardPenalty: number
+  discardThreshold: number
+  defensiveThreshold: number
+  zapzapSafeHandSize: number
+  zapzapModerateHandSize: number
+  zapzapModerateValueThreshold: number
+  zapzapRiskyHandSize: number
+  zapzapRiskyValueThreshold: number
+  zapzapSafeValueThreshold: number
+}
+/** Set Thibot parameters for genetic optimization */
+export declare function thibotSetParams(params: NativeThibotParams): void
+/** Get default Thibot parameters */
+export declare function thibotGetDefaultParams(): NativeThibotParams

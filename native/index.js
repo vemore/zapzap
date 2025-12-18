@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { getCardPoints, getRank, getSuit, isJoker, calculateHandValue, calculateHandScore, canCallZapzap, isValidSameRank, isValidSequence, isValidPlay, findSameRankPlays, findSequencePlays, findAllValidPlays, findMaxPointPlay, benchmarkFindAllValidPlays, runGame, runGamesBatch, runTrainingBatch, benchmarkSimulation, getFeatureDimension, extractFeatures, extractHandSizeFeatures, benchmarkFeatureExtraction, dqnInit, dqnPredict, dqnSelectAction, dqnGreedyAction, benchmarkDqnInference, trainerCreate, trainerGetState, trainerAddTransition, trainerBufferSize, trainerTrainSteps, trainerRequestStop, trainerShouldStop, trainerGetWeights, trainerSetWeights, drlStrategyInit, drlStrategySetEpsilon, drlStrategyGetAction, modelSave, modelSaveCheckpoint, modelLoad, modelLoadWithMetadata, modelExists, trainerSaveModel, modelGetMetadata } = nativeBinding
+const { getCardPoints, getRank, getSuit, isJoker, calculateHandValue, calculateHandScore, canCallZapzap, isValidSameRank, isValidSequence, isValidPlay, findSameRankPlays, findSequencePlays, findAllValidPlays, findMaxPointPlay, benchmarkFindAllValidPlays, runGame, runGamesBatch, runTrainingBatch, benchmarkSimulation, getFeatureDimension, extractFeatures, extractHandSizeFeatures, benchmarkFeatureExtraction, dqnInit, dqnPredict, dqnSelectAction, dqnGreedyAction, benchmarkDqnInference, trainerCreate, trainerGetState, trainerAddTransition, trainerBufferSize, trainerTrainSteps, trainerRequestStop, trainerShouldStop, trainerGetWeights, trainerSetWeights, drlStrategyInit, drlStrategySetEpsilon, drlStrategyGetAction, modelSave, modelSaveCheckpoint, modelLoad, modelLoadWithMetadata, modelExists, trainerSaveModel, modelGetMetadata, setTraceConfig, thibotSetParams, thibotGetDefaultParams } = nativeBinding
 
 module.exports.getCardPoints = getCardPoints
 module.exports.getRank = getRank
@@ -359,3 +359,6 @@ module.exports.modelLoadWithMetadata = modelLoadWithMetadata
 module.exports.modelExists = modelExists
 module.exports.trainerSaveModel = trainerSaveModel
 module.exports.modelGetMetadata = modelGetMetadata
+module.exports.setTraceConfig = setTraceConfig
+module.exports.thibotSetParams = thibotSetParams
+module.exports.thibotGetDefaultParams = thibotGetDefaultParams

@@ -4,6 +4,8 @@ use super::sum_tree::SumTree;
 use super::transition::{Transition, TransitionBatch};
 use burn::prelude::*;
 use rand::Rng;
+use crate::trace_config::{is_trace_enabled, TraceLevel};
+use crate::trace_log;
 
 /// Prioritized Experience Replay Buffer
 ///
@@ -125,25 +127,31 @@ impl PrioritizedReplayBuffer {
 
         // If we couldn't find enough transitions of this type, return None
         if transitions.len() < batch_size {
-            // DIAG: Log sampling failure
-            eprintln!("[DIAG] sample(batch={}, dt={}) FAILED - only found {} transitions after {} attempts",
+            trace_log!(TraceLevel::Buffer,
+                "sample(batch={}, dt={}) FAILED - only found {} transitions after {} attempts",
                 batch_size, decision_type, transitions.len(), attempts);
             return None;
         }
 
-        // DIAG: Log successful sampling periodically
-        static mut SAMPLE_COUNTER: u64 = 0;
-        unsafe {
-            SAMPLE_COUNTER += 1;
-            if SAMPLE_COUNTER % 200 == 1 {
-                // Count rewards in sampled transitions
-                let rewards_nonzero = transitions.iter().filter(|t| t.reward.abs() > 0.001).count();
-                let rewards_positive = transitions.iter().filter(|t| t.reward > 0.001).count();
-                let rewards_negative = transitions.iter().filter(|t| t.reward < -0.001).count();
-                let done_count = transitions.iter().filter(|t| t.done).count();
-                eprintln!("[DIAG] sample(batch={}, dt={}) OK - attempts={}, rewards: nonzero={}, pos={}, neg={}, done={}",
-                    batch_size, decision_type, attempts, rewards_nonzero, rewards_positive, rewards_negative, done_count);
-            }
+        // Trace: Log successful sampling with statistics
+        if is_trace_enabled(TraceLevel::Buffer) {
+            // Count rewards in sampled transitions
+            let rewards_nonzero = transitions.iter().filter(|t| t.reward.abs() > 0.001).count();
+            let rewards_positive = transitions.iter().filter(|t| t.reward > 0.001).count();
+            let rewards_negative = transitions.iter().filter(|t| t.reward < -0.001).count();
+            let done_count = transitions.iter().filter(|t| t.done).count();
+
+            // Priority distribution
+            let min_p = priorities.iter().cloned().fold(f32::MAX, f32::min);
+            let max_p = priorities.iter().cloned().fold(0.0f32, f32::max);
+            let mean_p = priorities.iter().sum::<f32>() / priorities.len() as f32;
+
+            eprintln!("[BUFFER] sample(batch={}, dt={}) attempts={} found={} size={}",
+                batch_size, decision_type, attempts, transitions.len(), self.size);
+            eprintln!("[BUFFER]   priority: min={:.4} max={:.4} mean={:.4}",
+                min_p, max_p, mean_p);
+            eprintln!("[BUFFER]   rewards: nz={} +:{} -:{} done={}",
+                rewards_nonzero, rewards_positive, rewards_negative, done_count);
         }
 
         // Calculate importance sampling weights

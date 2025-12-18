@@ -10,6 +10,7 @@ const HardVinceBotStrategy = require('./HardVinceBotStrategy');
 const MLBotStrategy = require('./MLBotStrategy');
 const DRLBotStrategy = require('./DRLBotStrategy');
 const LLMBotStrategy = require('./LLMBotStrategy');
+const ThibotBotStrategy = require('./ThibotBotStrategy');
 
 // Shared ML policy for learning across games (singleton)
 let sharedMLPolicy = null;
@@ -111,6 +112,10 @@ class BotStrategyFactory {
                     bedrockService: options.bedrockService,
                     enableFallback: options.enableFallback !== false
                 });
+            case 'thibot':
+                // Thibot: Probability-based bot with genetically optimized parameters
+                // Tracks all played cards and uses probabilities to maximize points removed
+                return new ThibotBotStrategy();
             default:
                 throw new Error(`Unknown bot difficulty: ${difficulty}`);
         }
@@ -172,7 +177,7 @@ class BotStrategyFactory {
      * @returns {Array<string>}
      */
     static getAvailableDifficulties() {
-        return ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'ml_mcts', 'drl', 'llm'];
+        return ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'ml_mcts', 'drl', 'llm', 'thibot'];
     }
 
     /**
