@@ -273,15 +273,33 @@ class CallZapZap {
                     }, players[0]);
                 }
             } else if (gameState.isGoldenScore && stillActivePlayers.length === 2) {
-                // Golden Score mode - check if there's a clear winner
+                // Golden Score mode - winner is the player with the lowest hand this round
+                // In Golden Score, the round winner (lowest hand) wins the game
+                // If hands are tied, the ZapZap caller was counteracted and loses
+                gameFinished = true;
                 const [p1, p2] = stillActivePlayers;
-                const score1 = scores[p1.playerIndex] || 0;
-                const score2 = scores[p2.playerIndex] || 0;
+                const hand1 = baseHandPoints[p1.playerIndex] || 0;
+                const hand2 = baseHandPoints[p2.playerIndex] || 0;
 
-                if (score1 !== score2) {
-                    gameFinished = true;
-                    winner = score1 < score2 ? p1 : p2;
+                // Winner is the one with lowest hand value this round
+                // If tied, the ZapZap caller loses (was counteracted)
+                if (hand1 !== hand2) {
+                    winner = hand1 < hand2 ? p1 : p2;
+                } else {
+                    // Hands are equal - ZapZap caller was counteracted and loses
+                    // The other player (who counteracted) wins
+                    winner = p1.playerIndex === player.playerIndex ? p2 : p1;
                 }
+
+                logger.info('Golden Score winner determined by lowest hand', {
+                    partyId,
+                    winnerId: winner.userId,
+                    winnerHand: baseHandPoints[winner.playerIndex],
+                    callerIndex: player.playerIndex,
+                    p1Hand: hand1,
+                    p2Hand: hand2,
+                    wasCounterTie: hand1 === hand2
+                });
             }
 
             // Update party status if game is finished
@@ -440,7 +458,7 @@ class CallZapZap {
                 }
             }
 
-            return {
+            const result = {
                 success: true,
                 zapzapSuccess: !counteracted,
                 counteracted: counteracted,
@@ -449,6 +467,18 @@ class CallZapZap {
                 handPoints: handPointsMap,
                 callerPoints: handPoints
             };
+
+            // Include game finish info if applicable
+            if (gameFinished && winner) {
+                result.gameFinished = true;
+                result.winner = {
+                    userId: winner.userId,
+                    playerIndex: winner.playerIndex,
+                    score: scores[winner.playerIndex] || 0
+                };
+            }
+
+            return result;
         } catch (error) {
             logger.error('Call zapzap error', {
                 userId,

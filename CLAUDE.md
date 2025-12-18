@@ -696,3 +696,33 @@ Player 4: 10 points
 - Players above **100 points** are eliminated (dead)
 - Last 2 players alive: "Golden Score" final round
 - Winner: Last player alive (≤100 points)
+
+### Golden Score Rules
+
+When only 2 players remain, the game enters **Golden Score mode**:
+
+1. **Winner Determination**: The winner of the Golden Score round is the player with the **lowest hand value** (not the lowest total score)
+2. **ZapZap Counteract Rule**: If the ZapZap caller is counteracted (including ties), they **lose the game**
+3. **Tie Handling**: If both players have equal hand values, the ZapZap caller loses (they were counteracted)
+
+**Example:**
+```
+Golden Score round:
+Player 0: Hand = Ace (1 point), Total Score = 98
+Player 1: Hand = 2+3 (5 points), Total Score = 85
+
+Player 0 calls ZapZap.
+Result: Player 0 wins because they have the lowest hand (1 < 5),
+        even though Player 1 has a lower total score (85 < 98).
+```
+
+**Tie Example:**
+```
+Golden Score round:
+Player 0: Hand = Ace+2 (3 points)
+Player 1: Hand = Ace+2 (3 points)
+
+Player 0 calls ZapZap.
+Result: Player 1 wins because Player 0 called ZapZap but was
+        counteracted (hands are equal), so the caller loses.
+```

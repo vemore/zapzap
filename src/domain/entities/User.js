@@ -61,8 +61,8 @@ class User {
             throw new Error('Username can only contain alphanumeric characters, hyphens, and underscores');
         }
 
-        // Password is required unless user has Google OAuth
-        if (!googleId && (!passwordHash || typeof passwordHash !== 'string')) {
+        // Password is required for human users without Google OAuth (bots don't need passwords)
+        if (userType === 'human' && !googleId && (!passwordHash || typeof passwordHash !== 'string')) {
             throw new Error('Password hash is required for non-OAuth users');
         }
 

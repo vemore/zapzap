@@ -22,7 +22,7 @@ class ListBots {
     async execute({ difficulty = null } = {}) {
         try {
             // Validate difficulty if provided
-            const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm'];
+            const validDifficulties = ['easy', 'medium', 'hard', 'hard_vince', 'ml', 'drl', 'llm', 'thibot'];
             if (difficulty && !validDifficulties.includes(difficulty.toLowerCase())) {
                 throw new Error(`Invalid difficulty filter. Must be one of: ${validDifficulties.join(', ')}`);
             }

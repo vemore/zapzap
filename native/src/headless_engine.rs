@@ -680,16 +680,15 @@ impl HeadlessGameEngine {
             return true;
         }
 
-        // Golden Score: ends when scores differ
+        // Golden Score: ends when the round finishes (hands differ or caller loses on tie)
+        // The winner is determined by lowest hand, not by scores
         if state.is_golden_score
             && active_players.len() == 2
             && state.current_action == GameAction::Finished
         {
-            let s1 = state.scores[active_players[0] as usize];
-            let s2 = state.scores[active_players[1] as usize];
-            if s1 != s2 {
-                return true;
-            }
+            // Golden Score round finished - game is over
+            // Winner will be determined by determine_winner based on hands
+            return true;
         }
 
         false
@@ -703,7 +702,27 @@ impl HeadlessGameEngine {
             return active[0];
         }
 
-        // Lowest score wins
+        // Golden Score: winner is determined by lowest hand this round
+        // If hands are tied, the ZapZap caller loses (was counteracted)
+        if state.is_golden_score && active.len() == 2 {
+            let p1 = active[0];
+            let p2 = active[1];
+            let hand1 = card_analyzer::calculate_hand_value(&state.hands[p1 as usize]);
+            let hand2 = card_analyzer::calculate_hand_value(&state.hands[p2 as usize]);
+
+            if hand1 != hand2 {
+                // Lower hand wins
+                return if hand1 < hand2 { p1 } else { p2 };
+            } else {
+                // Hands are equal - ZapZap caller was counteracted and loses
+                // The last_action contains who called ZapZap
+                let caller = state.last_action.player_index;
+                // The non-caller wins
+                return if caller == p1 { p2 } else { p1 };
+            }
+        }
+
+        // Normal game: lowest score wins
         let mut winner = 0u8;
         let mut lowest_score = u16::MAX;
 
@@ -862,5 +881,71 @@ mod tests {
         for &w in &wins {
             assert!(w > 0, "Every player should win at least once");
         }
+    }
+
+    #[test]
+    fn test_golden_score_winner_by_lowest_hand() {
+        // Test that in Golden Score, the winner is determined by lowest hand, not total score
+        let mut state = GameState::new(2);
+        state.is_golden_score = true;
+        state.current_action = GameAction::Finished;
+        state.eliminated_mask = 0; // No one eliminated
+
+        // Player 0: Ace = 1 point hand, but higher total score (98)
+        // Player 1: 2, 3 = 5 points hand, but lower total score (85)
+        state.hands[0].clear();
+        state.hands[0].push(0); // Ace of spades = 1 point
+        state.hands[1].clear();
+        state.hands[1].push(1); // 2 of spades
+        state.hands[1].push(2); // 3 of spades
+
+        state.scores[0] = 98;
+        state.scores[1] = 85;
+
+        // Player 0 called ZapZap
+        state.last_action.player_index = 0;
+        state.last_action.action_type = 3; // zapzap
+
+        let strategies = vec![StrategyType::Hard, StrategyType::Hard];
+        let engine = HeadlessGameEngine::with_seed(strategies, 42);
+
+        let winner = engine.determine_winner(&state);
+
+        // Player 0 should win because lowest hand (1 point), even though player 1 has lower score
+        assert_eq!(winner, 0, "Player with lowest hand should win in Golden Score");
+    }
+
+    #[test]
+    fn test_golden_score_caller_loses_on_tie() {
+        // Test that in Golden Score, when hands are tied, ZapZap caller loses
+        let mut state = GameState::new(2);
+        state.is_golden_score = true;
+        state.current_action = GameAction::Finished;
+        state.eliminated_mask = 0; // No one eliminated
+
+        // Both players have same hand value (3 points)
+        // Player 0: Ace + 2 = 3 points
+        // Player 1: Ace + 2 = 3 points
+        state.hands[0].clear();
+        state.hands[0].push(0);  // Ace of spades
+        state.hands[0].push(1);  // 2 of spades
+        state.hands[1].clear();
+        state.hands[1].push(13); // Ace of hearts
+        state.hands[1].push(14); // 2 of hearts
+
+        state.scores[0] = 90;
+        state.scores[1] = 92;
+
+        // Player 0 called ZapZap
+        state.last_action.player_index = 0;
+        state.last_action.action_type = 3; // zapzap
+
+        let strategies = vec![StrategyType::Hard, StrategyType::Hard];
+        let engine = HeadlessGameEngine::with_seed(strategies, 42);
+
+        let winner = engine.determine_winner(&state);
+
+        // Player 1 should win because Player 0 called ZapZap and was counteracted (tied)
+        assert_eq!(winner, 1, "ZapZap caller should lose when hands are tied in Golden Score");
     }
 }

@@ -207,6 +207,36 @@ class DatabaseConnection {
 
             CREATE INDEX IF NOT EXISTS idx_player_results_user ON player_game_results(user_id);
             CREATE INDEX IF NOT EXISTS idx_player_results_party ON player_game_results(party_id);
+
+            -- Game actions table (records all game actions for training/analytics)
+            CREATE TABLE IF NOT EXISTS game_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                party_id TEXT NOT NULL,
+                round_number INTEGER NOT NULL,
+                turn_number INTEGER NOT NULL,
+                player_index INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                is_human INTEGER NOT NULL DEFAULT 0,
+                action_type TEXT NOT NULL CHECK(action_type IN ('hand_size', 'play', 'draw', 'zapzap')),
+                action_data TEXT NOT NULL,
+                hand_before TEXT NOT NULL,
+                hand_value_before INTEGER NOT NULL,
+                scores_before TEXT NOT NULL,
+                opponent_hand_sizes TEXT NOT NULL,
+                deck_size INTEGER NOT NULL,
+                last_cards_played TEXT NOT NULL,
+                hand_after TEXT,
+                hand_value_after INTEGER,
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_game_actions_party ON game_actions(party_id);
+            CREATE INDEX IF NOT EXISTS idx_game_actions_user ON game_actions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_game_actions_human ON game_actions(is_human);
+            CREATE INDEX IF NOT EXISTS idx_game_actions_type ON game_actions(action_type);
+            CREATE INDEX IF NOT EXISTS idx_game_actions_party_round ON game_actions(party_id, round_number);
         `;
 
         await this.exec(schema);

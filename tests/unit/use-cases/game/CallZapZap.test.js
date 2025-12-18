@@ -58,7 +58,10 @@ describe('CallZapZap Use Case', () => {
             getGameState: jest.fn(),
             getPartyPlayers: jest.fn(),
             saveGameState: jest.fn(),
-            saveRound: jest.fn()
+            saveRound: jest.fn(),
+            save: jest.fn(),
+            recordGameAction: jest.fn().mockResolvedValue(true),
+            saveRoundScores: jest.fn().mockResolvedValue(true)
         };
 
         mockUserRepository = {
@@ -407,6 +410,151 @@ describe('CallZapZap Use Case', () => {
                     partyId: mockParty.id
                 })
             ).rejects.toThrow('Database error');
+        });
+    });
+
+    describe('Golden Score rules', () => {
+        it('should determine winner by lowest hand in Golden Score', async () => {
+            const player0User = await User.create('player0', 'password123');
+            const players = [
+                { id: 'p0', userId: player0User.id, playerIndex: 0 },
+                { id: 'p1', userId: 'user1', playerIndex: 1 }
+            ];
+
+            // Golden Score state: 2 players, player 0 has lower hand
+            // Player 0: Ace = 1 point (calls ZapZap)
+            // Player 1: 2, 3 = 5 points (higher hand)
+            // Player 0 should win because lowest hand
+            const goldenScoreState = new GameState({
+                deck: [],
+                hands: {
+                    0: [0],         // Ace = 1 point
+                    1: [1, 2]       // 2 + 3 = 5 points
+                },
+                lastCardsPlayed: [],
+                cardsPlayed: [],
+                scores: { 0: 95, 1: 98 },  // Both close to 100
+                currentTurn: 0,
+                currentAction: 'zapzap',
+                roundNumber: 10,
+                isGoldenScore: true,
+                eliminatedPlayers: []
+            });
+
+            mockUserRepository.findById.mockResolvedValue(player0User);
+            mockPartyRepository.findById.mockResolvedValue(mockParty);
+            mockPartyRepository.getRoundById.mockResolvedValue(mockRound);
+            mockPartyRepository.getGameState.mockResolvedValue(goldenScoreState);
+            mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
+            mockPartyRepository.saveGameState.mockResolvedValue(true);
+            mockPartyRepository.saveRound.mockResolvedValue(true);
+            mockPartyRepository.save = jest.fn().mockResolvedValue(true);
+
+            const result = await callZapZap.execute({
+                userId: player0User.id,
+                partyId: mockParty.id
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.gameFinished).toBe(true);
+            expect(result.winner.userId).toBe(player0User.id);
+            expect(result.winner.playerIndex).toBe(0);
+        });
+
+        it('should make ZapZap caller lose when hands are tied in Golden Score', async () => {
+            const player0User = await User.create('player0', 'password123');
+            const players = [
+                { id: 'p0', userId: player0User.id, playerIndex: 0 },
+                { id: 'p1', userId: 'user1', playerIndex: 1 }
+            ];
+
+            // Golden Score state: 2 players, both have equal hands
+            // Player 0: Ace, 2 = 3 points (calls ZapZap)
+            // Player 1: Ace, 2 = 3 points (same hand)
+            // Player 0 called ZapZap but was counteracted - Player 1 should win
+            const goldenScoreState = new GameState({
+                deck: [],
+                hands: {
+                    0: [0, 1],      // Ace + 2 = 3 points
+                    1: [13, 14]     // Ace + 2 = 3 points
+                },
+                lastCardsPlayed: [],
+                cardsPlayed: [],
+                scores: { 0: 90, 1: 92 },  // Both close to 100, player 0 has lower score
+                currentTurn: 0,
+                currentAction: 'zapzap',
+                roundNumber: 10,
+                isGoldenScore: true,
+                eliminatedPlayers: []
+            });
+
+            mockUserRepository.findById.mockResolvedValue(player0User);
+            mockPartyRepository.findById.mockResolvedValue(mockParty);
+            mockPartyRepository.getRoundById.mockResolvedValue(mockRound);
+            mockPartyRepository.getGameState.mockResolvedValue(goldenScoreState);
+            mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
+            mockPartyRepository.saveGameState.mockResolvedValue(true);
+            mockPartyRepository.saveRound.mockResolvedValue(true);
+            mockPartyRepository.save = jest.fn().mockResolvedValue(true);
+
+            const result = await callZapZap.execute({
+                userId: player0User.id,
+                partyId: mockParty.id
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.gameFinished).toBe(true);
+            // Player 0 called ZapZap but was counteracted (tied), so Player 1 wins
+            expect(result.winner.userId).toBe('user1');
+            expect(result.winner.playerIndex).toBe(1);
+        });
+
+        it('should determine winner by lowest hand even if caller has higher score', async () => {
+            const player0User = await User.create('player0', 'password123');
+            const players = [
+                { id: 'p0', userId: player0User.id, playerIndex: 0 },
+                { id: 'p1', userId: 'user1', playerIndex: 1 }
+            ];
+
+            // Golden Score: Player 0 has higher total score but lower hand
+            // Player 0: Ace = 1 point (lower hand, but higher total score)
+            // Player 1: 2, 3 = 5 points (higher hand)
+            // Winner should be Player 0 because lowest hand wins the round
+            const goldenScoreState = new GameState({
+                deck: [],
+                hands: {
+                    0: [0],         // Ace = 1 point
+                    1: [1, 2]       // 2 + 3 = 5 points
+                },
+                lastCardsPlayed: [],
+                cardsPlayed: [],
+                scores: { 0: 98, 1: 85 },  // Player 0 has HIGHER total score
+                currentTurn: 0,
+                currentAction: 'zapzap',
+                roundNumber: 10,
+                isGoldenScore: true,
+                eliminatedPlayers: []
+            });
+
+            mockUserRepository.findById.mockResolvedValue(player0User);
+            mockPartyRepository.findById.mockResolvedValue(mockParty);
+            mockPartyRepository.getRoundById.mockResolvedValue(mockRound);
+            mockPartyRepository.getGameState.mockResolvedValue(goldenScoreState);
+            mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
+            mockPartyRepository.saveGameState.mockResolvedValue(true);
+            mockPartyRepository.saveRound.mockResolvedValue(true);
+            mockPartyRepository.save = jest.fn().mockResolvedValue(true);
+
+            const result = await callZapZap.execute({
+                userId: player0User.id,
+                partyId: mockParty.id
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.gameFinished).toBe(true);
+            // Player 0 should win because lowest hand, regardless of total score
+            expect(result.winner.userId).toBe(player0User.id);
+            expect(result.winner.playerIndex).toBe(0);
         });
     });
 });
