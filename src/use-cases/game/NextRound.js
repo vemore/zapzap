@@ -158,23 +158,34 @@ class NextRound {
 
             // If Golden Score round just ended (2 players were playing), determine winner
             if (wasGoldenScore && activePlayers.length === 2) {
-                // Golden Score round finished - winner is player with lowest score
-                const [player1, player2] = activePlayers;
-                const score1 = scores[player1.playerIndex] || 0;
-                const score2 = scores[player2.playerIndex] || 0;
+                // Golden Score round finished - winner is player with lowest hand this round
+                // Get the round scores to find who had the lowest hand
+                const roundScores = await this.partyRepository.getRoundScoresForParty(partyId);
+                const lastRoundScores = roundScores.filter(rs => rs.round_number === currentRound.roundNumber);
 
-                // Determine winner (lowest score wins, or if tie, neither is eliminated yet)
-                if (score1 !== score2) {
-                    const winner = score1 < score2 ? player1 : player2;
-                    const loser = score1 < score2 ? player2 : player1;
+                const [player1, player2] = activePlayers;
+
+                // Find hand points from round scores
+                const p1RoundScore = lastRoundScores.find(rs => rs.player_index === player1.playerIndex);
+                const p2RoundScore = lastRoundScores.find(rs => rs.player_index === player2.playerIndex);
+
+                const hand1 = p1RoundScore?.hand_points ?? 0;
+                const hand2 = p2RoundScore?.hand_points ?? 0;
+
+                // Determine winner (lowest hand wins, or if tie, use total score as tiebreaker)
+                if (hand1 !== hand2) {
+                    const winner = hand1 < hand2 ? player1 : player2;
+                    const loser = hand1 < hand2 ? player2 : player1;
 
                     party.finish();
                     await this.partyRepository.save(party);
 
-                    logger.info('Golden Score finished', {
+                    logger.info('Golden Score finished (lowest hand wins)', {
                         partyId: partyId,
                         winnerId: winner.userId,
                         loserId: loser.userId,
+                        winnerHand: hand1 < hand2 ? hand1 : hand2,
+                        loserHand: hand1 < hand2 ? hand2 : hand1,
                         finalScores: scores
                     });
 
@@ -217,8 +228,99 @@ class NextRound {
                             score: scores[p.playerIndex] || 0
                         }))
                     };
+                } else {
+                    // Hands are tied - ZapZap caller was counteracted and loses
+                    // Find who called ZapZap from round scores
+                    const p1WasZapZapCaller = p1RoundScore?.is_zapzap_caller === 1;
+                    const p2WasZapZapCaller = p2RoundScore?.is_zapzap_caller === 1;
+
+                    // Determine winner: the player who did NOT call ZapZap wins (they counteracted)
+                    // If neither called ZapZap (shouldn't happen in Golden Score ending), use score tiebreaker
+                    let winner, loser;
+                    if (p1WasZapZapCaller && !p2WasZapZapCaller) {
+                        // Player 1 called ZapZap and was counteracted - Player 2 wins
+                        winner = player2;
+                        loser = player1;
+                    } else if (p2WasZapZapCaller && !p1WasZapZapCaller) {
+                        // Player 2 called ZapZap and was counteracted - Player 1 wins
+                        winner = player1;
+                        loser = player2;
+                    } else {
+                        // Fallback: use total score as tiebreaker (shouldn't happen normally)
+                        const score1 = scores[player1.playerIndex] || 0;
+                        const score2 = scores[player2.playerIndex] || 0;
+                        if (score1 !== score2) {
+                            winner = score1 < score2 ? player1 : player2;
+                            loser = score1 < score2 ? player2 : player1;
+                        } else {
+                            // If both hand and score are tied, continue with another Golden Score round
+                            logger.info('Golden Score tie - continuing with another round', {
+                                partyId: partyId,
+                                hand1,
+                                hand2,
+                                scores
+                            });
+                            // Fall through to create new round
+                            winner = null;
+                        }
+                    }
+
+                    if (winner) {
+                        party.finish();
+                        await this.partyRepository.save(party);
+
+                        logger.info('Golden Score finished (hand tie, ZapZap caller loses)', {
+                            partyId: partyId,
+                            winnerId: winner.userId,
+                            loserId: loser.userId,
+                            hand1,
+                            hand2,
+                            p1WasZapZapCaller,
+                            p2WasZapZapCaller,
+                            finalScores: scores
+                        });
+
+                        // Archive game result
+                        if (this.saveGameResult) {
+                            try {
+                                await this.saveGameResult.execute({
+                                    partyId,
+                                    winner: {
+                                        userId: winner.userId,
+                                        playerIndex: winner.playerIndex,
+                                        finalScore: scores[winner.playerIndex] || 0
+                                    },
+                                    totalRounds: currentRound.roundNumber,
+                                    wasGoldenScore: true,
+                                    players: players,
+                                    gameState: currentGameState
+                                });
+                            } catch (archiveError) {
+                                logger.error('Failed to archive Golden Score result (tie)', {
+                                    partyId,
+                                    error: archiveError.message
+                                });
+                            }
+                        }
+
+                        return {
+                            success: true,
+                            gameFinished: true,
+                            goldenScoreResult: true,
+                            winner: {
+                                userId: winner.userId,
+                                playerIndex: winner.playerIndex,
+                                score: scores[winner.playerIndex] || 0
+                            },
+                            finalScores: scores,
+                            eliminatedPlayers: [...eliminatedPlayers, loser].map(p => ({
+                                userId: p.userId,
+                                playerIndex: p.playerIndex,
+                                score: scores[p.playerIndex] || 0
+                            }))
+                        };
+                    }
                 }
-                // If scores are tied, continue with another Golden Score round
             }
 
             // Check if entering Golden Score mode (exactly 2 players remaining)

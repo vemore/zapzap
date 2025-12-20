@@ -225,21 +225,28 @@ class BotActionService {
 
             let cardId = undefined;
 
-            // Handle empty deck: force drawing from discard pile if available
+            // Handle empty deck: check if we should reshuffle or draw from visible cards
+            const discardPileSize = gameState.discardPile ? gameState.discardPile.length : 0;
+
             if (drawSource === 'deck' && deckSize === 0) {
-                if (lastCardsPlayed.length > 0) {
+                // If discardPile has cards, keep drawing from deck to trigger reshuffle
+                if (discardPileSize > 0) {
+                    logger.info('Bot drawing from deck to trigger reshuffle', {
+                        botId: botUser.id,
+                        discardPileSize
+                    });
+                    // Keep drawSource as 'deck' - DrawCard will reshuffle discardPile
+                } else if (lastCardsPlayed.length > 0) {
+                    // No discardPile to reshuffle, must draw from visible cards
                     drawSource = 'played';
-                    // Pick the first card from discard pile (any card works)
                     cardId = lastCardsPlayed[0];
-                    logger.info('Bot forced to draw from discard (deck empty)', {
+                    logger.info('Bot forced to draw from visible cards (no deck/discardPile)', {
                         botId: botUser.id,
                         cardId
                     });
-                } else {
-                    // Both deck and discard are empty - this shouldn't happen normally
-                    logger.error('Both deck and discard are empty', { botId: botUser.id });
-                    throw new Error('No cards available to draw');
                 }
+                // If both lastCardsPlayed and discardPile are empty, DrawCard.execute()
+                // will throw an error - this shouldn't happen in normal gameplay
             }
 
             // When drawing from discard pile, select a card
