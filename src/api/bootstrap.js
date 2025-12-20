@@ -42,6 +42,10 @@ const CreateBot = require('../use-cases/bot/CreateBot');
 const ListBots = require('../use-cases/bot/ListBots');
 const DeleteBot = require('../use-cases/bot/DeleteBot');
 
+// Use Cases - Bot Reflection (LLM learning)
+const ReflectOnRound = require('../use-cases/bot/ReflectOnRound');
+const ReflectOnGame = require('../use-cases/bot/ReflectOnGame');
+
 // Use Cases - History
 const GetGameHistory = require('../use-cases/history/GetGameHistory');
 const GetGameDetails = require('../use-cases/history/GetGameDetails');
@@ -163,15 +167,21 @@ async function bootstrap(emitter = null) {
         container.register('deleteParty', new DeleteParty(partyRepository, userRepository));
 
         // Register game action use cases
-        // Note: SaveRoundScores and SaveGameResult are created first for dependency injection
+        // Note: SaveRoundScores, SaveGameResult, and reflection use cases are created first for dependency injection
         const saveRoundScores = new SaveRoundScores(partyRepository);
         const saveGameResult = new SaveGameResult(partyRepository);
 
+        // Create LLM reflection use cases (for bot learning)
+        const reflectOnRound = bedrockService ? new ReflectOnRound(bedrockService) : null;
+        const reflectOnGame = bedrockService ? new ReflectOnGame(bedrockService, partyRepository) : null;
+
         container.register('saveRoundScores', saveRoundScores);
         container.register('saveGameResult', saveGameResult);
+        container.register('reflectOnRound', reflectOnRound);
+        container.register('reflectOnGame', reflectOnGame);
         container.register('playCards', new PlayCards(partyRepository, userRepository));
         container.register('drawCard', new DrawCard(partyRepository, userRepository));
-        container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores, saveGameResult));
+        container.register('callZapZap', new CallZapZap(partyRepository, userRepository, saveRoundScores, saveGameResult, reflectOnRound, reflectOnGame));
         container.register('getGameState', new GetGameState(partyRepository, userRepository));
         container.register('nextRound', new NextRound(partyRepository, userRepository, saveGameResult));
         container.register('selectHandSize', new SelectHandSize(partyRepository, userRepository));

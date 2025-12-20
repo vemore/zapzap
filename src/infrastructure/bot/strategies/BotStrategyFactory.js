@@ -11,12 +11,16 @@ const MLBotStrategy = require('./MLBotStrategy');
 const DRLBotStrategy = require('./DRLBotStrategy');
 const LLMBotStrategy = require('./LLMBotStrategy');
 const ThibotBotStrategy = require('./ThibotBotStrategy');
+const LLMBotMemory = require('../LLMBotMemory');
 
 // Shared ML policy for learning across games (singleton)
 let sharedMLPolicy = null;
 
 // Shared DRL policy for learning across games (singleton)
 let sharedDRLPolicy = null;
+
+// Cache for LLM bot memories (singleton per botUserId)
+const llmMemoryCache = new Map();
 
 class BotStrategyFactory {
     /**
@@ -104,14 +108,30 @@ class BotStrategyFactory {
             case 'llm':
                 // LLM bot using Llama 3.3 via AWS Bedrock
                 // Requires bedrockService to be provided in options
-                if (!options.bedrockService) {
-                    // Return strategy without Bedrock - will use fallback for all decisions
-                    return new LLMBotStrategy({ enableFallback: true });
+                // Supports strategic memory for learning from previous games
+                {
+                    let memory = null;
+                    if (options.botUserId) {
+                        // Use cached memory or create new one
+                        if (llmMemoryCache.has(options.botUserId)) {
+                            memory = llmMemoryCache.get(options.botUserId);
+                        } else {
+                            memory = new LLMBotMemory(options.botUserId);
+                            memory.loadSync();
+                            llmMemoryCache.set(options.botUserId, memory);
+                        }
+                    }
+
+                    if (!options.bedrockService) {
+                        // Return strategy without Bedrock - will use fallback for all decisions
+                        return new LLMBotStrategy({ enableFallback: true, memory });
+                    }
+                    return new LLMBotStrategy({
+                        bedrockService: options.bedrockService,
+                        enableFallback: options.enableFallback !== false,
+                        memory
+                    });
                 }
-                return new LLMBotStrategy({
-                    bedrockService: options.bedrockService,
-                    enableFallback: options.enableFallback !== false
-                });
             case 'thibot':
                 // Thibot: Probability-based bot with genetically optimized parameters
                 // Tracks all played cards and uses probabilities to maximize points removed
@@ -187,6 +207,33 @@ class BotStrategyFactory {
      */
     static isValidDifficulty(difficulty) {
         return this.getAvailableDifficulties().includes(difficulty.toLowerCase());
+    }
+
+    /**
+     * Get LLM bot memory from cache
+     * @param {string} botUserId
+     * @returns {LLMBotMemory|null}
+     */
+    static getLLMMemory(botUserId) {
+        return llmMemoryCache.get(botUserId) || null;
+    }
+
+    /**
+     * Refresh LLM bot memory (reload from disk after reflection)
+     * @param {string} botUserId
+     */
+    static async refreshLLMMemory(botUserId) {
+        if (llmMemoryCache.has(botUserId)) {
+            const memory = llmMemoryCache.get(botUserId);
+            await memory.load();
+        }
+    }
+
+    /**
+     * Clear LLM memory cache
+     */
+    static clearLLMMemoryCache() {
+        llmMemoryCache.clear();
     }
 }
 

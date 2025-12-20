@@ -12,12 +12,16 @@ class CallZapZap {
      * @param {IUserRepository} userRepository - User repository
      * @param {SaveRoundScores} saveRoundScores - SaveRoundScores use case
      * @param {SaveGameResult} saveGameResult - SaveGameResult use case
+     * @param {ReflectOnRound} reflectOnRound - ReflectOnRound use case (optional)
+     * @param {ReflectOnGame} reflectOnGame - ReflectOnGame use case (optional)
      */
-    constructor(partyRepository, userRepository, saveRoundScores = null, saveGameResult = null) {
+    constructor(partyRepository, userRepository, saveRoundScores = null, saveGameResult = null, reflectOnRound = null, reflectOnGame = null) {
         this.partyRepository = partyRepository;
         this.userRepository = userRepository;
         this.saveRoundScores = saveRoundScores;
         this.saveGameResult = saveGameResult;
+        this.reflectOnRound = reflectOnRound;
+        this.reflectOnGame = reflectOnGame;
     }
 
     /**
@@ -458,6 +462,32 @@ class CallZapZap {
                 }
             }
 
+            // Trigger round reflection for LLM bots (after each round)
+            if (this.reflectOnRound) {
+                await this._triggerLLMRoundReflection(
+                    players,
+                    partyId,
+                    round.roundNumber,
+                    roundScores,
+                    handPointsMap,
+                    counteracted,
+                    player.playerIndex,
+                    gameState
+                );
+            }
+
+            // Trigger game reflection for LLM bots (when game ends)
+            if (gameFinished && this.reflectOnGame) {
+                await this._triggerLLMGameReflection(
+                    players,
+                    partyId,
+                    round.roundNumber,
+                    scores,
+                    winner,
+                    gameState.isGoldenScore
+                );
+            }
+
             const result = {
                 success: true,
                 zapzapSuccess: !counteracted,
@@ -527,6 +557,103 @@ class CallZapZap {
         }
 
         return points;
+    }
+
+    /**
+     * Trigger round reflection for LLM bots
+     * @private
+     */
+    async _triggerLLMRoundReflection(players, partyId, roundNumber, roundScores, handPointsMap, counteracted, callerIndex, gameState) {
+        for (const p of players) {
+            try {
+                const user = await this.userRepository.findById(p.userId);
+                if (user && user.isBot() && user.botDifficulty === 'llm') {
+                    // Fire-and-forget (don't block game flow)
+                    this.reflectOnRound.execute({
+                        botUserId: p.userId,
+                        partyId,
+                        roundNumber,
+                        outcome: {
+                            won: roundScores[p.playerIndex] === 0,
+                            counteracted: counteracted && p.playerIndex === callerIndex,
+                            scoreChange: roundScores[p.playerIndex] || 0,
+                            handPoints: handPointsMap[p.playerIndex] || 0,
+                            finalHand: gameState.hands[p.playerIndex] || []
+                        },
+                        gameState
+                    }).catch(err => {
+                        logger.error('Round reflection failed for LLM bot', {
+                            botUserId: p.userId,
+                            roundNumber,
+                            error: err.message
+                        });
+                    });
+                }
+            } catch (err) {
+                logger.warn('Could not check user for LLM reflection', {
+                    userId: p.userId,
+                    error: err.message
+                });
+            }
+        }
+    }
+
+    /**
+     * Trigger game reflection for LLM bots (for ALL bots, not just winner)
+     * @private
+     */
+    async _triggerLLMGameReflection(players, partyId, totalRounds, scores, winner, wasGoldenScore) {
+        for (const p of players) {
+            try {
+                const user = await this.userRepository.findById(p.userId);
+                if (user && user.isBot() && user.botDifficulty === 'llm') {
+                    const isWinner = winner && winner.playerIndex === p.playerIndex;
+                    const finalPosition = this._calculatePosition(p.playerIndex, scores, players);
+
+                    // Fire-and-forget (don't block game flow)
+                    this.reflectOnGame.execute({
+                        botUserId: p.userId,
+                        partyId,
+                        totalRounds,
+                        finalPosition,
+                        finalScore: scores[p.playerIndex] || 0,
+                        isWinner,
+                        wasGoldenScore
+                    }).catch(err => {
+                        logger.error('Game reflection failed for LLM bot', {
+                            botUserId: p.userId,
+                            error: err.message
+                        });
+                    });
+                }
+            } catch (err) {
+                logger.warn('Could not check user for LLM game reflection', {
+                    userId: p.userId,
+                    error: err.message
+                });
+            }
+        }
+    }
+
+    /**
+     * Calculate player's final position based on scores
+     * @private
+     */
+    _calculatePosition(playerIndex, scores, players) {
+        // Sort players by score (lower is better)
+        const sortedPlayers = [...players].sort((a, b) => {
+            const scoreA = scores[a.playerIndex] || 0;
+            const scoreB = scores[b.playerIndex] || 0;
+            return scoreA - scoreB;
+        });
+
+        // Find position (1-indexed)
+        for (let i = 0; i < sortedPlayers.length; i++) {
+            if (sortedPlayers[i].playerIndex === playerIndex) {
+                return i + 1;
+            }
+        }
+        return players.length; // Default to last
     }
 }
 

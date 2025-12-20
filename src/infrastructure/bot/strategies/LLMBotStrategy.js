@@ -2,6 +2,7 @@
  * LLMBotStrategy
  * Bot strategy using Llama 3.3 via AWS Bedrock for decision-making
  * Uses HardBotStrategy as fallback when LLM is unavailable or fails
+ * Supports strategic memory to learn from previous games
  */
 
 const BotStrategy = require('./BotStrategy');
@@ -19,12 +20,14 @@ class LLMBotStrategy extends BotStrategy {
      * @param {Object} options
      * @param {Object} options.bedrockService - BedrockService instance for LLM calls
      * @param {boolean} options.enableFallback - Use HardBotStrategy on LLM failure (default: true)
+     * @param {Object} options.memory - LLMBotMemory instance for strategic learning
      */
     constructor(options = {}) {
         super('llm');
         this.bedrockService = options.bedrockService;
         this.enableFallback = options.enableFallback !== false;
         this.fallbackStrategy = new HardBotStrategy();
+        this.memory = options.memory || null;
 
         // System prompt with complete game rules (cached, reused across calls)
         this.systemPrompt = this._buildSystemPrompt();
@@ -85,7 +88,7 @@ Each turn has two phases:
 5. **Be cautious calling ZapZap** when opponents have few cards (higher counter risk)
 6. **Prefer playing high-value cards** (J, Q, K) to reduce hand value faster
 7. **Consider discard pile** - pick cards that help form pairs/sequences
-
+${this._buildLearnedStrategiesSection()}
 ## Response Format
 You must respond with ONLY the requested information:
 - For play decisions: List the cards to play (e.g., "KS, KH" or "5C, 6C, 7C")
@@ -93,6 +96,47 @@ You must respond with ONLY the requested information:
 - For draw decisions: Answer "DECK" or "DISCARD"
 
 Be concise and direct in your responses.`;
+    }
+
+    /**
+     * Build the learned strategies section for the system prompt
+     * @private
+     * @returns {string} Learned strategies section or empty string
+     */
+    _buildLearnedStrategiesSection() {
+        if (!this.memory || !this.memory.hasStrategies()) {
+            return '\n';
+        }
+
+        const strategies = this.memory.getTopStrategies(10);
+        if (strategies.length === 0) {
+            return '\n';
+        }
+
+        let section = '\n\n## Learned Strategies (from your previous games)\n';
+        section += 'These insights come from your own experience - apply them:\n';
+
+        for (const s of strategies) {
+            section += `- ${s.insight}\n`;
+        }
+
+        return section;
+    }
+
+    /**
+     * Get the memory instance (for decision tracking)
+     * @returns {Object|null} LLMBotMemory instance or null
+     */
+    getMemory() {
+        return this.memory;
+    }
+
+    /**
+     * Check if this is an LLM bot (for decision tracking)
+     * @returns {boolean} Always true for LLMBotStrategy
+     */
+    isLLMBot() {
+        return true;
     }
 
     /**

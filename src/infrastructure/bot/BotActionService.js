@@ -67,9 +67,10 @@ class BotActionService {
             // Get bot's hand
             const botHand = gameState.hands[botPlayer.playerIndex] || [];
 
-            // Get bot strategy
+            // Get bot strategy (pass botUserId for LLM memory)
             const strategy = BotStrategyFactory.create(botUser.botDifficulty, {
-                bedrockService: this.bedrockService
+                bedrockService: this.bedrockService,
+                botUserId: botUser.id
             });
 
             // Execute action based on current action state
@@ -156,14 +157,24 @@ class BotActionService {
                 : strategy.shouldZapZap(botHand, gameState);
 
             if (shouldCall) {
+                const handValue = CardAnalyzer.calculateHandValue(botHand);
                 logger.info('Bot calling zapzap', {
                     botId: botUser.id,
-                    handValue: CardAnalyzer.calculateHandValue(botHand)
+                    handValue
                 });
 
                 const result = await this.callZapZap.execute({
                     userId: botUser.id,
                     partyId
+                });
+
+                // Track decision for LLM bot memory
+                this._trackLLMDecision(strategy, gameState, {
+                    type: 'zapzap',
+                    details: {
+                        handValue,
+                        success: result.zapzapSuccess
+                    }
                 });
 
                 return {
@@ -192,10 +203,24 @@ class BotActionService {
                 return await this.playBotCards(partyId, botUser, fallbackPlay);
             }
 
+            const handBefore = CardAnalyzer.calculateHandValue(botHand);
+            const remainingHand = botHand.filter(c => !cardsToPlay.includes(c));
+            const handAfter = CardAnalyzer.calculateHandValue(remainingHand);
+
             logger.info('Bot playing cards', {
                 botId: botUser.id,
                 cardIds: cardsToPlay,
                 cardsCount: cardsToPlay.length
+            });
+
+            // Track decision for LLM bot memory
+            this._trackLLMDecision(strategy, gameState, {
+                type: 'play',
+                details: {
+                    cards: cardsToPlay,
+                    handBefore,
+                    handAfter
+                }
             });
 
             return await this.playBotCards(partyId, botUser, cardsToPlay);
@@ -279,6 +304,15 @@ class BotActionService {
 
             const result = await this.drawCard.execute(drawParams);
 
+            // Track decision for LLM bot memory
+            this._trackLLMDecision(strategy, gameState, {
+                type: 'draw',
+                details: {
+                    source: drawSource,
+                    cardDrawn: cardId
+                }
+            });
+
             return {
                 success: true,
                 action: 'draw',
@@ -312,6 +346,32 @@ class BotActionService {
             cardIds,
             result
         };
+    }
+
+    /**
+     * Track decision for LLM bot memory
+     * @private
+     * @param {Object} strategy - Bot strategy instance
+     * @param {Object} gameState - Current game state
+     * @param {Object} decision - Decision to track
+     */
+    _trackLLMDecision(strategy, gameState, decision) {
+        try {
+            // Only track for LLM bots with memory
+            if (strategy.isLLMBot?.() && strategy.getMemory?.()) {
+                const memory = strategy.getMemory();
+                memory.trackDecision({
+                    roundNumber: gameState.roundNumber,
+                    ...decision
+                });
+            }
+        } catch (error) {
+            // Don't fail the action if tracking fails
+            logger.warn('Failed to track LLM decision', {
+                error: error.message,
+                decision: decision.type
+            });
+        }
     }
 }
 
