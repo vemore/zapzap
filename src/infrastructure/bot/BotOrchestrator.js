@@ -41,6 +41,104 @@ class BotOrchestrator {
                 });
             }
         });
+
+        // Recover pending bot turns after server restart
+        this.recoverPendingBotTurns().catch(error => {
+            logger.error('Error recovering pending bot turns', {
+                error: error.message,
+                stack: error.stack
+            });
+        });
+    }
+
+    /**
+     * Recover pending bot turns after server restart
+     * Finds all active parties where it's a bot's turn and triggers their action
+     * @private
+     */
+    async recoverPendingBotTurns() {
+        logger.info('Recovering pending bot turns...');
+
+        try {
+            // Find all parties currently playing
+            const activeParties = await this.partyRepository.findAllParties('playing');
+
+            if (!activeParties || activeParties.length === 0) {
+                logger.info('No active parties found for recovery');
+                return;
+            }
+
+            logger.info('Found active parties for recovery', {
+                count: activeParties.length
+            });
+
+            let recoveredCount = 0;
+
+            for (const party of activeParties) {
+                try {
+                    // Get game state
+                    const gameState = await this.partyRepository.getGameState(party.id);
+                    if (!gameState) {
+                        continue;
+                    }
+
+                    // Get players
+                    const players = await this.partyRepository.getPartyPlayers(party.id);
+                    const currentPlayer = players.find(p => p.playerIndex === gameState.currentTurn);
+
+                    if (!currentPlayer) {
+                        continue;
+                    }
+
+                    // Get user
+                    const user = await this.userRepository.findById(currentPlayer.userId);
+                    if (!user || !user.isBot()) {
+                        continue; // Human player's turn
+                    }
+
+                    // Check if bot is eliminated
+                    const eliminatedPlayers = gameState.eliminatedPlayers || [];
+                    if (eliminatedPlayers.includes(currentPlayer.playerIndex)) {
+                        continue;
+                    }
+
+                    logger.info('Recovering bot turn', {
+                        partyId: party.id,
+                        partyName: party.name,
+                        botId: user.id,
+                        botName: user.username,
+                        currentAction: gameState.currentAction
+                    });
+
+                    // Small delay to stagger recoveries and avoid overwhelming the system
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Emit a synthetic event to trigger the bot turn
+                    this.eventEmitter.emit('event', {
+                        partyId: party.id,
+                        action: gameState.currentAction === 'selectHandSize' ? 'selectHandSize' : 'play',
+                        recovered: true
+                    });
+
+                    recoveredCount++;
+                } catch (error) {
+                    logger.error('Error recovering party', {
+                        partyId: party.id,
+                        error: error.message
+                    });
+                }
+            }
+
+            logger.info('Bot turn recovery complete', {
+                totalParties: activeParties.length,
+                recoveredCount
+            });
+        } catch (error) {
+            logger.error('Failed to recover pending bot turns', {
+                error: error.message,
+                stack: error.stack
+            });
+        }
     }
 
     /**
