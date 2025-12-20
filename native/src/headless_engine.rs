@@ -487,6 +487,7 @@ impl HeadlessGameEngine {
         state.cards_played.clear();
         state.discard_pile.clear();
         state.current_turn = starting_player;
+        state.starting_player = starting_player;
         state.current_action = GameAction::Play;
         state.round_number = round_number;
 
@@ -664,8 +665,13 @@ impl HeadlessGameEngine {
             state.is_golden_score = true;
         }
 
-        // Rotate starting player
-        state.advance_turn();
+        // Rotate starting player based on who started the previous round, not who ended it
+        let mut next_starting_player = (state.starting_player + 1) % self.player_count;
+        while state.is_eliminated(next_starting_player) {
+            next_starting_player = (next_starting_player + 1) % self.player_count;
+        }
+        state.starting_player = next_starting_player;
+        state.current_turn = next_starting_player;
         state.current_action = GameAction::SelectHandSize;
         state.round_number += 1;
 

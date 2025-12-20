@@ -355,8 +355,8 @@ class NextRound {
             }
 
             // Determine starting player - must be an active player
-            // Start from last turn and find next active player
-            let nextStartingPlayer = (currentGameState.currentTurn + 1) % players.length;
+            // Rotate based on who started the previous round, not who ended it
+            let nextStartingPlayer = (currentGameState.startingPlayer + 1) % players.length;
             while (eliminatedPlayerIndices.includes(nextStartingPlayer)) {
                 nextStartingPlayer = (nextStartingPlayer + 1) % players.length;
             }

@@ -69,6 +69,9 @@ pub struct GameState {
     // Current turn (player index)
     pub current_turn: u8,
 
+    // Starting player for this round (for rotation)
+    pub starting_player: u8,
+
     // Current action
     pub current_action: GameAction,
 
@@ -108,6 +111,7 @@ impl GameState {
             discard_pile: Vec::with_capacity(54),
             scores: [0; MAX_PLAYERS],
             current_turn: 0,
+            starting_player: 0,
             current_action: GameAction::SelectHandSize,
             round_number: 1,
             player_count,
