@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import ConnectedPlayers from './ConnectedPlayers';
 
 function PartyList() {
   const [parties, setParties] = useState([]);
@@ -103,6 +104,7 @@ function PartyList() {
                   Admin
                 </Link>
               )}
+              <ConnectedPlayers />
               <span className="text-gray-500">|</span>
               <span className="text-gray-300">
                 <span className="font-semibold text-white">{user?.username}</span>

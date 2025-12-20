@@ -99,7 +99,8 @@ class StartParty {
                 lastCardsPlayed: [],
                 currentTurn: 0,
                 currentAction: 'selectHandSize',
-                roundNumber: 1
+                roundNumber: 1,
+                startingPlayer: 0
             });
 
             // Save round

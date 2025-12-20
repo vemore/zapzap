@@ -19,6 +19,7 @@ class GameState {
      * @param {Object} props.lastAction - Last action performed { type, playerIndex, source?, cardId? }
      * @param {boolean} props.isGoldenScore - Whether the game is in Golden Score mode (final 2 players)
      * @param {Array<number>} props.eliminatedPlayers - Player indices who are eliminated (score > 100)
+     * @param {number} props.startingPlayer - Player index who starts this round
      */
     constructor({
         deck = [],
@@ -32,7 +33,8 @@ class GameState {
         roundNumber = 1,
         lastAction = null,
         isGoldenScore = false,
-        eliminatedPlayers = []
+        eliminatedPlayers = [],
+        startingPlayer = 0
     }) {
         this._deck = [...deck];
         this._hands = JSON.parse(JSON.stringify(hands));
@@ -46,6 +48,7 @@ class GameState {
         this._lastAction = lastAction ? { ...lastAction } : null;
         this._isGoldenScore = isGoldenScore;
         this._eliminatedPlayers = [...eliminatedPlayers];
+        this._startingPlayer = startingPlayer;
 
         // Make immutable
         Object.freeze(this);
@@ -98,6 +101,10 @@ class GameState {
 
     get eliminatedPlayers() {
         return [...this._eliminatedPlayers];
+    }
+
+    get startingPlayer() {
+        return this._startingPlayer;
     }
 
     /**
@@ -170,7 +177,8 @@ class GameState {
             roundNumber: updates.roundNumber !== undefined ? updates.roundNumber : this._roundNumber,
             lastAction: updates.lastAction !== undefined ? updates.lastAction : this._lastAction,
             isGoldenScore: updates.isGoldenScore !== undefined ? updates.isGoldenScore : this._isGoldenScore,
-            eliminatedPlayers: updates.eliminatedPlayers !== undefined ? updates.eliminatedPlayers : this._eliminatedPlayers
+            eliminatedPlayers: updates.eliminatedPlayers !== undefined ? updates.eliminatedPlayers : this._eliminatedPlayers,
+            startingPlayer: updates.startingPlayer !== undefined ? updates.startingPlayer : this._startingPlayer
         });
     }
 
@@ -200,7 +208,8 @@ class GameState {
             roundNumber: this._roundNumber,
             lastAction: this._lastAction,
             isGoldenScore: this._isGoldenScore,
-            eliminatedPlayers: this._eliminatedPlayers
+            eliminatedPlayers: this._eliminatedPlayers,
+            startingPlayer: this._startingPlayer
         });
     }
 
@@ -221,7 +230,8 @@ class GameState {
             roundNumber: this._roundNumber,
             lastAction: this._lastAction ? { ...this._lastAction } : null,
             isGoldenScore: this._isGoldenScore,
-            eliminatedPlayers: [...this._eliminatedPlayers]
+            eliminatedPlayers: [...this._eliminatedPlayers],
+            startingPlayer: this._startingPlayer
         };
     }
 
@@ -242,7 +252,8 @@ class GameState {
             roundNumber: this._roundNumber,
             lastAction: this._lastAction ? { ...this._lastAction } : null,
             isGoldenScore: this._isGoldenScore,
-            eliminatedPlayers: [...this._eliminatedPlayers]
+            eliminatedPlayers: [...this._eliminatedPlayers],
+            startingPlayer: this._startingPlayer
         };
     }
 

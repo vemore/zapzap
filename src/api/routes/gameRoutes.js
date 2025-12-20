@@ -22,6 +22,8 @@ function createGameRouter(container, authMiddleware, emitter) {
     const getGameState = container.resolve('getGameState');
     const nextRound = container.resolve('nextRound');
     const selectHandSize = container.resolve('selectHandSize');
+    const sessionManager = container.resolve('sessionManager');
+    const partyRepository = container.resolve('partyRepository');
 
     /**
      * GET /api/game/:partyId/state
@@ -465,6 +467,33 @@ function createGameRouter(container, authMiddleware, emitter) {
                 gameFinished: result.gameFinished,
                 roundNumber: result.round?.roundNumber
             });
+
+            // Update player statuses when game finishes
+            if (result.gameFinished) {
+                try {
+                    const players = await partyRepository.getPartyPlayers(partyId);
+                    const humanPlayerIds = players
+                        .filter(p => p.userType === 'human')
+                        .map(p => p.userId);
+                    sessionManager.updateStatusBulk(humanPlayerIds, 'lobby', null);
+
+                    // Emit status change events for all human players
+                    if (emitter) {
+                        for (const player of players.filter(p => p.userType === 'human')) {
+                            emitter.emit('event', {
+                                type: 'userStatusChanged',
+                                userId: player.userId,
+                                username: player.username,
+                                status: 'lobby',
+                                partyId: null,
+                                timestamp: Date.now()
+                            });
+                        }
+                    }
+                } catch (err) {
+                    logger.warn('Failed to update player statuses on game end', { error: err.message });
+                }
+            }
 
             // Emit SSE event
             if (emitter) {

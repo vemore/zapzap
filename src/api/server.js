@@ -18,6 +18,8 @@ const logger = require('../../logger');
  * @returns {express.Application}
  */
 function createApp(container, emitter) {
+    const jwtService = container.resolve('jwtService');
+    const sessionManager = container.resolve('sessionManager');
     const app = express();
 
     // Middleware
@@ -84,6 +86,30 @@ function createApp(container, emitter) {
             'Expires': '0'
         });
 
+        // Try to authenticate user from token query param
+        let userId = null;
+        let username = null;
+        const token = req.query.token;
+        if (token) {
+            try {
+                const decoded = jwtService.verify(token);
+                userId = decoded.userId;
+                username = decoded.username;
+                // Register user connection in session manager
+                sessionManager.connect(userId, username);
+                // Emit user connected event
+                emitter.emit('event', {
+                    type: 'userConnected',
+                    userId,
+                    username,
+                    timestamp: Date.now()
+                });
+            } catch (error) {
+                // Invalid token - continue without user tracking
+                logger.debug('SSE connection with invalid token', { error: error.message });
+            }
+        }
+
         // Send initial connection message
         res.write('retry: 1000\n');
         res.write('event: connected\n');
@@ -108,7 +134,26 @@ function createApp(container, emitter) {
         req.on('close', () => {
             clearInterval(hbt);
             emitter.removeListener('event', onEvent);
+
+            // Remove user from session manager on disconnect
+            if (userId) {
+                const session = sessionManager.disconnect(userId);
+                if (session) {
+                    emitter.emit('event', {
+                        type: 'userDisconnected',
+                        userId,
+                        username,
+                        timestamp: Date.now()
+                    });
+                }
+            }
         });
+    });
+
+    // API endpoint to get connected players
+    app.get('/api/players/connected', (req, res) => {
+        const players = sessionManager.getConnectedUsers(5);
+        res.json({ players });
     });
 
     // Mount new API routes under /api prefix

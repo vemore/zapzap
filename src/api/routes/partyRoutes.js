@@ -24,6 +24,8 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
     const listPublicParties = container.resolve('listPublicParties');
     const getPartyDetails = container.resolve('getPartyDetails');
     const deleteParty = container.resolve('deleteParty');
+    const sessionManager = container.resolve('sessionManager');
+    const partyRepository = container.resolve('partyRepository');
 
     /**
      * POST /api/party
@@ -219,6 +221,9 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                 playerIndex: result.playerIndex
             });
 
+            // Update user session status to 'party'
+            sessionManager.updateStatus(req.user.id, 'party', partyId);
+
             // Emit SSE event for real-time updates
             if (emitter) {
                 emitter.emit('event', {
@@ -226,6 +231,15 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                     userId: req.user.id,
                     action: 'playerJoined',
                     playerIndex: result.playerIndex
+                });
+                // Emit status change event
+                emitter.emit('event', {
+                    type: 'userStatusChanged',
+                    userId: req.user.id,
+                    username: req.user.username,
+                    status: 'party',
+                    partyId,
+                    timestamp: Date.now()
                 });
             }
 
@@ -299,6 +313,9 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                 partyId
             });
 
+            // Update user session status back to 'lobby'
+            sessionManager.updateStatus(req.user.id, 'lobby', null);
+
             // Emit SSE event for real-time updates
             if (emitter) {
                 emitter.emit('event', {
@@ -306,6 +323,15 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                     userId: req.user.id,
                     action: 'playerLeft',
                     newOwner: result.newOwner || null
+                });
+                // Emit status change event
+                emitter.emit('event', {
+                    type: 'userStatusChanged',
+                    userId: req.user.id,
+                    username: req.user.username,
+                    status: 'lobby',
+                    partyId: null,
+                    timestamp: Date.now()
                 });
             }
 
@@ -361,6 +387,31 @@ function createPartyRouter(container, authMiddleware, optionalAuthMiddleware, em
                 partyId: result.party.id,
                 roundId: result.round.id
             });
+
+            // Update all human players' status to 'game'
+            try {
+                const players = await partyRepository.getPartyPlayers(partyId);
+                const humanPlayerIds = players
+                    .filter(p => p.userType === 'human')
+                    .map(p => p.userId);
+                sessionManager.updateStatusBulk(humanPlayerIds, 'game', partyId);
+
+                // Emit status change events for all human players
+                if (emitter) {
+                    for (const player of players.filter(p => p.userType === 'human')) {
+                        emitter.emit('event', {
+                            type: 'userStatusChanged',
+                            userId: player.userId,
+                            username: player.username,
+                            status: 'game',
+                            partyId,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+            } catch (err) {
+                logger.warn('Failed to update player statuses on game start', { error: err.message });
+            }
 
             // Emit SSE event for real-time updates
             if (emitter) {

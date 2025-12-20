@@ -79,6 +79,8 @@ function GameBoard() {
         otherPlayersHandSizes: data.gameState.otherPlayersHandSizes || {},
         lastAction: data.gameState.lastAction || null,
         round: data.round,
+        // Starting player for turn order display
+        startingPlayer: data.gameState.startingPlayer !== undefined ? data.gameState.startingPlayer : 0,
         // Round end data (only populated when currentAction === 'finished')
         allHands: data.gameState.allHands || null,
         handPoints: data.gameState.handPoints || null,
@@ -245,6 +247,7 @@ function GameBoard() {
     cardsPlayed = [],
     lastAction = null,
     isGoldenScore = false,
+    startingPlayer = 0,
   } = gameData;
 
   const isMyTurn = currentTurnId === myUserId;
@@ -479,6 +482,7 @@ function GameBoard() {
             currentTurn={currentTurn}
             currentUserId={myUserId}
             isGoldenScore={isGoldenScore}
+            startingPlayer={startingPlayer}
           />
         </section>
 

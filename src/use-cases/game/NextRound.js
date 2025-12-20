@@ -374,7 +374,8 @@ class NextRound {
                 discardPile: [],
                 lastAction: null,
                 isGoldenScore: isGoldenScore,
-                eliminatedPlayers: eliminatedPlayerIndices
+                eliminatedPlayers: eliminatedPlayerIndices,
+                startingPlayer: nextStartingPlayer
                 // scores are preserved from previous state
             });
 

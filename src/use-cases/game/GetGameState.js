@@ -231,6 +231,8 @@ class GetGameState {
                     // Elimination and Golden Score
                     isGoldenScore: gameState.isGoldenScore || false,
                     eliminatedPlayers: gameState.eliminatedPlayers || [],
+                    // Starting player for this round (for turn order display)
+                    startingPlayer: gameState.startingPlayer !== undefined ? gameState.startingPlayer : 0,
                     // Round end data (only populated when finished)
                     allHands: allHands,
                     handPoints: handPoints,

@@ -10,6 +10,7 @@ const PartyRepository = require('../infrastructure/database/sqlite/repositories/
 const JwtService = require('../infrastructure/services/JwtService');
 const BedrockService = require('../infrastructure/services/BedrockService');
 const GoogleOAuthService = require('../infrastructure/services/GoogleOAuthService');
+const SessionManager = require('../infrastructure/services/SessionManager');
 
 // Use Cases - Authentication
 const RegisterUser = require('../use-cases/auth/RegisterUser');
@@ -95,6 +96,10 @@ async function bootstrap(emitter = null) {
         // Register services
         const jwtService = new JwtService();
         container.register('jwtService', jwtService);
+
+        // Initialize session manager for tracking connected users
+        const sessionManager = new SessionManager();
+        container.register('sessionManager', sessionManager);
 
         // Initialize Google OAuth service (if client ID is configured)
         let googleOAuthService = null;
