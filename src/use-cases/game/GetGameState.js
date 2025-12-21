@@ -183,22 +183,30 @@ class GetGameState {
                         };
                     }
                 } else if (gameState.isGoldenScore && activePlayers.length === 2) {
-                    // Golden Score mode - check if there's a clear winner
+                    // Golden Score mode - winner is determined by LOWEST HAND VALUE this round
+                    // NOT by total score (per GAME_RULES.md)
+                    gameFinished = true;
                     const [p1, p2] = activePlayers;
-                    const score1 = gameState.scores[p1.playerIndex] || 0;
-                    const score2 = gameState.scores[p2.playerIndex] || 0;
+                    const hand1 = baseValues[p1.playerIndex] || 0;
+                    const hand2 = baseValues[p2.playerIndex] || 0;
 
-                    if (score1 !== score2) {
-                        gameFinished = true;
-                        const winnerPlayer = score1 < score2 ? p1 : p2;
-                        const winnerUser = await this.userRepository.findById(winnerPlayer.userId);
-                        winner = {
-                            userId: winnerPlayer.userId,
-                            playerIndex: winnerPlayer.playerIndex,
-                            username: winnerUser?.username || `Player ${winnerPlayer.playerIndex + 1}`,
-                            score: gameState.scores[winnerPlayer.playerIndex] || 0
-                        };
+                    // Winner is the one with lowest hand value this round
+                    // If tied, the ZapZap caller was counteracted and loses
+                    let winnerPlayer;
+                    if (hand1 !== hand2) {
+                        winnerPlayer = hand1 < hand2 ? p1 : p2;
+                    } else {
+                        // Hands are equal - ZapZap caller was counteracted and loses
+                        // The other player (who counteracted) wins
+                        winnerPlayer = p1.playerIndex === zapZapCaller ? p2 : p1;
                     }
+                    const winnerUser = await this.userRepository.findById(winnerPlayer.userId);
+                    winner = {
+                        userId: winnerPlayer.userId,
+                        playerIndex: winnerPlayer.playerIndex,
+                        username: winnerUser?.username || `Player ${winnerPlayer.playerIndex + 1}`,
+                        score: gameState.scores[winnerPlayer.playerIndex] || 0
+                    };
                 }
             }
 
