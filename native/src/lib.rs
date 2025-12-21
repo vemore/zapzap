@@ -1149,6 +1149,12 @@ pub struct NativeThibotParams {
     pub zapzap_risky_hand_size: i32,
     pub zapzap_risky_value_threshold: i32,
     pub zapzap_safe_value_threshold: i32,
+    // Coordination Play/Draw
+    pub future_value_discount: i32,
+    pub risk_penalty_multiplier: i32,
+    pub coordination_threshold: i32,
+    pub hold_pair_for_three_bonus: i32,
+    pub hold_sequence_for_extend_bonus: i32,
 }
 
 /// Set Thibot parameters for genetic optimization
@@ -1183,6 +1189,12 @@ pub fn thibot_set_params(params: NativeThibotParams) {
         zapzap_risky_hand_size: params.zapzap_risky_hand_size as usize,
         zapzap_risky_value_threshold: params.zapzap_risky_value_threshold as u16,
         zapzap_safe_value_threshold: params.zapzap_safe_value_threshold as u16,
+        // Coordination Play/Draw
+        future_value_discount: params.future_value_discount,
+        risk_penalty_multiplier: params.risk_penalty_multiplier,
+        coordination_threshold: params.coordination_threshold,
+        hold_pair_for_three_bonus: params.hold_pair_for_three_bonus,
+        hold_sequence_for_extend_bonus: params.hold_sequence_for_extend_bonus,
     };
     set_thibot_params(thibot_params);
 }
@@ -1220,5 +1232,11 @@ pub fn thibot_get_default_params() -> NativeThibotParams {
         zapzap_risky_hand_size: defaults.zapzap_risky_hand_size as i32,
         zapzap_risky_value_threshold: defaults.zapzap_risky_value_threshold as i32,
         zapzap_safe_value_threshold: defaults.zapzap_safe_value_threshold as i32,
+        // Coordination Play/Draw
+        future_value_discount: defaults.future_value_discount,
+        risk_penalty_multiplier: defaults.risk_penalty_multiplier,
+        coordination_threshold: defaults.coordination_threshold,
+        hold_pair_for_three_bonus: defaults.hold_pair_for_three_bonus,
+        hold_sequence_for_extend_bonus: defaults.hold_sequence_for_extend_bonus,
     }
 }

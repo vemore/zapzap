@@ -193,6 +193,10 @@ class HeadlessGameEngine {
 
     /**
      * Execute a play action
+     * Card flow (matching Rust implementation):
+     * 1. First play of round: lastCardsPlayed = flipped card (set by dealCards), no discard update
+     * 2. Subsequent plays: lastCardsPlayed -> discardPile, then new cards -> lastCardsPlayed
+     * 3. cardsPlayed temporarily holds current play until end of turn
      */
     executePlay(gameState, playerIndex, cardIds) {
         const hand = gameState.getPlayerHand(playerIndex);
@@ -201,22 +205,35 @@ class HeadlessGameEngine {
         const newHands = gameState.hands;
         newHands[playerIndex] = newHand;
 
-        // Determine new lastCardsPlayed
-        const isFirstPlayOfRound = !gameState.cardsPlayed || gameState.cardsPlayed.length === 0;
-        const newLastCardsPlayed = isFirstPlayOfRound
-            ? gameState.lastCardsPlayed
-            : gameState.cardsPlayed;
+        // Check if this is the first play of the round
+        // First play = lastAction is null (after dealCards) or was a zapzap
+        const isFirstPlayOfRound = !gameState.lastAction || gameState.lastAction.type === 'zapzap';
 
-        const newDiscardPile = isFirstPlayOfRound
-            ? [...gameState.discardPile]
-            : [...gameState.discardPile, ...gameState.lastCardsPlayed];
+        // Determine new lastCardsPlayed and discardPile
+        let newLastCardsPlayed;
+        let newDiscardPile;
+
+        if (isFirstPlayOfRound) {
+            // First play of round:
+            // - Keep the flipped card in lastCardsPlayed (player can draw from it)
+            // - cardsPlayed holds current play
+            newLastCardsPlayed = gameState.lastCardsPlayed;
+            newDiscardPile = [...gameState.discardPile];
+        } else {
+            // Subsequent plays (not first of round):
+            // - lastCardsPlayed (previous player's play) moves to discardPile
+            // - Current cardIds become the new lastCardsPlayed
+            newDiscardPile = [...gameState.discardPile, ...gameState.lastCardsPlayed];
+            newLastCardsPlayed = [...cardIds]; // Current play becomes visible for next player
+        }
 
         return gameState.with({
             hands: newHands,
             cardsPlayed: cardIds,
             lastCardsPlayed: newLastCardsPlayed,
             discardPile: newDiscardPile,
-            currentAction: 'draw'
+            currentAction: 'draw',
+            lastAction: { type: 'play', playerIndex }
         });
     }
 
@@ -264,7 +281,8 @@ class HeadlessGameEngine {
             discardPile: newDiscardPile,
             currentTurn: nextTurn,
             currentAction: 'play',
-            cardsPlayed: [] // Reset for next turn
+            cardsPlayed: [], // Reset for next turn
+            lastAction: { type: 'draw', playerIndex, source }
         });
     }
 

@@ -278,6 +278,11 @@ export interface NativeThibotParams {
   zapzapRiskyHandSize: number
   zapzapRiskyValueThreshold: number
   zapzapSafeValueThreshold: number
+  futureValueDiscount: number
+  riskPenaltyMultiplier: number
+  coordinationThreshold: number
+  holdPairForThreeBonus: number
+  holdSequenceForExtendBonus: number
 }
 /** Set Thibot parameters for genetic optimization */
 export declare function thibotSetParams(params: NativeThibotParams): void

@@ -149,6 +149,13 @@ const PARAM_CONSTRAINTS = {
     zapzapRiskyHandSize: { min: 1, max: 4, absolute: true },
     zapzapRiskyValueThreshold: { min: 2, max: 5, absolute: true },
     zapzapSafeValueThreshold: { min: 1, max: 4, absolute: true },
+
+    // Coordination Play/Draw
+    futureValueDiscount: { min: 50, max: 100, absolute: true },       // 50-100%
+    riskPenaltyMultiplier: { min: 10, max: 100, absolute: true },     // 10-100%
+    coordinationThreshold: { min: -50, max: 150, absolute: true },    // Score min improvement
+    holdPairForThreeBonus: { min: 50, max: 400, absolute: true },     // Bonus
+    holdSequenceForExtendBonus: { min: 40, max: 300, absolute: true },// Bonus
 };
 
 /**

@@ -83,49 +83,69 @@ pub struct ThibotParams {
     pub zapzap_risky_value_threshold: u16,
     /// My value threshold for automatic zapzap
     pub zapzap_safe_value_threshold: u16,
+
+    // === Coordination Play/Draw ===
+    /// % discount for future value (90 = 0.90)
+    pub future_value_discount: i32,
+    /// % risk penalty multiplier when opponent close to zapzap
+    pub risk_penalty_multiplier: i32,
+    /// Minimum score improvement to prefer coordination
+    pub coordination_threshold: i32,
+    /// Bonus for holding pair when 3rd card available in discard
+    pub hold_pair_for_three_bonus: i32,
+    /// Bonus for holding sequence when extension available
+    pub hold_sequence_for_extend_bonus: i32,
 }
 
 impl Default for ThibotParams {
     fn default() -> Self {
-        // Parameters optimized via genetic algorithm (40.73% winrate vs 32.35% baseline)
+        // Parameters optimized via genetic algorithm (44.25% winrate vs 40.55% baseline)
+        // Optimization: 30 generations, 2000 games/eval, 872k total games
         Self {
             // Card Potential Evaluation
-            joker_keep_score: 923,
-            existing_pair_bonus: 54,
-            good_pair_chance_bonus: 25,
-            low_pair_chance_bonus: 14,
-            dead_rank_penalty: 34,
-            sequence_part_bonus: 52,
-            potential_sequence_bonus: 33,
+            joker_keep_score: 705,
+            existing_pair_bonus: 68,
+            good_pair_chance_bonus: 30,
+            low_pair_chance_bonus: 12,
+            dead_rank_penalty: 26,
+            sequence_part_bonus: 33,
+            potential_sequence_bonus: 27,
             joker_sequence_bonus: 31,
-            close_with_joker_bonus: 13,
+            close_with_joker_bonus: 17,
 
             // Play Selection (Offensive)
-            value_score_weight: 19,
-            cards_score_weight: 14,
-            potential_divisor: 15,
-            joker_play_penalty: 50,
-            zapzap_potential_bonus: 122,
+            value_score_weight: 15,
+            cards_score_weight: 7,
+            potential_divisor: 20,
+            joker_play_penalty: 36,
+            zapzap_potential_bonus: 79,
 
             // Draw Source Evaluation
-            discard_joker_score: 177,
-            low_points_base: 9,
-            pair_completion_bonus: 133,
-            three_of_kind_bonus: 25,
-            sequence_completion_bonus: 52,
+            discard_joker_score: 116,
+            low_points_base: 10,
+            pair_completion_bonus: 56,
+            three_of_kind_bonus: 24,
+            sequence_completion_bonus: 73,
             dead_rank_discard_penalty: 46,
-            discard_threshold: 14,
+            discard_threshold: 8,
 
             // Defensive Mode
-            defensive_threshold: 4,
+            defensive_threshold: 3,
 
             // ZapZap Decision
             zapzap_safe_hand_size: 2,
-            zapzap_moderate_hand_size: 5,
+            zapzap_moderate_hand_size: 4,
             zapzap_moderate_value_threshold: 5,
             zapzap_risky_hand_size: 2,
             zapzap_risky_value_threshold: 2,
             zapzap_safe_value_threshold: 1,
+
+            // Coordination Play/Draw
+            future_value_discount: 91,
+            risk_penalty_multiplier: 17,
+            coordination_threshold: 6,
+            hold_pair_for_three_bonus: 226,
+            hold_sequence_for_extend_bonus: 114,
         }
     }
 }
@@ -133,34 +153,40 @@ impl Default for ThibotParams {
 /// Global parameters (can be modified for optimization)
 /// These are genetically optimized values
 static mut THIBOT_PARAMS: ThibotParams = ThibotParams {
-    joker_keep_score: 923,
-    existing_pair_bonus: 54,
-    good_pair_chance_bonus: 25,
-    low_pair_chance_bonus: 14,
-    dead_rank_penalty: 34,
-    sequence_part_bonus: 52,
-    potential_sequence_bonus: 33,
+    joker_keep_score: 705,
+    existing_pair_bonus: 68,
+    good_pair_chance_bonus: 30,
+    low_pair_chance_bonus: 12,
+    dead_rank_penalty: 26,
+    sequence_part_bonus: 33,
+    potential_sequence_bonus: 27,
     joker_sequence_bonus: 31,
-    close_with_joker_bonus: 13,
-    value_score_weight: 19,
-    cards_score_weight: 14,
-    potential_divisor: 15,
-    joker_play_penalty: 50,
-    zapzap_potential_bonus: 122,
-    discard_joker_score: 177,
-    low_points_base: 9,
-    pair_completion_bonus: 133,
-    three_of_kind_bonus: 25,
-    sequence_completion_bonus: 52,
+    close_with_joker_bonus: 17,
+    value_score_weight: 15,
+    cards_score_weight: 7,
+    potential_divisor: 20,
+    joker_play_penalty: 36,
+    zapzap_potential_bonus: 79,
+    discard_joker_score: 116,
+    low_points_base: 10,
+    pair_completion_bonus: 56,
+    three_of_kind_bonus: 24,
+    sequence_completion_bonus: 73,
     dead_rank_discard_penalty: 46,
-    discard_threshold: 14,
-    defensive_threshold: 4,
+    discard_threshold: 8,
+    defensive_threshold: 3,
     zapzap_safe_hand_size: 2,
-    zapzap_moderate_hand_size: 5,
+    zapzap_moderate_hand_size: 4,
     zapzap_moderate_value_threshold: 5,
     zapzap_risky_hand_size: 2,
     zapzap_risky_value_threshold: 2,
     zapzap_safe_value_threshold: 1,
+    // Coordination Play/Draw
+    future_value_discount: 91,
+    risk_penalty_multiplier: 17,
+    coordination_threshold: 6,
+    hold_pair_for_three_bonus: 226,
+    hold_sequence_for_extend_bonus: 114,
 };
 
 /// Set global Thibot parameters (for optimization)
@@ -175,10 +201,21 @@ pub fn get_thibot_params() -> ThibotParams {
     unsafe { THIBOT_PARAMS }
 }
 
+/// Coordinated decision from select_play to use in select_draw_source
+#[derive(Debug, Clone, Default)]
+struct CoordinatedDecision {
+    /// Whether coordination is active
+    is_coordinated: bool,
+    /// Target card from discard to take
+    target_card: u8,
+}
+
 /// Thibot strategy - probability-based decisions with full card tracking
 pub struct ThibotStrategy {
     rng_state: u64,
     params: ThibotParams,
+    /// Stored coordinated decision (set by select_play, used by select_draw_source)
+    coordinated_decision: std::cell::RefCell<CoordinatedDecision>,
 }
 
 impl ThibotStrategy {
@@ -186,6 +223,7 @@ impl ThibotStrategy {
         ThibotStrategy {
             rng_state: 54321,
             params: get_thibot_params(),
+            coordinated_decision: std::cell::RefCell::new(CoordinatedDecision::default()),
         }
     }
 
@@ -193,6 +231,7 @@ impl ThibotStrategy {
         ThibotStrategy {
             rng_state: seed,
             params: get_thibot_params(),
+            coordinated_decision: std::cell::RefCell::new(CoordinatedDecision::default()),
         }
     }
 
@@ -200,6 +239,7 @@ impl ThibotStrategy {
         ThibotStrategy {
             rng_state: 54321,
             params,
+            coordinated_decision: std::cell::RefCell::new(CoordinatedDecision::default()),
         }
     }
 
@@ -483,6 +523,225 @@ impl ThibotStrategy {
 
         score
     }
+
+    // ========================================
+    // COORDINATED PLAY/DRAW DECISION METHODS
+    // ========================================
+
+    /// Find all valid plays that include a specific card
+    fn find_plays_with_card(&self, hand: &[u8], card: u8) -> Vec<SmallVec<[u8; 8]>> {
+        let mut hypothetical_hand: SmallVec<[u8; 10]> = hand.iter().copied().collect();
+        hypothetical_hand.push(card);
+
+        let all_plays = find_all_valid_plays(&hypothetical_hand);
+        all_plays.into_iter().filter(|play| play.contains(&card)).collect()
+    }
+
+    /// Score a coordinated scenario (play now + take discard + play future combo)
+    fn score_coordinated_scenario(
+        &self,
+        play_now: &[u8],
+        future_play: &[u8],
+        hand: &[u8],
+        discard_card: u8,
+        state: &GameState,
+    ) -> i32 {
+        let discount_factor = self.params.future_value_discount as f32 / 100.0;
+
+        // Score for playing NOW
+        let play_now_value = card_analyzer::calculate_hand_value(play_now) as i32;
+        let joker_count_now = play_now.iter().filter(|&&c| is_joker(c)).count() as i32;
+        let immediate_score = play_now_value * self.params.value_score_weight
+            + play_now.len() as i32 * self.params.cards_score_weight
+            - joker_count_now * self.params.joker_play_penalty;
+
+        // Score for future play (discounted)
+        let future_play_value = card_analyzer::calculate_hand_value(future_play) as i32;
+        let joker_count_future = future_play.iter().filter(|&&c| is_joker(c)).count() as i32;
+        let future_raw_score = future_play_value * self.params.value_score_weight
+            + future_play.len() as i32 * self.params.cards_score_weight
+            - joker_count_future * self.params.joker_play_penalty;
+        let future_score = (future_raw_score as f32 * discount_factor) as i32;
+
+        // Bonus for coordination patterns
+        let mut coordination_bonus = 0i32;
+
+        // Bonus for making a 3-of-a-kind or 4-of-a-kind
+        if future_play.len() >= 3 && card_analyzer::is_valid_same_rank(future_play) {
+            coordination_bonus += self.params.hold_pair_for_three_bonus;
+            if future_play.len() >= 4 {
+                coordination_bonus += self.params.hold_pair_for_three_bonus / 2;
+            }
+        }
+
+        // Bonus for extending a sequence to 4+ cards
+        if future_play.len() >= 4 && card_analyzer::is_valid_sequence(future_play) {
+            coordination_bonus += self.params.hold_sequence_for_extend_bonus;
+        }
+
+        // Risk penalty: holding high value cards when opponent might ZapZap
+        let min_opponent_size = self.min_opponent_hand_size(state);
+        let remaining_after_play: SmallVec<[u8; 10]> = hand
+            .iter()
+            .filter(|c| !play_now.contains(c))
+            .copied()
+            .collect();
+        let remaining_value = card_analyzer::calculate_hand_value(&remaining_after_play) as i32;
+        let risk_penalty = if min_opponent_size <= self.params.defensive_threshold {
+            remaining_value * self.params.risk_penalty_multiplier / 100
+        } else {
+            0
+        };
+
+        // ZapZap bonus for hand after future play
+        let mut after_now_and_draw: SmallVec<[u8; 10]> = remaining_after_play.clone();
+        after_now_and_draw.push(discard_card);
+        let after_future_play: SmallVec<[u8; 10]> = after_now_and_draw
+            .iter()
+            .filter(|c| !future_play.contains(c))
+            .copied()
+            .collect();
+        let after_future_value = card_analyzer::calculate_hand_value(&after_future_play);
+        let zapzap_bonus = if after_future_value <= 5 {
+            (self.params.zapzap_potential_bonus as f32 * discount_factor) as i32
+        } else {
+            0
+        };
+
+        immediate_score + future_score + coordination_bonus + zapzap_bonus - risk_penalty
+    }
+
+    /// Evaluate the "hold and take" scenario for a specific discard card
+    fn evaluate_hold_and_take_scenario(
+        &self,
+        hand: &[u8],
+        discard_card: u8,
+        state: &GameState,
+    ) -> Option<(SmallVec<[u8; 8]>, i32)> {
+        let plays_with_discard = self.find_plays_with_card(hand, discard_card);
+
+        // Filter to valuable plays (2+ cards including at least one from hand)
+        let valuable_plays: Vec<_> = plays_with_discard
+            .into_iter()
+            .filter(|play| {
+                let hand_cards_in_play = play.iter().filter(|&&c| c != discard_card && hand.contains(&c)).count();
+                hand_cards_in_play >= 1 && play.len() >= 2
+            })
+            .collect();
+
+        if valuable_plays.is_empty() {
+            return None;
+        }
+
+        let mut best_play: Option<SmallVec<[u8; 8]>> = None;
+        let mut best_score = i32::MIN;
+
+        for future_play in valuable_plays {
+            // Cards from hand needed for this future play
+            let cards_to_keep: SmallVec<[u8; 8]> = future_play
+                .iter()
+                .filter(|&&c| c != discard_card)
+                .copied()
+                .collect();
+
+            // What can we play NOW while keeping cards_to_keep?
+            let playable_now: SmallVec<[u8; 10]> = hand
+                .iter()
+                .filter(|c| !cards_to_keep.contains(c))
+                .copied()
+                .collect();
+
+            // Skip if we can't play anything
+            if playable_now.is_empty() {
+                continue;
+            }
+
+            // Find valid plays from the playable cards
+            let mut plays_now = find_all_valid_plays(&playable_now);
+
+            // If no valid combo, just play the lowest single card
+            if plays_now.is_empty() {
+                let lowest_card = playable_now
+                    .iter()
+                    .min_by_key(|&&c| get_card_points(c))
+                    .copied()
+                    .unwrap();
+                let mut single_play = SmallVec::new();
+                single_play.push(lowest_card);
+                plays_now.push(single_play);
+            }
+
+            for play_now in plays_now {
+                let score = self.score_coordinated_scenario(&play_now, &future_play, hand, discard_card, state);
+
+                if score > best_score {
+                    best_score = score;
+                    best_play = Some(play_now);
+                }
+            }
+        }
+
+        best_play.map(|play| (play, best_score))
+    }
+
+    /// Evaluate coordination and return best play with coordination info
+    fn evaluate_coordinated_scenarios(
+        &self,
+        hand: &[u8],
+        last_cards_played: &[u8],
+        state: &GameState,
+    ) -> (Option<SmallVec<[u8; 8]>>, bool, u8) {
+        // Calculate the "normal" play scenario score
+        let normal_play = self.find_best_offensive_play(hand, state);
+        let mut normal_score = i32::MIN;
+
+        if let Some(ref play) = normal_play {
+            let play_value = card_analyzer::calculate_hand_value(play) as i32;
+            let remaining: SmallVec<[u8; 10]> = hand
+                .iter()
+                .filter(|c| !play.contains(c))
+                .copied()
+                .collect();
+            let remaining_potential: i32 = remaining
+                .iter()
+                .map(|&c| self.evaluate_card_potential(c, &remaining, state))
+                .sum();
+
+            let joker_count = play.iter().filter(|&&c| is_joker(c)).count() as i32;
+            let remaining_value = card_analyzer::calculate_hand_value(&remaining);
+            let zapzap_bonus = if remaining_value <= 5 {
+                self.params.zapzap_potential_bonus
+            } else {
+                0
+            };
+
+            normal_score = play_value * self.params.value_score_weight
+                + play.len() as i32 * self.params.cards_score_weight
+                + remaining_potential / self.params.potential_divisor.max(1)
+                - joker_count * self.params.joker_play_penalty
+                + zapzap_bonus;
+        }
+
+        // Evaluate coordination scenarios for each discard card
+        let mut best_coordinated: Option<(SmallVec<[u8; 8]>, i32, u8)> = None;
+
+        for &discard_card in last_cards_played {
+            if let Some((play, score)) = self.evaluate_hold_and_take_scenario(hand, discard_card, state) {
+                if best_coordinated.is_none() || score > best_coordinated.as_ref().unwrap().1 {
+                    best_coordinated = Some((play, score, discard_card));
+                }
+            }
+        }
+
+        // Compare and decide
+        if let Some((coord_play, coord_score, target_card)) = best_coordinated {
+            if coord_score > normal_score + self.params.coordination_threshold {
+                return (Some(coord_play), true, target_card);
+            }
+        }
+
+        (normal_play, false, 0)
+    }
 }
 
 impl Default for ThibotStrategy {
@@ -493,6 +752,9 @@ impl Default for ThibotStrategy {
 
 impl BotStrategy for ThibotStrategy {
     fn select_play(&self, hand: &[u8], state: &GameState) -> Option<SmallVec<[u8; 8]>> {
+        // Reset coordinated decision at start of turn
+        *self.coordinated_decision.borrow_mut() = CoordinatedDecision::default();
+
         if hand.is_empty() {
             return None;
         }
@@ -502,6 +764,25 @@ impl BotStrategy for ThibotStrategy {
         // Defensive mode: if any opponent has few cards, play max points
         if min_opponent_size <= self.params.defensive_threshold {
             return self.find_best_defensive_play(hand);
+        }
+
+        // Check for coordination opportunity with last played cards
+        let last_cards_played = &state.last_cards_played;
+        if !last_cards_played.is_empty() {
+            let (play, is_coordinated, target_card) =
+                self.evaluate_coordinated_scenarios(hand, last_cards_played, state);
+
+            if is_coordinated {
+                // Store the coordinated decision for select_draw_source
+                *self.coordinated_decision.borrow_mut() = CoordinatedDecision {
+                    is_coordinated: true,
+                    target_card,
+                };
+                return play;
+            }
+
+            // Use the normal play from evaluation
+            return play;
         }
 
         // Offensive mode: maximize cards removed while keeping potential
@@ -535,6 +816,16 @@ impl BotStrategy for ThibotStrategy {
         if last_cards_played.is_empty() {
             return true;
         }
+
+        // Check if we have a coordinated decision from select_play
+        let coord = self.coordinated_decision.borrow();
+        if coord.is_coordinated {
+            // Verify the target card is still available
+            if last_cards_played.contains(&coord.target_card) {
+                return false; // Take from discard
+            }
+        }
+        drop(coord); // Release borrow
 
         // Evaluate each available discard card
         let mut best_discard_score = i32::MIN;

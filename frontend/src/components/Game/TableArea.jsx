@@ -41,6 +41,14 @@ function TableArea({
     }
   }, [lastAction?.timestamp]);
 
+  // Safety timeout: ensure reshuffle message disappears after 5 seconds max
+  useEffect(() => {
+    if (showReshuffle) {
+      const safetyTimer = setTimeout(() => setShowReshuffle(false), 5000);
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [showReshuffle]);
+
   // Build action message
   const actionMessage = useMemo(() => {
     if (!lastAction) return null;
