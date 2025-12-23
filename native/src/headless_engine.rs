@@ -99,14 +99,6 @@ impl HeadlessGameEngine {
             .map(|(_, s)| s)
     }
 
-    /// Get DRL strategy for a player (if they're using DRL)
-    fn get_drl_strategy(&self, player: u8) -> Option<&DRLStrategy> {
-        self.drl_strategies
-            .iter()
-            .find(|(p, _)| *p == player)
-            .map(|(_, s)| s)
-    }
-
     /// Run a complete game
     pub fn run_game(&mut self) -> GameResult {
         let mut state = GameState::new(self.player_count);
@@ -280,103 +272,6 @@ impl HeadlessGameEngine {
         }
 
         state
-    }
-
-    /// Classify the play action type for transition recording
-    /// Returns the action index that would have produced this play via action_to_play()
-    /// Action mapping (must match DRLStrategy::action_to_play):
-    /// 0: optimal - minimizes remaining hand value
-    /// 1: single_high - plays highest single card
-    /// 2: multi_high - plays multi-card combo with most value
-    /// 3: avoid_joker - avoids playing jokers if possible
-    /// 4: use_joker_combo - uses joker in combos if possible
-    fn classify_play_action(&self, play: &[u8], hand: &[u8]) -> u8 {
-        use smallvec::SmallVec;
-
-        let valid_plays = card_analyzer::find_all_valid_plays(hand);
-        if valid_plays.is_empty() {
-            return 0;
-        }
-
-        let play_set: SmallVec<[u8; 8]> = play.iter().copied().collect();
-
-        // Check each action to see which one would produce this play
-        // Action 0: optimal - minimizes remaining hand value
-        let optimal_play = valid_plays
-            .iter()
-            .min_by_key(|p| {
-                let remaining: SmallVec<[u8; 10]> = hand
-                    .iter()
-                    .filter(|id| !p.contains(id))
-                    .copied()
-                    .collect();
-                card_analyzer::calculate_hand_value(&remaining)
-            });
-        if optimal_play.map(|p| self.plays_match(p, &play_set)).unwrap_or(false) {
-            return 0;
-        }
-
-        // Action 1: single_high - plays highest single card
-        let single_plays: Vec<_> = valid_plays.iter().filter(|p| p.len() == 1).collect();
-        let single_high_play = if !single_plays.is_empty() {
-            single_plays.into_iter().max_by_key(|p| card_analyzer::get_card_points(p[0]))
-        } else {
-            valid_plays.iter().max_by_key(|p| p.iter().map(|&c| card_analyzer::get_card_points(c) as u32).sum::<u32>())
-        };
-        if single_high_play.map(|p| self.plays_match(p, &play_set)).unwrap_or(false) {
-            return 1;
-        }
-
-        // Action 2: multi_high - plays multi-card combo with most value
-        let multi_plays: Vec<_> = valid_plays.iter().filter(|p| p.len() > 1).collect();
-        let multi_high_play = if !multi_plays.is_empty() {
-            multi_plays.into_iter().max_by_key(|p| p.iter().map(|&c| card_analyzer::get_card_points(c) as u32).sum::<u32>())
-        } else {
-            valid_plays.iter().max_by_key(|p| p.iter().map(|&c| card_analyzer::get_card_points(c) as u32).sum::<u32>())
-        };
-        if multi_high_play.map(|p| self.plays_match(p, &play_set)).unwrap_or(false) {
-            return 2;
-        }
-
-        // Action 3: avoid_joker - avoids playing jokers
-        let non_joker_plays: Vec<_> = valid_plays.iter().filter(|p| !p.iter().any(|&c| card_analyzer::is_joker(c))).collect();
-        let avoid_joker_play = if !non_joker_plays.is_empty() {
-            non_joker_plays.into_iter().min_by_key(|p| {
-                let remaining: SmallVec<[u8; 10]> = hand.iter().filter(|id| !p.contains(id)).copied().collect();
-                card_analyzer::calculate_hand_value(&remaining)
-            })
-        } else {
-            optimal_play
-        };
-        if avoid_joker_play.map(|p| self.plays_match(p, &play_set)).unwrap_or(false) {
-            return 3;
-        }
-
-        // Action 4: use_joker_combo - uses joker in combos
-        let joker_combos: Vec<_> = valid_plays.iter().filter(|p| p.len() > 1 && p.iter().any(|&c| card_analyzer::is_joker(c))).collect();
-        let joker_combo_play = if !joker_combos.is_empty() {
-            joker_combos.into_iter().max_by_key(|p| p.len())
-        } else {
-            optimal_play
-        };
-        if joker_combo_play.map(|p| self.plays_match(p, &play_set)).unwrap_or(false) {
-            return 4;
-        }
-
-        // Default to optimal if no match found
-        0
-    }
-
-    /// Check if two plays contain the same cards (order-independent)
-    fn plays_match(&self, a: &SmallVec<[u8; 8]>, b: &SmallVec<[u8; 8]>) -> bool {
-        if a.len() != b.len() {
-            return false;
-        }
-        let mut a_sorted = a.clone();
-        let mut b_sorted = b.clone();
-        a_sorted.sort();
-        b_sorted.sort();
-        a_sorted == b_sorted
     }
 
     /// Run a single round

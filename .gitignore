@@ -123,5 +123,15 @@ native/Cargo.lock
 native/*.node
 **/*.rs.bk
 
+# Rust backend (zapzap-rust)
+zapzap-rust/target/
+zapzap-rust/Cargo.lock
+
 # NAPI-RS build artifacts
 native/artifacts/
+
+# DRL model checkpoints (large binary files)
+data/models/*.safetensors
+
+# Google OAuth credentials (secrets)
+src/infrastructure/auth/client_secret_*.json

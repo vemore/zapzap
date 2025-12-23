@@ -1,0 +1,25 @@
+# Build artifacts
+target/
+*.rs.bk
+
+# Version control
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+*.md
+
+# Local data
+data/
+*.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

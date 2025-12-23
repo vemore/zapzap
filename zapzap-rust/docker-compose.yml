@@ -1,0 +1,70 @@
+services:
+  # Rust Backend API Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zapzap-rust-backend
+    restart: unless-stopped
+    environment:
+      - PORT=9999
+      - DATABASE_URL=sqlite:/app/data/zapzap.db
+      - JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}
+      - RUST_LOG=${RUST_LOG:-info,zapzap_backend=debug}
+    volumes:
+      - ../data:/app/data
+    ports:
+      - "9999:9999"
+    networks:
+      - zapzap-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9999/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Frontend Service (uses parent frontend)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
+    container_name: zapzap-frontend
+    restart: unless-stopped
+    networks:
+      - zapzap-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: zapzap-proxy
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-80}:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - zapzap-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://127.0.0.1/nginx-health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  zapzap-network:
+    driver: bridge

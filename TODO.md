@@ -29,4 +29,12 @@ Bugs et Problèmes Identifiés
   Nombre de bots identiques maximal à 2
 
 
-utiliser https://github.com/tensorflow/tfjs pour l'entrainement du bot DRL ?
+
+Afficher sur la page des parties les derniers joueurs actuellement connecté (limité à 5) avec le status "lobby" ou "party"
+
+Changer la liste des joueurs dans les parties en cours pour les mettre un par ligne. Pour chaque joueur on aura une ligne de ce type:
+<Nom du joueur> - <score> : Nombre de cartes sous forme d'une ligne de dos de cartes suivit de "(<nb cartee>)"
+Les lignes doivent être dans l'ordre du début de tour. Cad que le premier joueur à jouer apparait sur la première ligne. L'ordre changera au tour suivant. La ligne du joueur dont c'est le tour doit être mise en avant. Ce changement doit être testé pour être également compatible sur une vue de smartphone donc être responsive. La hauteur des lignes doivent être de la même hauteur tout en étant assez compactes pour laisser de l'espace aux éléments en dessous
+
+Ajouter la possibilité de s'enregistrer avec Google
+

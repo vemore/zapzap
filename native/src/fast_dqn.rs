@@ -403,17 +403,6 @@ impl FastDQN {
         }
     }
 
-    /// Get mutable reference to advantage head for a decision type
-    #[inline]
-    fn adv_head_mut(&mut self, dt: DecisionType) -> &mut AdvantageHead {
-        match dt {
-            DecisionType::HandSize => &mut self.adv_hand_size,
-            DecisionType::ZapZap => &mut self.adv_zapzap,
-            DecisionType::PlayType => &mut self.adv_play_type,
-            DecisionType::DrawSource => &mut self.adv_draw_source,
-        }
-    }
-
     /// Forward pass through shared layers
     #[inline]
     fn forward_shared(&mut self, input: &[f32; FEATURE_DIM]) {

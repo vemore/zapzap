@@ -43,7 +43,8 @@ type AdamOptimizer = burn_core::optim::adaptor::OptimizerAdaptor<
 pub struct Trainer {
     /// Online network (for action selection)
     network: DuelingDQN<TrainingBackend>,
-    /// Target network (for TD target computation)
+    /// Target network (for TD target computation) - reserved for Double DQN
+    #[allow(dead_code)]
     target_network: DuelingDQN<CpuBackend>,
     /// Adam optimizer
     optimizer: AdamOptimizer,
