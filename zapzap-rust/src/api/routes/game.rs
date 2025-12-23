@@ -337,6 +337,17 @@ pub async fn get_game_state(
         }
     });
 
+    // Trigger bot actions in background if it's a bot's turn
+    let party_id_for_bot = result.party.id.clone();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        // Small delay to let the response be sent first
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
+            tracing::error!("Auto bot trigger after get_game_state failed: {}", e);
+        }
+    });
+
     Ok(Json(GameStateResponse {
         success: true,
         party: PartyInfo {
@@ -1195,7 +1206,33 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
     use crate::domain::repositories::{PartyRepository, UserRepository};
     use crate::infrastructure::bot::strategies::{BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, MediumBotStrategy, LlmBotStrategy, ThibotStrategy, VinceBotStrategy};
 
-    let max_iterations = 50;
+    // Check if there are any active human players
+    let players = match state.party_repo.get_party_players(party_id).await {
+        Ok(p) => p,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let game_state_initial = match state.party_repo.get_game_state(party_id).await {
+        Ok(Some(gs)) => gs,
+        Ok(None) => return Ok(()),
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let mut has_active_human = false;
+    for player in &players {
+        if game_state_initial.is_eliminated(player.player_index) {
+            continue;
+        }
+        if let Ok(Some(user)) = state.user_repo.find_by_id(&player.user_id).await {
+            if user.user_type.as_str() == "human" {
+                has_active_human = true;
+                break;
+            }
+        }
+    }
+
+    // If only bots remain, allow many more iterations to finish the game
+    let max_iterations = if has_active_human { 50 } else { 500 };
     let mut iterations = 0;
 
     loop {
