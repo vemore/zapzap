@@ -76,7 +76,9 @@ impl AppState {
         let party_repo = Arc::new(SqlitePartyRepository::new(db.clone()));
 
         // Create event broadcaster (capacity of 1000 events)
-        let (event_sender, event_receiver) = broadcast(1000);
+        // Enable overflow mode to drop oldest messages when full instead of blocking
+        let (mut event_sender, event_receiver) = broadcast(1000);
+        event_sender.set_overflow(true);
 
         // Initialize LLM service if configured
         // Priority: AWS Bedrock > Ollama > None
