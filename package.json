@@ -27,7 +27,7 @@
   },
   "homepage": "https://github.com/vemore/zapzap#readme",
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.948.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1027.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-node": "^4.22.0",
     "@tensorflow/tfjs-node-gpu": "^4.22.0",
