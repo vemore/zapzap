@@ -2,7 +2,8 @@
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
 > configuration and API layer (client, errors, models, repositories), authentication and
-> routing guard, real-time channel (SSE), theme, localisation, build and tests.
+> routing guard, real-time channel (SSE), the parties, create-party and lobby screens,
+> theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-22
 
@@ -10,10 +11,13 @@
 
 ### Status
 
-- **Sign-in only.** Home, login, register, a placeholder parties screen (welcome + logout),
-  a start-up splash and a not-found screen (`frontend-flutter/lib/router.dart`), over the
-  API layer, the session and the real-time channel (below; no screen reads its events yet). Parity with the React client ([[Frontend]]: game,
-  lobby, history, stats, Google sign-in, admin) is the goal, not the state.
+- **Up to the lobby.** Home, login, register, the parties list, create-party, one party's
+  lobby, a start-up splash and a not-found screen (`frontend-flutter/lib/router.dart`),
+  over the API layer, the session and the real-time channel (below). `/game/:id` is a
+  placeholder screen (`screens/pending_game_screen.dart`) the lobby sends a started party
+  to; the game board replaces it. Still missing against the React client ([[Frontend]]):
+  the game board, history, stats, Google sign-in, admin — and the app bar has no entry
+  point to history, stats or admin until those screens exist.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
   falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
@@ -38,7 +42,7 @@
 | `main.dart` | `runApp(ZapZapApp(apiConfig: ApiConfig.fromEnvironment()))`, nothing else |
 | `app.dart` | `ZapZapApp`: `MultiProvider` + `MaterialApp.router` (theme, locales, router); `resolveLocale` |
 | `router.dart` | `AppRoutes` (path constants), `createRouter(auth:)` — the one `GoRouter`, built once below the providers; a new screen is one more `GoRoute` — and `authRedirect` (Authentication, below) |
-| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient`, the six repositories, `AuthProvider` and `SseProvider` (which follows it) |
+| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient`, the six repositories, `AuthProvider`, `SseProvider` (which follows it) and `ConnectedPlayersProvider` (which follows both) |
 | `providers/auth_provider.dart` | `AuthProvider`, the session (Authentication, below) |
 | `providers/sse_provider.dart`, `services/sse_*.dart`, `models/sse_event.dart` | the real-time channel (below) |
 | `services/token_storage*.dart` | `TokenStorage` and its platform implementations (Authentication, below) |
@@ -46,8 +50,9 @@
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
-| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart` (placeholder until the lobby), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`) |
+| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `pending_game_screen.dart` (stands in for the board at `/game/:id`), `not_found_screen.dart` |
+| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`) |
+| `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
 | `models/` | typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
 | `repositories/` | one per domain over `ApiClient`: auth, party, game, history, stats, admin |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
@@ -218,6 +223,52 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
   in Chromium); the token's user appeared in `GET /api/players/connected`; after the backend
   was stopped and restarted, the client reconnected 3 s after the drop.
 
+### Parties, create-party and lobby
+
+The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty,PartyLobby,ConnectedPlayers}.jsx`.
+
+- **Routes** (`router.dart`): `/parties` (the list), `/parties/new` (create — declared
+  **before** `/parties/:id`, which would match it), `/parties/:id` (the lobby), `/game/:id`.
+  `AppRoutes.partyPath(id)` and `AppRoutes.gamePath(id)` build the last two.
+- **Screens own their provider**: each screen builds it in `initState` from the
+  repositories it reads off the tree and disposes it, and draws with a `ListenableBuilder`;
+  the widgets below take plain data. Only `ConnectedPlayersProvider` is app-wide.
+- **`PartyListProvider`** (`providers/party_provider.dart`): `GET /party`, pull-to-refresh
+  (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
+  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). The list is
+  **not** refreshed by the event stream, as in React. A card shows the seats taken, the
+  status and the one action: Join (disabled when full, playing or finished), Return to
+  lobby, or Continue game for a party the caller is in (`isMember`).
+- **`CreatePartyProvider`** (`providers/create_party_provider.dart`): the form. Seat 0 is
+  the creator and always human; every other seat is human or a bot of a difficulty
+  (`botDifficulties`: `easy`, `medium`, `hard`, `hard_vince`, `llm`, `thibot` — the six
+  React offers, not the backend's `ml`/`drl`). **A bot account can only sit once at a
+  table**: choosing a difficulty takes the first bot of it no other seat holds, and when
+  there is none left the seat stays human and the option shows "none available"
+  (`CreateParty.jsx:47-74`). Changing the seat count keeps what was already configured
+  (React resets). `POST /party` sends `{name, visibility, settings.playerCount, botIds}`.
+- **`PartyLobbyProvider`** (`providers/party_provider.dart`): `GET /party/:id`, then the
+  event stream filtered on `partyId` — `playerJoined`/`playerLeft` reload the seats without
+  a spinner, `partyStarted` and `partyDeleted` set `outcome` (`LobbyOutcome.started` /
+  `.closed`) and the screen navigates to `/game/:id` or `/parties`. A party already
+  `playing` when it loads sets `started` too, so returning to it goes straight to the game.
+  `isOwner` falls back to comparing `party.ownerId` with the session's user, because Node's
+  answer carries neither `isOwner` nor `userPlayerIndex`; `canStart` needs the owner and 3
+  players; `canDelete` is the owner **or** the only human at the table
+  (`PartyLobby.jsx:140-144`). Delete asks first, in an `AlertDialog`.
+  The hand size is only shown when the party carries one (Rust): on Node the starting
+  player picks it each round (`GAME_RULES.md`), so React's "Hand Size: 7" is wrong there.
+- **`ConnectedPlayersProvider`** (`providers/connected_players_provider.dart`), app-wide
+  and lazy: `GET /players/connected` on sign-in, then `userConnected` (prepended, five at
+  most), `userDisconnected` and `userStatusChanged`. A client never sees its own arrival
+  (Node emits it before subscribing the new stream), so the count starts at 0 for a lone
+  user, as in React. The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
+  indicator and sign-out — icons only, so it fits a phone, which the React header does not.
+- **Error text** comes from `partyErrorText` (`widgets/error_banner.dart`), mapping
+  `ApiException.code` (`PARTY_NOT_FOUND`, `PARTY_FULL`, `PARTY_STARTED`,
+  `PARTY_ALREADY_PLAYING`, `NOT_OWNER`, `NOT_AUTHORIZED`, no answer) to ARB strings;
+  `PartyErrorCode` (`providers/party_provider.dart`) names the party codes.
+
 ### Android (`frontend-flutter/android/`)
 
 - **Debug only** for now: no release signing (the `release` build type still signs with the
@@ -272,7 +323,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740) |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -309,6 +360,15 @@ project `.gitignore`.
   `EventSource` notices a dead connection itself.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
+- **Parties, create and lobby (2026-09-22, `feat/flutter-lobby`).** Each screen owns its
+  provider instead of a global one, because the lobby's state is one party's and dies with
+  the screen; presence is the exception, being app-wide, and is the only new entry in
+  `appProviders`. Navigation out of the lobby goes through one `outcome` field rather than
+  callbacks per action, so a button here and an event from another client leave the same
+  way. `/game/:id` gets a placeholder screen rather than no route at all, so a started
+  party has somewhere to land before the board exists. The app bar deliberately carries no
+  History, Stats or Admin entry yet: those routes do not exist, and a dead link is worse
+  than a missing one.
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
   generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed
   to reach a local backend from the emulator or the LAN, but a release build must never

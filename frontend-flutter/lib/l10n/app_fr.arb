@@ -181,19 +181,6 @@
   "@partiesTitle": {
     "description": "Title of the parties (lobby) screen"
   },
-  "partiesWelcome": "Bienvenue, {username} !",
-  "@partiesWelcome": {
-    "description": "Greeting on the parties screen",
-    "placeholders": {
-      "username": {
-        "type": "String"
-      }
-    }
-  },
-  "partiesComingSoon": "Le salon arrive bientôt.",
-  "@partiesComingSoon": {
-    "description": "Placeholder body of the parties screen until the lobby exists"
-  },
   "logoutButton": "Se déconnecter",
   "@logoutButton": {
     "description": "Button or tooltip that signs out"
@@ -209,5 +196,349 @@
   "sseDisconnected": "Temps réel déconnecté",
   "@sseDisconnected": {
     "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is closed or reconnecting"
+  },
+  "errorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
+  "@errorNetwork": {
+    "description": "No answer from the server (network error or timeout), outside the auth screens"
+  },
+  "errorGeneric": "Une erreur est survenue. Réessayez.",
+  "@errorGeneric": {
+    "description": "Any failure with no more precise message"
+  },
+  "errorPartyNotFound": "Cette partie n'existe plus.",
+  "@errorPartyNotFound": {
+    "description": "PARTY_NOT_FOUND"
+  },
+  "errorPartyFull": "Cette partie est complète.",
+  "@errorPartyFull": {
+    "description": "PARTY_FULL"
+  },
+  "errorPartyStarted": "Cette partie a déjà commencé.",
+  "@errorPartyStarted": {
+    "description": "PARTY_STARTED and PARTY_ALREADY_PLAYING"
+  },
+  "errorNotOwner": "Seul l'hôte peut faire cela.",
+  "@errorNotOwner": {
+    "description": "NOT_OWNER and NOT_AUTHORIZED"
+  },
+  "retryButton": "Réessayer",
+  "@retryButton": {
+    "description": "Button that runs a failed load again"
+  },
+  "cancelButton": "Annuler",
+  "@cancelButton": {
+    "description": "Button that closes a confirmation dialog without acting"
+  },
+  "deleteButton": "Supprimer",
+  "@deleteButton": {
+    "description": "Confirm button of the delete dialog"
+  },
+  "partiesHeading": "Parties disponibles",
+  "@partiesHeading": {
+    "description": "Heading above the list of parties"
+  },
+  "partiesLoading": "Chargement des parties…",
+  "@partiesLoading": {
+    "description": "Accessibility label of the spinner while the party list loads"
+  },
+  "partiesCreateButton": "Créer une partie",
+  "@partiesCreateButton": {
+    "description": "Button that opens the create-party screen"
+  },
+  "partiesEmptyTitle": "Aucune partie disponible",
+  "@partiesEmptyTitle": {
+    "description": "Title shown when no party exists"
+  },
+  "partiesEmptyBody": "Créez la première partie et commencez à jouer !",
+  "@partiesEmptyBody": {
+    "description": "Body shown when no party exists"
+  },
+  "partyPlayersLabel": "Joueurs",
+  "@partyPlayersLabel": {
+    "description": "Label of the player count on a party card"
+  },
+  "partyPlayersCount": "{count} / {max}",
+  "@partyPlayersCount": {
+    "description": "Players in a party out of its seats",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "partyStatusLabel": "Statut",
+  "@partyStatusLabel": {
+    "description": "Label of a party's status"
+  },
+  "partyStatusWaiting": "En attente",
+  "@partyStatusWaiting": {
+    "description": "Party status: waiting for players"
+  },
+  "partyStatusPlaying": "En cours",
+  "@partyStatusPlaying": {
+    "description": "Party status: the game is running"
+  },
+  "partyStatusFinished": "Terminée",
+  "@partyStatusFinished": {
+    "description": "Party status: the game is over"
+  },
+  "partyJoinedBadge": "Rejointe",
+  "@partyJoinedBadge": {
+    "description": "Badge on a party the signed-in user is already in"
+  },
+  "partyJoinButton": "Rejoindre",
+  "@partyJoinButton": {
+    "description": "Button that joins a party"
+  },
+  "partyFullButton": "Complète",
+  "@partyFullButton": {
+    "description": "Disabled join button when every seat is taken"
+  },
+  "partyInProgressButton": "Partie en cours",
+  "@partyInProgressButton": {
+    "description": "Disabled join button when the game has started"
+  },
+  "partyContinueButton": "Reprendre la partie",
+  "@partyContinueButton": {
+    "description": "Button that opens the running game of a party the user is in"
+  },
+  "partyReturnToLobbyButton": "Retour au salon",
+  "@partyReturnToLobbyButton": {
+    "description": "Button that opens the lobby of a party the user is in"
+  },
+  "createPartyTitle": "Nouvelle partie",
+  "@createPartyTitle": {
+    "description": "Title of the create-party screen"
+  },
+  "createPartyNameLabel": "Nom de la partie",
+  "@createPartyNameLabel": {
+    "description": "Label of the party name field"
+  },
+  "createPartyNameHint": "Entrez un nom",
+  "@createPartyNameHint": {
+    "description": "Placeholder of the party name field"
+  },
+  "createPartyNameRequired": "Le nom de la partie est requis",
+  "@createPartyNameRequired": {
+    "description": "Validation: empty party name"
+  },
+  "createPartyPlayerCountLabel": "Nombre de joueurs",
+  "@createPartyPlayerCountLabel": {
+    "description": "Label of the player count selector"
+  },
+  "createPartyPlayerCountHelper": "De {min} à {max} joueurs",
+  "@createPartyPlayerCountHelper": {
+    "description": "Allowed range under the player count selector",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "createPartyVisibilityLabel": "Visibilité",
+  "@createPartyVisibilityLabel": {
+    "description": "Label of the visibility selector"
+  },
+  "createPartyVisibilityPublic": "Publique — tout le monde peut rejoindre",
+  "@createPartyVisibilityPublic": {
+    "description": "Visibility option: public"
+  },
+  "createPartyVisibilityPrivate": "Privée — code d'invitation requis",
+  "@createPartyVisibilityPrivate": {
+    "description": "Visibility option: private"
+  },
+  "createPartySlotsTitle": "Places",
+  "@createPartySlotsTitle": {
+    "description": "Title of the per-seat configuration block"
+  },
+  "createPartySlotOwner": "Joueur 1 (vous)",
+  "@createPartySlotOwner": {
+    "description": "The creator's own seat, always the first and always human"
+  },
+  "createPartyOwnerBadge": "Hôte",
+  "@createPartyOwnerBadge": {
+    "description": "Badge marking the party owner"
+  },
+  "createPartySlotLabel": "Joueur {number}",
+  "@createPartySlotLabel": {
+    "description": "A configurable seat, numbered from 2",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "createPartySlotHuman": "En attente d'un humain",
+  "@createPartySlotHuman": {
+    "description": "Seat option: leave the seat open for a human player"
+  },
+  "createPartySlotBot": "Bot — {difficulty}",
+  "@createPartySlotBot": {
+    "description": "Seat option: seat a bot of this difficulty",
+    "placeholders": {
+      "difficulty": {
+        "type": "String"
+      }
+    }
+  },
+  "createPartySlotBotUnavailable": "Bot — {difficulty} (aucun disponible)",
+  "@createPartySlotBotUnavailable": {
+    "description": "Seat option disabled because every bot of that difficulty is already seated",
+    "placeholders": {
+      "difficulty": {
+        "type": "String"
+      }
+    }
+  },
+  "createPartySummary": "Humains : {humans} · Bots : {bots}",
+  "@createPartySummary": {
+    "description": "Count of human seats (the owner included) and bot seats",
+    "placeholders": {
+      "humans": {
+        "type": "int"
+      },
+      "bots": {
+        "type": "int"
+      }
+    }
+  },
+  "createPartySubmit": "Créer la partie",
+  "@createPartySubmit": {
+    "description": "Create-party submit button"
+  },
+  "createPartySubmitting": "Création…",
+  "@createPartySubmitting": {
+    "description": "Create-party submit button while the request runs"
+  },
+  "botDifficultyEasy": "Facile",
+  "@botDifficultyEasy": {
+    "description": "Bot difficulty easy"
+  },
+  "botDifficultyMedium": "Moyen",
+  "@botDifficultyMedium": {
+    "description": "Bot difficulty medium"
+  },
+  "botDifficultyHard": "Difficile",
+  "@botDifficultyHard": {
+    "description": "Bot difficulty hard"
+  },
+  "botDifficultyHardVince": "Difficile Vince",
+  "@botDifficultyHardVince": {
+    "description": "Bot difficulty hard_vince"
+  },
+  "botDifficultyLlm": "LLM (Llama 3.3)",
+  "@botDifficultyLlm": {
+    "description": "Bot difficulty llm"
+  },
+  "botDifficultyThibot": "Thibot",
+  "@botDifficultyThibot": {
+    "description": "Bot difficulty thibot"
+  },
+  "lobbyLoading": "Chargement de la partie…",
+  "@lobbyLoading": {
+    "description": "Accessibility label of the spinner while the lobby loads"
+  },
+  "lobbyBack": "Retour aux parties",
+  "@lobbyBack": {
+    "description": "Tooltip of the back button of the lobby and create screens"
+  },
+  "lobbySettingsTitle": "Paramètres",
+  "@lobbySettingsTitle": {
+    "description": "Title of the lobby settings block"
+  },
+  "lobbyMaxPlayers": "Joueurs max",
+  "@lobbyMaxPlayers": {
+    "description": "Label of the party's seat count in the lobby settings"
+  },
+  "lobbyHandSize": "Cartes en main",
+  "@lobbyHandSize": {
+    "description": "Label of the hand size in the lobby settings"
+  },
+  "lobbyPlayersTitle": "Joueurs ({count}/{max})",
+  "@lobbyPlayersTitle": {
+    "description": "Title of the lobby player list",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyNeedMorePlayers": "{count, plural, =1{Encore 1 joueur pour démarrer} other{Encore {count} joueurs pour démarrer}}",
+  "@lobbyNeedMorePlayers": {
+    "description": "How many players are still missing before the game can start",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyEmptySlot": "En attente d'un joueur…",
+  "@lobbyEmptySlot": {
+    "description": "An empty seat in the lobby"
+  },
+  "lobbyStartButton": "Démarrer la partie",
+  "@lobbyStartButton": {
+    "description": "Owner-only button that starts the game"
+  },
+  "lobbyLeaveButton": "Quitter la partie",
+  "@lobbyLeaveButton": {
+    "description": "Button that leaves the party"
+  },
+  "lobbyDeleteButton": "Supprimer la partie",
+  "@lobbyDeleteButton": {
+    "description": "Button that deletes the party (owner, or the only human)"
+  },
+  "lobbyDeleteConfirmTitle": "Supprimer la partie ?",
+  "@lobbyDeleteConfirmTitle": {
+    "description": "Title of the delete confirmation dialog"
+  },
+  "lobbyDeleteConfirmBody": "Cette action est définitive.",
+  "@lobbyDeleteConfirmBody": {
+    "description": "Body of the delete confirmation dialog"
+  },
+  "lobbyNotFoundTitle": "Partie introuvable",
+  "@lobbyNotFoundTitle": {
+    "description": "Title shown when the party does not exist any more"
+  },
+  "lobbyNotFoundBody": "Cette partie n'existe pas ou a été supprimée.",
+  "@lobbyNotFoundBody": {
+    "description": "Body shown when the party does not exist any more"
+  },
+  "connectedPlayersTitle": "Joueurs connectés",
+  "@connectedPlayersTitle": {
+    "description": "Title of the connected players list, and tooltip of the app bar button that opens it"
+  },
+  "connectedPlayersEmpty": "Aucun joueur connecté",
+  "@connectedPlayersEmpty": {
+    "description": "Shown when nobody else has an open event stream"
+  },
+  "playerStatusLobby": "Salon",
+  "@playerStatusLobby": {
+    "description": "Connected player status: in the party list"
+  },
+  "playerStatusParty": "Partie",
+  "@playerStatusParty": {
+    "description": "Connected player status: in a party lobby"
+  },
+  "playerStatusGame": "En jeu",
+  "@playerStatusGame": {
+    "description": "Connected player status: playing"
+  },
+  "gamePlaceholderTitle": "Partie en cours",
+  "@gamePlaceholderTitle": {
+    "description": "Title of the temporary screen standing in for the game board"
+  },
+  "gamePlaceholderBody": "Le plateau de jeu arrive bientôt.",
+  "@gamePlaceholderBody": {
+    "description": "Body of the temporary screen standing in for the game board"
   }
 }

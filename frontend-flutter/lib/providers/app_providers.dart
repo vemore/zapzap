@@ -12,6 +12,7 @@ import '../services/api_config.dart';
 import '../services/sse_transport.dart';
 import '../services/token_storage.dart';
 import 'auth_provider.dart';
+import 'connected_players_provider.dart';
 import 'sse_provider.dart';
 
 /// Everything the widget tree can `context.read`/`watch`, in one list.
@@ -70,5 +71,14 @@ List<SingleChildWidget> appProviders({
     create: (_) => SseProvider(uri: apiConfig.sseUri, transport: sseTransport),
     update: (_, auth, sse) =>
         sse!..follow(auth.isAuthenticated ? auth.token : null),
+  ),
+  // Presence for the app bar: app-wide, so moving between screens does not
+  // reload it. Lazy, so a screen without an app bar never asks the backend.
+  ChangeNotifierProxyProvider<AuthProvider, ConnectedPlayersProvider>(
+    create: (context) => ConnectedPlayersProvider(
+      context.read<PartyRepository>(),
+      events: context.read<SseProvider>().events,
+    ),
+    update: (_, auth, players) => players!..follow(auth.isAuthenticated),
   ),
 ];

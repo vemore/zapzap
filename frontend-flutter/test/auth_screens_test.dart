@@ -12,6 +12,7 @@ import 'package:zapzap/services/token_storage.dart';
 
 import 'auth_helpers.dart';
 import 'fixtures.dart';
+import 'party_helpers.dart';
 import 'sse_fakes.dart';
 
 void main() {
@@ -157,12 +158,12 @@ void main() {
       await tester.tap(find.byKey(const Key('register-submit')));
       await tester.pumpAndSettle();
 
-      expect(requests.single.url.path, '/api/auth/register');
-      expect(jsonDecode(requests.single.body), {
+      expect(requests.first.url.path, '/api/auth/register');
+      expect(jsonDecode(requests.first.body), {
         'username': 'fixture537397',
         'password': 'secret1',
       });
-      expect(find.text('Bienvenue, fixture537397 !'), findsOneWidget);
+      expect(find.text('Parties disponibles'), findsOneWidget);
       expect(storage.values['token'], validToken);
     });
 
@@ -290,7 +291,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Parties'), findsOneWidget);
-      expect(find.text('Bienvenue, Vincent !'), findsOneWidget);
+      expect(find.text('Parties disponibles'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('logout')));
       await tester.pumpAndSettle();
@@ -332,9 +333,10 @@ void main() {
       await pumpApp(
         tester,
         initialLocation: AppRoutes.parties,
+        api: FakeLobbyBackend().client(),
         storage: storedSession(validToken),
       );
-      expect(find.text('Bienvenue, Vincent !'), findsOneWidget);
+      expect(find.text('Parties disponibles'), findsOneWidget);
     });
 
     testWidgets('signed out, a protected route goes to login and back after '
@@ -359,15 +361,19 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('login-submit')));
       await tester.pumpAndSettle();
-      expect(find.text('Bienvenue, Vincent !'), findsOneWidget);
+      expect(find.text('Parties disponibles'), findsOneWidget);
     });
 
     testWidgets('a 401 on an authenticated call returns to login', (
       tester,
     ) async {
       final unauthorized = errorFixture('error_invalid_token');
+      // The session only goes stale once the parties screen is up.
+      var expired = false;
       final api = fakeApi(
-        (_) async => http.Response(unauthorized.body, unauthorized.status),
+        (_) async => expired
+            ? http.Response(unauthorized.body, unauthorized.status)
+            : http.Response(jsonEncode({'parties': <Object>[]}), 200),
       );
       await pumpApp(
         tester,
@@ -376,6 +382,7 @@ void main() {
         storage: storedSession(validToken),
       );
       expect(find.text('Parties'), findsOneWidget);
+      expired = true;
 
       await tester.runAsync(
         () => Future.wait([
