@@ -604,5 +604,486 @@
   "gamePlaceholderBody": "Le plateau de jeu arrive bientôt.",
   "@gamePlaceholderBody": {
     "description": "Body of the temporary screen standing in for the game board"
+  },
+  "loading": "Chargement…",
+  "@loading": {
+    "description": "Accessibility label of a spinner while a section loads"
+  },
+  "backToParties": "Retour aux parties",
+  "@backToParties": {
+    "description": "Back button of the history and statistics screens"
+  },
+  "backToHistory": "Retour à l'historique",
+  "@backToHistory": {
+    "description": "Back button of the game details screen"
+  },
+  "historyTitle": "Historique",
+  "@historyTitle": {
+    "description": "Title of the history screen"
+  },
+  "historyTabMine": "Mes parties",
+  "@historyTabMine": {
+    "description": "History tab listing the signed-in player's finished games"
+  },
+  "historyTabPublic": "Parties publiques",
+  "@historyTabPublic": {
+    "description": "History tab listing everyone's public finished games"
+  },
+  "historyEmptyMine": "Aucune partie terminée. Jouez pour remplir votre historique !",
+  "@historyEmptyMine": {
+    "description": "Empty My games tab"
+  },
+  "historyEmptyPublic": "Aucune partie publique terminée pour le moment.",
+  "@historyEmptyPublic": {
+    "description": "Empty Public games tab"
+  },
+  "historyLoadError": "Impossible de charger l'historique.",
+  "@historyLoadError": {
+    "description": "The history listing could not be read"
+  },
+  "historyWinnerWithScore": "{username} ({score} pts)",
+  "@historyWinnerWithScore": {
+    "description": "Winner of a finished game and their final score, in the history list",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      },
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "playerCount": "{count, plural, one{{count} joueur} other{{count} joueurs}}",
+  "@playerCount": {
+    "description": "Number of players of a finished game",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "roundCount": "{count, plural, one{{count} manche} other{{count} manches}}",
+  "@roundCount": {
+    "description": "Number of rounds a finished game lasted",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "goldenScore": "Golden Score",
+  "@goldenScore": {
+    "description": "Badge of a game that ended on the golden score"
+  },
+  "goldenScoreFinish": "Fin en Golden Score",
+  "@goldenScoreFinish": {
+    "description": "Longer golden score badge, on the game details screen"
+  },
+  "gameDetailsTitle": "Détails de la partie",
+  "@gameDetailsTitle": {
+    "description": "Title of the game details screen until the game name is known"
+  },
+  "gameDetailsLoadError": "Impossible de charger cette partie.",
+  "@gameDetailsLoadError": {
+    "description": "The game details could not be read"
+  },
+  "gameDetailsNotFound": "Cette partie est introuvable.",
+  "@gameDetailsNotFound": {
+    "description": "The game details answered 404 (unknown, or private and not the player's)"
+  },
+  "gameSummaryTitle": "Résumé de la partie",
+  "@gameSummaryTitle": {
+    "description": "Title of the summary card of the game details screen"
+  },
+  "gameWinnerLabel": "VAINQUEUR",
+  "@gameWinnerLabel": {
+    "description": "Banner above the winner's name on the game details screen"
+  },
+  "gameFinalScore": "Score final : {score} points",
+  "@gameFinalScore": {
+    "description": "The winner's final score",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "gameInfoPlayers": "Joueurs",
+  "@gameInfoPlayers": {
+    "description": "Label of the player count in the game summary"
+  },
+  "gameInfoRounds": "Manches",
+  "@gameInfoRounds": {
+    "description": "Label of the round count in the game summary"
+  },
+  "gameInfoFinished": "Terminée le",
+  "@gameInfoFinished": {
+    "description": "Label of the end date in the game summary"
+  },
+  "gameInfoVisibility": "Visibilité",
+  "@gameInfoVisibility": {
+    "description": "Label of the visibility in the game summary"
+  },
+  "visibilityPublic": "Publique",
+  "@visibilityPublic": {
+    "description": "A game everyone can see in the public history"
+  },
+  "visibilityPrivate": "Privée",
+  "@visibilityPrivate": {
+    "description": "A game only its players can see"
+  },
+  "standingsTitle": "Classement final",
+  "@standingsTitle": {
+    "description": "Title of the final standings of a finished game"
+  },
+  "standingsZapzaps": "{successful}/{total} ZapZap",
+  "@standingsZapzaps": {
+    "description": "A player's successful ZapZap calls over their total",
+    "placeholders": {
+      "successful": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "standingsLowestHands": "{count, plural, one{{count} plus petite main} other{{count} plus petites mains}}",
+  "@standingsLowestHands": {
+    "description": "How many rounds a player ended with the lowest hand",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "points": "{score} pts",
+  "@points": {
+    "description": "A score in points",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "roundsTitle": "Manche par manche",
+  "@roundsTitle": {
+    "description": "Title of the round-by-round table"
+  },
+  "roundColumn": "Manche",
+  "@roundColumn": {
+    "description": "First column of the round-by-round table"
+  },
+  "roundLabel": "Manche {number}",
+  "@roundLabel": {
+    "description": "One row of the round-by-round table",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "legendLowestHand": "Plus petite main",
+  "@legendLowestHand": {
+    "description": "Legend of the round-by-round table: the crown marker"
+  },
+  "legendZapzapSuccess": "ZapZap réussi",
+  "@legendZapzapSuccess": {
+    "description": "Legend of the round-by-round table: the green bolt"
+  },
+  "legendZapzapFailed": "ZapZap raté",
+  "@legendZapzapFailed": {
+    "description": "Legend of the round-by-round table: the red bolt"
+  },
+  "legendEliminated": "Éliminé",
+  "@legendEliminated": {
+    "description": "Legend of the round-by-round table: the cross marker"
+  },
+  "legendCounteracted": "Contré",
+  "@legendCounteracted": {
+    "description": "Legend of the round-by-round table: points shown in red"
+  },
+  "statsTitle": "Statistiques",
+  "@statsTitle": {
+    "description": "Title of the statistics screen"
+  },
+  "statsPersonalTitle": "Mes statistiques",
+  "@statsPersonalTitle": {
+    "description": "Title of the personal statistics card"
+  },
+  "statsLoadError": "Impossible de charger vos statistiques.",
+  "@statsLoadError": {
+    "description": "GET /stats/me failed"
+  },
+  "statsGamesPlayed": "Parties jouées",
+  "@statsGamesPlayed": {
+    "description": "Number of games played"
+  },
+  "statsWins": "Victoires",
+  "@statsWins": {
+    "description": "Number of games won"
+  },
+  "statsWinRate": "Taux de victoire",
+  "@statsWinRate": {
+    "description": "Share of games won, as a percentage"
+  },
+  "statsAverageScore": "Score moyen",
+  "@statsAverageScore": {
+    "description": "Average final score (lower is better)"
+  },
+  "statsBestScore": "Meilleur score",
+  "@statsBestScore": {
+    "description": "Lowest final score reached"
+  },
+  "statsTotalRounds": "Manches jouées",
+  "@statsTotalRounds": {
+    "description": "Total number of rounds played"
+  },
+  "statsZapzapTitle": "Performance ZapZap",
+  "@statsZapzapTitle": {
+    "description": "Title of the ZapZap block of the personal statistics"
+  },
+  "statsZapzapTotal": "Appels",
+  "@statsZapzapTotal": {
+    "description": "Number of ZapZap calls"
+  },
+  "statsZapzapSuccessful": "Réussis",
+  "@statsZapzapSuccessful": {
+    "description": "Number of successful ZapZap calls"
+  },
+  "statsZapzapFailed": "Ratés",
+  "@statsZapzapFailed": {
+    "description": "Number of failed ZapZap calls"
+  },
+  "statsZapzapSuccessRate": "Taux de réussite",
+  "@statsZapzapSuccessRate": {
+    "description": "Share of successful ZapZap calls"
+  },
+  "leaderboardTitle": "Classement général",
+  "@leaderboardTitle": {
+    "description": "Title of the leaderboard card"
+  },
+  "leaderboardLoadError": "Impossible de charger le classement.",
+  "@leaderboardLoadError": {
+    "description": "GET /stats/leaderboard failed"
+  },
+  "leaderboardEmpty": "Personne au classement pour le moment.",
+  "@leaderboardEmpty": {
+    "description": "The leaderboard has no row"
+  },
+  "leaderboardYou": "(vous)",
+  "@leaderboardYou": {
+    "description": "Marks the signed-in player's own leaderboard row"
+  },
+  "leaderboardWins": "{wins}/{games} victoires",
+  "@leaderboardWins": {
+    "description": "A leaderboard row's wins over games played",
+    "placeholders": {
+      "wins": {
+        "type": "int"
+      },
+      "games": {
+        "type": "int"
+      }
+    }
+  },
+  "leaderboardWinRate": "taux de victoire",
+  "@leaderboardWinRate": {
+    "description": "Caption under the percentage of a leaderboard row"
+  },
+  "leaderboardMinGames": "{count, plural, one{{count} partie jouée minimum} other{{count} parties jouées minimum}} pour figurer au classement",
+  "@leaderboardMinGames": {
+    "description": "The leaderboard's entry condition",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "botStatsTitle": "Statistiques des bots",
+  "@botStatsTitle": {
+    "description": "Title of the bot statistics card"
+  },
+  "botStatsLoadError": "Impossible de charger les statistiques des bots.",
+  "@botStatsLoadError": {
+    "description": "GET /stats/bots failed"
+  },
+  "botStatsEmpty": "Aucune statistique de bot. Jouez contre des bots !",
+  "@botStatsEmpty": {
+    "description": "No bot has played yet"
+  },
+  "botTotalBots": "Bots",
+  "@botTotalBots": {
+    "description": "Total number of bots"
+  },
+  "botOverallWinRate": "Taux de victoire global",
+  "@botOverallWinRate": {
+    "description": "Win rate over every bot"
+  },
+  "botZapzapSuccess": "ZapZap réussis",
+  "@botZapzapSuccess": {
+    "description": "ZapZap success rate over every bot"
+  },
+  "botFilterAll": "Toutes les difficultés",
+  "@botFilterAll": {
+    "description": "Filter chip that shows every bot difficulty"
+  },
+  "botCount": "{count, plural, one{{count} bot} other{{count} bots}}",
+  "@botCount": {
+    "description": "How many bots a difficulty holds",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "botGames": "Parties",
+  "@botGames": {
+    "description": "Games played by a bot difficulty"
+  },
+  "botRounds": "Manches",
+  "@botRounds": {
+    "description": "Rounds played by a bot difficulty"
+  },
+  "botRoundWinRate": "Manches gagnées",
+  "@botRoundWinRate": {
+    "description": "Share of rounds won by a bot difficulty"
+  },
+  "botZapzapCalls": "Appels",
+  "@botZapzapCalls": {
+    "description": "ZapZap calls of a bot difficulty"
+  },
+  "botIndividualTitle": "Bot par bot",
+  "@botIndividualTitle": {
+    "description": "Title of the per-bot breakdown of the selected difficulty"
+  },
+  "botRowSummary": "{games} · {wins} · {rounds}",
+  "@botRowSummary": {
+    "description": "One bot's record: three already counted and named figures",
+    "placeholders": {
+      "games": {
+        "type": "String"
+      },
+      "wins": {
+        "type": "String"
+      },
+      "rounds": {
+        "type": "String"
+      }
+    }
+  },
+  "gameCount": "{count, plural, one{{count} partie} other{{count} parties}}",
+  "@gameCount": {
+    "description": "A number of games played",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "winCount": "{count, plural, one{{count} victoire} other{{count} victoires}}",
+  "@winCount": {
+    "description": "A number of games won",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "difficultyEasy": "Facile",
+  "@difficultyEasy": {
+    "description": "Bot difficulty easy"
+  },
+  "difficultyMedium": "Moyen",
+  "@difficultyMedium": {
+    "description": "Bot difficulty medium"
+  },
+  "difficultyHard": "Difficile",
+  "@difficultyHard": {
+    "description": "Bot difficulty hard"
+  },
+  "difficultyHardVince": "Difficile Vince",
+  "@difficultyHardVince": {
+    "description": "Bot difficulty hard_vince"
+  },
+  "difficultyMl": "ML (TensorFlow)",
+  "@difficultyMl": {
+    "description": "Bot difficulty ml"
+  },
+  "difficultyDrl": "DRL (apprentissage profond)",
+  "@difficultyDrl": {
+    "description": "Bot difficulty drl"
+  },
+  "difficultyLlm": "LLM (Llama 3.3)",
+  "@difficultyLlm": {
+    "description": "Bot difficulty llm"
+  },
+  "difficultyThibot": "Thibot",
+  "@difficultyThibot": {
+    "description": "Bot difficulty thibot"
+  },
+  "strategyEasyTitle": "Stratégie aléatoire",
+  "@strategyEasyTitle": {
+    "description": "Strategy name of the easy bots"
+  },
+  "strategyEasyDescription": "Joue des combinaisons valides au hasard, en préférant les poses multiples. Appelle ZapZap dès qu'il en a le droit (main ≤ 5). Pioche toujours dans le talon.",
+  "@strategyEasyDescription": {
+    "description": "What the easy bots do"
+  },
+  "strategyMediumTitle": "Priorité aux grosses cartes",
+  "@strategyMediumTitle": {
+    "description": "Strategy name of the medium bots"
+  },
+  "strategyMediumDescription": "Se débarrasse en priorité des cartes fortes (R, D, V, 10). ZapZap plus prudent (main ≤ 3). Pioche la défausse quand elle complète une combinaison.",
+  "@strategyMediumDescription": {
+    "description": "What the medium bots do"
+  },
+  "strategyHardTitle": "Minimisation optimale",
+  "@strategyHardTitle": {
+    "description": "Strategy name of the hard bots"
+  },
+  "strategyHardDescription": "Évalue toutes les poses pour minimiser la valeur de sa main. Choisit le moment du ZapZap selon l'avancement de la manche et analyse la défausse.",
+  "@strategyHardDescription": {
+    "description": "What the hard bots do"
+  },
+  "strategyHardVinceTitle": "Stratégie Vince avancée",
+  "@strategyHardVinceTitle": {
+    "description": "Strategy name of the hard_vince bots"
+  },
+  "strategyHardVinceDescription": "Reprend la stratégie difficile et gère les jokers : les garde pour les suites tant que les adversaires ont plus de 3 cartes, les joue quand un adversaire approche du ZapZap. Suit les cartes jouées et les pioches adverses.",
+  "@strategyHardVinceDescription": {
+    "description": "What the hard_vince bots do"
+  },
+  "strategyMlTitle": "Modèle TensorFlow",
+  "@strategyMlTitle": {
+    "description": "Strategy name of the ml bots"
+  },
+  "strategyMlDescription": "Un modèle TensorFlow entraîné évalue les états de jeu et choisit la meilleure pose, à partir des schémas appris en simulation.",
+  "@strategyMlDescription": {
+    "description": "What the ml bots do"
+  },
+  "strategyDrlTitle": "Apprentissage par renforcement profond",
+  "@strategyDrlTitle": {
+    "description": "Strategy name of the drl bots"
+  },
+  "strategyDrlDescription": "Q-learning profond avec rejeu d'expérience : la politique s'apprend en jouant contre elle-même et s'adapte au comportement des adversaires.",
+  "@strategyDrlDescription": {
+    "description": "What the drl bots do"
+  },
+  "strategyLlmTitle": "Grand modèle de langage (Llama 3.3)",
+  "@strategyLlmTitle": {
+    "description": "Strategy name of the llm bots"
+  },
+  "strategyLlmDescription": "Llama 3.3 via AWS Bedrock : décide à partir des règles, de sa main, de l'état de la partie et de l'historique des coups, exprimés en langage naturel.",
+  "@strategyLlmDescription": {
+    "description": "What the llm bots do"
+  },
+  "strategyThibotTitle": "Stratégie probabiliste",
+  "@strategyThibotTitle": {
+    "description": "Strategy name of the thibot bots"
+  },
+  "strategyThibotDescription": "Suit toutes les cartes jouées et les pioches adverses pour calculer ses probabilités. Paramètres optimisés génétiquement, maximise les points retirés par tour et se met en défense quand un adversaire approche du ZapZap.",
+  "@strategyThibotDescription": {
+    "description": "What the thibot bots do"
   }
 }
