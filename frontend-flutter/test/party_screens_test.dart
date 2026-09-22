@@ -1,0 +1,677 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:zapzap/app.dart';
+import 'package:zapzap/models/json.dart';
+import 'package:zapzap/router.dart';
+
+import 'auth_helpers.dart';
+import 'party_helpers.dart';
+import 'sse_fakes.dart';
+
+void main() {
+  /// The app signed in as Vincent (`u1`), with [backend] answering the API
+  /// and a real-time channel the test drives.
+  Future<FakeSseTransport> pumpApp(
+    WidgetTester tester,
+    FakeLobbyBackend backend, {
+    String initialLocation = AppRoutes.parties,
+    Size size = const Size(1000, 2000),
+    double textScale = 1,
+  }) async {
+    // Tall enough that every button of a screen is built: a `ListView`
+    // only builds what fits. The phone-width test below uses a real one.
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    if (textScale != 1) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+    final transport = FakeSseTransport();
+    await tester.pumpWidget(
+      ZapZapApp(
+        apiConfig: testConfig,
+        locale: const Locale('fr'),
+        initialLocation: initialLocation,
+        apiClient: backend.client(),
+        tokenStorage: storedSession(validToken),
+        sseTransport: transport,
+      ),
+    );
+    await tester.pumpAndSettle();
+    return transport;
+  }
+
+  /// Sends one backend broadcast to every listening screen.
+  Future<void> broadcast(
+    WidgetTester tester,
+    FakeSseTransport transport,
+    JsonMap event,
+  ) async {
+    transport.last.send(jsonEncode(event));
+    await tester.pumpAndSettle();
+  }
+
+  bool enabled(WidgetTester tester, String key) =>
+      tester.widget<ButtonStyleButton>(find.byKey(Key(key))).onPressed != null;
+
+  group('parties', () {
+    testWidgets('each party shows its seats, its status and the one thing '
+        'to do with it', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(id: 'p1', name: 'Open party', playerCount: 2),
+            partySummaryJson(
+              id: 'p2',
+              name: 'My lobby',
+              playerCount: 3,
+              isMember: true,
+            ),
+            partySummaryJson(
+              id: 'p3',
+              name: 'My game',
+              status: 'playing',
+              playerCount: 4,
+              isMember: true,
+            ),
+            partySummaryJson(
+              id: 'p4',
+              name: 'Packed',
+              playerCount: 5,
+              maxPlayers: 5,
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('Open party'), findsOneWidget);
+      expect(find.text('2 / 5'), findsOneWidget);
+      expect(find.text('Rejointe'), findsNWidgets(2));
+      expect(enabled(tester, 'join-p1'), isTrue);
+      expect(find.text('Retour au salon'), findsOneWidget);
+      expect(find.text('Reprendre la partie'), findsOneWidget);
+      expect(enabled(tester, 'join-p4'), isFalse);
+      expect(find.text('Complète'), findsOneWidget);
+    });
+
+    testWidgets('an empty list says so', (tester) async {
+      await pumpApp(tester, FakeLobbyBackend());
+      expect(find.text('Aucune partie disponible'), findsOneWidget);
+    });
+
+    testWidgets('joining takes a seat and opens the lobby', (tester) async {
+      final backend = FakeLobbyBackend(
+        parties: [partySummaryJson(id: 'p1', name: 'Open party')],
+        details: partyDetailsJson(
+          id: 'p1',
+          name: 'Open party',
+          players: [
+            partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+          ],
+        ),
+      );
+      await pumpApp(tester, backend);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests.map((request) => request.url.path),
+        contains('/api/party/p1/join'),
+      );
+      expect(find.text('Joueurs (1/5)'), findsOneWidget);
+    });
+
+    testWidgets('a party the user is already in still opens its lobby', (
+      tester,
+    ) async {
+      // `ALREADY_IN_PARTY` is a refusal React navigates on anyway.
+      final backend = FakeLobbyBackend(
+        parties: [partySummaryJson(id: 'p1')],
+        details: partyDetailsJson(id: 'p1'),
+      );
+      backend.failures['POST /api/party/p1/join'] = (
+        status: 409,
+        body: {'error': 'already in party', 'code': 'ALREADY_IN_PARTY'},
+      );
+      await pumpApp(tester, backend);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Joueurs (0/5)'), findsOneWidget);
+    });
+
+    testWidgets('a refused join shows the reason and stays', (tester) async {
+      final backend = FakeLobbyBackend(parties: [partySummaryJson(id: 'p1')]);
+      backend.failures['POST /api/party/p1/join'] = (
+        status: 409,
+        body: {'error': 'Party is full', 'code': 'PARTY_FULL'},
+      );
+      await pumpApp(tester, backend);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cette partie est complète.'), findsOneWidget);
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+  });
+
+  group('create party', () {
+    /// Picks [option] in the selector of the configurable seat [index].
+    Future<void> chooseSlot(
+      WidgetTester tester,
+      int index,
+      String option,
+    ) async {
+      await tester.tap(find.byKey(Key('slot-$index-type')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(option).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('two seats asking for the same difficulty never get the '
+        'same bot, and the difficulty then runs out', (tester) async {
+      final backend = FakeLobbyBackend(
+        createdPartyId: 'p9',
+        details: partyDetailsJson(id: 'p9'),
+      );
+      await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
+
+      await tester.tap(find.byKey(const Key('player-count')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('4').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('slot-2')), findsOneWidget);
+
+      await chooseSlot(tester, 0, 'Bot — Facile');
+      await chooseSlot(tester, 1, 'Bot — Facile');
+      expect(find.text('Humains : 2 · Bots : 2'), findsOneWidget);
+
+      // Both easy bots are seated: the third seat cannot have one.
+      await tester.tap(find.byKey(const Key('slot-2-type')));
+      await tester.pumpAndSettle();
+      expect(find.text('Bot — Facile (aucun disponible)'), findsOneWidget);
+      await tester.tap(find.text('Bot — Moyen').last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('party-name')), '  Soirée  ');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('create-submit')));
+      await tester.pumpAndSettle();
+
+      final body = backend.bodyOf('POST', '/api/party');
+      expect(body['name'], 'Soirée');
+      expect(body['visibility'], 'public');
+      expect((body['settings']! as Map)['playerCount'], 4);
+      final botIds = (body['botIds']! as List).cast<String>();
+      expect(botIds, hasLength(3));
+      expect(botIds.toSet(), hasLength(3));
+      expect(botIds, containsAll(['bot-easy-1', 'bot-easy-2']));
+      // and it lands on the new party's lobby
+      expect(find.text('Joueurs (0/5)'), findsOneWidget);
+    });
+
+    testWidgets('submit waits for a name', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(),
+        initialLocation: AppRoutes.createParty,
+      );
+      expect(enabled(tester, 'create-submit'), isFalse);
+      expect(find.text('Le nom de la partie est requis'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      expect(enabled(tester, 'create-submit'), isTrue);
+    });
+
+    testWidgets('a refusal is shown and the form stays', (tester) async {
+      final backend = FakeLobbyBackend();
+      backend.failures['POST /api/party'] = (
+        status: 500,
+        body: {'error': 'Failed', 'code': 'CREATE_PARTY_ERROR'},
+      );
+      await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
+
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('create-submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.byKey(const Key('create-submit')), findsOneWidget);
+    });
+  });
+
+  group('lobby', () {
+    FakeLobbyBackend backendWith(List<JsonMap> players) => FakeLobbyBackend(
+      details: partyDetailsJson(
+        id: 'p1',
+        name: 'Fixture party',
+        ownerId: 'u1',
+        playerCount: 5,
+        players: players,
+      ),
+    );
+
+    final vincent = partyPlayerJson(
+      userId: 'u1',
+      username: 'Vincent',
+      playerIndex: 0,
+    );
+    final easyBot = partyPlayerJson(
+      userId: 'b1',
+      username: 'EasyBot1',
+      playerIndex: 1,
+      userType: 'bot',
+      botDifficulty: 'easy',
+    );
+    final second = partyPlayerJson(
+      userId: 'u2',
+      username: 'Alice',
+      playerIndex: 2,
+    );
+
+    testWidgets('start stays disabled below three players and the empty '
+        'seats are shown', (tester) async {
+      await pumpApp(
+        tester,
+        backendWith([vincent, easyBot]),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+      expect(find.text('Encore 1 joueur pour démarrer'), findsOneWidget);
+      expect(find.text('En attente d\'un joueur…'), findsNWidgets(3));
+      expect(find.text('Facile'), findsOneWidget);
+      expect(enabled(tester, 'start-party'), isFalse);
+    });
+
+    testWidgets('a second client joining shows up without a refresh, and '
+        'start becomes possible', (tester) async {
+      final backend = backendWith([vincent, easyBot]);
+      final transport = await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      expect(find.text('Alice'), findsNothing);
+      expect(enabled(tester, 'start-party'), isFalse);
+
+      // Another client took a seat: the backend now has three players and
+      // the stream says so.
+      backend.details = partyDetailsJson(
+        id: 'p1',
+        ownerId: 'u1',
+        players: [vincent, easyBot, second],
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'userId': 'u2',
+        'action': 'playerJoined',
+        'playerIndex': 2,
+      });
+
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Joueurs (3/5)'), findsOneWidget);
+      expect(find.text('Encore 1 joueur pour démarrer'), findsNothing);
+      expect(enabled(tester, 'start-party'), isTrue);
+    });
+
+    testWidgets('an event about another party is ignored', (tester) async {
+      final backend = backendWith([vincent, easyBot]);
+      final transport = await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      backend.details = partyDetailsJson(
+        id: 'p1',
+        ownerId: 'u1',
+        players: [vincent, easyBot, second],
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'other',
+        'userId': 'u2',
+        'action': 'playerJoined',
+      });
+
+      expect(find.text('Alice'), findsNothing);
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+    });
+
+    testWidgets('starting the game leads to the game route', (tester) async {
+      final backend = backendWith([vincent, easyBot, second]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      expect(enabled(tester, 'start-party'), isTrue);
+      await tester.tap(find.byKey(const Key('start-party')));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests.map((request) => request.url.path),
+        contains('/api/party/p1/start'),
+      );
+      expect(find.text('Le plateau de jeu arrive bientôt.'), findsOneWidget);
+    });
+
+    testWidgets('another client starting the game leads there too', (
+      tester,
+    ) async {
+      final transport = await pumpApp(
+        tester,
+        backendWith([vincent, easyBot, second]),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'userId': 'u2',
+        'action': 'partyStarted',
+        'roundId': 'r1',
+      });
+
+      expect(find.text('Le plateau de jeu arrive bientôt.'), findsOneWidget);
+    });
+
+    testWidgets('the party being deleted goes back to the list', (
+      tester,
+    ) async {
+      final transport = await pumpApp(
+        tester,
+        backendWith([vincent, easyBot]),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'userId': 'u1',
+        'action': 'partyDeleted',
+      });
+
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('deleting asks first, then goes back to the list', (
+      tester,
+    ) async {
+      final backend = backendWith([vincent, easyBot]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      await tester.tap(find.byKey(const Key('delete-party')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('delete-confirm')), findsOneWidget);
+      await tester.tap(find.text('Annuler'));
+      await tester.pumpAndSettle();
+      expect(
+        backend.requests.where((request) => request.method == 'DELETE'),
+        isEmpty,
+      );
+
+      await tester.tap(find.byKey(const Key('delete-party')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('delete-confirm-ok')));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests
+            .where((request) => request.method == 'DELETE')
+            .map((request) => request.url.path),
+        ['/api/party/p1'],
+      );
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('leaving goes back to the list', (tester) async {
+      final backend = backendWith([vincent, easyBot]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      await tester.tap(find.byKey(const Key('leave-party')));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests.map((request) => request.url.path),
+        contains('/api/party/p1/leave'),
+      );
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('a party that does not exist says so', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(),
+        initialLocation: AppRoutes.partyPath('gone'),
+      );
+      expect(find.text('Partie introuvable'), findsOneWidget);
+    });
+
+    testWidgets('someone who owns nothing sees neither start nor delete', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            ownerId: 'someone-else',
+            players: [
+              partyPlayerJson(userId: 'u9', username: 'Owner', playerIndex: 0),
+              partyPlayerJson(
+                userId: 'u1',
+                username: 'Vincent',
+                playerIndex: 1,
+              ),
+            ],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      expect(find.byKey(const Key('start-party')), findsNothing);
+      expect(find.byKey(const Key('delete-party')), findsNothing);
+      expect(find.byKey(const Key('leave-party')), findsOneWidget);
+    });
+
+    testWidgets('the only human at a table of bots may delete it', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            ownerId: 'someone-else',
+            players: [
+              partyPlayerJson(
+                userId: 'u1',
+                username: 'Vincent',
+                playerIndex: 0,
+              ),
+              easyBot,
+            ],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      expect(find.byKey(const Key('start-party')), findsNothing);
+      expect(find.byKey(const Key('delete-party')), findsOneWidget);
+    });
+  });
+
+  group('phone width', () {
+    // Anything that does not fit throws a layout error, which fails the
+    // test: the screens have to work on a phone, which the React header
+    // does not.
+    const phone = Size(360, 740);
+
+    testWidgets('the party list fits', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(
+              id: 'p1',
+              name: 'Une partie au nom particulièrement long',
+              playerCount: 2,
+              isMember: true,
+            ),
+          ],
+          connected: [connectedPlayerJson('u1', 'Vincent')],
+        ),
+        size: phone,
+      );
+      expect(find.byKey(const Key('party-p1')), findsOneWidget);
+    });
+
+    testWidgets('the lobby fits', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            name: 'Une partie au nom particulièrement long',
+            ownerId: 'u1',
+            players: [
+              partyPlayerJson(
+                userId: 'u1',
+                username: 'Vincent',
+                playerIndex: 0,
+              ),
+              partyPlayerJson(
+                userId: 'b1',
+                username: 'HardVinceBot1',
+                playerIndex: 1,
+                userType: 'bot',
+                botDifficulty: 'hard_vince',
+              ),
+            ],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+        size: phone,
+      );
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+    });
+
+    testWidgets('the create form fits', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(),
+        initialLocation: AppRoutes.createParty,
+        size: phone,
+      );
+      expect(find.byKey(const Key('slot-3')), findsOneWidget);
+    });
+
+    // A large system font size is the same layout with everything taller
+    // and wider; a tile of a fixed height, or a row of unconstrained
+    // texts, overflows there and nowhere else.
+    testWidgets('the party list fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(
+              id: 'p1',
+              name: 'Une partie au nom particulièrement long',
+              playerCount: 2,
+              isMember: true,
+            ),
+            partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
+          ],
+          connected: [connectedPlayerJson('u1', 'Vincent')],
+        ),
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.byKey(const Key('party-p1')), findsOneWidget);
+      expect(find.byKey(const Key('open-p1')), findsOneWidget);
+    });
+
+    testWidgets('the lobby fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            name: 'Une partie au nom particulièrement long',
+            ownerId: 'u1',
+            players: [
+              partyPlayerJson(
+                userId: 'u1',
+                username: 'Vincent-au-pseudo-très-long',
+                playerIndex: 0,
+              ),
+              partyPlayerJson(
+                userId: 'b1',
+                username: 'HardVinceBot1',
+                playerIndex: 1,
+                userType: 'bot',
+                botDifficulty: 'hard_vince',
+              ),
+            ],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+      expect(find.byKey(const Key('seat-b1')), findsOneWidget);
+    });
+
+    testWidgets('the create form fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(),
+        initialLocation: AppRoutes.createParty,
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.byKey(const Key('slot-0')), findsOneWidget);
+    });
+  });
+
+  group('connected players', () {
+    testWidgets('the app bar counts them and the stream keeps it up to date', (
+      tester,
+    ) async {
+      final transport = await pumpApp(
+        tester,
+        FakeLobbyBackend(connected: [connectedPlayerJson('u1', 'Vincent')]),
+      );
+      expect(find.text('1'), findsOneWidget);
+
+      await broadcast(tester, transport, {
+        'type': 'userConnected',
+        'userId': 'u2',
+        'username': 'Alice',
+        'timestamp': 1790094174000,
+      });
+      expect(find.text('2'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('connected-players')));
+      await tester.pumpAndSettle();
+      expect(find.text('Joueurs connectés'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Salon'), findsNWidgets(2));
+    });
+  });
+}
