@@ -111,7 +111,98 @@ void main() {
 
       expect(game.error, isA<ApiException>());
       expect(game.actionError, isNull);
+      expect(game.refreshError, isNull);
     });
+
+    test('a refresh that fails keeps the table it could not replace', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      final table = game.snapshot;
+
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 500,
+        body: {'error': 'the refetch fell over', 'code': 'SERVER_ERROR'},
+      );
+      await game.load(showSpinner: false);
+
+      expect(game.error, isNull, reason: 'the board must stay drawable');
+      expect(game.snapshot, same(table));
+      expect(game.refreshError, isA<ApiException>());
+
+      backend.failures.clear();
+      await game.load(showSpinner: false);
+      expect(game.refreshError, isNull, reason: 'cleared by the next answer');
+    });
+
+    test('a move that lands but whose refetch fails keeps the table', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'play',
+            playerHand: [0, 13, 26],
+          ),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      game.toggleCard(0);
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 500,
+        body: {'error': 'the refetch fell over', 'code': 'SERVER_ERROR'},
+      );
+
+      await game.play();
+
+      expect(backend.paths, contains('/api/game/p1/play'));
+      expect(game.error, isNull);
+      expect(game.snapshot, isNotNull);
+      expect(
+        game.consumeActionError(),
+        isNull,
+        reason: 'the move went through',
+      );
+      expect(game.refreshError, isA<ApiException>());
+    });
+
+    test(
+      'the newest load wins, whatever order the answers come back in',
+      () async {
+        final backend = FakeGameBackend(
+          state: gameSnapshotJson(
+            gameState: gameStateJson(currentTurn: 1, currentAction: 'play'),
+          ),
+        );
+        final held = Completer<void>();
+        backend.onState = (call) => call == 1 ? held.future : Future.value();
+        final game = provider(backend);
+
+        // Two refetches a fraction of a second apart, as a bot party's `play`
+        // and `draw` broadcasts produce; the first answers last.
+        final first = game.load();
+        await pumpEventQueue();
+        backend.state = gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+        );
+        await game.load(showSpinner: false);
+        expect(game.isMyTurn, isTrue);
+
+        held.complete();
+        await first;
+
+        expect(
+          game.isMyTurn,
+          isTrue,
+          reason: 'the stale answer must not put the board back a turn',
+        );
+        expect(game.loading, isFalse);
+      },
+    );
   });
 
   group('the selection', () {
@@ -139,6 +230,30 @@ void main() {
 
       game.clearSelection();
       expect(game.selectedCards, isEmpty);
+    });
+
+    test('clearing drops the discard card too', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'draw',
+            lastCardsPlayed: [7, 8],
+          ),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+
+      game.selectDiscardCard(8);
+      expect(game.hasSelection, isTrue);
+      expect(game.willTakeFromDiscard, isTrue);
+
+      game.clearSelection();
+
+      expect(game.selectedDiscardCard, isNull);
+      expect(game.willTakeFromDiscard, isFalse);
+      expect(game.hasSelection, isFalse);
     });
 
     test('names why a selection cannot be played, and blocks Play', () async {

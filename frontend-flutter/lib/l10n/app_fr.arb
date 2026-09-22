@@ -1082,10 +1082,6 @@
   "@gameTitle": {
     "description": "Fallback app-bar title of the game board, before the party name is known"
   },
-  "gameBackToLobby": "Retour au salon",
-  "@gameBackToLobby": {
-    "description": "Back button of the game board"
-  },
   "gameLoading": "Chargement de la partie…",
   "@gameLoading": {
     "description": "Spinner label while the table is loaded"
@@ -1446,8 +1442,12 @@
   "@errorRoundNotFinished": {
     "description": "Refused move: ROUND_NOT_FINISHED"
   },
-  "errorGameNotStarted": "La partie n'a pas encore commencé.",
-  "@errorGameNotStarted": {
-    "description": "Refused move: GAME_NOT_STARTED"
+  "gameRefreshFailed": "Table peut-être obsolète : l'actualisation a échoué.",
+  "@gameRefreshFailed": {
+    "description": "Banner over a table whose refresh failed; the table stays on screen"
+  },
+  "errorNotInParty": "Vous n'avez pas de place à cette table.",
+  "@errorNotInParty": {
+    "description": "Refused move: NOT_IN_PARTY"
   }
 }

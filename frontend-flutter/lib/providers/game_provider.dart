@@ -20,7 +20,9 @@ abstract final class GameErrorCode {
   static const deckEmpty = 'DECK_EMPTY';
   static const invalidHandSize = 'INVALID_HAND_SIZE';
   static const roundNotFinished = 'ROUND_NOT_FINISHED';
-  static const gameNotStarted = 'GAME_NOT_STARTED';
+
+  /// The caller has no seat at this table (both backends).
+  static const notInParty = 'NOT_IN_PARTY';
 }
 
 /// What ends the board: the screen watches [GameProvider.outcome] and
@@ -40,10 +42,12 @@ const int maxGoldenHandSize = 10;
 /// stream, plus the selection the player builds before a move.
 ///
 /// A move's answer is not the new table, so every action refetches the
-/// state — as the React client does (`GameBoard.jsx`). A refused **action**
-/// leaves the board alone and fills [actionError]; only a failed **load**
-/// fills [error], which is what the React board gets wrong (any error at
-/// all replaces the whole board there, `GameBoard.jsx:220-235`).
+/// state — as the React client does (`GameBoard.jsx`). Nothing takes a
+/// drawn table away: a refused **move** fills [actionError], a **refresh**
+/// that fails over a table already on screen fills [refreshError], and only
+/// a **load with nothing to show** fills [error]. The React board has one
+/// `error` for all three and draws an error page instead of the table
+/// (`GameBoard.jsx:220-235`).
 class GameProvider extends ChangeNotifier {
   GameProvider(
     this._repository, {
@@ -66,7 +70,11 @@ class GameProvider extends ChangeNotifier {
   GameSnapshot? _snapshot;
   bool _loading = true;
   Object? _error;
+  Object? _refreshError;
   Object? _actionError;
+
+  /// Counts the loads, so a stale answer cannot overwrite a newer table.
+  int _loadGeneration = 0;
   bool _busy = false;
   bool _disposed = false;
   GameOutcome? _outcome;
@@ -83,8 +91,15 @@ class GameProvider extends ChangeNotifier {
   /// load runs; a refresh driven by an event does not set it.
   bool get loading => _loading;
 
-  /// A failure of the load: the board cannot be drawn at all.
+  /// A failure of the load with nothing to fall back on: the board cannot
+  /// be drawn at all. A refresh that fails over a table already on screen
+  /// goes to [refreshError] instead.
   Object? get error => _error;
+
+  /// The last refresh failed while a table was on screen: what is drawn may
+  /// be out of date. Cleared by the next load that succeeds; the board shows
+  /// a banner and stays.
+  Object? get refreshError => _refreshError;
 
   /// A refused move. The board stays on screen; the screen shows it once
   /// and clears it with [consumeActionError].
@@ -166,6 +181,10 @@ class GameProvider extends ChangeNotifier {
   /// The discard card tapped in the draw phase, if any.
   int? get selectedDiscardCard => _selectedDiscardCard;
 
+  /// Something is selected — cards, a discard card, or both.
+  bool get hasSelection =>
+      _selectedCards.isNotEmpty || _selectedDiscardCard != null;
+
   /// Why the selection is not a legal play, or `null` when it is (or when
   /// nothing is selected).
   PlayError? get invalidPlay {
@@ -210,17 +229,35 @@ class GameProvider extends ChangeNotifier {
 
   /// (Re)loads the table. [showSpinner] false is a refresh driven by an
   /// event or by a move: the current table stays on screen meanwhile.
+  ///
+  /// Two loads can be in flight at once — a move's refetch and the event
+  /// its own broadcast triggers, a fraction of a second apart — and they
+  /// can answer out of order. Only the newest one is kept
+  /// ([_loadGeneration], the guard of `services/sse_client.dart`);
+  /// an older answer, good or bad, is dropped.
   Future<void> load({bool showSpinner = true}) async {
     if (showSpinner && !_loading) {
       _loading = true;
       _notify();
     }
+    final generation = ++_loadGeneration;
     try {
-      _snapshot = await _repository.state(partyId);
+      final snapshot = await _repository.state(partyId);
+      if (generation != _loadGeneration) return;
+      _snapshot = snapshot;
       _error = null;
+      _refreshError = null;
       _syncSelection();
     } catch (error) {
-      _error = error;
+      if (generation != _loadGeneration) return;
+      // A table already on screen is never taken away by a *refresh* that
+      // fails: the move went through, only the refetch did not. The error
+      // screen is for a load with nothing to show.
+      if (_snapshot == null) {
+        _error = error;
+      } else {
+        _refreshError = error;
+      }
     }
     _loading = false;
     _notify();
@@ -234,9 +271,12 @@ class GameProvider extends ChangeNotifier {
     _notify();
   }
 
+  /// Drops the whole selection — the cards *and* the discard card, which
+  /// otherwise leaves the Draw button reading "Take".
   void clearSelection() {
-    if (_selectedCards.isEmpty) return;
+    if (_selectedCards.isEmpty && _selectedDiscardCard == null) return;
     _selectedCards.clear();
+    _selectedDiscardCard = null;
     _notify();
   }
 

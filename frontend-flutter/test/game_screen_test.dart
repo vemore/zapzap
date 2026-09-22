@@ -152,6 +152,48 @@ void main() {
       expect(find.text('7 cartes par joueur'), findsOneWidget);
     });
 
+    testWidgets('a Golden Score that ends pulls the choice back into range', (
+      tester,
+    ) async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'selectHandSize',
+            isGoldenScore: true,
+          ),
+        ),
+      );
+      final transport = await pumpGame(tester, backend);
+
+      await tester.tap(find.byKey(GameHandSizeSelector.sizeKey(10)));
+      await tester.pumpAndSettle();
+      expect(find.text('10 cartes par joueur'), findsOneWidget);
+
+      // The round starts again outside Golden Score: 10 is gone, and a
+      // selector still holding it would post a size the backend refuses.
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(
+          currentTurn: 0,
+          currentAction: 'selectHandSize',
+        ),
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'roundStarted',
+        'type': 'roundStarted',
+      });
+
+      expect(find.byKey(GameHandSizeSelector.sizeKey(10)), findsNothing);
+      expect(find.text('5 cartes par joueur'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('confirm-hand-size')));
+      await tester.pumpAndSettle();
+      expect(backend.bodyOf('POST', '/api/game/p1/selectHandSize'), {
+        'handSize': 5,
+      });
+    });
+
     testWidgets('anybody else waits for the starting player', (tester) async {
       await pumpGame(
         tester,
@@ -272,6 +314,26 @@ void main() {
       expectBoardStanding(tester);
     });
 
+    testWidgets('a move refused with NOT_IN_PARTY says so', (tester) async {
+      final backend = playing(playerHand: [0, 13, 26]);
+      backend.failures['POST /api/game/p1/play'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': GameErrorCode.notInParty},
+      );
+      await pumpGame(tester, backend);
+
+      selectCard(tester, 0);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('play-cards')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Vous n'avez pas de place à cette table."),
+        findsOneWidget,
+      );
+      expectBoardStanding(tester);
+    });
+
     testWidgets('a play the backend refuses shows why and keeps the board', (
       tester,
     ) async {
@@ -321,6 +383,29 @@ void main() {
       });
     });
 
+    testWidgets('Clear drops the discard card, so Take goes back to Draw', (
+      tester,
+    ) async {
+      await pumpGame(
+        tester,
+        playing(currentAction: 'draw', lastCardsPlayed: [7, 8]),
+      );
+
+      // The hand is disabled in the draw phase, so Clear is the only way
+      // back from a discard card picked by mistake.
+      expect(enabled(tester, 'clear-selection'), isFalse);
+      await tester.tap(find.byKey(GameTableArea.discardKey(8)));
+      await tester.pumpAndSettle();
+      expect(find.text('Prendre'), findsOneWidget);
+      expect(enabled(tester, 'clear-selection'), isTrue);
+
+      await tester.tap(find.byKey(const Key('clear-selection')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Piocher'), findsOneWidget);
+      expect(find.text('Prendre'), findsNothing);
+    });
+
     testWidgets('the discard pile is dead outside my draw phase', (
       tester,
     ) async {
@@ -364,6 +449,39 @@ void main() {
       await tester.pump(GameTableArea.reshuffleDuration);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('reshuffleBanner')), findsNothing);
+    });
+  });
+
+  group('a refresh that fails', () {
+    testWidgets('leaves the table on screen under a banner, and retries', (
+      tester,
+    ) async {
+      final backend = playing(currentTurn: 1);
+      final transport = await pumpGame(tester, backend);
+      expectBoardStanding(tester);
+
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 500,
+        body: {'error': 'the refetch fell over', 'code': 'SERVER_ERROR'},
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'play',
+        'type': 'gameAction',
+      });
+
+      // The move landed; only the refetch did not. The React board would
+      // have replaced the whole table with an error page here.
+      expectBoardStanding(tester);
+      expect(find.byKey(const Key('gameStaleBanner')), findsOneWidget);
+      expect(find.text('Partie indisponible'), findsNothing);
+
+      backend.failures.clear();
+      await tester.tap(find.byKey(const Key('retry-refresh')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('gameStaleBanner')), findsNothing);
+      expectBoardStanding(tester);
     });
   });
 
@@ -454,6 +572,23 @@ void main() {
     });
   });
 
+  group('leaving the board', () {
+    testWidgets('the back control leads to the parties, not the lobby', (
+      tester,
+    ) async {
+      // The lobby bounces a playing party straight back to the board
+      // (`PartyLobbyProvider.load`), so going "back" there is a flash and
+      // a remount, never a way out.
+      await pumpGame(tester, playing());
+
+      await tester.tap(find.byKey(const Key('game-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GamePlayerTable), findsNothing);
+      expect(find.text('Parties'), findsWidgets);
+    });
+  });
+
   group('failures', () {
     testWidgets('a party that cannot be loaded offers the lobby', (
       tester,
@@ -461,7 +596,7 @@ void main() {
       await pumpGame(tester, FakeGameBackend());
 
       expect(find.text('Partie indisponible'), findsOneWidget);
-      expect(find.byKey(const Key('back-to-lobby-body')), findsOneWidget);
+      expect(find.byKey(const Key('game-back-body')), findsOneWidget);
     });
 
     testWidgets('a party that has not dealt yet says so', (tester) async {

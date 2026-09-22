@@ -99,11 +99,14 @@ class _GameScreenState extends State<GameScreen> {
       builder: (context, _) => Scaffold(
         appBar: ZapZapAppBar(
           title: _game.snapshot?.party.name ?? l10n.gameTitle,
+          // Not the lobby: a party that is playing bounces straight back
+          // here (`party_provider.dart`, `PartyLobbyProvider.load`), which
+          // remounts the whole board and leaves no way out.
           leading: IconButton(
-            key: const Key('back-to-lobby'),
-            tooltip: l10n.gameBackToLobby,
+            key: const Key('game-back'),
+            tooltip: l10n.lobbyBack,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go(AppRoutes.partyPath(widget.partyId)),
+            onPressed: () => context.go(AppRoutes.parties),
           ),
         ),
         body: SafeArea(child: _body(context, l10n)),
@@ -134,7 +137,7 @@ class _GameScreenState extends State<GameScreen> {
         l10n.gameNotStartedBody,
       );
     }
-    return switch (_game.currentAction) {
+    final content = switch (_game.currentAction) {
       GameAction.selectHandSize => _handSize(l10n),
       GameAction.finished => _roundOver(context, l10n),
       _ => LayoutBuilder(
@@ -144,7 +147,47 @@ class _GameScreenState extends State<GameScreen> {
             : _phoneBoard(),
       ),
     };
+    if (_game.refreshError == null) return content;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _staleBanner(l10n),
+        Expanded(child: content),
+      ],
+    );
   }
+
+  /// The last refresh failed but the table is still drawn: say it may be
+  /// out of date rather than take it away, and offer another go.
+  Widget _staleBanner(AppLocalizations l10n) => Container(
+    key: const Key('gameStaleBanner'),
+    padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+    color: AppColors.amber600.withValues(alpha: 0.25),
+    child: Row(
+      children: [
+        const Icon(Icons.sync_problem, size: 16, color: AppColors.amber400),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            l10n.gameRefreshFailed,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        TextButton(
+          key: const Key('retry-refresh'),
+          onPressed: _game.busy ? null : () => _game.load(showSpinner: false),
+          style: TextButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(l10n.retryButton),
+        ),
+      ],
+    ),
+  );
 
   Widget _message(
     BuildContext context,
@@ -176,9 +219,9 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             OutlinedButton(
-              key: const Key('back-to-lobby-body'),
-              onPressed: () => context.go(AppRoutes.partyPath(widget.partyId)),
-              child: Text(l10n.gameBackToLobby),
+              key: const Key('game-back-body'),
+              onPressed: () => context.go(AppRoutes.parties),
+              child: Text(l10n.lobbyBack),
             ),
           ],
         ),
@@ -249,7 +292,7 @@ class _GameScreenState extends State<GameScreen> {
       deckSize: _game.deckSize,
       disabled: !_game.isMyTurn || _game.currentAction != GameAction.play,
       onCardTap: _game.toggleCard,
-      onClearSelection: _game.clearSelection,
+      onClearSelection: _game.hasSelection ? _game.clearSelection : null,
       onDrawFromDeck: _game.canDraw && !_game.willTakeFromDiscard
           ? _game.draw
           : null,

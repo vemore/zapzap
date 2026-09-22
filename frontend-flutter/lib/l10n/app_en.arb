@@ -224,7 +224,6 @@
   "strategyThibotTitle": "Probability-based strategy",
   "strategyThibotDescription": "Tracks every played card and opponents' picks to compute probabilities. Genetically optimised parameters, maximises the points removed per turn and defends when an opponent nears ZapZap.",
   "gameTitle": "Game",
-  "gameBackToLobby": "Back to lobby",
   "gameLoading": "Loading game…",
   "gameLoadFailedTitle": "Game unavailable",
   "gameNotStartedTitle": "Game not started yet",
@@ -284,5 +283,6 @@
   "errorDeckEmpty": "The deck is empty.",
   "errorInvalidHandSize": "That hand size is not allowed.",
   "errorRoundNotFinished": "The round is not over.",
-  "errorGameNotStarted": "The game has not started yet."
+  "gameRefreshFailed": "The board may be out of date: the refresh failed",
+  "errorNotInParty": "You have no seat at this table."
 }
