@@ -1085,5 +1085,9 @@
   "strategyThibotDescription": "Suit toutes les cartes jouées et les pioches adverses pour calculer ses probabilités. Paramètres optimisés génétiquement, maximise les points retirés par tour et se met en défense quand un adversaire approche du ZapZap.",
   "@strategyThibotDescription": {
     "description": "What the thibot bots do"
+  },
+  "appBarMenu": "Plus",
+  "@appBarMenu": {
+    "description": "Tooltip of the app-bar menu leading to the history and the statistics"
   }
 }
