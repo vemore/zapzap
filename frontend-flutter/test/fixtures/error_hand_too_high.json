@@ -1,0 +1,7 @@
+{
+  "status": 400,
+  "body": {
+    "error": "Hand value too high (35 points). Must be ≤5 to call zapzap.",
+    "code": "HAND_TOO_HIGH"
+  }
+}

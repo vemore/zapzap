@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "zapzapSuccess": true,
+  "counteracted": false,
+  "counteractedBy": null,
+  "scores": {
+    "0": 0,
+    "1": 23,
+    "2": 9
+  },
+  "handPoints": {
+    "0": 28,
+    "1": 23,
+    "2": 9
+  },
+  "callerPoints": 3
+}

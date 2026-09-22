@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+  "username": "Vincent",
+  "stats": {
+    "gamesPlayed": 1,
+    "wins": 0,
+    "losses": 1,
+    "winRate": 0,
+    "averageScore": 122,
+    "bestScore": 122,
+    "totalRoundsPlayed": 5,
+    "zapzaps": {
+      "total": 0,
+      "successful": 0,
+      "failed": 0,
+      "successRate": 0
+    },
+    "lowestHandCount": 0
+  }
+}

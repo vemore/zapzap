@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "handSize": 5,
+  "gameState": {
+    "currentTurn": 0,
+    "currentAction": "play",
+    "deckSize": 38,
+    "handSizes": {
+      "0": 5,
+      "1": 5,
+      "2": 5
+    }
+  }
+}

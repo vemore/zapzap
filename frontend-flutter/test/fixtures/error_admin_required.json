@@ -1,0 +1,8 @@
+{
+  "status": 403,
+  "body": {
+    "success": false,
+    "error": "Admin access required",
+    "code": "ADMIN_REQUIRED"
+  }
+}

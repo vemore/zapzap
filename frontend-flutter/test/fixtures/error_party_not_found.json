@@ -1,0 +1,7 @@
+{
+  "status": 404,
+  "body": {
+    "error": "Party not found",
+    "code": "PARTY_NOT_FOUND"
+  }
+}

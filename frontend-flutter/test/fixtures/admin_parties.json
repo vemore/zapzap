@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "parties": [
+    {
+      "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+      "name": "Fixture party",
+      "ownerId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "ownerUsername": "Vincent",
+      "inviteCode": "BGJARGH7",
+      "visibility": "public",
+      "status": "finished",
+      "settings": "{\"playerCount\":3,\"allowSpectators\":false,\"roundTimeLimit\":0}",
+      "currentRoundId": "a1aa3f2d-0ab4-4c9c-ae25-35aca727d329",
+      "playerCount": 3,
+      "createdAt": 1790094174,
+      "updatedAt": 1790094408
+    },
+    {
+      "id": "f9d11bf6-2a4c-4e45-a8d3-4ef3863f02e9",
+      "name": "Demo Game",
+      "ownerId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "ownerUsername": "Vincent",
+      "inviteCode": "7FU9WUHC",
+      "visibility": "public",
+      "status": "waiting",
+      "settings": "{\"playerCount\":5,\"allowSpectators\":false,\"roundTimeLimit\":0}",
+      "currentRoundId": null,
+      "playerCount": 4,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094104
+    }
+  ],
+  "pagination": {
+    "total": 2,
+    "limit": 50,
+    "offset": 0
+  }
+}
