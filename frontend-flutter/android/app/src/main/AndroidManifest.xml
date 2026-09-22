@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The app talks to the ZapZap API; debug builds get it from the debug manifest too. -->
+    <!-- The app talks to the ZapZap API: every build type needs it, not only debug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="ZapZap"

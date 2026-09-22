@@ -1,0 +1,9 @@
+# Android launcher icon, from assets/icon/ (the SVGs are the source, the PNGs are rendered
+# from them). Regenerate: dart run flutter_launcher_icons
+# The web icons (web/icons/) are not generated from here.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: '#0f172a'
+  adaptive_icon_foreground: assets/icon/icon_foreground.png
