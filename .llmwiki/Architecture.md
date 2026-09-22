@@ -1,17 +1,18 @@
 # Architecture
 
-> Scope: the four code bases of the repository (zapzap-rust, frontend, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
-> Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
+> Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
+> Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
 > Updated: 2026-09-22
 
 ## Facts
 
-### The four parts
+### The five parts
 
 | Part | Path | Stack | Role | Status |
 |------|------|-------|------|--------|
 | Rust backend | `zapzap-rust/` | axum 0.7, tokio, sqlx 0.8 (sqlite), jsonwebtoken 9, argon2 + bcrypt (`zapzap-rust/Cargo.toml:10-25`) | HTTP API + SSE on port 9999, bots, persistence | **Target** backend, **not deployed yet** (production runs the Node one, [[Deployment]]). Binary `zapzap-backend` (`zapzap-rust/Cargo.toml:2`) |
 | Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
+| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is meant to be served under `/app/` on the production domain | **Scaffold**: home and a placeholder login, not deployed, no CI job yet. [[FrontendFlutter]] |
 | Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; loaded by Node scripts in `scripts/` | Offline tooling only |
 | Legacy backend | `src/`, `app.js` | Node/Express, clean architecture (`src/domain`, `src/use-cases`, `src/infrastructure`, `src/api`) | Former API server (entry `app.js:14-20`, `src/api/server.js`) | **Legacy, yet the one in production** (checked 2026-09-22, [[Deployment]]); no CI job, no gate. Owns the schema bootstrap |
 
@@ -80,3 +81,4 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - 2025-12-15 `9a1d37f`: `native/` first appears (with the hard bot strategy); later DRL/genetic commits grow it into the training engine that complements the JS `src/simulation/` runners.
 - 2025-12-23 `e4f83da` "rewrite backend in Rust": `zapzap-rust/` mirrors the Node layers (api / application / domain / infrastructure) and reads the DB the Node code had created, which is why no migrations were written (the `migrate!` line was left commented). Same day: background bot triggering (`8a3509b`) and broadcaster overflow mode (`c9ac7a7`, avoids blocking senders when SSE clients lag).
 - 2026-09-22 `1e063d6`: CI added, `Cargo.lock` committed, `data/zapzap.db` untracked, Rust pinned to 1.92.
+- 2026-09-22 `feat/flutter-scaffold`: `frontend-flutter/` created — a Flutter client (Android + PWA) to reach parity with the React one; React stays on `/`, the PWA goes under `/app/` so the API is same-origin. [[FrontendFlutter]].

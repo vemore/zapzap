@@ -1,0 +1,31 @@
+{
+  "@@locale": "fr",
+  "appTitle": "ZapZap",
+  "@appTitle": {
+    "description": "The application name, in the title bar and on the home screen"
+  },
+  "homeTagline": "Le jeu de cartes multijoueur",
+  "@homeTagline": {
+    "description": "Subtitle under the application name on the home screen"
+  },
+  "homeLoginButton": "Se connecter",
+  "@homeLoginButton": {
+    "description": "Home screen button that opens the login screen"
+  },
+  "loginTitle": "Connexion",
+  "@loginTitle": {
+    "description": "Title of the login screen"
+  },
+  "loginComingSoon": "La connexion arrive bientôt.",
+  "@loginComingSoon": {
+    "description": "Placeholder body of the login screen until the login form exists"
+  },
+  "notFoundTitle": "Page introuvable",
+  "@notFoundTitle": {
+    "description": "Title shown for a route that does not exist"
+  },
+  "notFoundBackHome": "Retour à l'accueil",
+  "@notFoundBackHome": {
+    "description": "Button on the not-found screen that goes back to the home screen"
+  }
+}
