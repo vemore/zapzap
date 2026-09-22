@@ -30,7 +30,7 @@ commit message or a heredoc that *mentions* a forbidden command passes. When it 
 where a `git commit` or a bare `git push` runs (a `cd $VAR` it cannot resolve, `$(...)`), it
 refuses with `unknown-repo` and asks for `git -C <literal path>`.
 
-`scripts/hooks_selftest.sh` exercises all of it — 119 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 120 cases in sandbox repositories, with a
 stubbed `gh`, `cargo` and `npm` — plus `scripts/cleanup_local.sh`; it is the `hooks` CI job.
 
 ### What is refused, and on what evidence
@@ -43,7 +43,7 @@ stubbed `gh`, `cargo` and `npm` — plus `scripts/cleanup_local.sh`; it is the `
 | `gh pr create --base <anything but master>` | parsed `--base`; unlocked per repository by `git config zapzap.allowStackedPr true` — the user's decision |
 | `gh pr merge` with `--admin`, or without `--squash`, or with `--merge`/`--rebase` | parsed flags, bundled short flags included |
 | Committing on master, on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
-| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
+| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
 | Committing anything under `wip/`, or a root `TODO.md` / `DONE.md` | same path list |
 | Committing with a red gate, or with the gate's setup missing | see below |
 

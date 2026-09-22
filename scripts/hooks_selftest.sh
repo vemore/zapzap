@@ -207,6 +207,7 @@ secret_case "a staged .env.production"             2 ".env.production"
 secret_case "the committed template"               0 ".env.example"
 secret_case "the Google OAuth client"              2 "src/infrastructure/auth/client_secret_123.json"
 secret_case "the SQLite database"                  2 "data/zapzap.db"
+secret_case "a backup of the database"            2 "data/zapzap.db.bak-2026-09-22-1356"
 secret_case "an ordinary JSON file"                0 "data/thibot_genetic_params.json"
 # Untracking the database is a deletion, not a leak.
 echo x > "$TREE/data.db" && git -C "$TREE" add -f data.db

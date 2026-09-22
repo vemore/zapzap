@@ -95,7 +95,7 @@ refuse() {
 }
 
 # 1. Secrets and the database ------------------------------------------------
-secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)$' \
+secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$' \
           | grep -vE '(^|/)\.env\.example$')
 if [ -n "$secrets" ]; then
     refuse "Refused: this commit would add a secret or a database to the repository.

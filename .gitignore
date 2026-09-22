@@ -19,6 +19,8 @@ tests/e2e/results/
 # Database
 data/zapzap.db
 data/zapzap.test.db
+# Backups the deploy skill takes before a deploy (data/zapzap.db.bak-<date>)
+data/*.db.bak-*
 
 # Playwright MCP screenshots
 .playwright-mcp/
