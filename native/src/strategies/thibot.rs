@@ -9,8 +9,8 @@
 
 use super::BotStrategy;
 use crate::card_analyzer::{
-    self, find_all_valid_plays, get_card_points, get_rank, get_suit, is_joker,
-    would_complete_pair, would_complete_sequence,
+    self, find_all_valid_plays, get_card_points, get_rank, get_suit, is_joker, would_complete_pair,
+    would_complete_sequence,
 };
 use crate::game_state::GameState;
 use smallvec::SmallVec;
@@ -428,50 +428,45 @@ impl ThibotStrategy {
         let hand_value = card_analyzer::calculate_hand_value(hand);
 
         // Score each play
-        plays
-            .into_iter()
-            .max_by_key(|play| {
-                // Remaining hand after this play
-                let remaining: SmallVec<[u8; 10]> = hand
-                    .iter()
-                    .filter(|c| !play.contains(c))
-                    .copied()
-                    .collect();
+        plays.into_iter().max_by_key(|play| {
+            // Remaining hand after this play
+            let remaining: SmallVec<[u8; 10]> =
+                hand.iter().filter(|c| !play.contains(c)).copied().collect();
 
-                let remaining_value = card_analyzer::calculate_hand_value(&remaining);
-                let points_removed = (hand_value - remaining_value) as i32;
-                let cards_removed = play.len() as i32;
+            let remaining_value = card_analyzer::calculate_hand_value(&remaining);
+            let points_removed = (hand_value - remaining_value) as i32;
+            let cards_removed = play.len() as i32;
 
-                // Evaluate remaining hand's combo potential
-                let remaining_potential: i32 = remaining
-                    .iter()
-                    .map(|&c| self.evaluate_card_potential(c, &remaining, state))
-                    .sum();
+            // Evaluate remaining hand's combo potential
+            let remaining_potential: i32 = remaining
+                .iter()
+                .map(|&c| self.evaluate_card_potential(c, &remaining, state))
+                .sum();
 
-                // PRIMARY: Minimize remaining hand value (maximize points removed)
-                // This is weighted heavily because low hand value = can ZapZap sooner
-                let value_score = points_removed * self.params.value_score_weight;
+            // PRIMARY: Minimize remaining hand value (maximize points removed)
+            // This is weighted heavily because low hand value = can ZapZap sooner
+            let value_score = points_removed * self.params.value_score_weight;
 
-                // SECONDARY: Prefer multi-card plays (faster hand reduction)
-                // But only as a tiebreaker when point removal is similar
-                let cards_score = cards_removed * self.params.cards_score_weight;
+            // SECONDARY: Prefer multi-card plays (faster hand reduction)
+            // But only as a tiebreaker when point removal is similar
+            let cards_score = cards_removed * self.params.cards_score_weight;
 
-                // TERTIARY: Keep cards with good future potential
-                let potential_score = remaining_potential / self.params.potential_divisor.max(1);
+            // TERTIARY: Keep cards with good future potential
+            let potential_score = remaining_potential / self.params.potential_divisor.max(1);
 
-                // Penalty for using jokers (save for combos/ZapZap)
-                let joker_penalty =
-                    play.iter().filter(|&&c| is_joker(c)).count() as i32 * self.params.joker_play_penalty;
+            // Penalty for using jokers (save for combos/ZapZap)
+            let joker_penalty = play.iter().filter(|&&c| is_joker(c)).count() as i32
+                * self.params.joker_play_penalty;
 
-                // Bonus for plays that leave low remaining value (ZapZap potential)
-                let zapzap_bonus = if remaining_value <= 5 {
-                    self.params.zapzap_potential_bonus
-                } else {
-                    0
-                };
+            // Bonus for plays that leave low remaining value (ZapZap potential)
+            let zapzap_bonus = if remaining_value <= 5 {
+                self.params.zapzap_potential_bonus
+            } else {
+                0
+            };
 
-                value_score + cards_score + potential_score - joker_penalty + zapzap_bonus
-            })
+            value_score + cards_score + potential_score - joker_penalty + zapzap_bonus
+        })
     }
 
     /// Find the play that maximizes points removed (defensive mode)
@@ -534,7 +529,10 @@ impl ThibotStrategy {
         hypothetical_hand.push(card);
 
         let all_plays = find_all_valid_plays(&hypothetical_hand);
-        all_plays.into_iter().filter(|play| play.contains(&card)).collect()
+        all_plays
+            .into_iter()
+            .filter(|play| play.contains(&card))
+            .collect()
     }
 
     /// Score a coordinated scenario (play now + take discard + play future combo)
@@ -624,7 +622,10 @@ impl ThibotStrategy {
         let valuable_plays: Vec<_> = plays_with_discard
             .into_iter()
             .filter(|play| {
-                let hand_cards_in_play = play.iter().filter(|&&c| c != discard_card && hand.contains(&c)).count();
+                let hand_cards_in_play = play
+                    .iter()
+                    .filter(|&&c| c != discard_card && hand.contains(&c))
+                    .count();
                 hand_cards_in_play >= 1 && play.len() >= 2
             })
             .collect();
@@ -672,7 +673,13 @@ impl ThibotStrategy {
             }
 
             for play_now in plays_now {
-                let score = self.score_coordinated_scenario(&play_now, &future_play, hand, discard_card, state);
+                let score = self.score_coordinated_scenario(
+                    &play_now,
+                    &future_play,
+                    hand,
+                    discard_card,
+                    state,
+                );
 
                 if score > best_score {
                     best_score = score;
@@ -697,11 +704,8 @@ impl ThibotStrategy {
 
         if let Some(ref play) = normal_play {
             let play_value = card_analyzer::calculate_hand_value(play) as i32;
-            let remaining: SmallVec<[u8; 10]> = hand
-                .iter()
-                .filter(|c| !play.contains(c))
-                .copied()
-                .collect();
+            let remaining: SmallVec<[u8; 10]> =
+                hand.iter().filter(|c| !play.contains(c)).copied().collect();
             let remaining_potential: i32 = remaining
                 .iter()
                 .map(|&c| self.evaluate_card_potential(c, &remaining, state))
@@ -726,7 +730,9 @@ impl ThibotStrategy {
         let mut best_coordinated: Option<(SmallVec<[u8; 8]>, i32, u8)> = None;
 
         for &discard_card in last_cards_played {
-            if let Some((play, score)) = self.evaluate_hold_and_take_scenario(hand, discard_card, state) {
+            if let Some((play, score)) =
+                self.evaluate_hold_and_take_scenario(hand, discard_card, state)
+            {
                 if best_coordinated.is_none() || score > best_coordinated.as_ref().unwrap().1 {
                     best_coordinated = Some((play, score, discard_card));
                 }
@@ -806,12 +812,7 @@ impl BotStrategy for ThibotStrategy {
         self.can_safely_zapzap(hand, state)
     }
 
-    fn select_draw_source(
-        &self,
-        hand: &[u8],
-        last_cards_played: &[u8],
-        state: &GameState,
-    ) -> bool {
+    fn select_draw_source(&self, hand: &[u8], last_cards_played: &[u8], state: &GameState) -> bool {
         // If no cards available in discard, must draw from deck
         if last_cards_played.is_empty() {
             return true;
@@ -940,7 +941,7 @@ mod tests {
         // Discard has ace that would complete pair
         let hand = vec![0]; // A♠
         let discard = vec![13]; // A♥
-        // Should prefer discard (completes pair)
+                                // Should prefer discard (completes pair)
         assert!(!thibot.select_draw_source(&hand, &discard, &state));
     }
 

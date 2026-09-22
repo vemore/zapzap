@@ -108,10 +108,8 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
         // Batch fetch all users (avoids N+1 queries)
         let user_ids: Vec<String> = party_players.iter().map(|pp| pp.user_id.clone()).collect();
         let users = self.user_repo.find_by_ids(&user_ids).await?;
-        let users_map: std::collections::HashMap<String, _> = users
-            .into_iter()
-            .map(|u| (u.id.clone(), u))
-            .collect();
+        let users_map: std::collections::HashMap<String, _> =
+            users.into_iter().map(|u| (u.id.clone(), u)).collect();
 
         // Build player info
         let mut players = Vec::with_capacity(party_players.len());
@@ -148,13 +146,10 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 .map(|idx| gs.get_hand(idx).to_vec())
                 .unwrap_or_default();
 
-            let hand_sizes: Vec<usize> = (0..gs.player_count)
-                .map(|i| gs.get_hand(i).len())
-                .collect();
+            let hand_sizes: Vec<usize> =
+                (0..gs.player_count).map(|i| gs.get_hand(i).len()).collect();
 
-            let scores: Vec<u16> = (0..gs.player_count)
-                .map(|i| gs.get_score(i))
-                .collect();
+            let scores: Vec<u16> = (0..gs.player_count).map(|i| gs.get_score(i)).collect();
 
             // Get cards_played from game state
             let cards_played = gs.cards_played.to_vec();
@@ -168,35 +163,40 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
             // Build round_scores HashMap if available
             let round_scores_map = gs.round_scores.map(|scores| {
                 let mut map = std::collections::HashMap::new();
-                for i in 0..gs.player_count as usize {
-                    map.insert(i.to_string(), scores[i]);
+                for (i, score) in scores.iter().take(gs.player_count as usize).enumerate() {
+                    map.insert(i.to_string(), *score);
                 }
                 map
             });
 
             // Build all_hands HashMap (all player hands revealed at round end)
-            let all_hands_map = if gs.current_action == crate::domain::value_objects::GameAction::Finished {
-                let mut map = std::collections::HashMap::new();
-                for i in 0..gs.player_count as usize {
-                    map.insert(i.to_string(), gs.hands[i].to_vec());
-                }
-                Some(map)
-            } else {
-                None
-            };
+            let all_hands_map =
+                if gs.current_action == crate::domain::value_objects::GameAction::Finished {
+                    let mut map = std::collections::HashMap::new();
+                    for i in 0..gs.player_count as usize {
+                        map.insert(i.to_string(), gs.hands[i].to_vec());
+                    }
+                    Some(map)
+                } else {
+                    None
+                };
 
             // Build hand_points HashMap (hand value for each player at round end)
-            let hand_points_map = if gs.current_action == crate::domain::value_objects::GameAction::Finished {
-                let mut map = std::collections::HashMap::new();
-                for i in 0..gs.player_count as usize {
-                    let hand = &gs.hands[i];
-                    let hand_value = crate::infrastructure::bot::card_analyzer::calculate_hand_score(hand, false);
-                    map.insert(i.to_string(), hand_value);
-                }
-                Some(map)
-            } else {
-                None
-            };
+            let hand_points_map =
+                if gs.current_action == crate::domain::value_objects::GameAction::Finished {
+                    let mut map = std::collections::HashMap::new();
+                    for i in 0..gs.player_count as usize {
+                        let hand = &gs.hands[i];
+                        let hand_value =
+                            crate::infrastructure::bot::card_analyzer::calculate_hand_score(
+                                hand, false,
+                            );
+                        map.insert(i.to_string(), hand_value);
+                    }
+                    Some(map)
+                } else {
+                    None
+                };
 
             // Determine winner if game is finished
             let (game_finished, winner) = if is_game_finished {
@@ -204,13 +204,16 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 let winner_info = if gs.is_golden_score {
                     // In golden score, winner is the player with lowest hand who called zapzap successfully
                     // or the only player still <= 100
-                    let surviving: Vec<_> = scores.iter().enumerate()
+                    let surviving: Vec<_> = scores
+                        .iter()
+                        .enumerate()
                         .filter(|(_, &score)| score <= 100)
                         .collect();
 
                     if surviving.len() == 1 {
                         let (winner_idx, &winner_score) = surviving[0];
-                        let winner_user = players.iter().find(|p| p.player_index == winner_idx as u8);
+                        let winner_user =
+                            players.iter().find(|p| p.player_index == winner_idx as u8);
                         winner_user.map(|w| WinnerInfoView {
                             user_id: w.user.id.clone(),
                             player_index: winner_idx as u8,
@@ -231,7 +234,9 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                     }
                 } else {
                     // Normal game end - find player with lowest score
-                    let (winner_idx, &winner_score) = scores.iter().enumerate()
+                    let (winner_idx, &winner_score) = scores
+                        .iter()
+                        .enumerate()
                         .min_by_key(|(_, &score)| score)
                         .unwrap_or((0, &0));
                     let winner_user = players.iter().find(|p| p.player_index == winner_idx as u8);

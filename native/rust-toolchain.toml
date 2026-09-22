@@ -1,0 +1,4 @@
+# One compiler for the commit hook and CI: a newer clippy or rustfmt changes what passes.
+[toolchain]
+channel = "1.92"
+components = ["rustfmt", "clippy"]

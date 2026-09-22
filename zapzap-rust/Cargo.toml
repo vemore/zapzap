@@ -52,6 +52,11 @@ anyhow = "1"
 # Async traits
 async-trait = "0.1"
 
+[lints.clippy]
+# Entities expose `from_str(&str) -> Option<Self>`; implementing `FromStr` would change
+# every call site's error type for no behavioural gain.
+should_implement_trait = "allow"
+
 [features]
 default = []
 bedrock = ["aws-config", "aws-sdk-bedrockruntime"]

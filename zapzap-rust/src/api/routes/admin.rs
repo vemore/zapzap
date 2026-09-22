@@ -35,7 +35,9 @@ pub struct ListPartiesQuery {
     pub offset: i32,
 }
 
-fn default_limit() -> i32 { 50 }
+fn default_limit() -> i32 {
+    50
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SetAdminRequest {
@@ -183,11 +185,30 @@ pub async fn list_users(
 ) -> Result<Json<UsersListResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Get users with stats
-    let users = sqlx::query_as::<_, (String, String, String, bool, Option<i64>, i32, i32, i64, i64)>(
+    let users = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            bool,
+            Option<i64>,
+            i32,
+            i32,
+            i64,
+            i64,
+        ),
+    >(
         r#"
         SELECT
             u.id,
@@ -208,36 +229,64 @@ pub async fn list_users(
         WHERE u.user_type = 'human'
         ORDER BY u.created_at DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(params.limit)
     .bind(params.offset)
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let user_list: Vec<UserInfo> = users
         .into_iter()
-        .map(|(id, username, user_type, is_admin, last_login_at, total_play_time, games_played, created_at, updated_at)| {
-            UserInfo {
+        .map(
+            |(
                 id,
                 username,
                 user_type,
                 is_admin,
                 last_login_at,
-                total_play_time_seconds: total_play_time,
+                total_play_time,
                 games_played,
                 created_at,
                 updated_at,
-            }
-        })
+            )| {
+                UserInfo {
+                    id,
+                    username,
+                    user_type,
+                    is_admin,
+                    last_login_at,
+                    total_play_time_seconds: total_play_time,
+                    games_played,
+                    created_at,
+                    updated_at,
+                }
+            },
+        )
         .collect();
 
     // Get total count
     let total: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
         .fetch_one(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(UsersListResponse {
         success: true,
@@ -258,22 +307,59 @@ pub async fn delete_user(
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Cannot delete self
     if user_id == claims.user_id {
-        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { success: false, error: "Cannot delete yourself".to_string() })));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Cannot delete yourself".to_string(),
+            }),
+        ));
     }
 
     // Check user exists
-    let user = state.user_repo.find_by_id(&user_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { success: false, error: "User not found".to_string() })))?;
+    let user = state
+        .user_repo
+        .find_by_id(&user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "User not found".to_string(),
+                }),
+            )
+        })?;
 
     // Cannot delete admin
     if user.is_admin {
-        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { success: false, error: "Cannot delete an admin user".to_string() })));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Cannot delete an admin user".to_string(),
+            }),
+        ));
     }
 
     // Delete user
@@ -281,7 +367,15 @@ pub async fn delete_user(
         .bind(&user_id)
         .execute(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(SuccessResponse { success: true }))
 }
@@ -295,18 +389,49 @@ pub async fn set_user_admin(
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Cannot modify self
     if user_id == claims.user_id {
-        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { success: false, error: "Cannot modify your own admin status".to_string() })));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Cannot modify your own admin status".to_string(),
+            }),
+        ));
     }
 
     // Check user exists
-    state.user_repo.find_by_id(&user_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { success: false, error: "User not found".to_string() })))?;
+    state
+        .user_repo
+        .find_by_id(&user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "User not found".to_string(),
+                }),
+            )
+        })?;
 
     // Update admin status
     sqlx::query("UPDATE users SET is_admin = ? WHERE id = ?")
@@ -314,7 +439,15 @@ pub async fn set_user_admin(
         .bind(&user_id)
         .execute(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(SuccessResponse { success: true }))
 }
@@ -327,7 +460,13 @@ pub async fn list_parties(
 ) -> Result<Json<PartiesListResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Build query with optional status filter
@@ -346,20 +485,36 @@ pub async fn list_parties(
             WHERE p.status = ?
             ORDER BY p.created_at DESC
             LIMIT ? OFFSET ?
-            "#
+            "#,
         )
         .bind(status)
         .bind(params.limit)
         .bind(params.offset)
         .fetch_all(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
         let total: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = ?")
             .bind(status)
             .fetch_one(state.party_repo.get_db())
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
         (parties, total)
     } else {
@@ -376,34 +531,50 @@ pub async fn list_parties(
             LEFT JOIN users u ON u.id = p.owner_id
             ORDER BY p.created_at DESC
             LIMIT ? OFFSET ?
-            "#
+            "#,
         )
         .bind(params.limit)
         .bind(params.offset)
         .fetch_all(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
         let total: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties")
             .fetch_one(state.party_repo.get_db())
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
         (parties, total)
     };
 
     let party_list: Vec<PartyInfo> = parties
         .into_iter()
-        .map(|(id, name, status, player_count, created_at, owner_username)| {
-            PartyInfo {
+        .map(
+            |(id, name, status, player_count, created_at, owner_username)| PartyInfo {
                 id,
                 name,
                 status,
                 player_count,
                 created_at,
                 owner_username,
-            }
-        })
+            },
+        )
         .collect();
 
     Ok(Json(PartiesListResponse {
@@ -425,16 +596,47 @@ pub async fn stop_party(
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Check party exists
-    let party = state.party_repo.find_by_id(&party_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { success: false, error: "Party not found".to_string() })))?;
+    let party = state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Party not found".to_string(),
+                }),
+            )
+        })?;
 
     if party.status.as_str() == "finished" {
-        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { success: false, error: "Party is already finished".to_string() })));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Party is already finished".to_string(),
+            }),
+        ));
     }
 
     // Update party status to finished
@@ -443,7 +645,15 @@ pub async fn stop_party(
         .bind(&party_id)
         .execute(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(SuccessResponse { success: true }))
 }
@@ -456,26 +666,67 @@ pub async fn admin_delete_party(
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Check party exists
-    state.party_repo.find_by_id(&party_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { success: false, error: "Party not found".to_string() })))?;
+    state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Party not found".to_string(),
+                }),
+            )
+        })?;
 
     // Delete party and related data
     sqlx::query("DELETE FROM party_players WHERE party_id = ?")
         .bind(&party_id)
         .execute(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     sqlx::query("DELETE FROM parties WHERE id = ?")
         .bind(&party_id)
         .execute(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(SuccessResponse { success: true }))
 }
@@ -487,41 +738,99 @@ pub async fn get_statistics(
 ) -> Result<Json<StatisticsResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse { success: false, error: "Admin access required".to_string() })));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                success: false,
+                error: "Admin access required".to_string(),
+            }),
+        ));
     }
 
     // Get user count
-    let total_users: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
-        .fetch_one(state.party_repo.get_db())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    let total_users: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
+            .fetch_one(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
     // Get party counts
     let total_parties: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties")
         .fetch_one(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
-    let waiting_parties: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'waiting'")
-        .fetch_one(state.party_repo.get_db())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    let waiting_parties: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'waiting'")
+            .fetch_one(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
-    let playing_parties: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'playing'")
-        .fetch_one(state.party_repo.get_db())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    let playing_parties: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'playing'")
+            .fetch_one(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
-    let finished_parties: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'finished'")
-        .fetch_one(state.party_repo.get_db())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    let finished_parties: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = 'finished'")
+            .fetch_one(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
     // Get total rounds
     let total_rounds: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM rounds")
         .fetch_one(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     // Get most active users
     let active_users = sqlx::query_as::<_, (String, String, i32, i32)>(
@@ -537,21 +846,27 @@ pub async fn get_statistics(
         GROUP BY u.id
         ORDER BY games_played DESC
         LIMIT 10
-        "#
+        "#,
     )
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { success: false, error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let most_active_users: Vec<ActiveUser> = active_users
         .into_iter()
-        .map(|(user_id, username, games_played, wins)| {
-            ActiveUser {
-                user_id,
-                username,
-                games_played,
-                wins,
-            }
+        .map(|(user_id, username, games_played, wins)| ActiveUser {
+            user_id,
+            username,
+            games_played,
+            wins,
         })
         .collect();
 
@@ -572,9 +887,11 @@ pub async fn get_statistics(
                 finished: finished_parties,
                 completion_rate,
             },
-            rounds: RoundStats { total: total_rounds },
+            rounds: RoundStats {
+                total: total_rounds,
+            },
             games_over_time: GamesOverTime {
-                daily: vec![],  // TODO: Implement if needed
+                daily: vec![], // TODO: Implement if needed
                 weekly: vec![],
                 monthly: vec![],
             },

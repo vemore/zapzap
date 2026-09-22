@@ -47,10 +47,7 @@ impl<P: PartyRepository> ListPublicParties<P> {
         &self,
         input: ListPartiesInput,
     ) -> Result<ListPartiesOutput, ListPartiesError> {
-        let status = input
-            .status
-            .as_deref()
-            .and_then(PartyStatus::from_str);
+        let status = input.status.as_deref().and_then(PartyStatus::from_str);
 
         // Use optimized query that fetches parties with player counts in one query
         let parties_with_counts = self
@@ -62,7 +59,9 @@ impl<P: PartyRepository> ListPublicParties<P> {
         let result: Vec<PartyListItem> = parties_with_counts
             .into_iter()
             .map(|pwc| {
-                let is_member = input.user_id.as_ref()
+                let is_member = input
+                    .user_id
+                    .as_ref()
                     .map(|uid| pwc.player_user_ids.contains(uid))
                     .unwrap_or(false);
 

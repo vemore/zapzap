@@ -28,7 +28,7 @@ impl Default for GameAction {
 /// Last action information
 #[derive(Debug, Clone, Default)]
 pub struct LastAction {
-    pub action_type: u8,  // 0=none, 1=draw, 2=play, 3=zapzap
+    pub action_type: u8, // 0=none, 1=draw, 2=play, 3=zapzap
     pub player_index: u8,
     pub was_counteracted: bool,
     pub caller_hand_points: u8,
@@ -172,12 +172,14 @@ impl GameState {
         // If we know ALL cards in their hand, calculate exact value
         if tracked_count >= hand_size && !known_cards.is_empty() {
             // Take the lowest N cards from known cards
-            let mut values: SmallVec<[u8; 10]> = known_cards.iter()
+            let mut values: SmallVec<[u8; 10]> = known_cards
+                .iter()
                 .map(|&c| if c >= 52 { 0 } else { (c % 13) + 1 })
                 .collect();
             values.sort_unstable();
 
-            return values.iter()
+            return values
+                .iter()
                 .take(hand_size as usize)
                 .map(|&v| v as u16)
                 .sum();
@@ -263,13 +265,13 @@ impl GameState {
     /// Find the rank with highest draw probability among given ranks
     /// Useful for deciding which card to keep vs discard
     pub fn best_drawable_rank(&self, ranks: &[u8]) -> Option<u8> {
-        ranks.iter()
-            .copied()
-            .max_by(|&a, &b| {
-                let prob_a = self.draw_probability(a);
-                let prob_b = self.draw_probability(b);
-                prob_a.partial_cmp(&prob_b).unwrap_or(std::cmp::Ordering::Equal)
-            })
+        ranks.iter().copied().max_by(|&a, &b| {
+            let prob_a = self.draw_probability(a);
+            let prob_b = self.draw_probability(b);
+            prob_a
+                .partial_cmp(&prob_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Check if player is eliminated

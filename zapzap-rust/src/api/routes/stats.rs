@@ -28,8 +28,12 @@ pub struct LeaderboardQuery {
     pub offset: i32,
 }
 
-fn default_min_games() -> i32 { 5 }
-fn default_limit() -> i32 { 50 }
+fn default_min_games() -> i32 {
+    5
+}
+fn default_limit() -> i32 {
+    50
+}
 
 // User Stats Response (matching JS format)
 #[derive(Debug, Serialize)]
@@ -187,9 +191,26 @@ async fn get_user_stats_internal(
     user_id: &str,
 ) -> Result<Json<UserStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Get user info
-    let user = state.user_repo.find_by_id(user_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "User not found".to_string() })))?;
+    let user = state
+        .user_repo
+        .find_by_id(user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "User not found".to_string(),
+                }),
+            )
+        })?;
 
     // Query stats from database - calculate zapzap stats from round_scores
     let stats = sqlx::query_as::<_, (i32, i32, f64, i32, i32, i32, i32, i32)>(
@@ -213,11 +234,28 @@ async fn get_user_stats_internal(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?
     .unwrap_or((0, 0, 0.0, 0, 0, 0, 0, 0));
 
-    let (games_played, wins, avg_score, best_score, total_rounds, total_zapzaps, successful_zapzaps, lowest_hand_count) = stats;
+    let (
+        games_played,
+        wins,
+        avg_score,
+        best_score,
+        total_rounds,
+        total_zapzaps,
+        successful_zapzaps,
+        lowest_hand_count,
+    ) = stats;
     let failed_zapzaps = total_zapzaps - successful_zapzaps;
     let losses = games_played - wins;
-    let win_rate = if games_played > 0 { wins as f64 / games_played as f64 } else { 0.0 };
-    let zapzap_success_rate = if total_zapzaps > 0 { successful_zapzaps as f64 / total_zapzaps as f64 } else { 0.0 };
+    let win_rate = if games_played > 0 {
+        wins as f64 / games_played as f64
+    } else {
+        0.0
+    };
+    let zapzap_success_rate = if total_zapzaps > 0 {
+        successful_zapzaps as f64 / total_zapzaps as f64
+    } else {
+        0.0
+    };
 
     Ok(Json(UserStatsResponse {
         success: true,
@@ -261,28 +299,39 @@ pub async fn get_leaderboard(
         HAVING games_played >= ?
         ORDER BY (CAST(games_won AS FLOAT) / games_played) DESC, games_played DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(params.min_games)
     .bind(params.limit)
     .bind(params.offset)
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let leaderboard: Vec<LeaderboardEntry> = entries
         .into_iter()
         .enumerate()
-        .map(|(i, (user_id, username, games_played, wins))| {
-            LeaderboardEntry {
+        .map(
+            |(i, (user_id, username, games_played, wins))| LeaderboardEntry {
                 rank: (params.offset + i as i32 + 1),
                 user_id,
                 username,
                 games_played,
                 wins,
-                win_rate: if games_played > 0 { wins as f64 / games_played as f64 } else { 0.0 },
-            }
-        })
+                win_rate: if games_played > 0 {
+                    wins as f64 / games_played as f64
+                } else {
+                    0.0
+                },
+            },
+        )
         .collect();
 
     // Get total count - fixed query
@@ -296,12 +345,19 @@ pub async fn get_leaderboard(
             GROUP BY u.id
             HAVING COUNT(*) >= ?
         )
-        "#
+        "#,
     )
     .bind(params.min_games)
     .fetch_one(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(LeaderboardResponse {
         success: true,
@@ -364,56 +420,99 @@ pub async fn get_bot_stats(
     // Build byDifficulty array
     let by_difficulty: Vec<DifficultyStats> = difficulty_stats
         .into_iter()
-        .map(|(difficulty, bot_count, games_played, total_rounds, wins, zapzap_total, zapzap_success, lowest_hand_count)| {
-            let zapzap_failed = zapzap_total - zapzap_success;
-            let win_rate = if games_played > 0 { wins as f64 / games_played as f64 } else { 0.0 };
-            let zapzap_success_rate = if zapzap_total > 0 { zapzap_success as f64 / zapzap_total as f64 } else { 0.0 };
-            let round_win_rate = if total_rounds > 0 { lowest_hand_count as f64 / total_rounds as f64 } else { 0.0 };
-
-            DifficultyStats {
+        .map(
+            |(
                 difficulty,
                 bot_count,
                 games_played,
-                rounds_played: total_rounds,
+                total_rounds,
                 wins,
-                win_rate,
-                zapzaps: ZapZapStats {
-                    total: zapzap_total,
-                    successful: zapzap_success,
-                    failed: zapzap_failed,
-                    success_rate: zapzap_success_rate,
-                },
+                zapzap_total,
+                zapzap_success,
                 lowest_hand_count,
-                round_win_rate,
-            }
-        })
+            )| {
+                let zapzap_failed = zapzap_total - zapzap_success;
+                let win_rate = if games_played > 0 {
+                    wins as f64 / games_played as f64
+                } else {
+                    0.0
+                };
+                let zapzap_success_rate = if zapzap_total > 0 {
+                    zapzap_success as f64 / zapzap_total as f64
+                } else {
+                    0.0
+                };
+                let round_win_rate = if total_rounds > 0 {
+                    lowest_hand_count as f64 / total_rounds as f64
+                } else {
+                    0.0
+                };
+
+                DifficultyStats {
+                    difficulty,
+                    bot_count,
+                    games_played,
+                    rounds_played: total_rounds,
+                    wins,
+                    win_rate,
+                    zapzaps: ZapZapStats {
+                        total: zapzap_total,
+                        successful: zapzap_success,
+                        failed: zapzap_failed,
+                        success_rate: zapzap_success_rate,
+                    },
+                    lowest_hand_count,
+                    round_win_rate,
+                }
+            },
+        )
         .collect();
 
     // Build byBot array
     let by_bot: Vec<BotIndividualStats> = bot_stats
         .into_iter()
-        .map(|(bot_id, username, difficulty, games_played, total_rounds, wins, zapzap_total, zapzap_success, lowest_hand_count)| {
-            let zapzap_failed = zapzap_total - zapzap_success;
-            let win_rate = if games_played > 0 { wins as f64 / games_played as f64 } else { 0.0 };
-            let zapzap_success_rate = if zapzap_total > 0 { zapzap_success as f64 / zapzap_total as f64 } else { 0.0 };
-
-            BotIndividualStats {
+        .map(
+            |(
                 bot_id,
                 username,
                 difficulty,
                 games_played,
-                rounds_played: total_rounds,
+                total_rounds,
                 wins,
-                win_rate,
-                zapzaps: ZapZapStats {
-                    total: zapzap_total,
-                    successful: zapzap_success,
-                    failed: zapzap_failed,
-                    success_rate: zapzap_success_rate,
-                },
+                zapzap_total,
+                zapzap_success,
                 lowest_hand_count,
-            }
-        })
+            )| {
+                let zapzap_failed = zapzap_total - zapzap_success;
+                let win_rate = if games_played > 0 {
+                    wins as f64 / games_played as f64
+                } else {
+                    0.0
+                };
+                let zapzap_success_rate = if zapzap_total > 0 {
+                    zapzap_success as f64 / zapzap_total as f64
+                } else {
+                    0.0
+                };
+
+                BotIndividualStats {
+                    bot_id,
+                    username,
+                    difficulty,
+                    games_played,
+                    rounds_played: total_rounds,
+                    wins,
+                    win_rate,
+                    zapzaps: ZapZapStats {
+                        total: zapzap_total,
+                        successful: zapzap_success,
+                        failed: zapzap_failed,
+                        success_rate: zapzap_success_rate,
+                    },
+                    lowest_hand_count,
+                }
+            },
+        )
         .collect();
 
     // Calculate totals
@@ -424,8 +523,16 @@ pub async fn get_bot_stats(
     let total_zapzap_calls: i32 = by_difficulty.iter().map(|d| d.zapzaps.total).sum();
     let total_successful_zapzaps: i32 = by_difficulty.iter().map(|d| d.zapzaps.successful).sum();
 
-    let overall_win_rate = if total_games_played > 0 { total_wins as f64 / total_games_played as f64 } else { 0.0 };
-    let overall_zapzap_success_rate = if total_zapzap_calls > 0 { total_successful_zapzaps as f64 / total_zapzap_calls as f64 } else { 0.0 };
+    let overall_win_rate = if total_games_played > 0 {
+        total_wins as f64 / total_games_played as f64
+    } else {
+        0.0
+    };
+    let overall_zapzap_success_rate = if total_zapzap_calls > 0 {
+        total_successful_zapzaps as f64 / total_zapzap_calls as f64
+    } else {
+        0.0
+    };
 
     Ok(Json(BotStatsResponse {
         success: true,

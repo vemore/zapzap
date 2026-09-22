@@ -47,17 +47,21 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             .ok_or(CreatePartyError::UserNotFound)?;
 
         if user.is_bot() {
-            return Err(CreatePartyError::Validation("Bots cannot create parties".into()));
+            return Err(CreatePartyError::Validation(
+                "Bots cannot create parties".into(),
+            ));
         }
 
         // Validate name
         if input.name.trim().is_empty() {
-            return Err(CreatePartyError::Validation("Party name is required".into()));
+            return Err(CreatePartyError::Validation(
+                "Party name is required".into(),
+            ));
         }
 
         // Parse visibility
-        let visibility = PartyVisibility::from_str(&input.visibility)
-            .unwrap_or(PartyVisibility::Public);
+        let visibility =
+            PartyVisibility::from_str(&input.visibility).unwrap_or(PartyVisibility::Public);
 
         // Create party
         let party_id = Uuid::new_v4().to_string();
@@ -95,10 +99,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             }
         }
 
-        Ok(CreatePartyOutput {
-            party,
-            bots_joined,
-        })
+        Ok(CreatePartyOutput { party, bots_joined })
     }
 }
 

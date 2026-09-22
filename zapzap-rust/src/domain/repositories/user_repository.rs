@@ -47,11 +47,7 @@ pub trait UserRepository: Send + Sync {
     async fn update_last_login(&self, id: &str) -> Result<(), RepositoryError>;
 
     /// Find all human users with pagination
-    async fn find_all_humans(
-        &self,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<User>, RepositoryError>;
+    async fn find_all_humans(&self, limit: u32, offset: u32) -> Result<Vec<User>, RepositoryError>;
 
     /// Set user admin status
     async fn set_admin(&self, id: &str, is_admin: bool) -> Result<(), RepositoryError>;

@@ -59,7 +59,11 @@ pub fn calculate_hand_score(hand: &[u8], is_lowest: bool) -> u16 {
     hand.iter()
         .map(|&c| {
             if is_joker(c) {
-                if is_lowest { 0 } else { 25 }
+                if is_lowest {
+                    0
+                } else {
+                    25
+                }
             } else {
                 get_card_points(c) as u16
             }
@@ -158,10 +162,7 @@ pub fn find_same_rank_plays(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
     let mut plays = Vec::with_capacity(20);
 
     // Collect jokers
-    let jokers: SmallVec<[u8; 2]> = hand.iter()
-        .filter(|&&c| is_joker(c))
-        .copied()
-        .collect();
+    let jokers: SmallVec<[u8; 2]> = hand.iter().filter(|&&c| is_joker(c)).copied().collect();
 
     // Group cards by rank (13 possible ranks)
     let mut by_rank: [SmallVec<[u8; 4]>; 13] = Default::default();
@@ -208,10 +209,7 @@ pub fn find_sequence_plays(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
     let mut plays = Vec::with_capacity(20);
 
     // Collect jokers
-    let jokers: SmallVec<[u8; 2]> = hand.iter()
-        .filter(|&&c| is_joker(c))
-        .copied()
-        .collect();
+    let jokers: SmallVec<[u8; 2]> = hand.iter().filter(|&&c| is_joker(c)).copied().collect();
 
     // Group cards by suit (4 possible suits)
     let mut by_suit: [SmallVec<[u8; 13]>; 4] = Default::default();
@@ -293,10 +291,9 @@ pub fn find_all_valid_plays(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
 pub fn find_max_point_play(hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
     let plays = find_all_valid_plays(hand);
 
-    plays.into_iter()
-        .max_by_key(|play| {
-            play.iter().map(|&c| get_card_points(c) as u32).sum::<u32>()
-        })
+    plays
+        .into_iter()
+        .max_by_key(|play| play.iter().map(|&c| get_card_points(c) as u32).sum::<u32>())
 }
 
 /// Multi-turn planning: Check if playing single + drawing a card could enable a better combo next turn
@@ -354,7 +351,8 @@ pub fn would_complete_sequence(hand: &[u8], card: u8) -> bool {
     let card_rank = get_rank(card) as i8;
 
     // Get all cards of same suit in hand
-    let same_suit: SmallVec<[i8; 10]> = hand.iter()
+    let same_suit: SmallVec<[i8; 10]> = hand
+        .iter()
         .filter(|&&c| !is_joker(c) && get_suit(c) == card_suit)
         .map(|&c| get_rank(c) as i8)
         .collect();
@@ -384,7 +382,8 @@ pub fn would_complete_pair(hand: &[u8], card: u8) -> bool {
     let card_rank = get_rank(card);
 
     // Count cards of same rank in hand
-    let same_rank_count = hand.iter()
+    let same_rank_count = hand
+        .iter()
         .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank)
         .count();
 
@@ -409,7 +408,8 @@ pub fn count_sequence_extension_potential(hand: &[u8]) -> u8 {
 
     // Group cards by suit (excluding jokers)
     for suit in 0..4u8 {
-        let mut ranks_in_suit: SmallVec<[u8; 10]> = hand.iter()
+        let mut ranks_in_suit: SmallVec<[u8; 10]> = hand
+            .iter()
             .filter(|&&c| !is_joker(c) && get_suit(c) == suit)
             .map(|&c| get_rank(c))
             .collect();
@@ -467,7 +467,8 @@ pub fn card_keep_score(card: u8, hand: &[u8], drawable_count: u8) -> i32 {
     let card_points = get_card_points(card) as i32;
 
     // Count same rank in hand
-    let same_rank_in_hand = hand.iter()
+    let same_rank_in_hand = hand
+        .iter()
         .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank)
         .count() as i32;
 
@@ -500,7 +501,8 @@ pub fn card_keep_score(card: u8, hand: &[u8], drawable_count: u8) -> i32 {
     let has_joker = hand.iter().any(|&c| is_joker(c));
     if has_joker {
         // Count same suit cards in hand (excluding this card and jokers)
-        let same_suit_cards: SmallVec<[u8; 10]> = hand.iter()
+        let same_suit_cards: SmallVec<[u8; 10]> = hand
+            .iter()
             .filter(|&&c| c != card && !is_joker(c) && get_suit(c) == card_suit)
             .map(|&c| get_rank(c))
             .collect();
@@ -517,7 +519,8 @@ pub fn card_keep_score(card: u8, hand: &[u8], drawable_count: u8) -> i32 {
         }
     } else {
         // Without joker, check for existing sequence potential
-        let same_suit_cards: SmallVec<[u8; 10]> = hand.iter()
+        let same_suit_cards: SmallVec<[u8; 10]> = hand
+            .iter()
             .filter(|&&c| c != card && !is_joker(c) && get_suit(c) == card_suit)
             .map(|&c| get_rank(c))
             .collect();
@@ -568,7 +571,8 @@ pub fn is_pair_viable(card: u8, hand: &[u8], drawable_count: u8) -> bool {
     let card_rank = get_rank(card);
 
     // Count same rank in hand (excluding this card)
-    let same_rank_in_hand = hand.iter()
+    let same_rank_in_hand = hand
+        .iter()
         .filter(|&&c| !is_joker(c) && get_rank(c) == card_rank && c != card)
         .count();
 
@@ -587,30 +591,30 @@ mod tests {
 
     #[test]
     fn test_get_card_points() {
-        assert_eq!(get_card_points(0), 1);   // Ace of Spades
-        assert_eq!(get_card_points(1), 2);   // 2 of Spades
-        assert_eq!(get_card_points(9), 10);  // 10 of Spades
+        assert_eq!(get_card_points(0), 1); // Ace of Spades
+        assert_eq!(get_card_points(1), 2); // 2 of Spades
+        assert_eq!(get_card_points(9), 10); // 10 of Spades
         assert_eq!(get_card_points(10), 11); // Jack of Spades
         assert_eq!(get_card_points(11), 12); // Queen of Spades
         assert_eq!(get_card_points(12), 13); // King of Spades
-        assert_eq!(get_card_points(52), 0);  // Joker
-        assert_eq!(get_card_points(53), 0);  // Joker
+        assert_eq!(get_card_points(52), 0); // Joker
+        assert_eq!(get_card_points(53), 0); // Joker
     }
 
     #[test]
     fn test_calculate_hand_value() {
         assert_eq!(calculate_hand_value(&[0, 1, 2]), 6); // A + 2 + 3
-        assert_eq!(calculate_hand_value(&[0, 52]), 1);   // A + Joker
-        assert_eq!(calculate_hand_value(&[52, 53]), 0);  // Two jokers
+        assert_eq!(calculate_hand_value(&[0, 52]), 1); // A + Joker
+        assert_eq!(calculate_hand_value(&[52, 53]), 0); // Two jokers
     }
 
     #[test]
     fn test_can_call_zapzap() {
-        assert!(!can_call_zapzap(&[0, 1, 2]));      // 1+2+3 = 6 > 5, NOT eligible
-        assert!(can_call_zapzap(&[0, 1]));          // 1+2 = 3 <= 5
-        assert!(can_call_zapzap(&[52, 53, 0]));     // 0+0+1 = 1 <= 5
-        assert!(!can_call_zapzap(&[9, 10]));        // 10+11 = 21 > 5
-        assert!(can_call_zapzap(&[0, 0, 1]));       // A+A+2 = 1+1+2 = 4 <= 5 (same card IDs for test)
+        assert!(!can_call_zapzap(&[0, 1, 2])); // 1+2+3 = 6 > 5, NOT eligible
+        assert!(can_call_zapzap(&[0, 1])); // 1+2 = 3 <= 5
+        assert!(can_call_zapzap(&[52, 53, 0])); // 0+0+1 = 1 <= 5
+        assert!(!can_call_zapzap(&[9, 10])); // 10+11 = 21 > 5
+        assert!(can_call_zapzap(&[0, 0, 1])); // A+A+2 = 1+1+2 = 4 <= 5 (same card IDs for test)
     }
 
     #[test]
@@ -628,13 +632,13 @@ mod tests {
     #[test]
     fn test_is_valid_sequence() {
         // 3-card sequence in spades
-        assert!(is_valid_sequence(&[0, 1, 2]));     // A, 2, 3 of spades
-        // Not enough cards
+        assert!(is_valid_sequence(&[0, 1, 2])); // A, 2, 3 of spades
+                                                // Not enough cards
         assert!(!is_valid_sequence(&[0, 1]));
         // Different suits - invalid
-        assert!(!is_valid_sequence(&[0, 1, 15]));   // A♠, 2♠, 3♥
-        // With joker filling gap
-        assert!(is_valid_sequence(&[0, 2, 52]));   // A, 3, Joker (fills 2)
+        assert!(!is_valid_sequence(&[0, 1, 15])); // A♠, 2♠, 3♥
+                                                  // With joker filling gap
+        assert!(is_valid_sequence(&[0, 2, 52])); // A, 3, Joker (fills 2)
     }
 
     #[test]
@@ -652,9 +656,13 @@ mod tests {
         assert!(plays.iter().any(|p| p.len() == 1 && p[0] == 0));
 
         // Check pair exists
-        assert!(plays.iter().any(|p| p.len() == 2 && p.contains(&0) && p.contains(&13)));
+        assert!(plays
+            .iter()
+            .any(|p| p.len() == 2 && p.contains(&0) && p.contains(&13)));
 
         // Check sequence exists
-        assert!(plays.iter().any(|p| p.len() == 3 && p.contains(&0) && p.contains(&1) && p.contains(&2)));
+        assert!(plays
+            .iter()
+            .any(|p| p.len() == 3 && p.contains(&0) && p.contains(&1) && p.contains(&2)));
     }
 }

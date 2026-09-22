@@ -164,7 +164,9 @@ impl VinceBotStrategy {
 
     /// Update memory based on game state
     fn update_memory(&self, state: &GameState, player_index: u8) {
-        let Ok(mut memory) = self.memory.write() else { return };
+        let Ok(mut memory) = self.memory.write() else {
+            return;
+        };
 
         // Detect new round - reset all memory
         if memory.last_round_number.is_some()
@@ -196,9 +198,7 @@ impl VinceBotStrategy {
             if i != player_index && !state.is_eliminated(i) {
                 let known_cards = state.get_player_known_cards(i);
                 if !known_cards.is_empty() {
-                    memory
-                        .opponent_picked_cards
-                        .insert(i, known_cards.to_vec());
+                    memory.opponent_picked_cards.insert(i, known_cards.to_vec());
                 }
             }
         }
@@ -384,13 +384,7 @@ impl VinceBotStrategy {
     }
 
     /// Evaluate a play with all strategies applied
-    fn evaluate_play(
-        &self,
-        play: &[u8],
-        hand: &[u8],
-        state: &GameState,
-        player_index: u8,
-    ) -> f32 {
+    fn evaluate_play(&self, play: &[u8], hand: &[u8], state: &GameState, player_index: u8) -> f32 {
         let remaining: Vec<u8> = hand.iter().filter(|c| !play.contains(c)).copied().collect();
         let remaining_value = calculate_hand_value(&remaining) as f32;
         let play_value = calculate_hand_value(play) as f32;
@@ -427,7 +421,7 @@ impl VinceBotStrategy {
         // STRATEGY 3: Opponent tracking bonus
         let mut opponent_wants_bonus = 0.0f32;
         if let Ok(memory) = self.memory.read() {
-            for (_player, picked_cards) in &memory.opponent_picked_cards {
+            for picked_cards in memory.opponent_picked_cards.values() {
                 for &picked_card in picked_cards {
                     if is_joker(picked_card) {
                         continue;
@@ -502,8 +496,8 @@ impl VinceBotStrategy {
             .filter(|p| p.len() > 1 && p.contains(&card))
             .count();
 
-        let mut combination_bonus =
-            (new_multi as i32 - original_multi as i32) as f32 * self.params.combination_bonus_multiplier;
+        let mut combination_bonus = (new_multi as i32 - original_multi as i32) as f32
+            * self.params.combination_bonus_multiplier;
 
         // Low value bonus
         let card_points = get_card_points(card) as f32;
@@ -536,7 +530,8 @@ impl VinceBotStrategy {
                 }
                 if same_rank_played >= 3 {
                     set_bonus = 0.0;
-                    combination_bonus = (combination_bonus + self.params.combination_bonus_reduction).max(0.0);
+                    combination_bonus =
+                        (combination_bonus + self.params.combination_bonus_reduction).max(0.0);
                 }
             }
 
@@ -586,6 +581,8 @@ impl BotStrategy for VinceBotStrategy {
         }
     }
 
+    // The per-round thresholds are tuning knobs kept apart even where they coincide.
+    #[allow(clippy::if_same_then_else)]
     fn decide_action(&self, state: &GameState, player_index: u8) -> BotAction {
         let hand = state.get_hand(player_index);
         self.update_memory(state, player_index);
@@ -658,7 +655,11 @@ impl BotStrategy for VinceBotStrategy {
         }
 
         // STRATEGY 11: Bad hand fallback - play highest value cards
-        let is_bad_hand_mode = self.memory.read().map(|m| m.is_bad_hand_mode).unwrap_or(false);
+        let is_bad_hand_mode = self
+            .memory
+            .read()
+            .map(|m| m.is_bad_hand_mode)
+            .unwrap_or(false);
         if is_bad_hand_mode && !state.is_golden_score {
             if let Some(max_play) = find_max_point_play(hand) {
                 return max_play.into_iter().collect();
@@ -698,8 +699,8 @@ impl BotStrategy for VinceBotStrategy {
                         let high_pairs_remaining = self.count_high_card_pairs(&remaining);
 
                         if intermediate_count > 0 {
-                            *score +=
-                                intermediate_count as f32 * self.params.intermediate_card_bonus_multiplier;
+                            *score += intermediate_count as f32
+                                * self.params.intermediate_card_bonus_multiplier;
                         }
 
                         if high_count > 0 && play.len() == 1 {
@@ -832,7 +833,7 @@ mod tests {
     fn test_bad_hand_detection() {
         let bot = VinceBotStrategy::new();
         // High value hand with no combos
-        let bad_hand = vec![12, 25, 38, 51, 10]; // K♠, K♥, K♣, K♦, J♠ = 61 pts, no pairs (all different)
+        let _bad_hand = [12, 25, 38, 51, 10]; // K♠, K♥, K♣, K♦, J♠ = 61 pts, no pairs (all different)
 
         // Actually this has 4 kings so it's not bad...
         // Let's try scattered high cards

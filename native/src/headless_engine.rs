@@ -5,11 +5,13 @@
 use crate::card_analyzer;
 use crate::feature_extractor::FeatureExtractor;
 use crate::game_state::{GameAction, GameState, LastAction, MAX_PLAYERS};
-use crate::strategies::{BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy, ThibotStrategy};
-use crate::training::{TransitionCollector, Transition};
+use crate::strategies::{
+    BotStrategy, DRLStrategy, HardBotStrategy, RandomBotStrategy, ThibotStrategy,
+};
+use crate::training::{Transition, TransitionCollector};
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
 use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
 use smallvec::SmallVec;
 
 /// Strategy type enum for configuration
@@ -125,7 +127,10 @@ impl HeadlessGameEngine {
 
     /// Run a complete game with transition collection for DRL training
     /// Returns (game_result, collected_transitions)
-    pub fn run_game_with_collection(&mut self, drl_player_index: u8) -> (GameResult, Vec<Transition>) {
+    pub fn run_game_with_collection(
+        &mut self,
+        drl_player_index: u8,
+    ) -> (GameResult, Vec<Transition>) {
         let mut state = GameState::new(self.player_count);
         let mut collector = TransitionCollector::new(drl_player_index);
 
@@ -133,7 +138,12 @@ impl HeadlessGameEngine {
         let max_rounds = 100;
 
         while !self.is_game_finished(&state) && round_number < max_rounds {
-            state = self.run_round_with_collection(state, round_number, drl_player_index, &mut collector);
+            state = self.run_round_with_collection(
+                state,
+                round_number,
+                drl_player_index,
+                &mut collector,
+            );
             round_number += 1;
             state = self.process_round_end(state);
         }
@@ -142,7 +152,11 @@ impl HeadlessGameEngine {
 
         // Finalize transitions with sparse rewards (only terminal reward)
         // Asymmetric: win=+1.0, lose=-0.25 to reduce negative bias
-        let game_reward = if winner == drl_player_index { 1.0 } else { -0.25 };
+        let game_reward = if winner == drl_player_index {
+            1.0
+        } else {
+            -0.25
+        };
         collector.finalize_simple(&state, game_reward);
 
         let result = GameResult {
@@ -182,7 +196,9 @@ impl HeadlessGameEngine {
         );
 
         // Record hand size decision for DRL player
-        if current_player == drl_player_index && self.strategies[current_player as usize] == StrategyType::DRL {
+        if current_player == drl_player_index
+            && self.strategies[current_player as usize] == StrategyType::DRL
+        {
             let features = FeatureExtractor::extract_hand_size_features(
                 active_players.len() as u8,
                 state.is_golden_score,
@@ -195,7 +211,13 @@ impl HeadlessGameEngine {
         let valid_hand_size = self.validate_hand_size(hand_size, state.is_golden_score);
 
         // Deal cards
-        state = self.deal_cards(state, valid_hand_size, &active_players, round_number, current_player);
+        state = self.deal_cards(
+            state,
+            valid_hand_size,
+            &active_players,
+            round_number,
+            current_player,
+        );
 
         // Play turns
         let max_turns = 1000;
@@ -229,7 +251,8 @@ impl HeadlessGameEngine {
             // Play phase - different handling for DRL vs other strategies
             if is_drl_player {
                 // For DRL, get both the play and the action chosen to record correctly
-                let (maybe_cards, play_action) = self.get_drl_play_with_action(current_player, &hand, &state);
+                let (maybe_cards, play_action) =
+                    self.get_drl_play_with_action(current_player, &hand, &state);
                 if let Some(cards_to_play) = maybe_cards {
                     // Record the ACTUAL action chosen by the DRL, not a classification
                     collector.record_action(&state, play_action, 2); // decision_type=2 (PlayType)
@@ -295,7 +318,13 @@ impl HeadlessGameEngine {
         let valid_hand_size = self.validate_hand_size(hand_size, state.is_golden_score);
 
         // Deal cards
-        state = self.deal_cards(state, valid_hand_size, &active_players, round_number, current_player);
+        state = self.deal_cards(
+            state,
+            valid_hand_size,
+            &active_players,
+            round_number,
+            current_player,
+        );
 
         // Play turns
         let max_turns = 1000;
@@ -511,8 +540,8 @@ impl HeadlessGameEngine {
         // Apply scores
         if counteracted {
             // Caller penalty
-            let penalty = hand_scores[caller_index as usize]
-                + ((active_players.len() as u16 - 1) * 5);
+            let penalty =
+                hand_scores[caller_index as usize] + ((active_players.len() as u16 - 1) * 5);
             state.add_score(caller_index, penalty);
 
             // Others
@@ -647,7 +676,13 @@ impl HeadlessGameEngine {
 
     // Strategy dispatch methods
 
-    fn get_strategy_hand_size(&mut self, player: u8, active_count: u8, is_golden_score: bool, _my_score: u16) -> u8 {
+    fn get_strategy_hand_size(
+        &mut self,
+        player: u8,
+        active_count: u8,
+        is_golden_score: bool,
+        _my_score: u16,
+    ) -> u8 {
         match self.strategies[player as usize] {
             StrategyType::Random => 5,
             StrategyType::Hard => {
@@ -728,7 +763,9 @@ impl HeadlessGameEngine {
     ) -> bool {
         match self.strategies[player as usize] {
             StrategyType::Random => RandomBotStrategy.select_draw_source(hand, last_played, state),
-            StrategyType::Hard => HardBotStrategy::new().select_draw_source(hand, last_played, state),
+            StrategyType::Hard => {
+                HardBotStrategy::new().select_draw_source(hand, last_played, state)
+            }
             StrategyType::DRL => {
                 if let Some(drl) = self.get_drl_strategy_mut(player) {
                     drl.select_draw_source_mut(hand, last_played, state)
@@ -736,7 +773,9 @@ impl HeadlessGameEngine {
                     true
                 }
             }
-            StrategyType::Thibot => ThibotStrategy::new().select_draw_source(hand, last_played, state),
+            StrategyType::Thibot => {
+                ThibotStrategy::new().select_draw_source(hand, last_played, state)
+            }
         }
     }
 }
@@ -813,7 +852,10 @@ mod tests {
         let winner = engine.determine_winner(&state);
 
         // Player 0 should win because lowest hand (1 point), even though player 1 has lower score
-        assert_eq!(winner, 0, "Player with lowest hand should win in Golden Score");
+        assert_eq!(
+            winner, 0,
+            "Player with lowest hand should win in Golden Score"
+        );
     }
 
     #[test]
@@ -828,8 +870,8 @@ mod tests {
         // Player 0: Ace + 2 = 3 points
         // Player 1: Ace + 2 = 3 points
         state.hands[0].clear();
-        state.hands[0].push(0);  // Ace of spades
-        state.hands[0].push(1);  // 2 of spades
+        state.hands[0].push(0); // Ace of spades
+        state.hands[0].push(1); // 2 of spades
         state.hands[1].clear();
         state.hands[1].push(13); // Ace of hearts
         state.hands[1].push(14); // 2 of hearts
@@ -847,6 +889,9 @@ mod tests {
         let winner = engine.determine_winner(&state);
 
         // Player 1 should win because Player 0 called ZapZap and was counteracted (tied)
-        assert_eq!(winner, 1, "ZapZap caller should lose when hands are tied in Golden Score");
+        assert_eq!(
+            winner, 1,
+            "ZapZap caller should lose when hands are tied in Golden Score"
+        );
     }
 }

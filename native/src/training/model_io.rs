@@ -5,8 +5,8 @@
 //! - Load model weights from safetensors files
 //! - Export model metadata (architecture info)
 
-use safetensors::tensor::{SafeTensors, TensorView};
 use safetensors::serialize;
+use safetensors::tensor::{SafeTensors, TensorView};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -97,10 +97,7 @@ impl ModelIO {
     ) -> Result<(), String> {
         // Create tensor data as bytes - store in a variable to extend lifetime
         let shape = vec![weights.len()];
-        let data: Vec<u8> = weights
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
+        let data: Vec<u8> = weights.iter().flat_map(|f| f.to_le_bytes()).collect();
 
         // Prepare metadata
         let mut meta_map: HashMap<String, String> = HashMap::new();
@@ -116,8 +113,9 @@ impl ModelIO {
         let tensor_view = TensorView::new(
             safetensors::Dtype::F32,
             shape,
-            &data,  // Reference to owned Vec<u8>
-        ).map_err(|e| format!("Failed to create tensor view: {}", e))?;
+            &data, // Reference to owned Vec<u8>
+        )
+        .map_err(|e| format!("Failed to create tensor view: {}", e))?;
 
         let tensor_data = vec![("weights", tensor_view)];
 
@@ -126,13 +124,11 @@ impl ModelIO {
 
         // Ensure parent directory exists
         if let Some(parent) = Path::new(path).parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
 
         // Write to file
-        fs::write(path, serialized)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(path, serialized).map_err(|e| format!("Failed to write file: {}", e))?;
 
         Ok(())
     }
@@ -143,35 +139,34 @@ impl ModelIO {
     /// Tuple of (weights, metadata)
     pub fn load_weights(path: &str) -> Result<(Vec<f32>, Option<ModelMetadata>), String> {
         // Read file
-        let data = fs::read(path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let data = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         // Parse safetensors to get metadata first
-        let metadata: Option<ModelMetadata> = SafeTensors::read_metadata(&data)
-            .ok()
-            .and_then(|(_, safe_meta)| {
-                safe_meta.metadata().as_ref().and_then(|meta_map| {
-                    meta_map.get("metadata").and_then(|json| {
-                        serde_json::from_str(json).ok()
+        let metadata: Option<ModelMetadata> =
+            SafeTensors::read_metadata(&data)
+                .ok()
+                .and_then(|(_, safe_meta)| {
+                    safe_meta.metadata().as_ref().and_then(|meta_map| {
+                        meta_map
+                            .get("metadata")
+                            .and_then(|json| serde_json::from_str(json).ok())
                     })
-                })
-            });
+                });
 
         // Now deserialize to get tensors
-        let tensors = SafeTensors::deserialize(&data)
-            .map_err(|e| format!("Failed to deserialize: {}", e))?;
+        let tensors =
+            SafeTensors::deserialize(&data).map_err(|e| format!("Failed to deserialize: {}", e))?;
 
         // Get weights tensor
-        let weights_tensor = tensors.tensor("weights")
+        let weights_tensor = tensors
+            .tensor("weights")
             .map_err(|e| format!("Failed to get weights tensor: {}", e))?;
 
         // Convert to f32 vec
         let weights_bytes = weights_tensor.data();
         let weights: Vec<f32> = weights_bytes
             .chunks_exact(4)
-            .map(|chunk| {
-                f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
-            })
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
 
         Ok((weights, metadata))
@@ -184,17 +179,16 @@ impl ModelIO {
 
     /// Get model metadata without loading weights
     pub fn get_metadata(path: &str) -> Result<Option<ModelMetadata>, String> {
-        let data = fs::read(path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let data = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         // Read only metadata, avoiding full tensor deserialization
         let metadata = SafeTensors::read_metadata(&data)
             .ok()
             .and_then(|(_, safe_meta)| {
                 safe_meta.metadata().as_ref().and_then(|meta_map| {
-                    meta_map.get("metadata").and_then(|json| {
-                        serde_json::from_str(json).ok()
-                    })
+                    meta_map
+                        .get("metadata")
+                        .and_then(|json| serde_json::from_str(json).ok())
                 })
             });
 
@@ -312,16 +306,8 @@ mod tests {
         let weights: Vec<f32> = vec![0.1, 0.2, 0.3];
         let config = TrainingConfig::default();
 
-        let result = ModelIO::save_checkpoint(
-            &path,
-            &weights,
-            &config,
-            10000,
-            50000,
-            0.05,
-            0.15,
-            0.25,
-        );
+        let result =
+            ModelIO::save_checkpoint(&path, &weights, &config, 10000, 50000, 0.05, 0.15, 0.25);
 
         assert!(result.is_ok());
 

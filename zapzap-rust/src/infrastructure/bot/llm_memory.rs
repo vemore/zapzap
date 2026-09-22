@@ -63,21 +63,11 @@ pub struct Strategy {
 }
 
 /// Strategy source context
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StrategyContext {
     pub party_id: Option<String>,
     pub round_number: Option<u32>,
     pub outcome: Option<String>,
-}
-
-impl Default for StrategyContext {
-    fn default() -> Self {
-        Self {
-            party_id: None,
-            round_number: None,
-            outcome: None,
-        }
-    }
 }
 
 /// Decision tracking entry
@@ -90,7 +80,7 @@ pub struct Decision {
 }
 
 /// Decision details
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DecisionDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cards: Option<Vec<u8>>,
@@ -106,20 +96,6 @@ pub struct DecisionDetails {
     pub hand_value: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success: Option<bool>,
-}
-
-impl Default for DecisionDetails {
-    fn default() -> Self {
-        Self {
-            cards: None,
-            hand_before: None,
-            hand_after: None,
-            source: None,
-            card_drawn: None,
-            hand_value: None,
-            success: None,
-        }
-    }
 }
 
 /// Game history summary
@@ -198,23 +174,21 @@ impl LlmBotMemory {
         fs::create_dir_all(&self.base_dir).await?;
 
         match fs::read_to_string(&self.file_path).await {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(data) => {
-                        self.data = data;
-                        self.loaded = true;
-                        debug!(
-                            "LlmBotMemory loaded: {} strategies",
-                            self.data.strategies.len()
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse memory file, starting fresh: {}", e);
-                        self.data = MemoryData::new(&self.bot_user_id);
-                        self.loaded = true;
-                    }
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(data) => {
+                    self.data = data;
+                    self.loaded = true;
+                    debug!(
+                        "LlmBotMemory loaded: {} strategies",
+                        self.data.strategies.len()
+                    );
                 }
-            }
+                Err(e) => {
+                    warn!("Failed to parse memory file, starting fresh: {}", e);
+                    self.data = MemoryData::new(&self.bot_user_id);
+                    self.loaded = true;
+                }
+            },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 debug!("Memory file not found, starting fresh");
                 self.data = MemoryData::new(&self.bot_user_id);
@@ -240,19 +214,17 @@ impl LlmBotMemory {
         }
 
         match sync_fs::read_to_string(&self.file_path) {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(data) => {
-                        self.data = data;
-                        self.loaded = true;
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse memory file: {}", e);
-                        self.data = MemoryData::new(&self.bot_user_id);
-                        self.loaded = true;
-                    }
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(data) => {
+                    self.data = data;
+                    self.loaded = true;
                 }
-            }
+                Err(e) => {
+                    warn!("Failed to parse memory file: {}", e);
+                    self.data = MemoryData::new(&self.bot_user_id);
+                    self.loaded = true;
+                }
+            },
             Err(_) => {
                 self.data = MemoryData::new(&self.bot_user_id);
                 self.loaded = true;
@@ -316,7 +288,12 @@ impl LlmBotMemory {
     ) -> Option<&Strategy> {
         // Check for duplicate insights
         let normalized = insight.to_lowercase();
-        if self.data.strategies.iter().any(|s| s.insight.to_lowercase() == normalized) {
+        if self
+            .data
+            .strategies
+            .iter()
+            .any(|s| s.insight.to_lowercase() == normalized)
+        {
             debug!("Duplicate strategy ignored: {}", insight);
             return None;
         }
@@ -348,7 +325,12 @@ impl LlmBotMemory {
 
     /// Update strategy confidence based on outcome
     pub fn update_confidence(&mut self, strategy_id: &str, success: bool) {
-        if let Some(strategy) = self.data.strategies.iter_mut().find(|s| s.id == strategy_id) {
+        if let Some(strategy) = self
+            .data
+            .strategies
+            .iter_mut()
+            .find(|s| s.id == strategy_id)
+        {
             let adjustment = if success { 0.05 } else { -0.05 };
             strategy.confidence = (strategy.confidence + adjustment).clamp(0.0, 1.0);
             strategy.usage_count += 1;
@@ -455,7 +437,11 @@ impl LlmBotMemory {
         let avg_confidence = if self.data.strategies.is_empty() {
             0.0
         } else {
-            self.data.strategies.iter().map(|s| s.confidence).sum::<f32>()
+            self.data
+                .strategies
+                .iter()
+                .map(|s| s.confidence)
+                .sum::<f32>()
                 / self.data.strategies.len() as f32
         };
 

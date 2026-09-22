@@ -19,7 +19,9 @@ use crate::infrastructure::services::LlmService;
 
 /// Card suit symbols and rank names
 const SUIT_SYMBOLS: [&str; 4] = ["S", "H", "C", "D"];
-const RANKS: [&str; 13] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const RANKS: [&str; 13] = [
+    "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
+];
 
 /// LLM Bot Strategy
 pub struct LlmBotStrategy {
@@ -303,7 +305,8 @@ Be concise and direct in your responses."#.to_string()
         let plays_desc: Vec<String> = valid_plays
             .iter()
             .map(|play| {
-                let remaining: Vec<u8> = hand.iter().copied().filter(|c| !play.contains(c)).collect();
+                let remaining: Vec<u8> =
+                    hand.iter().copied().filter(|c| !play.contains(c)).collect();
                 let remaining_value = calculate_hand_value(&remaining);
                 format!(
                     "- {} (remaining hand: {} points)",
@@ -347,8 +350,11 @@ Respond with ONLY the cards to play (e.g., "KS, KH" for a pair of Kings)."#,
                         // Track decision if memory is available
                         if let Some(ref memory) = self.memory {
                             let hand_before = calculate_hand_value(hand);
-                            let remaining: Vec<u8> =
-                                hand.iter().copied().filter(|c| !cards.contains(c)).collect();
+                            let remaining: Vec<u8> = hand
+                                .iter()
+                                .copied()
+                                .filter(|c| !cards.contains(c))
+                                .collect();
                             let hand_after = calculate_hand_value(&remaining);
 
                             let decision = Decision {
@@ -477,7 +483,11 @@ Respond with ONLY "YES" or "NO"."#,
     }
 
     /// Async draw source selection using LLM
-    pub async fn decide_draw_source_async(&self, state: &GameState, player_index: u8) -> DrawSource {
+    pub async fn decide_draw_source_async(
+        &self,
+        state: &GameState,
+        player_index: u8,
+    ) -> DrawSource {
         let hand = state.get_hand(player_index);
 
         // If discard is empty, must draw from deck

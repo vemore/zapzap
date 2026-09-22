@@ -1,0 +1,5 @@
+# One compiler for the commit hook, CI and the image (Dockerfile's builder tag): a newer
+# clippy brings new lints, and `-D warnings` turns each into a red build.
+[toolchain]
+channel = "1.92"
+components = ["rustfmt", "clippy"]

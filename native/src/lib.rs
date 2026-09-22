@@ -16,7 +16,7 @@ pub mod training;
 
 use headless_engine::{HeadlessGameEngine, StrategyType};
 use napi_derive::napi;
-use trace_config::{set_trace_flags, is_trace_enabled, TraceLevel};
+use trace_config::{is_trace_enabled, set_trace_flags, TraceLevel};
 
 // ============================================================================
 // Card Analyzer Exports
@@ -331,7 +331,10 @@ pub fn run_training_batch(
                     dt_counts[t.decision_type as usize] += 1;
                 }
             }
-            let rewards_nz = transitions.iter().filter(|t| t.reward.abs() > 0.001).count();
+            let rewards_nz = transitions
+                .iter()
+                .filter(|t| t.reward.abs() > 0.001)
+                .count();
             let rewards_pos = transitions.iter().filter(|t| t.reward > 0.001).count();
             let rewards_neg = transitions.iter().filter(|t| t.reward < -0.001).count();
 
@@ -343,13 +346,21 @@ pub fn run_training_batch(
             // Log first 3 and last transition for detailed debugging
             if i < 3 {
                 for (j, t) in transitions.iter().enumerate().take(3) {
-                    eprintln!("[GAME]   T[{}]: dt={} action={} reward={:.3} done={}",
-                        j, t.decision_type, t.action, t.reward, t.done);
+                    eprintln!(
+                        "[GAME]   T[{}]: dt={} action={} reward={:.3} done={}",
+                        j, t.decision_type, t.action, t.reward, t.done
+                    );
                 }
                 if transitions.len() > 3 {
                     let last = &transitions[transitions.len() - 1];
-                    eprintln!("[GAME]   T[{}]: dt={} action={} reward={:.3} done={} (terminal)",
-                        transitions.len() - 1, last.decision_type, last.action, last.reward, last.done);
+                    eprintln!(
+                        "[GAME]   T[{}]: dt={} action={} reward={:.3} done={} (terminal)",
+                        transitions.len() - 1,
+                        last.decision_type,
+                        last.action,
+                        last.reward,
+                        last.done
+                    );
                 }
             }
         }
@@ -454,7 +465,9 @@ pub fn extract_features(
     state.round_number = round_number;
     state.deck = vec![0; deck_size as usize];
     state.last_cards_played.clear();
-    state.last_cards_played.extend_from_slice(&last_cards_played);
+    state
+        .last_cards_played
+        .extend_from_slice(&last_cards_played);
     state.is_golden_score = is_golden_score;
 
     // Set eliminated players
@@ -531,10 +544,11 @@ pub fn dqn_init(seed: Option<u32>) -> bool {
 #[napi]
 pub fn dqn_predict(features: Vec<f64>, decision_type: String) -> Vec<f64> {
     let dqn_guard = DQN_INSTANCE.lock().unwrap();
-    let dqn = dqn_guard.as_ref().expect("DQN not initialized. Call dqn_init first.");
+    let dqn = dqn_guard
+        .as_ref()
+        .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type)
-        .unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
 
     // Convert f64 to f32 for internal processing
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
@@ -547,10 +561,11 @@ pub fn dqn_predict(features: Vec<f64>, decision_type: String) -> Vec<f64> {
 #[napi]
 pub fn dqn_select_action(features: Vec<f64>, decision_type: String, epsilon: f64) -> u32 {
     let mut dqn_guard = DQN_INSTANCE.lock().unwrap();
-    let dqn = dqn_guard.as_mut().expect("DQN not initialized. Call dqn_init first.");
+    let dqn = dqn_guard
+        .as_mut()
+        .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type)
-        .unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
 
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
     dqn.select_action(&features_f32, dt, epsilon as f32) as u32
@@ -560,10 +575,11 @@ pub fn dqn_select_action(features: Vec<f64>, decision_type: String, epsilon: f64
 #[napi]
 pub fn dqn_greedy_action(features: Vec<f64>, decision_type: String) -> u32 {
     let dqn_guard = DQN_INSTANCE.lock().unwrap();
-    let dqn = dqn_guard.as_ref().expect("DQN not initialized. Call dqn_init first.");
+    let dqn = dqn_guard
+        .as_ref()
+        .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type)
-        .unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
 
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
     dqn.greedy_action(&features_f32, dt) as u32
@@ -790,7 +806,11 @@ pub fn trainer_train_steps(num_steps: u32, games_played: u32) -> TrainStepResult
         let (total_loss, steps_done) = trainer.train_steps(num_steps as usize, games_played as u64);
         TrainStepResult {
             steps_completed: steps_done as u32,
-            avg_loss: if steps_done > 0 { (total_loss / steps_done as f32) as f64 } else { 0.0 },
+            avg_loss: if steps_done > 0 {
+                (total_loss / steps_done as f32) as f64
+            } else {
+                0.0
+            },
         }
     } else {
         TrainStepResult {
@@ -1002,7 +1022,8 @@ pub fn model_save_checkpoint(
         epsilon as f32,
         avg_loss as f32,
         win_rate as f32,
-    ).is_ok()
+    )
+    .is_ok()
 }
 
 /// Load model weights from file
@@ -1048,7 +1069,8 @@ pub fn trainer_save_model(path: String) -> bool {
             state.epsilon,
             state.avg_loss,
             state.win_rate,
-        ).is_ok()
+        )
+        .is_ok()
     } else {
         false
     }
@@ -1096,11 +1118,21 @@ pub fn set_trace_config(config: NativeTraceConfig) {
 
     // Log active configuration
     let mut active = Vec::new();
-    if config.game { active.push("game"); }
-    if config.buffer { active.push("buffer"); }
-    if config.training { active.push("training"); }
-    if config.weights { active.push("weights"); }
-    if config.features { active.push("features"); }
+    if config.game {
+        active.push("game");
+    }
+    if config.buffer {
+        active.push("buffer");
+    }
+    if config.training {
+        active.push("training");
+    }
+    if config.weights {
+        active.push("weights");
+    }
+    if config.features {
+        active.push("features");
+    }
 
     if !active.is_empty() {
         eprintln!("[TRACE] Configuration: {}", active.join(", "));

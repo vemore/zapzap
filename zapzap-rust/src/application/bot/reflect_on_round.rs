@@ -58,7 +58,9 @@ impl ReflectOnRound {
         let mut memory_guard = memory.write().await;
 
         // Get decisions made this round
-        let decisions = memory_guard.get_decisions_for_round(input.round_number).to_vec();
+        let decisions = memory_guard
+            .get_decisions_for_round(input.round_number)
+            .to_vec();
 
         if decisions.is_empty() {
             debug!(
@@ -177,7 +179,10 @@ Sois concis et actionnable. Un seul insight maximum."#
                 outcome.score_change
             ),
             format!("- Valeur main finale: {} points", outcome.hand_points),
-            format!("- Main finale: {}", Self::cards_to_text(&outcome.final_hand)),
+            format!(
+                "- Main finale: {}",
+                Self::cards_to_text(&outcome.final_hand)
+            ),
         ];
 
         lines.push(String::new());
@@ -218,7 +223,9 @@ Sois concis et actionnable. Un seul insight maximum."#
         }
 
         const SUITS: [&str; 4] = ["P", "C", "T", "K"]; // Pique, Coeur, Trèfle, Carreau
-        const RANKS: [&str; 13] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "V", "D", "R"];
+        const RANKS: [&str; 13] = [
+            "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "V", "D", "R",
+        ];
 
         cards
             .iter()
@@ -248,7 +255,10 @@ Sois concis et actionnable. Un seul insight maximum."#
                     .unwrap_or_else(|| "?".to_string());
                 let hand_before = d.hand_before.unwrap_or(0);
                 let hand_after = d.hand_after.unwrap_or(0);
-                format!("- JOUÉ: {} (main: {}→{} pts)", cards, hand_before, hand_after)
+                format!(
+                    "- JOUÉ: {} (main: {}→{} pts)",
+                    cards, hand_before, hand_after
+                )
             }
             "draw" => {
                 let source = d.source.as_deref().unwrap_or("?");

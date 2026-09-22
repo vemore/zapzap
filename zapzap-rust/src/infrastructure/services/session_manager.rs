@@ -83,7 +83,7 @@ impl SessionManager {
     pub fn get_connected_users(&self, limit: usize) -> Vec<UserSession> {
         let sessions = self.sessions.read().unwrap();
         let mut users: Vec<_> = sessions.values().cloned().collect();
-        users.sort_by(|a, b| b.connected_at.cmp(&a.connected_at));
+        users.sort_by_key(|u| std::cmp::Reverse(u.connected_at));
         users.truncate(limit);
         users
     }

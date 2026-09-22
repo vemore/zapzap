@@ -119,12 +119,8 @@ async fn test_register_missing_credentials() {
     assert_eq!(body["error"], "Username and password are required");
 
     // Test with only username
-    let (status, body) = post_json(
-        &mut app,
-        "/api/auth/register",
-        json!({"username": "test"}),
-    )
-    .await;
+    let (status, body) =
+        post_json(&mut app, "/api/auth/register", json!({"username": "test"})).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "MISSING_CREDENTIALS");
 
@@ -293,13 +289,7 @@ async fn test_create_party_missing_name() {
     let token = register_resp["token"].as_str().unwrap();
 
     // Try to create party without name
-    let (status, body) = post_json_auth(
-        &mut app,
-        "/api/party",
-        json!({}),
-        token,
-    )
-    .await;
+    let (status, body) = post_json_auth(&mut app, "/api/party", json!({}), token).await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "MISSING_PARTY_NAME");

@@ -100,17 +100,13 @@ impl<B: Backend> TransitionBatch<B> {
 
         // Actions as i32
         let actions_data: Vec<i32> = transitions.iter().map(|t| t.action as i32).collect();
-        let actions: Tensor<B, 2, Int> = Tensor::from_data(
-            TensorData::new(actions_data, [batch_size, 1]),
-            device,
-        );
+        let actions: Tensor<B, 2, Int> =
+            Tensor::from_data(TensorData::new(actions_data, [batch_size, 1]), device);
 
         // Rewards
         let rewards_data: Vec<f32> = transitions.iter().map(|t| t.reward).collect();
-        let rewards: Tensor<B, 2> = Tensor::from_data(
-            TensorData::new(rewards_data, [batch_size, 1]),
-            device,
-        );
+        let rewards: Tensor<B, 2> =
+            Tensor::from_data(TensorData::new(rewards_data, [batch_size, 1]), device);
 
         // Next states
         let next_states_data: Vec<f32> = transitions
@@ -127,10 +123,8 @@ impl<B: Backend> TransitionBatch<B> {
             .iter()
             .map(|t| if t.done { 1.0 } else { 0.0 })
             .collect();
-        let dones: Tensor<B, 2> = Tensor::from_data(
-            TensorData::new(dones_data, [batch_size, 1]),
-            device,
-        );
+        let dones: Tensor<B, 2> =
+            Tensor::from_data(TensorData::new(dones_data, [batch_size, 1]), device);
 
         // IS weights
         let is_weights_tensor: Tensor<B, 2> = Tensor::from_data(

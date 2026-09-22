@@ -46,8 +46,7 @@ impl Default for OllamaConfig {
         Self {
             base_url: std::env::var("OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
-            model: std::env::var("OLLAMA_MODEL")
-                .unwrap_or_else(|_| "llama3.2".to_string()),
+            model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3.2".to_string()),
             timeout_secs: 60,
             temperature: 0.3,
             max_tokens: 512,
@@ -131,12 +130,7 @@ impl LlmService for OllamaService {
         debug!("Calling Ollama API: {}", url);
         let start = std::time::Instant::now();
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(&request).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -183,8 +177,7 @@ pub struct BedrockConfig {
 impl Default for BedrockConfig {
     fn default() -> Self {
         Self {
-            region: std::env::var("AWS_BEDROCK_REGION")
-                .unwrap_or_else(|_| "us-east-1".to_string()),
+            region: std::env::var("AWS_BEDROCK_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
             model_id: std::env::var("AWS_BEDROCK_MODEL_ID")
                 .unwrap_or_else(|_| "meta.llama3-3-70b-instruct-v1:0".to_string()),
             timeout_secs: 30,
@@ -251,8 +244,8 @@ impl LlmService for BedrockService {
             .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
 
         let body = response.body.as_ref();
-        let result: serde_json::Value = serde_json::from_slice(body)
-            .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
+        let result: serde_json::Value =
+            serde_json::from_slice(body).map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
 
         result
             .get("generation")

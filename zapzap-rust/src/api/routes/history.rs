@@ -25,7 +25,9 @@ pub struct HistoryQuery {
     pub offset: i32,
 }
 
-fn default_limit() -> i32 { 20 }
+fn default_limit() -> i32 {
+    20
+}
 
 #[derive(Debug, Serialize)]
 pub struct HistoryResponse {
@@ -164,7 +166,19 @@ pub async fn get_history(
     Extension(claims): Extension<Claims>,
     Query(params): Query<HistoryQuery>,
 ) -> Result<Json<HistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let games = sqlx::query_as::<_, (String, String, i64, i32, i32, String, Option<i32>, Option<i32>)>(
+    let games = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            i64,
+            i32,
+            i32,
+            String,
+            Option<i32>,
+            Option<i32>,
+        ),
+    >(
         r#"
         SELECT
             gr.party_id,
@@ -182,7 +196,7 @@ pub async fn get_history(
         WHERE pgr.user_id = ?
         ORDER BY gr.finished_at DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(&claims.user_id)
     .bind(&claims.user_id)
@@ -190,12 +204,19 @@ pub async fn get_history(
     .bind(params.offset)
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let history: Vec<GameHistoryEntry> = games
         .into_iter()
-        .map(|(party_id, party_name, finished_at, player_count, rounds_played, winner_username, user_placement, user_score)| {
-            GameHistoryEntry {
+        .map(
+            |(
                 party_id,
                 party_name,
                 finished_at,
@@ -204,8 +225,19 @@ pub async fn get_history(
                 winner_username,
                 user_placement,
                 user_score,
-            }
-        })
+            )| {
+                GameHistoryEntry {
+                    party_id,
+                    party_name,
+                    finished_at,
+                    player_count,
+                    rounds_played,
+                    winner_username,
+                    user_placement,
+                    user_score,
+                }
+            },
+        )
         .collect();
 
     // Get total count
@@ -214,12 +246,19 @@ pub async fn get_history(
         SELECT COUNT(*)
         FROM player_game_results pgr
         WHERE pgr.user_id = ?
-        "#
+        "#,
     )
     .bind(&claims.user_id)
     .fetch_one(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(HistoryResponse {
         success: true,
@@ -247,35 +286,51 @@ pub async fn get_public_history(
         JOIN users wu ON wu.id = gr.winner_user_id
         ORDER BY gr.finished_at DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(params.limit)
     .bind(params.offset)
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let history: Vec<GameHistoryEntry> = games
         .into_iter()
-        .map(|(party_id, party_name, finished_at, player_count, rounds_played, winner_username)| {
-            GameHistoryEntry {
-                party_id,
-                party_name,
-                finished_at,
-                player_count,
-                rounds_played,
-                winner_username,
-                user_placement: None,
-                user_score: None,
-            }
-        })
+        .map(
+            |(party_id, party_name, finished_at, player_count, rounds_played, winner_username)| {
+                GameHistoryEntry {
+                    party_id,
+                    party_name,
+                    finished_at,
+                    player_count,
+                    rounds_played,
+                    winner_username,
+                    user_placement: None,
+                    user_score: None,
+                }
+            },
+        )
         .collect();
 
     // Get total count
     let total: (i32,) = sqlx::query_as("SELECT COUNT(*) FROM game_results")
         .fetch_one(state.party_repo.get_db())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(HistoryResponse {
         success: true,
@@ -317,7 +372,18 @@ pub async fn get_game_details(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Game not found".to_string() })))?;
 
-    let (party_name, visibility, status, finished_at, total_rounds, was_golden_score, player_count, winner_user_id, winner_username, winner_final_score) = game_result;
+    let (
+        party_name,
+        visibility,
+        status,
+        finished_at,
+        total_rounds,
+        was_golden_score,
+        player_count,
+        winner_user_id,
+        winner_username,
+        winner_final_score,
+    ) = game_result;
 
     // Get player results with stats calculated from round_scores
     let player_results = sqlx::query_as::<_, (String, String, i32, i32, bool, i32, i32, i32)>(
@@ -344,25 +410,53 @@ pub async fn get_game_details(
 
     let players: Vec<GamePlayerResult> = player_results
         .into_iter()
-        .map(|(user_id, username, final_score, finish_position, is_winner, total_zapzap_calls, successful_zapzaps, lowest_hand_count)| {
-            let failed_zapzaps = total_zapzap_calls - successful_zapzaps;
-            GamePlayerResult {
+        .map(
+            |(
                 user_id,
                 username,
                 final_score,
                 finish_position,
-                rounds_played: total_rounds,
+                is_winner,
                 total_zapzap_calls,
                 successful_zapzaps,
-                failed_zapzaps,
                 lowest_hand_count,
-                is_winner,
-            }
-        })
+            )| {
+                let failed_zapzaps = total_zapzap_calls - successful_zapzaps;
+                GamePlayerResult {
+                    user_id,
+                    username,
+                    final_score,
+                    finish_position,
+                    rounds_played: total_rounds,
+                    total_zapzap_calls,
+                    successful_zapzaps,
+                    failed_zapzaps,
+                    lowest_hand_count,
+                    is_winner,
+                }
+            },
+        )
         .collect();
 
     // Query round scores
-    let round_scores_raw = sqlx::query_as::<_, (i32, String, String, i32, i32, i32, i32, bool, bool, bool, String, bool, bool)>(
+    let round_scores_raw = sqlx::query_as::<
+        _,
+        (
+            i32,
+            String,
+            String,
+            i32,
+            i32,
+            i32,
+            i32,
+            bool,
+            bool,
+            bool,
+            String,
+            bool,
+            bool,
+        ),
+    >(
         r#"
         SELECT
             rs.round_number,
@@ -382,38 +476,67 @@ pub async fn get_game_details(
         JOIN users u ON u.id = rs.user_id
         WHERE rs.party_id = ?
         ORDER BY rs.round_number ASC, rs.player_index ASC
-        "#
+        "#,
     )
     .bind(&party_id)
     .fetch_all(state.party_repo.get_db())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     // Group round scores by round number
-    let mut rounds_map: std::collections::HashMap<i32, Vec<PlayerRoundScore>> = std::collections::HashMap::new();
-    for (round_number, user_id, username, player_index, score_this_round, total_score_after, hand_points, is_zapzap_caller, zapzap_success, was_counteracted, hand_cards_json, is_lowest_hand, is_eliminated) in round_scores_raw {
+    let mut rounds_map: std::collections::HashMap<i32, Vec<PlayerRoundScore>> =
+        std::collections::HashMap::new();
+    for (
+        round_number,
+        user_id,
+        username,
+        player_index,
+        score_this_round,
+        total_score_after,
+        hand_points,
+        is_zapzap_caller,
+        zapzap_success,
+        was_counteracted,
+        hand_cards_json,
+        is_lowest_hand,
+        is_eliminated,
+    ) in round_scores_raw
+    {
         let hand_cards: Vec<u8> = serde_json::from_str(&hand_cards_json).unwrap_or_default();
 
-        rounds_map.entry(round_number).or_default().push(PlayerRoundScore {
-            user_id,
-            username,
-            player_index,
-            score_this_round,
-            total_score_after,
-            hand_points,
-            is_zapzap_caller,
-            zapzap_success,
-            was_counteracted,
-            hand_cards,
-            is_lowest_hand,
-            is_eliminated,
-        });
+        rounds_map
+            .entry(round_number)
+            .or_default()
+            .push(PlayerRoundScore {
+                user_id,
+                username,
+                player_index,
+                score_this_round,
+                total_score_after,
+                hand_points,
+                is_zapzap_caller,
+                zapzap_success,
+                was_counteracted,
+                hand_cards,
+                is_lowest_hand,
+                is_eliminated,
+            });
     }
 
     // Convert to sorted Vec
     let mut rounds: Vec<RoundScoreInfo> = rounds_map
         .into_iter()
-        .map(|(round_number, players)| RoundScoreInfo { round_number, players })
+        .map(|(round_number, players)| RoundScoreInfo {
+            round_number,
+            players,
+        })
         .collect();
     rounds.sort_by_key(|r| r.round_number);
 

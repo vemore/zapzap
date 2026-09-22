@@ -174,8 +174,12 @@ impl DecisionNetwork {
             if weights_data.shape.len() == 2 {
                 let in_features = weights_data.shape[0];
                 let out_features = weights_data.shape[1];
-                *layer =
-                    DenseLayer::from_flat_weights(&weights_data.data, &bias_data.data, in_features, out_features);
+                *layer = DenseLayer::from_flat_weights(
+                    &weights_data.data,
+                    &bias_data.data,
+                    in_features,
+                    out_features,
+                );
             }
             idx += 2;
         }

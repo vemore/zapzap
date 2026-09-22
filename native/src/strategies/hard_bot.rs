@@ -155,7 +155,12 @@ impl BotStrategy for HardBotStrategy {
         }
     }
 
-    fn select_draw_source(&self, hand: &[u8], last_cards_played: &[u8], _state: &GameState) -> bool {
+    fn select_draw_source(
+        &self,
+        hand: &[u8],
+        last_cards_played: &[u8],
+        _state: &GameState,
+    ) -> bool {
         if last_cards_played.is_empty() {
             return true; // Deck
         }
@@ -245,8 +250,8 @@ mod tests {
         // Discard with useful card (ace to complete pair)
         let hand = vec![0]; // A♠
         let discard = vec![13]; // A♥
-        // Should prefer discard (completes pair)
-        // Note: depends on evaluation, may or may not take it
+                                // Should prefer discard (completes pair)
+                                // Note: depends on evaluation, may or may not take it
         let _ = strategy.select_draw_source(&hand, &discard, &state);
     }
 }

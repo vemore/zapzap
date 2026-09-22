@@ -53,8 +53,7 @@ pub async fn optional_auth_middleware(
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
     {
-        if auth_header.starts_with("Bearer ") {
-            let token = &auth_header[7..];
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
             if let Ok(claims) = state.jwt_service.verify(token) {
                 request.extensions_mut().insert(claims);
             }
