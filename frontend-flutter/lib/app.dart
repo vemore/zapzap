@@ -5,8 +5,11 @@ import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
 import 'providers/app_providers.dart';
+import 'providers/auth_provider.dart';
 import 'router.dart';
+import 'services/api_client.dart';
 import 'services/api_config.dart';
+import 'services/token_storage.dart';
 import 'utils/app_theme.dart';
 
 /// The root widget: providers, theme, localisation and routes.
@@ -15,7 +18,9 @@ class ZapZapApp extends StatefulWidget {
     super.key,
     required this.apiConfig,
     this.locale,
-    this.router,
+    this.initialLocation = AppRoutes.home,
+    this.apiClient,
+    this.tokenStorage,
   });
 
   final ApiConfig apiConfig;
@@ -23,22 +28,37 @@ class ZapZapApp extends StatefulWidget {
   /// Forces a locale; `null` follows the device (French when unsupported).
   final Locale? locale;
 
-  /// Replaces the default router, for tests that start elsewhere.
-  final GoRouter? router;
+  /// Where the router starts (a deep link on the web; tests).
+  final String initialLocation;
+
+  /// Replace the real HTTP client and session storage, for tests.
+  final ApiClient? apiClient;
+  final TokenStorage? tokenStorage;
 
   @override
   State<ZapZapApp> createState() => _ZapZapAppState();
 }
 
 class _ZapZapAppState extends State<ZapZapApp> {
-  // Built once: a router rebuilt on every frame would lose the navigation stack.
-  late final GoRouter _router = widget.router ?? createRouter();
+  // Built once: a router rebuilt on every frame would lose the navigation
+  // stack. Built lazily, below the providers, because it follows the session.
+  GoRouter? _router;
+
+  @override
+  void dispose() {
+    _router?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
-      providers: appProviders(apiConfig: widget.apiConfig),
-      child: MaterialApp.router(
+      providers: appProviders(
+        apiConfig: widget.apiConfig,
+        apiClient: widget.apiClient,
+        tokenStorage: widget.tokenStorage,
+      ),
+      builder: (context, _) => MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
@@ -52,7 +72,10 @@ class _ZapZapAppState extends State<ZapZapApp> {
           GlobalCupertinoLocalizations.delegate,
         ],
         localeResolutionCallback: resolveLocale,
-        routerConfig: _router,
+        routerConfig: _router ??= createRouter(
+          auth: context.read<AuthProvider>(),
+          initialLocation: widget.initialLocation,
+        ),
       ),
     );
   }
