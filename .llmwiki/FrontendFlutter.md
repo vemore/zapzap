@@ -1,8 +1,8 @@
 # FrontendFlutter
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
-> configuration, API layer (client, errors, models, repositories), real-time channel (SSE),
-> theme, localisation, build and tests.
+> configuration and API layer (client, errors, models, repositories), authentication and
+> routing guard, real-time channel (SSE), theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-22
 
@@ -10,11 +10,10 @@
 
 ### Status
 
-- **Scaffold.** A home screen that routes to a placeholder login screen, and a not-found
-  screen (`frontend-flutter/lib/router.dart`). The API layer (client, errors, models,
-  repositories, below) and the real-time channel (SSE, below) are in place; no screen uses
-  them yet. Parity with the React client ([[Frontend]]:
-  game, lobby, history, stats, Google sign-in, admin) is the goal, not the state.
+- **Sign-in only.** Home, login, register, a placeholder parties screen (welcome + logout),
+  a start-up splash and a not-found screen (`frontend-flutter/lib/router.dart`), over the
+  API layer, the session and the real-time channel (below; no screen reads its events yet). Parity with the React client ([[Frontend]]: game,
+  lobby, history, stats, Google sign-in, admin) is the goal, not the state.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
   falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
@@ -38,14 +37,17 @@
 |---|---|
 | `main.dart` | `runApp(ZapZapApp(apiConfig: ApiConfig.fromEnvironment()))`, nothing else |
 | `app.dart` | `ZapZapApp`: `MultiProvider` + `MaterialApp.router` (theme, locales, router); `resolveLocale` |
-| `router.dart` | `AppRoutes` (path constants) and `createRouter()` — the one `GoRouter`; a new screen is one more `GoRoute` |
-| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient`, the six repositories and `SseProvider` |
+| `router.dart` | `AppRoutes` (path constants), `createRouter(auth:)` — the one `GoRouter`, built once below the providers; a new screen is one more `GoRoute` — and `authRedirect` (Authentication, below) |
+| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient`, the six repositories, `AuthProvider` and `SseProvider` |
+| `providers/auth_provider.dart` | `AuthProvider`, the session (Authentication, below) |
 | `providers/sse_provider.dart`, `services/sse_*.dart`, `models/sse_event.dart` | the real-time channel (below) |
+| `services/token_storage*.dart` | `TokenStorage` and its platform implementations (Authentication, below) |
 | `services/api_config.dart` | `ApiConfig` (below) |
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
-| `screens/` | `home_screen.dart`, `login_screen.dart` (placeholder), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart`, `connection_indicator.dart` (Wifi icon of `SseProvider.connected`) |
+| `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
+| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart` (placeholder until the lobby), `not_found_screen.dart` |
+| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`) |
 | `models/` | typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
 | `repositories/` | one per domain over `ApiClient`: auth, party, game, history, stats, admin |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
@@ -72,8 +74,8 @@
   reads: bots, connected players, public history, public stats).
 - **401 → `onUnauthorized`** (settable callback): fires on a 401 to an *authenticated* call,
   before the `ApiException` is thrown. Unauthenticated calls never fire it, so a wrong
-  password (401 `INVALID_CREDENTIALS`) logs nobody out. The auth pull request wires it to
-  clearing the session and routing to login (the React client only clears, `api.js:34-38`).
+  password (401 `INVALID_CREDENTIALS`) logs nobody out. `AuthProvider` sets it to its
+  `logout`, and the router follows to login (the React client only clears, `api.js:34-38`).
 - **`ApiException(status, code, message, details)`** (`services/api_exception.dart`) reads
   every error shape: `{error, code, details?}` (auth/party/game, both backends);
   `{success:false, error}` and `{error}` (admin on Rust, history, stats, bots) — `code` then
@@ -129,6 +131,45 @@
   init-bots`, one game against EasyBot1 and MediumBot1 played through the API to its end),
   tokens replaced by placeholders. `error_*.json` are `{status, body}`. `test/fixtures.dart`
   loads them.
+
+### Authentication (`providers/auth_provider.dart`, `services/token_storage*.dart`, `router.dart`)
+
+- **`AuthProvider`** (a `ChangeNotifier`, in `appProviders()`, not lazy): `user`, `token`
+  (`null` signed out), `isAuthenticated` (a user and a token whose `exp` is still ahead —
+  re-checked on every read, so a session that expires while the app runs stops counting
+  at the next navigation), `isAdmin`, `isRestored`; `restore()`, `login`, `register`,
+  `logout`. It keeps `ApiClient.token` in step and owns `ApiClient.onUnauthorized`.
+  `logout` is idempotent — the first of several parallel 401s does the work, the others
+  return — and clears the storage. Other state that depends on the session (the SSE
+  connection) listens to it and follows `token`; this provider knows nothing of SSE.
+- **Start-up**: `restore()` reads the stored session; an expired, undecodable or
+  `exp`-less token, or an unreadable user, is erased (`utils/jwt.dart`: payload decoded
+  without checking the signature — the backend does that). Until it is done the router
+  holds on `/splash`.
+- **Storage** (`TokenStorage.platform()`, conditional import on `dart.library.js_interop`):
+  `flutter_secure_storage` on Android (`token_storage_io.dart`), `shared_preferences` on
+  the web (`token_storage_web.dart`, localStorage, keys prefixed `flutter.` by the plugin —
+  no clash with the React client's own `token` on the same origin). Keys `token` and `user`
+  (JSON of `User.toJson()`), those of the React client. `MemoryTokenStorage` for tests.
+- **Screens**: login (`Login.jsx`) only requires both fields — as React, so an account
+  that predates the rules still signs in; register (`Register.jsx`) checks the rules of
+  `auth.js:42-88` live (`utils/validators.dart`: username trimmed, 3-30,
+  `^[a-zA-Z0-9_-]+$`; password 6-100, not trimmed): a field shows its refusal once edited,
+  and submit stays disabled until both pass. The username is sent trimmed (Node trims it
+  too, `src/use-cases/auth/RegisterUser.js:93`). Server refusals map from
+  `ApiException.code`: `INVALID_CREDENTIALS`, `USERNAME_EXISTS`, no response
+  (`NETWORK_ERROR`/`TIMEOUT`), else a generic text. Success navigates by itself: the router
+  follows `AuthProvider`.
+- **Routing guard** (`authRedirect(auth, uri)`, run on every navigation and on every
+  `AuthProvider` change via `refreshListenable`): not restored → `/splash?from=<path>`;
+  signed out → public routes (`/`, `/login`, `/register`) stay, anything else →
+  `/login?from=<path>`; signed in → `/`, `/login`, `/register` lead to `from` or
+  `/parties`; `/admin` and `/admin/**` need `isAdmin`, else `/parties`. `from` is only
+  followed when it is a local path (`/x`, not `//host` or a scheme). An unknown path shows
+  the not-found screen, signed in or out (`test/app_test.dart`). React's
+  `ProtectedRoute` checks only that a token exists, never its expiry
+  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route sits in the
+  URL fragment (`/#/parties`, Flutter's default URL strategy).
 
 ### Real-time channel (SSE)
 
@@ -227,7 +268,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart` |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart` |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -248,6 +289,13 @@ project `.gitignore`.
   `ApiClient`, not a dependency on the auth provider, so the client has no knowledge of
   routing and the auth pull request only has to set it. Error text stays out of the UI:
   screens map `ApiException.code` to ARB strings.
+- **Session and guard (2026-09-22, `feat/flutter-auth`).** The guard checks the JWT's `exp`,
+  which React never does, so an expired session goes to login instead of failing on its
+  first call. The router follows `AuthProvider` (`refreshListenable`) rather than screens
+  navigating after login or logout, so a 401 anywhere lands on login the same way a logout
+  does. The splash route exists so a deep link survives the asynchronous storage read at
+  start-up. Secure storage on Android only: the web has no secure store, and the React
+  client keeps the same token in localStorage.
 - **Real-time channel (2026-09-22, `feat/flutter-sse`).** One connection per signed-in
   session with the token, rather than React's one per screen without it: presence needs the
   token, and the stream is global anyway. Two transports because `package:http` on the web

@@ -10,17 +10,21 @@ import '../repositories/stats_repository.dart';
 import '../services/api_client.dart';
 import '../services/api_config.dart';
 import '../services/sse_transport.dart';
+import '../services/token_storage.dart';
+import 'auth_provider.dart';
 import 'sse_provider.dart';
 
 /// Everything the widget tree can `context.read`/`watch`, in one list.
 /// A new provider (auth, lobby, game...) is one more entry here.
 ///
 /// [apiClient] replaces the real client, for tests; otherwise one is built
-/// from [apiConfig] and closed with the tree. [sseTransport] replaces the
-/// platform's real-time transport, for tests.
+/// from [apiConfig] and closed with the tree. [tokenStorage] replaces the
+/// platform's session storage, [sseTransport] the platform's real-time
+/// transport, for tests.
 List<SingleChildWidget> appProviders({
   required ApiConfig apiConfig,
   ApiClient? apiClient,
+  TokenStorage? tokenStorage,
   SseTransport? sseTransport,
 }) => [
   Provider<ApiConfig>.value(value: apiConfig),
@@ -33,6 +37,15 @@ List<SingleChildWidget> appProviders({
     ),
   Provider<AuthRepository>(
     create: (context) => AuthRepository(context.read<ApiClient>()),
+  ),
+  // Not lazy: the stored session is read at start-up, while the splash shows.
+  ChangeNotifierProvider<AuthProvider>(
+    lazy: false,
+    create: (context) => AuthProvider(
+      repository: context.read<AuthRepository>(),
+      apiClient: context.read<ApiClient>(),
+      storage: tokenStorage ?? TokenStorage.platform(),
+    )..restore(),
   ),
   Provider<PartyRepository>(
     create: (context) => PartyRepository(context.read<ApiClient>()),
