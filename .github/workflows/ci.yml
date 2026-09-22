@@ -35,6 +35,7 @@ jobs:
       native: ${{ steps.flags.outputs.native }}
       frontend: ${{ steps.flags.outputs.frontend }}
       image: ${{ steps.flags.outputs.image }}
+      hooks: ${{ steps.flags.outputs.hooks }}
     steps:
       - uses: actions/checkout@v4
 
@@ -55,7 +56,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -160,3 +161,15 @@ jobs:
         run: docker build -t zapzap-rust-backend:ci zapzap-rust
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
+
+  hooks:
+    name: Hooks — self-test
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.hooks != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # The table drives the guards with payloads in sandbox repositories and a
+      # stubbed gh, cargo and npm: nothing is built and nothing leaves the runner.
+      - run: scripts/hooks_selftest.sh

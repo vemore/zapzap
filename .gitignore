@@ -138,3 +138,6 @@ src/infrastructure/auth/client_secret_*.json
 
 # Local work tracking: one file per entry, never committed (scripts/wip.sh, .llmwiki/ParallelDelivery.md)
 /wip/
+
+# scripts/worktree_setup.sh marker (cleanup_local.sh keeps a worktree that has one)
+/.zapzap-setup-in-progress
