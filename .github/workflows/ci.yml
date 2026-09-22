@@ -36,6 +36,7 @@ jobs:
       frontend: ${{ steps.flags.outputs.frontend }}
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
+      flutter: ${{ steps.flags.outputs.flutter }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +57,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -171,5 +172,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The table drives the guards with payloads in sandbox repositories and a
-      # stubbed gh, cargo and npm: nothing is built and nothing leaves the runner.
+      # stubbed gh, cargo, npm and flutter: nothing is built and nothing leaves the runner.
       - run: scripts/hooks_selftest.sh
+
+  flutter:
+    name: Flutter client — analyze, test, build web and apk
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend-flutter
+    steps:
+      - uses: actions/checkout@v4
+      # The Android Gradle plugin (frontend-flutter/android) needs a JDK 17+; the
+      # runner's default may change under us, so it is set here. The Android SDK is
+      # the runner's preinstalled one ($ANDROID_HOME).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: |
+            frontend-flutter/android/*.gradle*
+            frontend-flutter/android/gradle/wrapper/gradle-wrapper.properties
+      # Pinned with the SDK the client is written against (.llmwiki/FrontendFlutter.md):
+      # a newer analyzer is a red build.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      # lib/l10n/app_localizations*.dart are not committed, and a pub get does not always
+      # write them: generated explicitly, or analyze reports every AppLocalizations use.
+      - run: if [ -f l10n.yaml ]; then flutter gen-l10n; fi
+      - run: flutter analyze
+      - run: flutter test
+      # The PWA is served under /app/ on the API's own domain.
+      - run: flutter build web --base-href /app/
+      - run: flutter build apk --debug

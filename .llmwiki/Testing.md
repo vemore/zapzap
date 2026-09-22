@@ -16,6 +16,7 @@
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | 122/279 fail (13 files) | no |
 | Frontend lint | `npm run lint` | 59 errors, 9 warnings | no |
 | Frontend build | `npm run build` | green | yes |
+| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug` |
 | Legacy Node jest (`tests/unit`, `tests/integration`) | `npm test` (root) | not tracked | no |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
 | Docker images | `docker build zapzap-rust`, `docker build frontend` | green | yes |
@@ -56,13 +57,15 @@
 | `native` | `native != 'false'` | fmt, tests (1 skipped) | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, build | 15 min |
 | `image` | `image != 'false'` | `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-frontend:ci frontend` (`ci.yml:159-162`) | 40 min |
+| `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
+| `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/`, `build apk --debug` (runner's Android SDK) | 30 min |
 
 - Every downstream `if:` starts with `!cancelled()` and tests `!= 'false'` so that a failed or output-less `scope` runs everything, and a job skipped by `if:` still reports Success for branch protection; no workflow-level `paths:` filter, because a filtered required check never reports (`ci.yml:75-81`).
 - Rust caching via `Swatinem/rust-cache@v2` per crate (`ci.yml:98-100,123-125`).
 
 ### The scope job (`scripts/ci_scope.sh`)
 - On push/dispatch every flag is `true` (`ci.yml:58-62`). On a PR it lists changed files with `gh api .../pulls/$PR/files --paginate`, including `previous_filename` so renames count on both sides (`ci.yml:63-64`); ≥ 3000 files → everything (`ci.yml:68-72`); otherwise pipes the list into `scripts/ci_scope.sh` (`ci.yml:73`).
-- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image=` (`ci_scope.sh:1-14,56`). Per path, first match wins (`ci_scope.sh:27-53`, catch-all at `:50-52`):
+- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter=`, in the order `ci.yml` declares the jobs. Per path, first match wins; the last case is the catch-all:
 
 | Pattern | Flags |
 |---|---|
@@ -71,11 +74,12 @@
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
 | `frontend/*` | frontend, image |
+| `frontend-flutter/*` | flutter (no image: the client is not deployed) |
 | `nginx/*` | image |
 | legacy: `src/*`, `tests/*`, `views/*`, `public/*`, `app.js`, `logger.js`, jest/playwright/eslint configs, root `package*.json` | none |
 | anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
 
-- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i>" <paths...>` cases and runs first in the `scope` job (`ci.yml:43-44`): a broken classifier fails `scope`, which makes every job run.
+- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl>" <paths...>` cases and runs first in the `scope` job (`ci.yml:43-44`): a broken classifier fails `scope`, which makes every job run.
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
@@ -85,8 +89,8 @@
 - Frontend vitest red (122/279) and frontend lint red (59 errors): triage/clean, then add to the `frontend` job.
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
-### Pre-commit gate (pending)
-- A `chore/claude-hooks` branch (not merged on 2026-09-22) adds a Claude Code Bash guard that runs, before a commit, `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, and `npm run build` in `frontend` — mirroring CI. The comments in both `rust-toolchain.toml` files already refer to "the commit hook".
+### Pre-commit gate
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."

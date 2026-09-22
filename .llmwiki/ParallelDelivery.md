@@ -10,10 +10,12 @@
 ### `master` and its protection
 
 - CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `frontend`, `image`,
-  `hooks`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
+  `hooks`, `flutter`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
   reports Success, so a docs-only pull request satisfies required checks.
 - Branch protection is set once the harness is merged (2026-09-22, after #21–#23): required
-  checks = the five build jobs (not `scope`), `strict` (up to date before merging → merges
+  checks = the five build jobs `rust` … `hooks` (not `scope`, and not yet `flutter`, added
+  after them: until it is listed, a red `flutter` job does not stop a merge — only the
+  "green or skipped" rule of the lanes does), `strict` (up to date before merging → merges
   are **serial**), linear history (**squash**), no force-push; `enforce_admins` off, so the
   hook refuses `--admin` instead. Read it with `gh api repos/vemore/zapzap/branches/master/protection`.
 - Merged branches are deleted on GitHub; the local copy then reads `[gone]` and the hook
@@ -26,7 +28,8 @@
 - Work happens in a worktree: `git worktree add ../zapzap-<topic> -b <type>/<topic>
   origin/master` by hand, or `.claude/worktrees/<name>` for an agent with
   `isolation: "worktree"`. Then `scripts/worktree_setup.sh <dir>`: `npm ci` in `frontend/`,
-  a cargo clippy warm-up of `zapzap-rust/` on the main checkout's target dir; `--deploy`
+  a cargo clippy warm-up of `zapzap-rust/` on the main checkout's target dir, `flutter pub
+  get` + `gen-l10n` in `frontend-flutter/` (`--no-flutter` skips it); `--deploy`
   symlinks the main checkout's `.env`. It holds `.zapzap-setup-in-progress` while running.
 - `scripts/cleanup_local.sh` (dry run; `--apply`) removes branches with nothing ahead of
   `origin/master` or whose merged PR head GitHub's compare proves identical, and clean
@@ -41,6 +44,12 @@
 | **B** | > 1 500 added-or-modified lines of code; a silent failure mode (schema, migration, scoring in `zapzap-rust/src/domain/`, the SSE event format); a call site many features use | A + acceptance criteria in the entry + `/code-review high` by an agent that did not write it, every finding reported to the user |
 | **C** | authentication and secrets: `zapzap-rust/src/api/routes/auth.rs`, `zapzap-rust/src/api/middleware/`, `zapzap-rust/src/infrastructure/auth/`, compose environment, `nginx/` | B + an explicit go-ahead from the user for that merge |
 | **D** | an experiment | a `noPullRequest` branch, never merged; what it taught becomes an entry |
+
+A change confined to `frontend-flutter/` is lane **A** unless it meets a B criterion (its
+size, most often): the client is not deployed ([[FrontendFlutter]]), so a merge reaches no
+user and there is nothing to deploy after it. It becomes B or C by the same rules as the
+rest once it ships, and a change that also touches the backend, `nginx/` or the compose files
+is judged on those.
 
 The reviewing agent gets these rules: verify each finding against the PR head; a wiki page
 or README the change makes false is at least Medium; read a page's `Decisions & History`

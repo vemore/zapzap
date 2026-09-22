@@ -13,9 +13,15 @@
   screen (`frontend-flutter/lib/router.dart`). Parity with the React client ([[Frontend]]:
   game, lobby, history, stats, Google sign-in, admin) is the goal, not the state.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
-- No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
-  falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
-  local (below).
+- CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
+  `subosito/flutter-action`, JDK 17) runs `pub get`, `gen-l10n`, `analyze`, `test`,
+  `build web --base-href /app/` and `build apk --debug`. `scripts/ci_scope.sh` selects it,
+  and only it, for a path under `frontend-flutter/` (a `.md` there selects nothing)
+  ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
+- Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `flutter analyze` when the
+  commit touches `frontend-flutter/`; no `.dart_tool` → a refusal naming `flutter pub get`
+  ([[Hooks]]). `scripts/worktree_setup.sh` runs the pub get and gen-l10n (`--no-flutter`
+  skips them).
 
 ### Stack
 
@@ -74,8 +80,10 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   `AppLocalizations.of(context)`. The React client mixes French and English; the port
   unifies them in the ARB files.
 - The generated `lib/l10n/app_localizations*.dart` are **not committed**
-  (`frontend-flutter/.gitignore`): `flutter pub get` (and so `analyze`, `test`, `build`)
-  regenerates them. Keeps parallel pull requests that each add strings free of conflicts in
+  (`frontend-flutter/.gitignore`): `flutter gen-l10n` writes them. A `flutter pub get`
+  sometimes does too, but not reliably (not when it finds nothing to resolve), and `flutter
+  analyze` never does (checked 2026-09-22): after an ARB change, run `gen-l10n`. CI, the
+  commit gate and `worktree_setup.sh` run it explicitly. Keeps parallel pull requests that each add strings free of conflicts in
   generated code.
 - `test/l10n_test.dart` fails when a key is in one ARB file and not the other.
 
@@ -98,5 +106,7 @@ project `.gitignore`.
   with the React client. The PWA goes on the same domain under `/app/` (same origin as the
   API, no CORS change to the backend) while React stays on `/`; Android is debug-only for
   now. French and English from day one.
+- **CI job and commit gate (2026-09-22).** The gate is the analyzer only (seconds); tests
+  and the two builds are CI's. No image flag: the client is not deployed yet.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
