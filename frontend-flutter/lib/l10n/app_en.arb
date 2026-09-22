@@ -38,5 +38,7 @@
   "partiesWelcome": "Welcome, {username}!",
   "partiesComingSoon": "The lobby is coming soon.",
   "logoutButton": "Sign out",
-  "splashLoading": "Loading…"
+  "splashLoading": "Loading…",
+  "sseConnected": "Real-time connected",
+  "sseDisconnected": "Real-time disconnected"
 }

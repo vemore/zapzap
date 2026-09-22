@@ -9,19 +9,23 @@ import '../repositories/party_repository.dart';
 import '../repositories/stats_repository.dart';
 import '../services/api_client.dart';
 import '../services/api_config.dart';
+import '../services/sse_transport.dart';
 import '../services/token_storage.dart';
 import 'auth_provider.dart';
+import 'sse_provider.dart';
 
 /// Everything the widget tree can `context.read`/`watch`, in one list.
 /// A new provider (auth, lobby, game...) is one more entry here.
 ///
 /// [apiClient] replaces the real client, for tests; otherwise one is built
 /// from [apiConfig] and closed with the tree. [tokenStorage] replaces the
-/// platform's session storage, for tests.
+/// platform's session storage, [sseTransport] the platform's real-time
+/// transport, for tests.
 List<SingleChildWidget> appProviders({
   required ApiConfig apiConfig,
   ApiClient? apiClient,
   TokenStorage? tokenStorage,
+  SseTransport? sseTransport,
 }) => [
   Provider<ApiConfig>.value(value: apiConfig),
   if (apiClient != null)
@@ -57,5 +61,14 @@ List<SingleChildWidget> appProviders({
   ),
   Provider<AdminRepository>(
     create: (context) => AdminRepository(context.read<ApiClient>()),
+  ),
+  // Follows the session: connected with its token while signed in, closed
+  // on logout, reopened when the token changes. Not lazy, so it connects on
+  // sign-in whether or not a screen watches it yet.
+  ChangeNotifierProxyProvider<AuthProvider, SseProvider>(
+    lazy: false,
+    create: (_) => SseProvider(uri: apiConfig.sseUri, transport: sseTransport),
+    update: (_, auth, sse) =>
+        sse!..follow(auth.isAuthenticated ? auth.token : null),
   ),
 ];

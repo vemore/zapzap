@@ -201,5 +201,13 @@
   "splashLoading": "Chargement…",
   "@splashLoading": {
     "description": "Accessibility label of the start-up spinner while the session is read"
+  },
+  "sseConnected": "Temps réel connecté",
+  "@sseConnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is open"
+  },
+  "sseDisconnected": "Temps réel déconnecté",
+  "@sseDisconnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is closed or reconnecting"
   }
 }
