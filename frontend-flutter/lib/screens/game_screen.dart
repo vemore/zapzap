@@ -369,7 +369,7 @@ class _GameScreenState extends State<GameScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    l10n.gameWinnerLabel(
+                    l10n.gameOverWinner(
                       state.winner!.username ??
                           _nameOf(state.winner!.playerIndex),
                     ),

@@ -2,7 +2,9 @@ import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
 import 'screens/create_party_screen.dart';
+import 'screens/game_details_screen.dart';
 import 'screens/game_screen.dart';
+import 'screens/history_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/not_found_screen.dart';
@@ -10,6 +12,7 @@ import 'screens/parties_screen.dart';
 import 'screens/party_lobby_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/stats_screen.dart';
 
 /// The route paths, so screens navigate by name rather than by string.
 abstract final class AppRoutes {
@@ -27,11 +30,19 @@ abstract final class AppRoutes {
   /// A running game: [GameScreen].
   static const game = '/game/:id';
 
+  static const history = '/history';
+  static const stats = '/stats';
   static const admin = '/admin';
 
   static String partyPath(String partyId) => '/parties/$partyId';
 
   static String gamePath(String partyId) => '/game/$partyId';
+
+  /// The finished game [partyId] in the history.
+  static String gameDetails(String partyId) => '$history/$partyId';
+
+  /// The path parameter of [gameDetails].
+  static const partyIdParam = 'partyId';
 
   /// Shown while the stored session is being read at start-up.
   static const splash = '/splash';
@@ -86,6 +97,20 @@ GoRouter createRouter({
       path: AppRoutes.game,
       builder: (context, state) =>
           GameScreen(partyId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: AppRoutes.history,
+      builder: (context, state) => const HistoryScreen(),
+    ),
+    GoRoute(
+      path: '${AppRoutes.history}/:${AppRoutes.partyIdParam}',
+      builder: (context, state) => GameDetailsScreen(
+        partyId: state.pathParameters[AppRoutes.partyIdParam]!,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.stats,
+      builder: (context, state) => const StatsScreen(),
     ),
   ],
   errorBuilder: (context, state) => const NotFoundScreen(),

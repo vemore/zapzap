@@ -2,8 +2,8 @@
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
 > configuration and API layer (client, errors, models, repositories), authentication and
-> routing guard, real-time channel (SSE), the parties, create-party and lobby screens,
-> the game board, theme, localisation, build and tests.
+> routing guard, real-time channel (SSE), the parties, create-party and lobby screens, the
+> game board, the history and statistics screens, theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-23
 
@@ -12,12 +12,15 @@
 ### Status
 
 - **Playable.** Home, login, register, the parties list, create-party, one party's lobby,
-  the game board at `/game/:id`, a start-up splash and a not-found screen
+  the game board (`/game/:id`), the history (`/history`), one finished game
+  (`/history/:partyId`), the statistics (`/stats`), a start-up splash and a not-found screen
   (`frontend-flutter/lib/router.dart`), over the API layer, the session and the real-time
   channel (below). Still missing against the React client ([[Frontend]]): the detailed
-  end-of-round screen (`RoundEnd.jsx`; the board shows a minimal one, below), history,
-  stats, Google sign-in, admin — and the app bar has no entry point to history, stats or
-  admin until those screens exist.
+  end-of-round screen (`RoundEnd.jsx`; the board shows a minimal one, below), Google
+  sign-in, admin.
+- **History and statistics are reachable by deep link only** (`/#/history`, `/#/stats`, and
+  each other's app-bar action): `ZapZapAppBar` has no button for them yet, so nothing in
+  the parties screens leads there. A follow-up pull request adds the entry points.
 - The card model, play rules and card widgets (below) are what the board draws hands with.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
@@ -58,11 +61,12 @@
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
-| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `not_found_screen.dart` |
+| `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
+| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `not_found_screen.dart` |
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
 | `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `sortCards` (below) |
 | `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `playErrorMessage(PlayError)` |
-| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `game_action_buttons.dart`, `game_hand_size_selector.dart`, `game_error_text.dart` (the board, below) |
+| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `game_action_buttons.dart`, `game_hand_size_selector.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below) |
 | `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
 | `providers/game_provider.dart` | one party's board (below) |
 | `models/` | `card.dart` (above) and the typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
@@ -334,6 +338,60 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   the bots' moves arriving over SSE, the end of the round and the next round. Known local
   limit: a round that ends does not advance on its own when bots are to act (the Node bot
   orchestrator has no `finished` branch), so the Next round button is what moves it on.
+### History and statistics
+
+The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx` and
+`components/Stats/Statistics.jsx`. Three routes, all behind the session:
+`/history`, `/history/:partyId` (`AppRoutes.gameDetails(partyId)`) and `/stats`.
+
+- **`AsyncSection<T>`** (`widgets/async_section.dart`) is the one loading/failed/empty shell:
+  a `FutureBuilder` plus a retry button and an `isEmpty` test. A section holds **one** read,
+  so the statistics screen's three reads stand or fall on their own — a failing leaderboard
+  leaves the personal figures and the bots. Its `errorMessage` is a function of the
+  exception, never the backend's text: the game details map `ApiErrorCode.notFound` to
+  "this game cannot be found" and everything else to a generic failure.
+- **`startRead(future)`** (same file) returns the future after `ignore()`. An `AsyncSection`
+  subscribes only on the next build, so a read that fails before that frame would be an
+  unhandled zone error (and a red widget test). Every screen starts its reads through it.
+- **History** (`screens/history_screen.dart`): a `SegmentedButton` over `HistoryTab.mine`
+  (`GET /history`) and `.public` (`GET /history/public`), each row a `HistoryGameTile`
+  (`widgets/history_game_tile.dart`) that opens the details. Node fills `winnerFinalScore`
+  and `totalRounds`, Rust neither, so the tile leaves out what is `null`.
+- **Game details** (`screens/game_details_screen.dart`): the summary (winner banner,
+  players, rounds, end date, visibility), `HistoryStandings` (finishing order, `RankBadge`
+  gold/silver/bronze, ZapZap record, final score) and `HistoryRoundsTable` — a `DataTable`
+  in a horizontal scroll view, one row per round and one column per player in standings
+  order, each cell the round's points over the running total plus the markers (bolt green
+  or red for a ZapZap that held or not, a crown for the lowest hand, a cross for an
+  elimination; the points are green on the lowest hand, red when counteracted), with the
+  legend under it. The app bar takes the game's name once the read lands.
+- **Statistics** (`screens/stats_screen.dart`): `StatsPersonal` (`GET /stats/me`),
+  `StatsLeaderboard` (`GET /stats/leaderboard?minGames=1&limit=20`, React's own query) and
+  `StatsBots` (`GET /stats/bots`) — totals, a `ChoiceChip` per difficulty found in the
+  answer, a card per difficulty with its strategy, and the per-bot breakdown once one is
+  picked. `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
+  name, strategy and colour and falls back to the raw name, so a new bot kind shows rather
+  than breaks.
+- **My row in the leaderboard**: `LeaderboardRow.isCurrentUser` from
+  `AuthProvider.user?.id`, as React compares it against its own `useAuth()` user
+  (`frontend/src/components/Stats/Statistics.jsx:8`, `:194`).
+- **Formats** (`utils/date_format.dart`): dates through `intl` in
+  `Localizations.localeOf(context)` (React hard-codes `fr-FR`) — the models already turned
+  the backend's Unix seconds into UTC `DateTime`, so only `toLocal()` is left; percentages
+  `(v*100).toStringAsFixed(1)`, as React; `—` for a missing value.
+- Shared presentation lives in `widgets/stats_common.dart`: `SectionCard`, `StatTile`,
+  `StatTileGrid` (2 columns under 640 px, 4 above), `RankBadge`, `GoldenScoreChip`,
+  `MiniStat` and `StatsColors` — the green/red/purple/cyan accents of the React screens,
+  kept out of `utils/app_theme.dart` because they belong to these screens only.
+- **Every text beside another in a `Row` is `Flexible`**: a name, a figure or a label that
+  is unconstrained overflows on a 360 px phone as soon as the system font is large — the
+  standings' ZapZap record, the tiles' facts, the legend items, the leaderboard's win-rate
+  column and the personal ZapZap header. In `SectionCard` the trailing badge is `Flexible`
+  too, and `GoldenScoreChip` ellipsizes: with `Expanded` on the title alone the badge takes
+  what it asks for, squeezes the title into a column of single letters and is clipped
+  anyway. `test/history_screens_test.dart` and `test/stats_screen_test.dart` each end on a
+  `phone width` group at 360×740, at text scale 1 and 1.5, scrolling to every card so it
+  really lays out; an overflow is a layout error, which fails the test.
 
 ### Android (`frontend-flutter/android/`)
 
@@ -418,7 +476,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, the hand-size range, the events), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, and every mode at 360x740 at text scales 1.0 and 1.5) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, the hand-size range, the events), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, and every mode at 360×740 at text scales 1.0 and 1.5), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter, one failing section among three), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -460,6 +518,16 @@ project `.gitignore`.
   component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
   faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
   UI localises them.
+- **History and statistics (2026-09-22, `feat/flutter-history`).** One `AsyncSection` per
+  read rather than one loading state per screen: the statistics screen asks three
+  independent endpoints and React hides all three behind three flags anyway. The bot
+  difficulties come from the answer instead of React's hard-coded list of eight, so a bot
+  kind the backend adds appears on its own; only the name, strategy and colour are looked
+  up, with a fallback. `StatsColors` sits with the screens rather than in `AppTheme`: they
+  are the only users, and the theme is shared with the game board. The leaderboard marks
+  the signed-in row, as React does. Review found six rows that overflowed a 360 px phone —
+  two of them without any text scaling — so every text beside another in a `Row` became
+  `Flexible` and the screens gained a `phone width` test group, as the lobby screens have.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
 - **Parties, create and lobby (2026-09-22, `feat/flutter-lobby`).** Each screen owns its
