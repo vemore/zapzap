@@ -348,16 +348,20 @@ class _GameScreenState extends State<GameScreen> {
           player: () {
             final index = ordered[seat].playerIndex;
             final total = _game.scoreOf(index);
+            // Both sources: Node fills `eliminatedPlayers`, and
+            // `GAME_RULES.md` puts anybody above 100 points out.
+            final out = _game.isEliminated(index) || total > 100;
             return RoundEndPlayer(
               playerIndex: index,
               name: ordered[seat].username,
               hand: state.allHands?[index] ?? const [],
               roundScore: _roundScoreOf(state, index),
               totalScore: total,
-              // Both sources: Node fills `eliminatedPlayers`, and
-              // `GAME_RULES.md` puts anybody above 100 points out.
-              isEliminated: _game.isEliminated(index) || total > 100,
-              isLowestHand: index == state.lowestHandPlayerIndex,
+              isEliminated: out,
+              // A player who is out does not hold the lowest hand, whatever
+              // the backend says: it points at a seat with no cards left
+              // once the game is over (checked locally, 2026-09-23).
+              isLowestHand: !out && index == state.lowestHandPlayerIndex,
               isZapZapCaller: index == state.zapZapCaller,
             );
           }(),

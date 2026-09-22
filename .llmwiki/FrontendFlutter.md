@@ -332,6 +332,10 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   the bots' moves arriving over SSE, the end of the round and the next round. Known local
   limit: a round that ends does not advance on its own when bots are to act (the Node bot
   orchestrator has no `finished` branch), so the Next round button is what moves it on.
+  The end of a round, Next round and the end of the game were checked the same way
+  (2026-09-23): a game of Vincent and two bots played to its end over the local backend —
+  a successful ZapZap with its standings and revealed hands, three rounds started from the
+  client, an eliminated player's badge, and the winner banner with Back to games.
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 
@@ -346,7 +350,9 @@ The port of `frontend/src/components/Game/RoundEnd.jsx`, fed by `GameBoard.jsx:3
 - **Badges**: `#1` for the first of the standings when they are not out, Lowest Hand for
   `lowestHandPlayerIndex`, Eliminated, ZapZap for `zapZapCaller`. **Eliminated** is
   `eliminatedPlayers` *or* a total above 100 (`GAME_RULES.md`): Node fills the list, React
-  only compares the total, and either alone misses a case.
+  only compares the total, and either alone misses a case. A player who is out never gets
+  the Lowest Hand badge, as in React: on the last round of a game Node points
+  `lowestHandPlayerIndex` at a seat it has already eliminated, hand empty.
 - **The ZapZap banner** is green when the call held and red when it was counteracted, and
   then names who counteracted and spells the penalty out:
   `handValue + (activePlayers − 1) × 5`, where `activePlayers` are those whose total

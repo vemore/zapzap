@@ -498,10 +498,13 @@ void main() {
               gameFinished: true,
               winner: {'playerIndex': 0, 'username': 'Vincent', 'score': 12},
               eliminatedPlayers: [2],
+              // The backend points the lowest hand at the player it has
+              // just put out, hand empty (seen locally, 2026-09-23).
+              lowestHandPlayerIndex: 2,
               allHands: {
                 '0': [5],
                 '1': [6],
-                '2': [7],
+                '2': const <int>[],
               },
               handPoints: {'0': 0, '1': 30, '2': 40},
               roundScores: {'0': 0, '1': 30, '2': 40},
@@ -517,6 +520,12 @@ void main() {
       expect(find.text('Vainqueur : Vincent'), findsOneWidget);
       expect(find.text('Score final : 12 points'), findsOneWidget);
       expect(find.text('Éliminé'), findsOneWidget);
+      expect(
+        find.text('Main la plus basse'),
+        findsNothing,
+        reason: 'a player who is out does not hold the lowest hand',
+      );
+      expect(find.text('Aucune carte en main'), findsOneWidget);
       expect(find.byKey(const Key('next-round')), findsNothing);
 
       await tester.tap(find.byKey(const Key('back-to-parties')));
