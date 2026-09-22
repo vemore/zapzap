@@ -20,8 +20,9 @@ native=false
 frontend=false
 image=false
 hooks=false
+flutter=false
 
-everything() { rust=true; native=true; frontend=true; image=true; hooks=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -41,6 +42,10 @@ while IFS= read -r path; do
         # The React client, and its own image.
         frontend/*) frontend=true; image=true ;;
 
+        # The Flutter client (Android + PWA). No image: it is not deployed yet
+        # (.llmwiki/FrontendFlutter.md). `frontend/*` does not match it: the slash.
+        frontend-flutter/*) flutter=true ;;
+
         # The reverse proxy configuration, baked into no image but mounted by compose.
         nginx/*) image=true ;;
 
@@ -58,4 +63,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter"

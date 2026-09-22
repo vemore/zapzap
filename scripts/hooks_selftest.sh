@@ -218,7 +218,7 @@ report "git rm --cached of a database" 0 "$?"
 git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/data.db"
 
 # Gates: which paths select them, and a missing setup named with its command. A stub
-# cargo/npm on PATH decides pass or fail, so no real build runs.
+# cargo/npm/flutter on PATH decides pass or fail, so no real build runs.
 TOOLS="$SANDBOX/tools"
 mkdir -p "$TOOLS"
 stub_tool() {  # name, exit code
@@ -255,6 +255,22 @@ tree_commit "a frontend change whose build passes" 0
 stub_tool npm 1
 tree_commit "a frontend change whose build fails" 2 "npm run build (frontend)"
 git -C "$TREE" rm -q --cached frontend/src/App.jsx && rm -rf "$TREE/frontend"
+# The Flutter client. npm and cargo stay red from here on: a frontend-flutter/ change must
+# not select the frontend/ gate (`^frontend/` needs the slash) nor a cargo one.
+stub_flutter() {  # pub get exit code, analyze exit code
+    printf '#!/bin/sh\necho "stub flutter $*"\ncase "$1" in\n    pub) exit %s ;;\n    analyze) echo "error - invalid_assignment - lib/main.dart:9:9"; exit %s ;;\nesac\nexit 0\n' "$1" "$2" > "$TOOLS/flutter"
+    chmod +x "$TOOLS/flutter"
+}
+stub_flutter 0 0
+stage "frontend-flutter/lib/main.dart"
+tree_commit "a Flutter change in a tree never set up" 2 "cd $TREE/frontend-flutter && flutter pub get"
+mkdir -p "$TREE/frontend-flutter/.dart_tool" && touch "$TREE/frontend-flutter/l10n.yaml"
+tree_commit "a Flutter change whose analyzer is clean" 0
+stub_flutter 0 1
+tree_commit "a Flutter change with an analyzer error" 2 "flutter analyze (frontend-flutter)"
+stub_flutter 1 0
+tree_commit "a Flutter change whose offline pub get fails" 2 "cd $TREE/frontend-flutter && flutter pub get"
+unstage "frontend-flutter/lib/main.dart"
 stub_tool cargo 1
 stage "README.md"
 tree_commit "a documentation change runs no gate" 0
@@ -518,6 +534,17 @@ git -C "$WIPREPO" worktree add -q "$SANDBOX/wipwt" 2>/dev/null
 report "wip.sh path from the main checkout"   "$WIPREPO/wip" "$(cd "$WIPREPO" && scripts/wip.sh path)"
 report "wip.sh path from a subdirectory"      "$WIPREPO/wip" "$(cd "$WIPREPO/sub/dir" && ../../scripts/wip.sh path)"
 report "wip.sh path from a worktree"          "$WIPREPO/wip" "$(cd "$SANDBOX/wipwt" && scripts/wip.sh path)"
+
+# worktree_setup.sh fetches the Flutter packages when the tree has the client, and a stub
+# flutter records how it was called.
+mkdir -p "$WIPREPO/frontend-flutter" && touch "$WIPREPO/frontend-flutter/pubspec.yaml"
+cp "$ROOT/scripts/worktree_setup.sh" "$WIPREPO/scripts/"
+printf '#!/bin/sh\necho "$*" >> "%s/flutter.log"\n' "$SANDBOX" > "$TOOLS/flutter" && chmod +x "$TOOLS/flutter"
+(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust >/dev/null 2>&1)
+report "worktree_setup.sh runs flutter pub get"  "pub get" "$(cat "$SANDBOX/flutter.log" 2>/dev/null)"
+rm -f "$SANDBOX/flutter.log"
+(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust --no-flutter >/dev/null 2>&1)
+report "worktree_setup.sh --no-flutter skips it" "none" "$(cat "$SANDBOX/flutter.log" 2>/dev/null || echo none)"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

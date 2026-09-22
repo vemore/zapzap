@@ -30,8 +30,9 @@ commit message or a heredoc that *mentions* a forbidden command passes. When it 
 where a `git commit` or a bare `git push` runs (a `cd $VAR` it cannot resolve, `$(...)`), it
 refuses with `unknown-repo` and asks for `git -C <literal path>`.
 
-`scripts/hooks_selftest.sh` exercises all of it — 120 cases in sandbox repositories, with a
-stubbed `gh`, `cargo` and `npm` — plus `scripts/cleanup_local.sh`; it is the `hooks` CI job.
+`scripts/hooks_selftest.sh` exercises all of it — 126 cases in sandbox repositories, with a
+stubbed `gh`, `cargo`, `npm` and `flutter` — plus `scripts/cleanup_local.sh` and the
+`flutter pub get` of `scripts/worktree_setup.sh`; it is the `hooks` CI job.
 
 ### What is refused, and on what evidence
 
@@ -56,6 +57,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
 | `native/` | `cargo fmt --check` |
 | `frontend/` | `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
+| `frontend-flutter/` (any file, `.md` included) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get` |
 | anything else (docs, legacy `src/`) | none |
 
 The test suites run in CI, not here. A setup refusal says to run the install as **its own**

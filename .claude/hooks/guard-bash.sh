@@ -210,4 +210,20 @@ if printf '%s\n' "$paths" | grep -qE '^frontend/'; then
     run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
 fi
 
+# The Flutter client: the analyzer only (seconds); tests and builds are the `flutter` CI
+# job. An offline pub get (no network, from the pub cache the setup filled) follows a
+# pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
+# stale with every ARB change; neither `flutter analyze` nor a pub get that finds nothing
+# to resolve regenerates them, so `flutter gen-l10n` does, before the analyzer runs.
+if printf '%s\n' "$paths" | grep -qE '^frontend-flutter/'; then
+    command -v flutter >/dev/null 2>&1 || needs_setup "flutter is not on PATH" "install Flutter 3.47.2 (.llmwiki/FrontendFlutter.md), then: cd $ROOT/frontend-flutter && flutter pub get"
+    [ -d "$ROOT/frontend-flutter/.dart_tool" ] || needs_setup "frontend-flutter/.dart_tool is missing (flutter pub get never ran in this tree)" "cd $ROOT/frontend-flutter && flutter pub get"
+    run_gate "flutter pub get --offline (frontend-flutter; if a package is missing from the cache: cd $ROOT/frontend-flutter && flutter pub get)" \
+        bash -c "cd '$ROOT/frontend-flutter' && flutter pub get --offline"
+    if [ -f "$ROOT/frontend-flutter/l10n.yaml" ]; then
+        run_gate "flutter gen-l10n (frontend-flutter)" bash -c "cd '$ROOT/frontend-flutter' && flutter gen-l10n"
+    fi
+    run_gate "flutter analyze (frontend-flutter)" bash -c "cd '$ROOT/frontend-flutter' && flutter analyze"
+fi
+
 exit 0

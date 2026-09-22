@@ -90,10 +90,10 @@
 - `frontend/Dockerfile`: stage 1 `node:20-alpine`, `npm ci`, `npm run build` (`Dockerfile:4-26`); stage 2 `nginx:alpine` serving `/usr/share/nginx/html` on port 80 with a `wget` healthcheck (`Dockerfile:29-45`).
 - `frontend/nginx.conf`: `/assets/` cached `expires 1y`, `immutable` (`nginx.conf:12-16`); SPA fallback `try_files $uri $uri/ /index.html` (`nginx.conf:19-21`); gzip on.
 - In compose, the image is built from `../frontend` with the Google client id build arg, container `zapzap-frontend` (`zapzap-rust/docker-compose.yml:28-34`), behind the `nginx` reverse proxy that routes `/api/` and `/suscribeupdate` to the backend (`nginx/nginx.conf`, mounted at `zapzap-rust/docker-compose.yml:53`).
-- CI builds the image (`docker build -t zapzap-frontend:ci frontend`, `.github/workflows/ci.yml:162`) and runs `npm run build` on Node 24 (`ci.yml:143,149`) — the Dockerfile uses Node 20.
+- CI builds the image (`docker build -t zapzap-frontend:ci frontend`, `image` job of `.github/workflows/ci.yml`) and runs `npm run build` on Node 24 (`frontend` job) — the Dockerfile uses Node 20.
 
 ## Decisions & History
 - The frontend was rewritten from vanilla JS/EJS (`views/`, `public/` at the root, legacy) to React + Vite; the root docs were never updated.
 - Google OAuth was added in commit 6cca2b1 ("add Google OAuth authentication support") against the Node backend; the Rust rewrite (e4f83da) did not port the route. A local wip entry about Google sign-up asks to check what works end to end.
 - `VITE_API_URL` is optional by design: "In production (no VITE_API_URL), the app will use window.location.origin" (`frontend/Dockerfile:8-9,25`).
-- Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red; each has a wip entry and "joins this job once green" (`.github/workflows/ci.yml:147-148`).
+- Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red; each has a wip entry and "joins this job once green" (comment in the `frontend` job of `.github/workflows/ci.yml`).
