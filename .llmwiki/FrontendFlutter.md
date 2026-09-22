@@ -1,8 +1,8 @@
 # FrontendFlutter
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
-> configuration and API layer (client, errors, models, repositories), theme, localisation,
-> build and tests.
+> configuration, API layer (client, errors, models, repositories), real-time channel (SSE),
+> theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-22
 
@@ -12,7 +12,8 @@
 
 - **Scaffold.** A home screen that routes to a placeholder login screen, and a not-found
   screen (`frontend-flutter/lib/router.dart`). The API layer (client, errors, models,
-  repositories, below) is in place; no screen uses it yet. Parity with the React client ([[Frontend]]:
+  repositories, below) and the real-time channel (SSE, below) are in place; no screen uses
+  them yet. Parity with the React client ([[Frontend]]:
   game, lobby, history, stats, Google sign-in, admin) is the goal, not the state.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
@@ -26,8 +27,8 @@
 - Platforms: `android` and `web` only (`flutter create --platforms=android,web --org
   com.zapzap`). Android: the section below.
 - Dependencies (`frontend-flutter/pubspec.yaml`): provider, http, go_router,
-  shared_preferences, flutter_secure_storage, intl, flutter_localizations, flutter_svg;
-  lints `flutter_lints` + `prefer_single_quotes` (`frontend-flutter/analysis_options.yaml`).
+  shared_preferences, flutter_secure_storage, intl, flutter_localizations, flutter_svg,
+  web (the `EventSource` of the SSE web transport); dev: fake_async (timer tests); lints `flutter_lints` + `prefer_single_quotes` (`frontend-flutter/analysis_options.yaml`).
 - Conventions follow `~/workspace/countscore`: Provider for state, `http` for the API, ARB +
   gen-l10n.
 
@@ -38,12 +39,13 @@
 | `main.dart` | `runApp(ZapZapApp(apiConfig: ApiConfig.fromEnvironment()))`, nothing else |
 | `app.dart` | `ZapZapApp`: `MultiProvider` + `MaterialApp.router` (theme, locales, router); `resolveLocale` |
 | `router.dart` | `AppRoutes` (path constants) and `createRouter()` — the one `GoRouter`; a new screen is one more `GoRoute` |
-| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient` and the six repositories |
+| `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry. Holds `ApiConfig`, `ApiClient`, the six repositories and `SseProvider` |
+| `providers/sse_provider.dart`, `services/sse_*.dart`, `models/sse_event.dart` | the real-time channel (below) |
 | `services/api_config.dart` | `ApiConfig` (below) |
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `screens/` | `home_screen.dart`, `login_screen.dart` (placeholder), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart` |
+| `widgets/` | `app_logo.dart`, `connection_indicator.dart` (Wifi icon of `SseProvider.connected`) |
 | `models/` | typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
 | `repositories/` | one per domain over `ApiClient`: auth, party, game, history, stats, admin |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
@@ -128,6 +130,49 @@
   tokens replaced by placeholders. `error_*.json` are `{status, body}`. `test/fixtures.dart`
   loads them.
 
+### Real-time channel (SSE)
+
+The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`, one global
+stream for every client; an initial `event: connected`, then every broadcast as `event:
+event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `retry: 1000`
+(`src/api/server.js:69-130`), Rust a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,
+`GameEvent`, `zapzap-rust/src/infrastructure/app_state.rs:189-204`).
+
+- **`SseParser`** (`services/sse_parser.dart`): the `text/event-stream` format, pure, fed
+  chunks of any size — `\n`/`\r\n`/`\r` line ends, `:` comments ignored, multi-line `data`
+  joined with `\n`, blank-line dispatch (none without data), default name `message`, `id`,
+  `retry` (read, not acted on). Emits `SseMessage(event, data, id)`.
+- **`SseTransport`** (`services/sse_transport.dart`) opens one connection, never reconnects;
+  `createPlatformTransport()` picks it by conditional import (`dart.library.js_interop`):
+  - `HttpSseTransport` (`sse_transport_io.dart`, Android): a streamed `package:http`
+    request, `Accept: text/event-stream`, UTF-8 → `SseParser`; one `http.Client` per
+    connection, closed with it; a non-200 fails; **60 s** without a byte fails (heartbeats
+    are every 20 s, so a half-open socket after a network change is noticed).
+  - `EventSourceSseTransport` (`sse_transport_web.dart`, PWA): `package:web` `EventSource`,
+    listeners on `event` and `message`; on `onerror` it closes the source, so the browser's
+    own retry never runs alongside ours.
+- **`SseClient`** (`services/sse_client.dart`, plain Dart): `connect(token)` opens
+  `<sseUri>?token=<jwt>` — with the token the backend registers the user as online, so
+  presence works (the React lobby and board connect tokenless, [[Frontend]]); the same token
+  again is a no-op, a new one replaces the connection. On an error or end of stream it
+  reopens **3 s** later (`defaultReconnectDelay`, React's `reconnectDelay`), until
+  `disconnect()`. A generation counter drops late callbacks of a replaced connection.
+  `events` is a broadcast `Stream<SseEvent>`: only `event`/`message` events whose data is a
+  JSON object (the `connected` greeting is dropped).
+- **`SseEvent`** (`models/sse_event.dart`): the payload (`data`) plus `type`, `partyId`,
+  `userId`, `action`, `timestamp` through the lenient `Json` readers; `isPresence` for
+  `userConnected`/`userDisconnected`/`userStatusChanged`. Every client gets every event: a
+  screen keeps those of its `partyId`.
+- **`SseProvider`** (`providers/sse_provider.dart`, a `ChangeNotifier` in `appProviders`):
+  `connect(token)`, `disconnect()`, `events`, `connected` (notifies on change). One for the
+  whole signed-in session; the auth layer drives it.
+- Node emits `userConnected` before subscribing the new stream, so a client never sees its
+  own arrival (`src/api/server.js:101-106`, `:131`).
+- Checked against the local Node backend (2026-09-22): a `play` sent by curl as another user
+  reached `HttpSseTransport` (a `dart run` script) and `EventSourceSseTransport` (the web build
+  in Chromium); the token's user appeared in `GET /api/players/connected`; after the backend
+  was stopped and restarted, the client reconnected 3 s after the drop.
+
 ### Android (`frontend-flutter/android/`)
 
 - **Debug only** for now: no release signing (the `release` build type still signs with the
@@ -182,7 +227,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart` |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -203,6 +248,13 @@ project `.gitignore`.
   `ApiClient`, not a dependency on the auth provider, so the client has no knowledge of
   routing and the auth pull request only has to set it. Error text stays out of the UI:
   screens map `ApiException.code` to ARB strings.
+- **Real-time channel (2026-09-22, `feat/flutter-sse`).** One connection per signed-in
+  session with the token, rather than React's one per screen without it: presence needs the
+  token, and the stream is global anyway. Two transports because `package:http` on the web
+  does not stream a response the way `EventSource` does, and Android has no `EventSource`.
+  The reconnection lives in `SseClient`, not in the transports, so both platforms retry on
+  the same 3 s and a fake transport tests it. The idle timeout exists only on Android:
+  `EventSource` notices a dead connection itself.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's

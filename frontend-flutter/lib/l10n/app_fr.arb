@@ -27,5 +27,13 @@
   "notFoundBackHome": "Retour à l'accueil",
   "@notFoundBackHome": {
     "description": "Button on the not-found screen that goes back to the home screen"
+  },
+  "sseConnected": "Temps réel connecté",
+  "@sseConnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is open"
+  },
+  "sseDisconnected": "Temps réel déconnecté",
+  "@sseDisconnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is closed or reconnecting"
   }
 }

@@ -6,5 +6,7 @@
   "loginTitle": "Sign in",
   "loginComingSoon": "Signing in is coming soon.",
   "notFoundTitle": "Page not found",
-  "notFoundBackHome": "Back to home"
+  "notFoundBackHome": "Back to home",
+  "sseConnected": "Real-time connected",
+  "sseDisconnected": "Real-time disconnected"
 }

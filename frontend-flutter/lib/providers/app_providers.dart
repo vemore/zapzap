@@ -9,15 +9,19 @@ import '../repositories/party_repository.dart';
 import '../repositories/stats_repository.dart';
 import '../services/api_client.dart';
 import '../services/api_config.dart';
+import '../services/sse_transport.dart';
+import 'sse_provider.dart';
 
 /// Everything the widget tree can `context.read`/`watch`, in one list.
 /// A new provider (auth, lobby, game...) is one more entry here.
 ///
 /// [apiClient] replaces the real client, for tests; otherwise one is built
-/// from [apiConfig] and closed with the tree.
+/// from [apiConfig] and closed with the tree. [sseTransport] replaces the
+/// platform's real-time transport, for tests.
 List<SingleChildWidget> appProviders({
   required ApiConfig apiConfig,
   ApiClient? apiClient,
+  SseTransport? sseTransport,
 }) => [
   Provider<ApiConfig>.value(value: apiConfig),
   if (apiClient != null)
@@ -44,5 +48,8 @@ List<SingleChildWidget> appProviders({
   ),
   Provider<AdminRepository>(
     create: (context) => AdminRepository(context.read<ApiClient>()),
+  ),
+  ChangeNotifierProvider<SseProvider>(
+    create: (_) => SseProvider(uri: apiConfig.sseUri, transport: sseTransport),
   ),
 ];
