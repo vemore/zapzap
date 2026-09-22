@@ -12,6 +12,7 @@
 - **Scaffold.** A home screen that routes to a placeholder login screen, and a not-found
   screen (`frontend-flutter/lib/router.dart`). Parity with the React client ([[Frontend]]:
   game, lobby, history, stats, Google sign-in, admin) is the goal, not the state.
+- The card model, play rules and card widgets exist (below) but no screen uses them yet.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
   falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
@@ -40,9 +41,12 @@
 | `providers/app_providers.dart` | `appProviders()` — the one list handed to `MultiProvider`; a new provider is one more entry |
 | `services/api_config.dart` | `ApiConfig` (below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
+| `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
+| `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `sortCards` (below) |
+| `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `playErrorMessage(PlayError)` |
 | `screens/` | `home_screen.dart`, `login_screen.dart` (placeholder), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart` |
-| `models/`, `repositories/` | empty (`.gitkeep`), for the API models and their data access |
+| `widgets/` | `app_logo.dart`; `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below) |
+| `models/`, `repositories/` | the API models and their data access |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
 
 ### API configuration (`frontend-flutter/lib/services/api_config.dart`)
@@ -65,6 +69,33 @@ Dark only, from `frontend/tailwind.config.js`: slate `#0f172a` (background), `#1
 the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are Material
 (the React client uses lucide).
 
+### Cards and play rules
+
+- Ids as the backend's (`GameRules`): 0-51 = suit `id ~/ 13` (spades, hearts, clubs,
+  diamonds) × rank `id % 13 + 1` (Ace 1 .. King 13); 52 red joker, 53 black joker
+  (`lib/models/card.dart`). Value = rank; joker 0, or 25 with `penalty: true`.
+- `analyzePlay(List<int>)` (`lib/utils/rules.dart`), ported from
+  `frontend/src/utils/validation.js` and checked against `GAME_RULES.md`: a single card; a
+  same-rank group ≥ 2, jokers wild, all-joker groups valid (as the backend); a one-suit
+  sequence ≥ 3, jokers filling gaps or extending an end, Ace low only, no K-A wrap, at most
+  13 cards. It returns a `PlayType` and, when refused, a `PlayError` code that the UI turns
+  into text with `playErrorMessage` — no message in `rules.dart`.
+- **Stricter than React:** a repeated id (`[c, c]`) is refused (`PlayError.duplicateCard`);
+  React and the Rust backend accept it ([[GameRules]]).
+- `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring and the counteract penalty are
+  not ported (the backend computes them).
+- Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2, amber glow when
+  selected, opacity 0.5 and no tap when disabled, a localised semantics label);
+  `CardBack` (sizes `xxs` 16 … `lg` 80 px, as `CardBack.jsx`; a painted red lattice, no
+  asset); `CardFan` (the arc of `CardFan.jsx`: under 640 px 50 px cards, ≤ 50°, 8°/card,
+  100 px high, lift 15; else 70 px, ≤ 75°, 12°/card, 150 px, lift 25; selected cards on top;
+  `CardFan.itemKey(i)`).
+- Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
+  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
+  copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
+  `frontend-flutter/THIRD_PARTY.md`. The twelve court cards are ~0.15-0.2 MB each and make
+  most of the weight (ASSET_TOTAL).
+
 ### Localisation
 
 - `frontend-flutter/l10n.yaml`: `arb-dir: lib/l10n`, template `app_fr.arb`,
@@ -84,7 +115,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart` |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan) |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`) |
@@ -98,5 +129,9 @@ project `.gitignore`.
   with the React client. The PWA goes on the same domain under `/app/` (same origin as the
   API, no CORS change to the backend) while React stays on `/`; Android is debug-only for
   now. French and English from day one.
+- **Card faces from SVG assets (2026-09-22).** React draws faces with the `cardmeister` web
+  component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
+  faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
+  UI localises them.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.

@@ -29,3 +29,6 @@ flutter:
   uses-material-design: true
   # gen-l10n from lib/l10n/*.arb (l10n.yaml); the generated Dart is not committed.
   generate: true
+  # Card faces, one SVG per card id (lib/models/card.dart); licence in THIRD_PARTY.md.
+  assets:
+    - assets/cards/

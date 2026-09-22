@@ -24,6 +24,7 @@
 - Same rank: ≥2 cards, all non-jokers share a rank, jokers wild; all-joker sets are valid (`card_analyzer.rs:81-100`). So "5 + Joker" is a valid pair (the doc only shows a joker as third card).
 - Sequence: ≥3 cards, one suit, jokers fill gaps (`gaps_needed <= joker_count`); no Ace-high wrap (`card_analyzer.rs:103-144`).
 - **No duplicate-id check** anywhere: `is_valid_play` accepts `[c, c]` (same rank) or `[c, c, c]` (a "sequence": sorted diffs are −1, gaps 0), and `execute_play` checks each id with `hand.contains` before removing (`game_service.rs:76-88`) and copies the raw list into `cards_played` (`:99-106`). A client posting `cardIds: [c, c, c]` removes one card but puts three copies on the table. Entry: `zapzap-rust/src/application/game/play_cards.rs:74-79`.
+- Clients re-check a selection before posting it: React `frontend/src/utils/validation.js`, Flutter `frontend-flutter/lib/utils/rules.dart` (which also refuses a repeated id). [[FrontendFlutter]]
 - Play enumeration for bots: `find_same_rank_plays` (`card_analyzer.rs:156`, jokers added up to 4-card sets), `find_sequence_plays` (`:203`), `find_all_valid_plays` (`:266`).
 
 ### Round start
