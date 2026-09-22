@@ -91,7 +91,8 @@ jobs:
         working-directory: zapzap-rust
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned with rust-toolchain.toml in the crate: a newer clippy is a red build.
+      - uses: dtolnay/rust-toolchain@1.92
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -115,7 +116,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned with rust-toolchain.toml in the crate: a newer clippy is a red build.
+      - uses: dtolnay/rust-toolchain@1.92
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
