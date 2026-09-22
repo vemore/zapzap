@@ -10,8 +10,11 @@ Licence: **CC0 1.0 Universal** (public domain dedication),
 <https://creativecommons.org/publicdomain/zero/1.0/>. No attribution is required; it is
 given here as a courtesy.
 
-Downloaded 2026-09-22 and renamed from `English_pattern_<rank>_of_<suit>.svg` to
-`<rank>_of_<suit>.svg`; the drawings themselves are unmodified.
+Downloaded 2026-09-22 (byte sizes checked against Commons), renamed from
+`English_pattern_<rank>_of_<suit>.svg` to `<rank>_of_<suit>.svg`, and optimised with
+`npx svgo@3` (default preset: Inkscape metadata dropped, paths rounded; 2.3 MB → 1.2 MB).
+Rendered side by side with `rsvg-convert`, the optimised faces differ from the originals by
+under 0.4 % of pixels, all on anti-aliased edges.
 
 ## Jokers — `assets/cards/joker_red.svg`, `joker_black.svg`
 

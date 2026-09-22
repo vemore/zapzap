@@ -93,8 +93,8 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 - Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
   deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
   copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
-  `frontend-flutter/THIRD_PARTY.md`. The twelve court cards are ~0.15-0.2 MB each and make
-  most of the weight (ASSET_TOTAL).
+  `frontend-flutter/THIRD_PARTY.md`. The 54 files weigh 1.26 MB after `svgo` (2.3 MB as
+  published); the twelve court cards are 1.15 MB of it.
 
 ### Localisation
 
