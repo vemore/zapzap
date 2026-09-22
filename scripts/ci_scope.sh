@@ -19,8 +19,9 @@ rust=false
 native=false
 frontend=false
 image=false
+hooks=false
 
-everything() { rust=true; native=true; frontend=true; image=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -43,6 +44,10 @@ while IFS= read -r path; do
         # The reverse proxy configuration, baked into no image but mounted by compose.
         nginx/*) image=true ;;
 
+        # The Claude Code hooks and the scripts scripts/hooks_selftest.sh exercises.
+        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh)
+            hooks=true ;;
+
         # The legacy Node backend (src/ and its root files): no job tests it, it is
         # no longer deployed (.llmwiki/Architecture.md).
         src/*|tests/*|views/*|public/*|app.js|logger.js|jest.config.js|playwright.config.js|eslint.config.mjs|package.json|package-lock.json) ;;
@@ -53,4 +58,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\n' "$rust" "$native" "$frontend" "$image"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks"
