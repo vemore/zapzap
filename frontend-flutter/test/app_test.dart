@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
-import 'package:zapzap/router.dart';
 import 'package:zapzap/services/api_config.dart';
+import 'package:zapzap/services/token_storage.dart';
 import 'package:zapzap/utils/app_theme.dart';
 
 const _config = ApiConfig('http://localhost:9999');
@@ -12,7 +12,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const ZapZapApp(apiConfig: _config, locale: Locale('fr')),
+      ZapZapApp(
+        apiConfig: _config,
+        locale: const Locale('fr'),
+        tokenStorage: MemoryTokenStorage(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -23,12 +27,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Connexion'), findsOneWidget);
-    expect(find.text('La connexion arrive bientôt.'), findsOneWidget);
+    expect(find.text('Pseudo'), findsOneWidget);
   });
 
   testWidgets('English strings when the locale is English', (tester) async {
     await tester.pumpWidget(
-      const ZapZapApp(apiConfig: _config, locale: Locale('en')),
+      ZapZapApp(
+        apiConfig: _config,
+        locale: const Locale('en'),
+        tokenStorage: MemoryTokenStorage(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -41,7 +49,8 @@ void main() {
       ZapZapApp(
         apiConfig: _config,
         locale: const Locale('fr'),
-        router: createRouter(initialLocation: '/nowhere'),
+        initialLocation: '/nowhere',
+        tokenStorage: MemoryTokenStorage(),
       ),
     );
     await tester.pumpAndSettle();
@@ -55,7 +64,9 @@ void main() {
   testWidgets('the theme is the dark slate and amber of the React client', (
     tester,
   ) async {
-    await tester.pumpWidget(const ZapZapApp(apiConfig: _config));
+    await tester.pumpWidget(
+      ZapZapApp(apiConfig: _config, tokenStorage: MemoryTokenStorage()),
+    );
     await tester.pumpAndSettle();
 
     final theme = Theme.of(tester.element(find.byType(Scaffold)));

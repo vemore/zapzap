@@ -1,0 +1,48 @@
+{
+  "success": true,
+  "party": {
+    "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "name": "Fixture party",
+    "ownerId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+    "inviteCode": "BGJARGH7",
+    "visibility": "public",
+    "status": "waiting",
+    "settings": {
+      "playerCount": 3,
+      "allowSpectators": false,
+      "roundTimeLimit": 0
+    },
+    "currentRoundId": null,
+    "createdAt": 1790094174,
+    "updatedAt": 1790094174
+  },
+  "players": [
+    {
+      "id": 5,
+      "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "username": "Vincent",
+      "userType": "human",
+      "botDifficulty": null,
+      "playerIndex": 0,
+      "joinedAt": 1790094174
+    },
+    {
+      "id": 6,
+      "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+      "username": "EasyBot1",
+      "userType": "bot",
+      "botDifficulty": "easy",
+      "playerIndex": 1,
+      "joinedAt": 1790094174
+    },
+    {
+      "id": 7,
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "username": "MediumBot1",
+      "userType": "bot",
+      "botDifficulty": "medium",
+      "playerIndex": 2,
+      "joinedAt": 1790094174
+    }
+  ]
+}

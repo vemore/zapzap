@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "party": {
+    "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "status": "playing",
+    "currentRoundId": "569849a3-e414-47ad-9bde-9e9ca2a6edeb"
+  },
+  "round": {
+    "id": "569849a3-e414-47ad-9bde-9e9ca2a6edeb",
+    "roundNumber": 1,
+    "status": "active"
+  }
+}

@@ -16,10 +16,6 @@
   "@loginTitle": {
     "description": "Title of the login screen"
   },
-  "loginComingSoon": "La connexion arrive bientôt.",
-  "@loginComingSoon": {
-    "description": "Placeholder body of the login screen until the login form exists"
-  },
   "notFoundTitle": "Page introuvable",
   "@notFoundTitle": {
     "description": "Title shown for a route that does not exist"
@@ -27,6 +23,192 @@
   "notFoundBackHome": "Retour à l'accueil",
   "@notFoundBackHome": {
     "description": "Button on the not-found screen that goes back to the home screen"
+  },
+  "authUsernameLabel": "Pseudo",
+  "@authUsernameLabel": {
+    "description": "Label of the username field (login and register)"
+  },
+  "authPasswordLabel": "Mot de passe",
+  "@authPasswordLabel": {
+    "description": "Label of the password field (login and register)"
+  },
+  "loginUsernameHint": "Entrez votre pseudo",
+  "@loginUsernameHint": {
+    "description": "Placeholder of the login username field"
+  },
+  "loginPasswordHint": "Entrez votre mot de passe",
+  "@loginPasswordHint": {
+    "description": "Placeholder of the login password field"
+  },
+  "loginSubmit": "Se connecter",
+  "@loginSubmit": {
+    "description": "Login form submit button"
+  },
+  "loginSubmitting": "Connexion…",
+  "@loginSubmitting": {
+    "description": "Login submit button while the request runs"
+  },
+  "loginNoAccount": "Pas encore de compte ?",
+  "@loginNoAccount": {
+    "description": "Text before the link from login to register"
+  },
+  "loginRegisterLink": "S'inscrire",
+  "@loginRegisterLink": {
+    "description": "Link from the login screen to the register screen"
+  },
+  "registerTitle": "Créer un compte",
+  "@registerTitle": {
+    "description": "Title of the register screen"
+  },
+  "registerUsernameHint": "Lettres, chiffres, tirets et underscores",
+  "@registerUsernameHint": {
+    "description": "Placeholder of the register username field"
+  },
+  "registerUsernameHelper": "{min}-{max} caractères",
+  "@registerUsernameHelper": {
+    "description": "Length hint under the register username field",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "registerPasswordHint": "Minimum {min} caractères",
+  "@registerPasswordHint": {
+    "description": "Placeholder of the register password field",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "registerPasswordHelper": "{min}-{max} caractères",
+  "@registerPasswordHelper": {
+    "description": "Length hint under the register password field",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "registerSubmit": "S'inscrire",
+  "@registerSubmit": {
+    "description": "Register form submit button"
+  },
+  "registerSubmitting": "Inscription…",
+  "@registerSubmitting": {
+    "description": "Register submit button while the request runs"
+  },
+  "registerHaveAccount": "Déjà un compte ?",
+  "@registerHaveAccount": {
+    "description": "Text before the link from register to login"
+  },
+  "registerLoginLink": "Se connecter",
+  "@registerLoginLink": {
+    "description": "Link from the register screen to the login screen"
+  },
+  "usernameRequired": "Le pseudo est requis",
+  "@usernameRequired": {
+    "description": "Validation: empty username"
+  },
+  "usernameTooShort": "Le pseudo doit contenir au moins {min} caractères",
+  "@usernameTooShort": {
+    "description": "Validation: username too short (trimmed)",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "usernameTooLong": "Le pseudo ne peut pas dépasser {max} caractères",
+  "@usernameTooLong": {
+    "description": "Validation: username too long (trimmed)",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "usernameInvalidCharacters": "Le pseudo ne peut contenir que des lettres, chiffres, tirets (-) et underscores (_)",
+  "@usernameInvalidCharacters": {
+    "description": "Validation: username outside [a-zA-Z0-9_-]"
+  },
+  "passwordRequired": "Le mot de passe est requis",
+  "@passwordRequired": {
+    "description": "Validation: empty password"
+  },
+  "passwordTooShort": "Le mot de passe doit contenir au moins {min} caractères",
+  "@passwordTooShort": {
+    "description": "Validation: password too short",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "passwordTooLong": "Le mot de passe ne peut pas dépasser {max} caractères",
+  "@passwordTooLong": {
+    "description": "Validation: password too long",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "authErrorInvalidCredentials": "Pseudo ou mot de passe incorrect",
+  "@authErrorInvalidCredentials": {
+    "description": "Login refused (INVALID_CREDENTIALS)"
+  },
+  "authErrorUsernameExists": "Ce pseudo est déjà pris",
+  "@authErrorUsernameExists": {
+    "description": "Register refused (USERNAME_EXISTS)"
+  },
+  "authErrorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
+  "@authErrorNetwork": {
+    "description": "No answer from the server (network error or timeout)"
+  },
+  "authErrorGeneric": "Une erreur est survenue. Réessayez.",
+  "@authErrorGeneric": {
+    "description": "Any other login or register failure"
+  },
+  "partiesTitle": "Parties",
+  "@partiesTitle": {
+    "description": "Title of the parties (lobby) screen"
+  },
+  "partiesWelcome": "Bienvenue, {username} !",
+  "@partiesWelcome": {
+    "description": "Greeting on the parties screen",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "partiesComingSoon": "Le salon arrive bientôt.",
+  "@partiesComingSoon": {
+    "description": "Placeholder body of the parties screen until the lobby exists"
+  },
+  "logoutButton": "Se déconnecter",
+  "@logoutButton": {
+    "description": "Button or tooltip that signs out"
+  },
+  "splashLoading": "Chargement…",
+  "@splashLoading": {
+    "description": "Accessibility label of the start-up spinner while the session is read"
+  },
+  "sseConnected": "Temps réel connecté",
+  "@sseConnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is open"
+  },
+  "sseDisconnected": "Temps réel déconnecté",
+  "@sseDisconnected": {
+    "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is closed or reconnecting"
   },
   "suitSpades": "Pique",
   "@suitSpades": {

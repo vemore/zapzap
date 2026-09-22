@@ -1,0 +1,293 @@
+{
+  "success": true,
+  "game": {
+    "partyId": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "partyName": "Fixture party",
+    "visibility": "public",
+    "status": "finished",
+    "winner": {
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "username": "MediumBot1",
+      "finalScore": 77
+    },
+    "totalRounds": 5,
+    "wasGoldenScore": true,
+    "playerCount": 3,
+    "finishedAt": 1790094408
+  },
+  "players": [
+    {
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "username": "MediumBot1",
+      "finalScore": 77,
+      "finishPosition": 1,
+      "roundsPlayed": 5,
+      "totalZapZapCalls": 1,
+      "successfulZapZaps": 1,
+      "failedZapZaps": 0,
+      "lowestHandCount": 1,
+      "isWinner": true
+    },
+    {
+      "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+      "username": "EasyBot1",
+      "finalScore": 58,
+      "finishPosition": 2,
+      "roundsPlayed": 5,
+      "totalZapZapCalls": 3,
+      "successfulZapZaps": 3,
+      "failedZapZaps": 0,
+      "lowestHandCount": 3,
+      "isWinner": false
+    },
+    {
+      "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "username": "Vincent",
+      "finalScore": 122,
+      "finishPosition": 3,
+      "roundsPlayed": 5,
+      "totalZapZapCalls": 0,
+      "successfulZapZaps": 0,
+      "failedZapZaps": 0,
+      "lowestHandCount": 0,
+      "isWinner": false
+    }
+  ],
+  "rounds": [
+    {
+      "roundNumber": 1,
+      "players": [
+        {
+          "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+          "username": "Vincent",
+          "playerIndex": 0,
+          "scoreThisRound": 28,
+          "totalScoreAfter": 28,
+          "handPoints": 28,
+          "handCards": "[17,28,1,30,38]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        },
+        {
+          "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+          "username": "EasyBot1",
+          "playerIndex": 1,
+          "scoreThisRound": 49,
+          "totalScoreAfter": 49,
+          "handPoints": 49,
+          "handCards": "[42,33,24,53]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        },
+        {
+          "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+          "username": "MediumBot1",
+          "playerIndex": 2,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 0,
+          "handPoints": 2,
+          "handCards": "[26,0]",
+          "isZapZapCaller": true,
+          "zapZapSuccess": true,
+          "wasCounterActed": false,
+          "isLowestHand": true,
+          "isEliminated": false
+        }
+      ]
+    },
+    {
+      "roundNumber": 2,
+      "players": [
+        {
+          "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+          "username": "Vincent",
+          "playerIndex": 0,
+          "scoreThisRound": 29,
+          "totalScoreAfter": 57,
+          "handPoints": 29,
+          "handCards": "[18,26,16,45,10]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        },
+        {
+          "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+          "username": "EasyBot1",
+          "playerIndex": 1,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 49,
+          "handPoints": 1,
+          "handCards": "[13]",
+          "isZapZapCaller": true,
+          "zapZapSuccess": true,
+          "wasCounterActed": false,
+          "isLowestHand": true,
+          "isEliminated": false
+        },
+        {
+          "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+          "username": "MediumBot1",
+          "playerIndex": 2,
+          "scoreThisRound": 4,
+          "totalScoreAfter": 4,
+          "handPoints": 4,
+          "handCards": "[3]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        }
+      ]
+    },
+    {
+      "roundNumber": 3,
+      "players": [
+        {
+          "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+          "username": "Vincent",
+          "playerIndex": 0,
+          "scoreThisRound": 41,
+          "totalScoreAfter": 98,
+          "handPoints": 41,
+          "handCards": "[15,26,52,1,14,33]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        },
+        {
+          "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+          "username": "EasyBot1",
+          "playerIndex": 1,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 49,
+          "handPoints": 2,
+          "handCards": "[40]",
+          "isZapZapCaller": true,
+          "zapZapSuccess": true,
+          "wasCounterActed": false,
+          "isLowestHand": true,
+          "isEliminated": false
+        },
+        {
+          "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+          "username": "MediumBot1",
+          "playerIndex": 2,
+          "scoreThisRound": 37,
+          "totalScoreAfter": 41,
+          "handPoints": 37,
+          "handCards": "[39,13,53,48]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        }
+      ]
+    },
+    {
+      "roundNumber": 4,
+      "players": [
+        {
+          "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+          "username": "Vincent",
+          "playerIndex": 0,
+          "scoreThisRound": 24,
+          "totalScoreAfter": 122,
+          "handPoints": 24,
+          "handCards": "[1,42,43,4,33]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": true
+        },
+        {
+          "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+          "username": "EasyBot1",
+          "playerIndex": 1,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 49,
+          "handPoints": 1,
+          "handCards": "[26]",
+          "isZapZapCaller": true,
+          "zapZapSuccess": true,
+          "wasCounterActed": false,
+          "isLowestHand": true,
+          "isEliminated": false
+        },
+        {
+          "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+          "username": "MediumBot1",
+          "playerIndex": 2,
+          "scoreThisRound": 36,
+          "totalScoreAfter": 77,
+          "handPoints": 36,
+          "handCards": "[13,52,35]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        }
+      ]
+    },
+    {
+      "roundNumber": 5,
+      "players": [
+        {
+          "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+          "username": "Vincent",
+          "playerIndex": 0,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 122,
+          "handPoints": 0,
+          "handCards": "[]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": true
+        },
+        {
+          "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+          "username": "EasyBot1",
+          "playerIndex": 1,
+          "scoreThisRound": 9,
+          "totalScoreAfter": 58,
+          "handPoints": 9,
+          "handCards": "[2,44]",
+          "isZapZapCaller": false,
+          "zapZapSuccess": false,
+          "wasCounterActed": false,
+          "isLowestHand": false,
+          "isEliminated": false
+        },
+        {
+          "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+          "username": "MediumBot1",
+          "playerIndex": 2,
+          "scoreThisRound": 0,
+          "totalScoreAfter": 77,
+          "handPoints": 3,
+          "handCards": "[15]",
+          "isZapZapCaller": true,
+          "zapZapSuccess": true,
+          "wasCounterActed": false,
+          "isLowestHand": true,
+          "isEliminated": false
+        }
+      ]
+    }
+  ]
+}

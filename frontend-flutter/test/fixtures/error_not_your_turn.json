@@ -1,0 +1,7 @@
+{
+  "status": 403,
+  "body": {
+    "error": "Not your turn",
+    "code": "NOT_YOUR_TURN"
+  }
+}

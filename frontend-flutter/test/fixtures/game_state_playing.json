@@ -1,0 +1,73 @@
+{
+  "success": true,
+  "party": {
+    "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "name": "Fixture party",
+    "status": "playing",
+    "currentRoundId": "569849a3-e414-47ad-9bde-9e9ca2a6edeb"
+  },
+  "players": [
+    {
+      "playerIndex": 0,
+      "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "username": "Vincent"
+    },
+    {
+      "playerIndex": 1,
+      "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+      "username": "EasyBot1"
+    },
+    {
+      "playerIndex": 2,
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "username": "MediumBot1"
+    }
+  ],
+  "round": {
+    "id": "569849a3-e414-47ad-9bde-9e9ca2a6edeb",
+    "roundNumber": 1,
+    "status": "active"
+  },
+  "gameState": {
+    "currentTurn": 0,
+    "currentAction": "play",
+    "deckSize": 38,
+    "lastCardsPlayed": [
+      45
+    ],
+    "cardsPlayed": [],
+    "scores": {
+      "0": 0,
+      "1": 0,
+      "2": 0
+    },
+    "playerHand": [
+      17,
+      37,
+      28,
+      1,
+      51
+    ],
+    "otherPlayersHandSizes": {
+      "1": 5,
+      "2": 5
+    },
+    "lastAction": {
+      "type": "selectHandSize",
+      "playerIndex": 0,
+      "handSize": 5
+    },
+    "isGoldenScore": false,
+    "eliminatedPlayers": [],
+    "startingPlayer": 0,
+    "allHands": null,
+    "handPoints": null,
+    "zapZapCaller": null,
+    "lowestHandPlayerIndex": null,
+    "wasCounterActed": false,
+    "counterActedByPlayerIndex": null,
+    "roundScores": null,
+    "gameFinished": false,
+    "winner": null
+  }
+}

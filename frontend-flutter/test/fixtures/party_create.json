@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "party": {
+    "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "name": "Fixture party",
+    "ownerId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+    "inviteCode": "BGJARGH7",
+    "visibility": "public",
+    "status": "waiting",
+    "settings": {
+      "playerCount": 3,
+      "allowSpectators": false,
+      "roundTimeLimit": 0
+    },
+    "createdAt": 1790094174
+  },
+  "botsJoined": 2
+}

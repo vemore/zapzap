@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "user": {
+    "id": "0cea85d4-e591-4e34-a8fc-8b7710a0ad56",
+    "username": "fixture537397",
+    "createdAt": 1790094174
+  },
+  "token": "test-token-auth_register"
+}

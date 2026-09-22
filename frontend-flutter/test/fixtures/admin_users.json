@@ -1,0 +1,98 @@
+{
+  "success": true,
+  "users": [
+    {
+      "id": "0cea85d4-e591-4e34-a8fc-8b7710a0ad56",
+      "username": "fixture537397",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094174,
+      "updatedAt": 1790094174
+    },
+    {
+      "id": "3703c88c-562f-4fe9-9003-bfc52cee2942",
+      "username": "fixture892868",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094157,
+      "updatedAt": 1790094157
+    },
+    {
+      "id": "b40fa968-ebee-4af4-8117-342d47e3eff3",
+      "username": "admin",
+      "userType": "human",
+      "isAdmin": true,
+      "lastLoginAt": 1790094174,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094174
+    },
+    {
+      "id": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "username": "Vincent",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": 1790094174,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 1,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094174
+    },
+    {
+      "id": "fe115971-0911-4d06-9213-7579d5d15121",
+      "username": "Thibaut",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094104
+    },
+    {
+      "id": "e88614f8-13ac-45ca-a4b2-2e6a26b797fd",
+      "username": "Simon",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094104
+    },
+    {
+      "id": "abf481bb-d50b-4cd9-8c17-0046d79eeb6c",
+      "username": "Lyo",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094104
+    },
+    {
+      "id": "797efcc8-5f03-4208-8627-16f6e44f472c",
+      "username": "Laurent",
+      "userType": "human",
+      "isAdmin": false,
+      "lastLoginAt": null,
+      "totalPlayTimeSeconds": 0,
+      "gamesPlayed": 0,
+      "createdAt": 1790094104,
+      "updatedAt": 1790094104
+    }
+  ],
+  "pagination": {
+    "total": 8,
+    "limit": 50,
+    "offset": 0
+  }
+}
