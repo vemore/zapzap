@@ -223,6 +223,7 @@
   "strategyLlmDescription": "Llama 3.3 through AWS Bedrock: decides from the rules, its hand, the state of the game and the history of moves, in natural language.",
   "strategyThibotTitle": "Probability-based strategy",
   "strategyThibotDescription": "Tracks every played card and opponents' picks to compute probabilities. Genetically optimised parameters, maximises the points removed per turn and defends when an opponent nears ZapZap.",
+  "appBarMenu": "More",
   "gameTitle": "Game",
   "gameLoading": "Loading game…",
   "gameLoadFailedTitle": "Game unavailable",
