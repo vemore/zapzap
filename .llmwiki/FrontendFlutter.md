@@ -19,9 +19,10 @@
   (`screens/pending_game_screen.dart`) the lobby sends a started party to; the game board
   replaces it. Still missing against the React client ([[Frontend]]): the game board,
   Google sign-in, admin.
-- **History and statistics are reachable by deep link only** (`/#/history`, `/#/stats`, and
-  each other's app-bar action): `ZapZapAppBar` has no button for them yet, so nothing in
-  the parties screens leads there. A follow-up pull request adds the entry points.
+- **History and statistics are reached from the app-bar menu** of every signed-in screen
+  (`ZapZapAppBar`, below), and from each other's app-bar action; the deep links
+  (`/#/history`, `/#/stats`) still work. There is **no Admin entry**: `/admin` has the
+  router guard but no screen, so the menu would lead to the not-found screen.
 - The card model, play rules and card widgets exist (below) but no screen uses them yet.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
@@ -284,7 +285,13 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   (`src/api/server.js:101-106` after `:99`) — but the session is registered first, so the
   `GET /players/connected` the client makes afterwards may already list it; which of the
   two wins the race decides whether a lone user sees 0 or 1. React behaves the same way. The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
-  indicator and sign-out — icons only, so it fits a phone, which the React header does not.
+  indicator, sign-out and the navigation menu — icons only, so it fits a phone, which the
+  React header does not.
+- **The app-bar menu** (`widgets/zapzap_app_bar.dart`, key `app-bar-menu`) leads to the
+  history (`menu-history`) and the statistics (`menu-stats`), with `context.push` so the
+  Android system Back button returns to the screen below. A menu rather than one icon
+  each: there is no URL bar on Android, and more icons would not fit a 360 px bar at a
+  large system font. Admin is left out until an admin screen exists.
 - **Error text** comes from `partyErrorText` (`widgets/error_banner.dart`), mapping
   `ApiException.code` (`PARTY_NOT_FOUND`, `PARTY_FULL`, `PARTY_STARTED`,
   `PARTY_ALREADY_PLAYING`, `NOT_OWNER`, `NOT_AUTHORIZED`, no answer) to ARB strings;
@@ -428,7 +435,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter, one failing section among three), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -491,6 +498,15 @@ project `.gitignore`.
   party has somewhere to land before the board exists. The app bar deliberately carries no
   History, Stats or Admin entry yet: those routes do not exist, and a dead link is worse
   than a missing one.
+- **App-bar menu rather than icons, and no Admin entry (2026-09-23,
+  `feat/flutter-app-bar-links`).** The history and statistics routes exist since #33, so
+  the app bar leads to them; a `PopupMenuButton` rather than two more `IconButton`s
+  because the bar already carries the presence count, the connection indicator and
+  sign-out, and 360 px at a 1.5 text scale leaves no room. `context.push`, not `go`: the
+  screen stays on top of the parties list, so the Android system Back button returns to
+  it. `/admin` still has only the router guard of #29, so an Admin entry would land on the
+  not-found screen — it waits for the admin screen
+  (`wip/todo_nr/2026-09-22-flutter-admin.md`), and a test keeps the menu free of it.
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
   generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed
   to reach a local backend from the emulator or the LAN, but a release build must never
