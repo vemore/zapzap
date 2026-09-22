@@ -151,17 +151,25 @@ jobs:
       - run: npm run build
 
   image:
-    name: Images — backend and frontend build
+    name: Images — backend, frontend and Flutter PWA build
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.image != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Backend image
         run: docker build -t zapzap-rust-backend:ci zapzap-rust
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
+      # The Flutter SDK is downloaded and checksum-checked inside the image; the version
+      # is the one the flutter job pins (frontend-flutter/Dockerfile).
+      - name: Flutter PWA image
+        run: docker build -t zapzap-frontend-flutter:ci frontend-flutter
+      # The acceptance of the PWA deploy: the image serves /app/ and a deep link under it,
+      # and never lets a browser keep the entry points.
+      - name: Flutter PWA image serves /app/ and its deep links
+        run: scripts/pwa_image_smoke.sh zapzap-frontend-flutter:ci
 
   hooks:
     name: Hooks — self-test

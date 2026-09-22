@@ -1,13 +1,14 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed frontend/, the Node backend, nginx/ or the compose files, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed frontend/, frontend-flutter/, the Node backend, nginx/ or the compose files, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
 
 Facts, and why it works this way: `.llmwiki/Deployment.md`. Production runs the **Node**
-backend (`src/`, root `Dockerfile`) and the React frontend, from the root
-`docker-compose.yml`. `zapzap-rust/` is not deployed yet (a wip entry).
+backend (`src/`, root `Dockerfile`), the React frontend on `/` and the Flutter PWA on
+`/app/`, from the root `docker-compose.yml`. `zapzap-rust/` is not deployed yet (a wip
+entry).
 
 Every command runs over `ssh vemore@192.168.1.147`; Docker is in `/usr/local/bin`, so start
 remote commands with `export PATH=$PATH:/usr/local/bin;`. The clone is
@@ -53,20 +54,35 @@ before going on.
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && ./deploy.sh'
 ```
 
-`deploy.sh` pulls, stops the three containers, rebuilds the images and starts them. The site
+`deploy.sh` pulls, stops the four containers, rebuilds the images and starts them. The site
 is down for the build (a few minutes). It exits at the first failing step (`set -e`).
+
+The **first** deploy that carries the Flutter PWA builds `zapzap-frontend-flutter` too: it
+downloads the Flutter SDK inside the image, so allow several extra minutes and ~2 GB of
+disk. Check the NAS has it first (`df -h /volume1` and `docker system df`), and prune with
+`docker image prune -f` if it does not. `zapzap-proxy` will not start without that
+container: nginx resolves `frontend-flutter` at start-up and otherwise exits with `host not
+found in upstream`. If the build fails, the site stays down — roll back (§4).
 
 ## 3. Verify
 
 ```bash
 curl -fsS https://zapzap.ombivince.synology.me/api/health
+curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/
+# The Flutter PWA: the page, a deep link (the SPA fallback), and the manifest.
+curl -fsS https://zapzap.ombivince.synology.me/app/ | grep -o '<base href="/app/">'
+curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/app/parties
+curl -fsS https://zapzap.ombivince.synology.me/app/manifest.json | head -6
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker ps --format "{{.Names}}\t{{.Status}}" | grep zapzap'
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker logs --tail 50 zapzap-backend'
 ```
 
-All three containers `healthy`, health answers 200, no error at startup. Then drive the path
-the change touched in a browser (Playwright on `https://zapzap.ombivince.synology.me/`), and
-record what was checked.
+All four containers `healthy`, health answers 200, `/` still serves the React client, `/app/`
+carries the `/app/` base href, `/app/parties` answers 200, no error at startup. Then drive
+the path the change touched in a browser (Playwright on
+`https://zapzap.ombivince.synology.me/`); for the PWA, sign in at `/app/` and check Chrome
+offers "Install app" (its installability check must report no error). Record what was
+checked.
 
 ## 4. Roll back
 

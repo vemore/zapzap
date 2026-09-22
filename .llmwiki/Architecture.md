@@ -2,7 +2,7 @@
 
 > Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -12,7 +12,7 @@
 |------|------|-------|------|--------|
 | Rust backend | `zapzap-rust/` | axum 0.7, tokio, sqlx 0.8 (sqlite), jsonwebtoken 9, argon2 + bcrypt (`zapzap-rust/Cargo.toml:10-25`) | HTTP API + SSE on port 9999, bots, persistence | **Target** backend, **not deployed yet** (production runs the Node one, [[Deployment]]). Binary `zapzap-backend` (`zapzap-rust/Cargo.toml:2`) |
 | Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
-| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is meant to be served under `/app/` on the production domain | **In progress**: login, register and the session, the party list, create-party and the lobby; no game board yet, not deployed. [[FrontendFlutter]] |
+| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **In progress**: login, register and the session, the party list, create-party and the lobby; no game board yet. [[FrontendFlutter]], [[Deployment]] |
 | Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; loaded by Node scripts in `scripts/` | Offline tooling only |
 | Legacy backend | `src/`, `app.js` | Node/Express, clean architecture (`src/domain`, `src/use-cases`, `src/infrastructure`, `src/api`) | Former API server (entry `app.js:14-20`, `src/api/server.js`) | **Legacy, yet the one in production** (checked 2026-09-22, [[Deployment]]); no CI job, no gate. Owns the schema bootstrap |
 
@@ -24,9 +24,10 @@
 
 ```
 browser ──> zapzap-proxy (nginx:alpine, :80)
-              ├─ /api/*          -> backend:9999   (nginx/nginx.conf:24-42)
-              ├─ /suscribeupdate -> backend:9999   (SSE, unbuffered, 86400s timeouts, nginx/nginx.conf:45-80)
-              └─ /               -> frontend:80    (nginx serving the Vite build)
+              ├─ /api/*          -> backend:9999          (nginx/nginx.conf:28-46)
+              ├─ /suscribeupdate -> backend:9999          (SSE, unbuffered, 86400s timeouts, nginx/nginx.conf:49-86)
+              ├─ /app/*          -> frontend-flutter:80   (Flutter PWA, base href /app/, nginx/nginx.conf:91-113)
+              └─ /               -> frontend:80           (nginx serving the Vite build)
 ```
 
 - Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`zapzap-rust/src/main.rs:39-48`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:51-56`). Route list: [[Api]].
@@ -40,6 +41,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).
 - Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Details: [[Backend]], [[Frontend]].
 - Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
+- The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
 ### SQLite database
 
@@ -63,10 +65,11 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 
 | File | Era | Services |
 |------|-----|----------|
-| `docker-compose.yml` (root) | Node | `backend` built from root `Dockerfile` (node:20-alpine, `CMD node scripts/docker-entrypoint.js`, `Dockerfile:1-37`), container `zapzap-backend`; `frontend`; `nginx` = `zapzap-proxy`. Passes `GOOGLE_OAUTH_CLIENT_ID`, `BOT_ACTION_DELAY_MS`, `AWS_BEDROCK_*` (`docker-compose.yml:9-23`) |
-| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `nginx` from `../nginx/nginx.conf`. Env only `PORT`, `DATABASE_URL`, `JWT_SECRET` (default `zapzap-secret-key-change-in-production`), `RUST_LOG` (`zapzap-rust/docker-compose.yml:1-25`) |
+| `docker-compose.yml` (root) | Node | `backend` built from root `Dockerfile` (node:20-alpine, `CMD node scripts/docker-entrypoint.js`, `Dockerfile:1-37`), container `zapzap-backend`; `frontend`; `frontend-flutter` from `./frontend-flutter` (container `zapzap-frontend-flutter`); `nginx` = `zapzap-proxy`. Passes `GOOGLE_OAUTH_CLIENT_ID`, `BOT_ACTION_DELAY_MS`, `AWS_BEDROCK_*` (`docker-compose.yml:9-23`) |
+| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `frontend-flutter` from `../frontend-flutter`; `nginx` from `../nginx/nginx.conf`. Env only `PORT`, `DATABASE_URL`, `JWT_SECRET` (default `zapzap-secret-key-change-in-production`), `RUST_LOG` (`zapzap-rust/docker-compose.yml:1-25`) |
 
 - Both compose files mount the shared `data/` (`./data` resp. `../data`) at `/app/data`.
+- In both, `nginx` waits for `frontend-flutter` to be healthy: nginx resolves its upstreams at start-up and would exit with `host not found in upstream`. [[Deployment]].
 - The Rust compose does not forward `AWS_*`, `OLLAMA_*`, `ENABLE_LLM_BOTS` or `BOT_STRATEGIES_DIR`, which the Rust code reads (see [[Backend]]); the default image is built without the `bedrock` feature (`zapzap-rust/Cargo.toml:60-62`, `zapzap-rust/Dockerfile:33`).
 - Production's `zapzap-backend` container runs `node scripts/docker-entrypoint.js` from the root compose (checked on the NAS 2026-09-22); the Rust compose would name it `zapzap-rust-backend`. [[Deployment]].
 
@@ -82,4 +85,5 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - 2025-12-15 `9a1d37f`: `native/` first appears (with the hard bot strategy); later DRL/genetic commits grow it into the training engine that complements the JS `src/simulation/` runners.
 - 2025-12-23 `e4f83da` "rewrite backend in Rust": `zapzap-rust/` mirrors the Node layers (api / application / domain / infrastructure) and reads the DB the Node code had created, which is why no migrations were written (the `migrate!` line was left commented). Same day: background bot triggering (`8a3509b`) and broadcaster overflow mode (`c9ac7a7`, avoids blocking senders when SSE clients lag).
 - 2026-09-22 `1e063d6`: CI added, `Cargo.lock` committed, `data/zapzap.db` untracked, Rust pinned to 1.92.
+- 2026-09-23 `feat/flutter-pwa-deploy`: the PWA gets its own image and compose service, and the proxy a `/app/` route — one more container in the topology above. [[Deployment]].
 - 2026-09-22 `feat/flutter-scaffold`: `frontend-flutter/` created — a Flutter client (Android + PWA) to reach parity with the React one; React stays on `/`, the PWA goes under `/app/` so the API is same-origin. [[FrontendFlutter]].

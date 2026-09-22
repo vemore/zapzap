@@ -24,13 +24,15 @@
   (`/#/history`, `/#/stats`) still work. There is **no Admin entry**: `/admin` has the
   router guard but no screen, so the menu would lead to the not-found screen.
 - The card model, play rules and card widgets exist (below) but no screen uses them yet.
-- Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
+- **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
+  `frontend-flutter/nginx.conf`), the `frontend-flutter` service in both compose files, and
+  the `/app/` route of the production proxy. See "The PWA image" below and [[Deployment]].
 - CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
   `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale
   `pubspec.lock` fails the job), `gen-l10n`, `analyze`, `test`,
-  `build web --base-href /app/` and `build apk --debug`. `scripts/ci_scope.sh` selects it,
-  and only it, for a path under `frontend-flutter/` (a `.md` there selects nothing)
-  ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
+  `build web --base-href /app/` and `build apk --debug`. `scripts/ci_scope.sh` selects it
+  **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
+  nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
 - Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `flutter analyze` when the
   commit touches `frontend-flutter/`; no `.dart_tool` → a refusal naming `flutter pub get`
   ([[Hooks]]). `scripts/worktree_setup.sh` runs the pub get and gen-l10n (`--no-flutter`
@@ -370,8 +372,7 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   (adaptive-icon foreground, inside the safe zone); the PNGs next to them are rendered with
   `rsvg-convert -w 1024 -h 1024 <x>.svg -o <x>.png`, then `dart run flutter_launcher_icons`
   (config in `frontend-flutter/flutter_launcher_icons.yaml`, not in `pubspec.yaml`) writes
-  the `mipmap-*`, `drawable-*` and `values/colors.xml` resources. The web icons
-  (`web/icons/`) are still Flutter's defaults.
+  the `mipmap-*`, `drawable-*` and `values/colors.xml` resources.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
   debug-only cleartext.
 - Emulator: `~/sdk/android` has an `android-31` `google_apis` x86_64 image but no AVD, and
@@ -430,6 +431,33 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   each add strings free of conflicts in generated code.
 - `test/l10n_test.dart` fails when a key is in one ARB file and not the other.
 
+### The PWA image (`frontend-flutter/Dockerfile`, `frontend-flutter/nginx.conf`)
+
+- Stage 1 is `debian:bookworm-slim` + the official Flutter SDK archive, **pinned to 3.47.2**
+  with its sha256 (`ARG FLUTTER_VERSION`, `ARG FLUTTER_SHA256`) — the version
+  `.github/workflows/ci.yml` pins; bump the two together. It builds as a non-root user
+  (`flutter` and `pub` refuse to run as root), runs `pub get --enforce-lockfile`, `gen-l10n`
+  and `flutter build web --release --base-href /app/`.
+- Stage 2 is `nginx:alpine` with the bundle at `/usr/share/nginx/html/app`, so a request path
+  matches the public one. `frontend-flutter/nginx.conf`: `/healthz` for the container health
+  check, `/app` → relative 301 `/app/`, `no-cache, no-store, must-revalidate` on
+  `index.html`, `flutter_bootstrap.js` and `flutter_service_worker.js`, `no-cache` on the
+  rest, a 404 (not the fallback) under `/app/assets/` and `/app/canvaskit/`, and the SPA
+  fallback `try_files $uri $uri/ /app/index.html` for everything else under `/app/`.
+- `web/manifest.json`: `start_url` and `scope` `/app/`, `id` `/app/`, `display` standalone,
+  `#0f172a`, and the four icons below. Chrome reports no installability error for it
+  (checked with `Page.getInstallabilityErrors` against the built image).
+- `web/icons/Icon-{192,512}.png` are rendered from `assets/icon/icon.svg`,
+  `Icon-maskable-{192,512}.png` from `assets/icon/icon_maskable.svg` (the bolt inside the
+  66% safe zone on the slate background), `web/favicon.png` from `icon.svg` at 64 px:
+  `rsvg-convert -w <n> -h <n> assets/icon/<x>.svg -o web/<path>`.
+- `scripts/pwa_image_smoke.sh [image]` runs the built image on a free port and checks all of
+  that (23 checks); the `image` CI job runs it.
+- The route deep links use is the hash one: go_router's default on the web, so a link is
+  `/app/#/parties`. `/app/parties` is served the app by the fallback — it loads instead of
+  404ing — but the path is not the route; only a `usePathUrlStrategy()` in `lib/` would make
+  it one.
+
 ### Build and test (from `frontend-flutter/`)
 
 | Command | What |
@@ -440,6 +468,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
 | `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`). Add `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a device on the LAN; without it the APK talks to production over HTTPS |
+| `docker build -t zapzap-frontend-flutter:ci .` then `scripts/pwa_image_smoke.sh` (from the repository root) | the PWA image and its smoke test |
 
 Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root and the
 project `.gitignore`.
@@ -452,7 +481,18 @@ project `.gitignore`.
   now. French and English from day one.
 - **CI job and commit gate (2026-09-22, `chore/flutter-ci-gates`).** The commit gate is the
   analyzer only (seconds); the tests and the two builds are CI's. No image flag: the client
-  is not deployed yet.
+  was not deployed yet.
+  > **Status: Outdated** (2026-09-23) — `frontend-flutter/*` now also raises the `image`
+  > flag, and the `image` job builds the PWA image and smoke-tests it.
+- **The PWA image builds the SDK in, rather than reusing a published Flutter image
+  (2026-09-23, `feat/flutter-pwa-deploy`).** `ghcr.io/cirruslabs/flutter` publishes no
+  `3.47.2` tag, and a floating tag would silently change the SDK under the deploy; the
+  official archive plus its sha256 pins it exactly. The bundle also gets its own image and
+  container rather than being copied into the React one, so the two clients are built and
+  rolled back separately ([[Deployment]]).
+- **The web icons are the launcher icon (2026-09-23).** Flutter's default web icons shipped
+  until then; they are now rendered from the same `assets/icon/` SVGs as the Android
+  launcher icon, plus a maskable variant for the install prompt.
 - **API layer (2026-09-22, `feat/flutter-api-client`).** Models parse both backends
   leniently rather than one strictly: production runs Node, the target is Rust, and their
   shapes differ in types more than in names. The 401 hook is a plain callback on

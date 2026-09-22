@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Maskable PWA icon: the bolt of icon.svg on the slate-900 background, shrunk into the
+     66% safe zone (same scale as icon_foreground.svg) so no launcher mask can clip it.
+     Source of web/icons/Icon-maskable-{192,512}.png: rsvg-convert (see
+     .llmwiki/FrontendFlutter.md). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 24 24">
+  <rect width="24" height="24" fill="#0f172a"/>
+  <g transform="translate(12 12) scale(0.5) translate(-12 -12)">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+          fill="#fbbf24" stroke="#fbbf24" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+</svg>
