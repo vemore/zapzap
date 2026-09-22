@@ -72,13 +72,17 @@ class _StandingsRow extends StatelessWidget {
                           size: 14,
                           color: StatsColors.zapzap,
                         ),
-                        Text(
-                          l10n.standingsZapzaps(
-                            player.successfulZapZaps,
-                            player.totalZapZapCalls,
-                          ),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.slate400,
+                        // Flexible, or a long name plus a large system font
+                        // overflows the row on a phone.
+                        Flexible(
+                          child: Text(
+                            l10n.standingsZapzaps(
+                              player.successfulZapZaps,
+                              player.totalZapZapCalls,
+                            ),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.slate400,
+                            ),
                           ),
                         ),
                       ],

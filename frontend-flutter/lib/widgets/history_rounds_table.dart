@@ -44,9 +44,7 @@ class HistoryRoundsTable extends StatelessWidget {
             columns: [
               DataColumn(label: Text(l10n.roundColumn, style: headerStyle)),
               for (final player in players)
-                DataColumn(
-                  label: Text(player.username, style: headerStyle),
-                ),
+                DataColumn(label: Text(player.username, style: headerStyle)),
             ],
             rows: [
               for (final round in rounds)
@@ -103,9 +101,7 @@ class _Cell extends StatelessWidget {
         ),
         Text(
           '(${round.totalScoreAfter})',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: AppColors.slate400,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.slate400),
         ),
         if (round.isZapZapCaller || round.isLowestHand || round.isEliminated)
           Row(
@@ -193,11 +189,14 @@ class _LegendItem extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
       const SizedBox(width: 4),
-      Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: AppColors.slate400),
+      // Flexible, or a legend item wider than a phone's `Wrap` run
+      // overflows it at a large system font.
+      Flexible(
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: AppColors.slate400),
+        ),
       ),
     ],
   );

@@ -118,7 +118,9 @@ class _Summary extends StatelessWidget {
     return SectionCard(
       icon: Icons.emoji_events,
       title: l10n.gameSummaryTitle,
-      trailing: game.wasGoldenScore ? const GoldenScoreChip(finish: true) : null,
+      trailing: game.wasGoldenScore
+          ? const GoldenScoreChip(finish: true)
+          : null,
       child: Column(
         children: [
           if (winner != null)

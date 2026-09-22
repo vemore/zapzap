@@ -305,7 +305,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login and register, history and statistics, no lobby or game yet, not deployed; Android (debug) + PWA under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party and the lobby, history and statistics; no game board yet, not deployed; Android (debug) + PWA under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 | Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
 

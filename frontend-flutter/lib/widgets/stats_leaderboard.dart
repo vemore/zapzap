@@ -17,8 +17,8 @@ class StatsLeaderboard extends StatelessWidget {
 
   final List<LeaderboardEntry> entries;
 
-  /// `AuthProvider.user?.id`, `null` when nobody is signed in. The React
-  /// client reads an undeclared `user` here and never marks the row
+  /// `AuthProvider.user?.id`, `null` when nobody is signed in — the React
+  /// client compares the same way
   /// (`frontend/src/components/Stats/Statistics.jsx:194`).
   final String? currentUserId;
 
@@ -61,9 +61,7 @@ class LeaderboardRow extends StatelessWidget {
             ? AppColors.amber400.withValues(alpha: 0.15)
             : AppColors.slate700,
         borderRadius: BorderRadius.circular(8),
-        border: isCurrentUser
-            ? Border.all(color: AppColors.amber400)
-            : null,
+        border: isCurrentUser ? Border.all(color: AppColors.amber400) : null,
       ),
       child: Row(
         children: [
@@ -100,23 +98,28 @@ class LeaderboardRow extends StatelessWidget {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                Formats.percent(entry.winRate),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: StatsColors.success,
+          // Flexible: "taux de victoire" under the percentage is wide, and
+          // at a large system font it pushes the row past a phone's width.
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  Formats.percent(entry.winRate),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: StatsColors.success,
+                  ),
                 ),
-              ),
-              Text(
-                l10n.leaderboardWinRate,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.slate400,
+                Text(
+                  l10n.leaderboardWinRate,
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.slate400,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

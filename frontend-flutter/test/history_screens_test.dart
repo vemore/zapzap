@@ -78,7 +78,9 @@ void main() {
 
       expect(find.byKey(const Key('async-empty')), findsOneWidget);
       expect(
-        find.text('Aucune partie terminée. Jouez pour remplir votre historique !'),
+        find.text(
+          'Aucune partie terminée. Jouez pour remplir votre historique !',
+        ),
         findsOneWidget,
       );
       expect(find.byType(HistoryGameTile), findsNothing);
@@ -208,5 +210,50 @@ void main() {
 
       expect(find.text('Cette partie est introuvable.'), findsOneWidget);
     });
+  });
+
+  group('phone width', () {
+    // Anything that does not fit throws a layout error, which fails the
+    // test. A 1.5 text scale is the same layout with every text wider: a
+    // row of unconstrained texts overflows there and nowhere else.
+    for (final scale in [1.0, 1.5]) {
+      final at = scale == 1 ? '' : ' at a $scale text scale';
+
+      testWidgets('the history list fits$at', (tester) async {
+        await pumpScreen(
+          tester,
+          initialLocation: AppRoutes.history,
+          api: routedApi(historyBodies()),
+          size: phoneSize,
+          textScale: scale,
+        );
+
+        expect(find.byType(HistoryGameTile), findsOneWidget);
+      });
+
+      testWidgets('the game details fit$at', (tester) async {
+        await pumpScreen(
+          tester,
+          initialLocation: AppRoutes.gameDetails(partyId),
+          api: routedApi(historyBodies()),
+          size: phoneSize,
+          textScale: scale,
+        );
+
+        // The summary card, whose header carries the golden-score badge
+        // beside the title — the narrowest row of the screen.
+        expect(find.byKey(const Key('game-winner')), findsOneWidget);
+        expect(find.text('Fin en Golden Score'), findsOneWidget);
+        // Then the two cards below it: on a phone each lays out — and each
+        // could overflow — only once scrolled into view.
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('standings-$winnerId')),
+          300,
+        );
+        expect(find.byKey(const Key('standings-$winnerId')), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('Contré'), 300);
+        expect(find.byKey(const Key('rounds-table')), findsOneWidget);
+      });
+    }
   });
 }

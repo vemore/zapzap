@@ -47,10 +47,18 @@ class SectionCard extends StatelessWidget {
               children: [
                 Icon(icon, color: iconColor ?? theme.colorScheme.primary),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(title, style: theme.textTheme.titleLarge),
-                ),
-                ?trailing,
+                Expanded(child: Text(title, style: theme.textTheme.titleLarge)),
+                // Flexible around the trailing badge too: `Expanded` alone
+                // gives the title whatever the badge asks for, and a badge
+                // that wants more than the row has left squeezes the title
+                // into a column of single letters and is clipped anyway.
+                if (trailing != null)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: trailing,
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -125,8 +133,7 @@ class StatTileGrid extends StatelessWidget {
     builder: (context, constraints) {
       final columns = constraints.maxWidth >= 640 ? 4 : 2;
       const spacing = 12.0;
-      final width =
-          (constraints.maxWidth - spacing * (columns - 1)) / columns;
+      final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
       return Wrap(
         spacing: spacing,
         runSpacing: spacing,
@@ -184,6 +191,10 @@ class GoldenScoreChip extends StatelessWidget {
       ),
       child: Text(
         finish ? l10n.goldenScoreFinish : l10n.goldenScore,
+        // The chip is the part that gives way in a header too narrow for
+        // both it and the title (see [SectionCard]).
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(color: AppColors.amber400, fontSize: 12),
       ),
     );
@@ -212,9 +223,7 @@ class MiniStat extends StatelessWidget {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: AppColors.slate400,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.slate400),
         ),
         const SizedBox(height: 2),
         Text(

@@ -1,12 +1,15 @@
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/create_party_screen.dart';
 import 'screens/game_details_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/not_found_screen.dart';
 import 'screens/parties_screen.dart';
+import 'screens/party_lobby_screen.dart';
+import 'screens/pending_game_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/stats_screen.dart';
@@ -17,9 +20,24 @@ abstract final class AppRoutes {
   static const login = '/login';
   static const register = '/register';
   static const parties = '/parties';
+
+  /// The create-party form. Declared before [party], which would match it.
+  static const createParty = '/parties/new';
+
+  /// One party's lobby: [partyPath] builds it.
+  static const party = '/parties/:id';
+
+  /// A running game. The board itself is not written yet:
+  /// [PendingGameScreen] stands in for it.
+  static const game = '/game/:id';
+
   static const history = '/history';
   static const stats = '/stats';
   static const admin = '/admin';
+
+  static String partyPath(String partyId) => '/parties/$partyId';
+
+  static String gamePath(String partyId) => '/game/$partyId';
 
   /// The finished game [partyId] in the history.
   static String gameDetails(String partyId) => '$history/$partyId';
@@ -66,6 +84,20 @@ GoRouter createRouter({
     GoRoute(
       path: AppRoutes.parties,
       builder: (context, state) => const PartiesScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.createParty,
+      builder: (context, state) => const CreatePartyScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.party,
+      builder: (context, state) =>
+          PartyLobbyScreen(partyId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: AppRoutes.game,
+      builder: (context, state) =>
+          PendingGameScreen(partyId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: AppRoutes.history,

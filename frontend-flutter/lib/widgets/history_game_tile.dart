@@ -42,8 +42,12 @@ class HistoryGameTile extends StatelessWidget {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text(game.partyName, style: theme.textTheme.titleMedium),
-                        if (game.wasGoldenScore ?? false) const GoldenScoreChip(),
+                        Text(
+                          game.partyName,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        if (game.wasGoldenScore ?? false)
+                          const GoldenScoreChip(),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -70,7 +74,10 @@ class HistoryGameTile extends StatelessWidget {
                           text: Formats.dateTime(game.finishedAt, locale),
                         ),
                         if (rounds != null)
-                          _Fact(icon: Icons.flag, text: l10n.roundCount(rounds)),
+                          _Fact(
+                            icon: Icons.flag,
+                            text: l10n.roundCount(rounds),
+                          ),
                       ],
                     ),
                   ],
@@ -98,11 +105,14 @@ class _Fact extends StatelessWidget {
     children: [
       Icon(icon, size: 16, color: iconColor ?? AppColors.slate400),
       const SizedBox(width: 4),
-      Text(
-        text,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: AppColors.slate400),
+      // Flexible, or a long winner name — or a large system font — makes
+      // the fact wider than the `Wrap` run it sits in.
+      Flexible(
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: AppColors.slate400),
+        ),
       ),
     ],
   );

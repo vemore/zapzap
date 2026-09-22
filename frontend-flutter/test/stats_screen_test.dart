@@ -60,8 +60,9 @@ void main() {
     expect(find.textContaining('(vous)'), findsOneWidget);
   });
 
-  testWidgets('another user is not highlighted — the React bug this port '
-      'fixes', (tester) async {
+  testWidgets('a row that is not mine is neither highlighted nor marked', (
+    tester,
+  ) async {
     await pumpStats(tester, userId: 'someone-else');
 
     expect(highlighted(tester, vincentId), isFalse);
@@ -75,8 +76,10 @@ void main() {
 
     expect(find.text('0/1 victoires'), findsOneWidget);
     expect(find.text('taux de victoire'), findsOneWidget);
-    expect(find.text('1 partie jouée minimum pour figurer au classement'),
-        findsOneWidget);
+    expect(
+      find.text('1 partie jouée minimum pour figurer au classement'),
+      findsOneWidget,
+    );
   });
 
   group('bots', () {
@@ -134,5 +137,36 @@ void main() {
     expect(find.text('Impossible de charger le classement.'), findsOneWidget);
     expect(find.text('Mes statistiques'), findsOneWidget);
     expect(find.byKey(const Key('bot-card-easy')), findsOneWidget);
+  });
+
+  group('phone width', () {
+    // Anything that does not fit throws a layout error, which fails the
+    // test. A 1.5 text scale is the same layout with every text wider: a
+    // row of unconstrained texts overflows there and nowhere else.
+    for (final scale in [1.0, 1.5]) {
+      testWidgets(
+        'the statistics fit${scale == 1 ? '' : ' at a $scale text scale'}',
+        (tester) async {
+          await pumpScreen(
+            tester,
+            initialLocation: AppRoutes.stats,
+            api: routedApi(statsBodies()),
+            size: phoneSize,
+            textScale: scale,
+          );
+
+          // A phone shows one section at a time, so each is scrolled to:
+          // a card only lays out — and only overflows — once built.
+          expect(find.byType(StatsPersonal), findsOneWidget);
+          await tester.scrollUntilVisible(find.byType(LeaderboardRow), 300);
+          expect(find.byType(LeaderboardRow), findsOneWidget);
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('bot-card-easy')),
+            300,
+          );
+          expect(find.byKey(const Key('bot-card-easy')), findsOneWidget);
+        },
+      );
+    }
   });
 }

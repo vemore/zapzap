@@ -47,21 +47,31 @@ ApiClient routedApi(
 
 const _jsonHeaders = {'content-type': 'application/json; charset=utf-8'};
 
+/// A phone, the smallest window these screens have to fit.
+const phoneSize = Size(360, 740);
+
 /// The app on [initialLocation], signed in as [userId], over [api].
 ///
-/// The window is made tall so the long statistics and history screens build
-/// every section: a `ListView` only builds what fits its viewport.
+/// The window is tall by default so the long statistics and history screens
+/// build every section: a `ListView` only builds what fits its viewport. The
+/// phone-width tests pass [phoneSize], and [textScale] on top of it: a large
+/// system font is the same layout with every text wider, so a row of
+/// unconstrained texts overflows there and nowhere else.
 Future<void> pumpScreen(
   WidgetTester tester, {
   required String initialLocation,
   required ApiClient api,
   String userId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e',
   Size size = const Size(1100, 3000),
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.reset);
+  if (textScale != 1) {
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  }
   await tester.pumpWidget(
     ZapZapApp(
       apiConfig: testConfig,

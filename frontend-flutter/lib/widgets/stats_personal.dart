@@ -61,7 +61,14 @@ class StatsPersonal extends StatelessWidget {
                 children: [
                   const Icon(Icons.bolt, color: StatsColors.zapzap, size: 20),
                   const SizedBox(width: 8),
-                  Text(l10n.statsZapzapTitle, style: theme.textTheme.titleSmall),
+                  // Flexible: the title is the only thing that can give way
+                  // when the system font is large.
+                  Flexible(
+                    child: Text(
+                      l10n.statsZapzapTitle,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
