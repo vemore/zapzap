@@ -1,10 +1,48 @@
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
+import '../repositories/admin_repository.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/game_repository.dart';
+import '../repositories/history_repository.dart';
+import '../repositories/party_repository.dart';
+import '../repositories/stats_repository.dart';
+import '../services/api_client.dart';
 import '../services/api_config.dart';
 
 /// Everything the widget tree can `context.read`/`watch`, in one list.
 /// A new provider (auth, lobby, game...) is one more entry here.
-List<SingleChildWidget> appProviders({required ApiConfig apiConfig}) => [
+///
+/// [apiClient] replaces the real client, for tests; otherwise one is built
+/// from [apiConfig] and closed with the tree.
+List<SingleChildWidget> appProviders({
+  required ApiConfig apiConfig,
+  ApiClient? apiClient,
+}) => [
   Provider<ApiConfig>.value(value: apiConfig),
+  if (apiClient != null)
+    Provider<ApiClient>.value(value: apiClient)
+  else
+    Provider<ApiClient>(
+      create: (_) => ApiClient(config: apiConfig),
+      dispose: (_, client) => client.close(),
+    ),
+  Provider<AuthRepository>(
+    create: (context) => AuthRepository(context.read<ApiClient>()),
+  ),
+  Provider<PartyRepository>(
+    create: (context) => PartyRepository(context.read<ApiClient>()),
+  ),
+  Provider<GameRepository>(
+    create: (context) => GameRepository(context.read<ApiClient>()),
+  ),
+  Provider<HistoryRepository>(
+    create: (context) => HistoryRepository(context.read<ApiClient>()),
+  ),
+  Provider<StatsRepository>(
+    create: (context) => StatsRepository(context.read<ApiClient>()),
+  ),
+  Provider<AdminRepository>(
+    create: (context) => AdminRepository(context.read<ApiClient>()),
+  ),
 ];
