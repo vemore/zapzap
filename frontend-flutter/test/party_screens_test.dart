@@ -18,12 +18,17 @@ void main() {
     FakeLobbyBackend backend, {
     String initialLocation = AppRoutes.parties,
     Size size = const Size(1000, 2000),
+    double textScale = 1,
   }) async {
     // Tall enough that every button of a screen is built: a `ListView`
     // only builds what fits. The phone-width test below uses a real one.
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    if (textScale != 1) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
     final transport = FakeSseTransport();
     await tester.pumpWidget(
       ZapZapApp(
@@ -573,6 +578,74 @@ void main() {
         size: phone,
       );
       expect(find.byKey(const Key('slot-3')), findsOneWidget);
+    });
+
+    // A large system font size is the same layout with everything taller
+    // and wider; a tile of a fixed height, or a row of unconstrained
+    // texts, overflows there and nowhere else.
+    testWidgets('the party list fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(
+              id: 'p1',
+              name: 'Une partie au nom particulièrement long',
+              playerCount: 2,
+              isMember: true,
+            ),
+            partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
+          ],
+          connected: [connectedPlayerJson('u1', 'Vincent')],
+        ),
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.byKey(const Key('party-p1')), findsOneWidget);
+      expect(find.byKey(const Key('open-p1')), findsOneWidget);
+    });
+
+    testWidgets('the lobby fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            name: 'Une partie au nom particulièrement long',
+            ownerId: 'u1',
+            players: [
+              partyPlayerJson(
+                userId: 'u1',
+                username: 'Vincent-au-pseudo-très-long',
+                playerIndex: 0,
+              ),
+              partyPlayerJson(
+                userId: 'b1',
+                username: 'HardVinceBot1',
+                playerIndex: 1,
+                userType: 'bot',
+                botDifficulty: 'hard_vince',
+              ),
+            ],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+      expect(find.byKey(const Key('seat-b1')), findsOneWidget);
+    });
+
+    testWidgets('the create form fits at a 1.5 text scale', (tester) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(),
+        initialLocation: AppRoutes.createParty,
+        size: phone,
+        textScale: 1.5,
+      );
+      expect(find.byKey(const Key('slot-0')), findsOneWidget);
     });
   });
 

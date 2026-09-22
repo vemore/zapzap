@@ -35,16 +35,21 @@ class PlayerSeatTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
+              flex: 2,
               child: Text(player.username, overflow: TextOverflow.ellipsis),
             ),
             if (player.isBot && player.botDifficulty != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(
-                  botDifficultyLabel(l10n, player.botDifficulty!),
-                  style: const TextStyle(
-                    color: AppColors.amber400,
-                    fontSize: 12,
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    botDifficultyLabel(l10n, player.botDifficulty!),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                      color: AppColors.amber400,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),

@@ -109,31 +109,55 @@ class _PartiesScreenState extends State<PartiesScreen> {
                     ),
                   ),
                 ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                  sliver: SliverGrid.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 360,
-                          mainAxisExtent: 192,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                    itemCount: _parties.parties.length,
-                    itemBuilder: (context, index) {
-                      final party = _parties.parties[index];
-                      return PartyCard(
-                        party: party,
-                        onJoin: () => _join(party),
-                        onOpen: () => _open(party),
-                      );
-                    },
-                  ),
-                ),
+                _cards(context),
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// The cards, one column on a phone and up to three on a wide screen.
+  ///
+  /// Rows rather than a `SliverGrid`: a grid tile needs a height decided
+  /// before the card is laid out, and any fixed one is too short at a large
+  /// system font size. A row sizes to its tallest card, and stretches the
+  /// others to match.
+  Widget _cards(BuildContext context) {
+    final parties = _parties.parties;
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = ((width - 32) ~/ 340).clamp(1, 3);
+    final rows = (parties.length + columns - 1) ~/ columns;
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      sliver: SliverList.builder(
+        itemCount: rows,
+        itemBuilder: (context, row) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var column = 0; column < columns; column++) ...[
+                  if (column > 0) const SizedBox(width: 12),
+                  Expanded(
+                    child: switch (row * columns + column) {
+                      final index when index < parties.length => PartyCard(
+                        party: parties[index],
+                        onJoin: () => _join(parties[index]),
+                        onOpen: () => _open(parties[index]),
+                      ),
+                      // The last row's empty columns, so the cards beside
+                      // them keep their width.
+                      _ => const SizedBox.shrink(),
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -249,7 +249,10 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). The list is
   **not** refreshed by the event stream, as in React. A card shows the seats taken, the
   status and the one action: Join (disabled when full, playing or finished), Return to
-  lobby, or Continue game for a party the caller is in (`isMember`).
+  lobby, or Continue game for a party the caller is in (`isMember`). The cards are laid out
+  as rows of one to three (`_cards`, by width), not as a `SliverGrid`: a grid tile's height
+  is decided before the card is laid out, and any fixed one overflows at a large system
+  font size.
 - **`CreatePartyProvider`** (`providers/create_party_provider.dart`): the form. Seat 0 is
   the creator and always human; every other seat is human or a bot of a difficulty
   (`botDifficulties`: `easy`, `medium`, `hard`, `hard_vince`, `llm`, `thibot` — the six
