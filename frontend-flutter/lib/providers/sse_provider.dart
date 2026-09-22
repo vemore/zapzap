@@ -8,8 +8,9 @@ import '../services/sse_transport.dart';
 /// whole signed-in session. Screens listen to [events] and keep their
 /// party's; [connected] drives the connection indicator.
 ///
-/// The auth layer calls [connect] with the session's token on sign-in and
-/// [disconnect] on logout.
+/// `appProviders` makes it follow `AuthProvider` ([follow]): connected with
+/// the session's token on sign-in, closed on logout, reopened when the
+/// token changes.
 class SseProvider extends ChangeNotifier {
   SseProvider({
     required Uri uri,
@@ -30,6 +31,10 @@ class SseProvider extends ChangeNotifier {
 
   void connect(String token) => _client.connect(token);
   void disconnect() => _client.disconnect();
+
+  /// [connect] with [token], or [disconnect] when it is `null`: what the
+  /// session proxy in `appProviders` calls on every auth change.
+  void follow(String? token) => token == null ? disconnect() : connect(token);
 
   @override
   void dispose() {

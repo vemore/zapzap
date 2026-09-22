@@ -9,6 +9,7 @@ import 'providers/auth_provider.dart';
 import 'router.dart';
 import 'services/api_client.dart';
 import 'services/api_config.dart';
+import 'services/sse_transport.dart';
 import 'services/token_storage.dart';
 import 'utils/app_theme.dart';
 
@@ -21,6 +22,7 @@ class ZapZapApp extends StatefulWidget {
     this.initialLocation = AppRoutes.home,
     this.apiClient,
     this.tokenStorage,
+    this.sseTransport,
   });
 
   final ApiConfig apiConfig;
@@ -31,9 +33,11 @@ class ZapZapApp extends StatefulWidget {
   /// Where the router starts (a deep link on the web; tests).
   final String initialLocation;
 
-  /// Replace the real HTTP client and session storage, for tests.
+  /// Replace the real HTTP client, session storage and real-time transport,
+  /// for tests.
   final ApiClient? apiClient;
   final TokenStorage? tokenStorage;
+  final SseTransport? sseTransport;
 
   @override
   State<ZapZapApp> createState() => _ZapZapAppState();
@@ -57,6 +61,7 @@ class _ZapZapAppState extends State<ZapZapApp> {
         apiConfig: widget.apiConfig,
         apiClient: widget.apiClient,
         tokenStorage: widget.tokenStorage,
+        sseTransport: widget.sseTransport,
       ),
       builder: (context, _) => MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,

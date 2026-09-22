@@ -62,7 +62,13 @@ List<SingleChildWidget> appProviders({
   Provider<AdminRepository>(
     create: (context) => AdminRepository(context.read<ApiClient>()),
   ),
-  ChangeNotifierProvider<SseProvider>(
+  // Follows the session: connected with its token while signed in, closed
+  // on logout, reopened when the token changes. Not lazy, so it connects on
+  // sign-in whether or not a screen watches it yet.
+  ChangeNotifierProxyProvider<AuthProvider, SseProvider>(
+    lazy: false,
     create: (_) => SseProvider(uri: apiConfig.sseUri, transport: sseTransport),
+    update: (_, auth, sse) =>
+        sse!..follow(auth.isAuthenticated ? auth.token : null),
   ),
 ];

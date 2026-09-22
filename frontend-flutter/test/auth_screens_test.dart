@@ -12,6 +12,7 @@ import 'package:zapzap/services/token_storage.dart';
 
 import 'auth_helpers.dart';
 import 'fixtures.dart';
+import 'sse_fakes.dart';
 
 void main() {
   Future<void> pumpApp(
@@ -28,6 +29,7 @@ void main() {
         initialLocation: initialLocation,
         apiClient: api ?? unusedApi(),
         tokenStorage: storage ?? MemoryTokenStorage(),
+        sseTransport: FakeSseTransport(),
       ),
     );
     await tester.pumpAndSettle();
