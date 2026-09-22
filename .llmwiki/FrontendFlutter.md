@@ -2,7 +2,8 @@
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
 > configuration and API layer (client, errors, models, repositories), authentication and
-> routing guard, real-time channel (SSE), theme, localisation, build and tests.
+> routing guard, real-time channel (SSE), history and statistics screens, theme,
+> localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-22
 
@@ -10,10 +11,12 @@
 
 ### Status
 
-- **Sign-in only.** Home, login, register, a placeholder parties screen (welcome + logout),
-  a start-up splash and a not-found screen (`frontend-flutter/lib/router.dart`), over the
-  API layer, the session and the real-time channel (below; no screen reads its events yet). Parity with the React client ([[Frontend]]: game,
-  lobby, history, stats, Google sign-in, admin) is the goal, not the state.
+- **Sign-in, history and statistics.** Home, login, register, a placeholder parties screen
+  (welcome + logout), the history (`/history`), one finished game (`/history/:partyId`) and
+  the statistics (`/stats`), a start-up splash and a not-found screen
+  (`frontend-flutter/lib/router.dart`), over the API layer, the session and the real-time
+  channel (below; no screen reads its events yet). Parity with the React client
+  ([[Frontend]]: game, lobby, Google sign-in, admin) is the goal, not the state.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
   falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
@@ -46,8 +49,9 @@
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
-| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart` (placeholder until the lobby), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`) |
+| `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
+| `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart` (placeholder until the lobby), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `not_found_screen.dart` |
+| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below) |
 | `models/` | typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
 | `repositories/` | one per domain over `ApiClient`: auth, party, game, history, stats, admin |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
@@ -218,6 +222,52 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
   in Chromium); the token's user appeared in `GET /api/players/connected`; after the backend
   was stopped and restarted, the client reconnected 3 s after the drop.
 
+### History and statistics
+
+The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx` and
+`components/Stats/Statistics.jsx`. Three routes, all behind the session:
+`/history`, `/history/:partyId` (`AppRoutes.gameDetails(partyId)`) and `/stats`.
+
+- **`AsyncSection<T>`** (`widgets/async_section.dart`) is the one loading/failed/empty shell:
+  a `FutureBuilder` plus a retry button and an `isEmpty` test. A section holds **one** read,
+  so the statistics screen's three reads stand or fall on their own — a failing leaderboard
+  leaves the personal figures and the bots. Its `errorMessage` is a function of the
+  exception, never the backend's text: the game details map `ApiErrorCode.notFound` to
+  "this game cannot be found" and everything else to a generic failure.
+- **`startRead(future)`** (same file) returns the future after `ignore()`. An `AsyncSection`
+  subscribes only on the next build, so a read that fails before that frame would be an
+  unhandled zone error (and a red widget test). Every screen starts its reads through it.
+- **History** (`screens/history_screen.dart`): a `SegmentedButton` over `HistoryTab.mine`
+  (`GET /history`) and `.public` (`GET /history/public`), each row a `HistoryGameTile`
+  (`widgets/history_game_tile.dart`) that opens the details. Node fills `winnerFinalScore`
+  and `totalRounds`, Rust neither, so the tile leaves out what is `null`.
+- **Game details** (`screens/game_details_screen.dart`): the summary (winner banner,
+  players, rounds, end date, visibility), `HistoryStandings` (finishing order, `RankBadge`
+  gold/silver/bronze, ZapZap record, final score) and `HistoryRoundsTable` — a `DataTable`
+  in a horizontal scroll view, one row per round and one column per player in standings
+  order, each cell the round's points over the running total plus the markers (bolt green
+  or red for a ZapZap that held or not, a crown for the lowest hand, a cross for an
+  elimination; the points are green on the lowest hand, red when counteracted), with the
+  legend under it. The app bar takes the game's name once the read lands.
+- **Statistics** (`screens/stats_screen.dart`): `StatsPersonal` (`GET /stats/me`),
+  `StatsLeaderboard` (`GET /stats/leaderboard?minGames=1&limit=20`, React's own query) and
+  `StatsBots` (`GET /stats/bots`) — totals, a `ChoiceChip` per difficulty found in the
+  answer, a card per difficulty with its strategy, and the per-bot breakdown once one is
+  picked. `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
+  name, strategy and colour and falls back to the raw name, so a new bot kind shows rather
+  than breaks.
+- **My row in the leaderboard**: `LeaderboardRow.isCurrentUser` from
+  `AuthProvider.user?.id`; React reads an undeclared `user` there and never marks it
+  (`frontend/src/components/Stats/Statistics.jsx:194`).
+- **Formats** (`utils/date_format.dart`): dates through `intl` in
+  `Localizations.localeOf(context)` (React hard-codes `fr-FR`) — the models already turned
+  the backend's Unix seconds into UTC `DateTime`, so only `toLocal()` is left; percentages
+  `(v*100).toStringAsFixed(1)`, as React; `—` for a missing value.
+- Shared presentation lives in `widgets/stats_common.dart`: `SectionCard`, `StatTile`,
+  `StatTileGrid` (2 columns under 640 px, 4 above), `RankBadge`, `GoldenScoreChip`,
+  `MiniStat` and `StatsColors` — the green/red/purple/cyan accents of the React screens,
+  kept out of `utils/app_theme.dart` because they belong to these screens only.
+
 ### Android (`frontend-flutter/android/`)
 
 - **Debug only** for now: no release signing (the `release` build type still signs with the
@@ -272,7 +322,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and someone else's, the bot filter, one failing section among three); `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -307,6 +357,14 @@ project `.gitignore`.
   The reconnection lives in `SseClient`, not in the transports, so both platforms retry on
   the same 3 s and a fake transport tests it. The idle timeout exists only on Android:
   `EventSource` notices a dead connection itself.
+- **History and statistics (2026-09-22, `feat/flutter-history`).** One `AsyncSection` per
+  read rather than one loading state per screen: the statistics screen asks three
+  independent endpoints and React hides all three behind three flags anyway. The bot
+  difficulties come from the answer instead of React's hard-coded list of eight, so a bot
+  kind the backend adds appears on its own; only the name, strategy and colour are looked
+  up, with a fallback. `StatsColors` sits with the screens rather than in `AppTheme`: they
+  are the only users, and the theme is shared with the game board. The leaderboard marks
+  the signed-in row, which React's own screen never manages to do.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
