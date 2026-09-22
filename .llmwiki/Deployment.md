@@ -47,6 +47,10 @@ clone still **tracks** it (`M data/zapzap.db`), while `master` stopped tracking 
 unmodified, it would have been deleted. The `deploy` skill's §0 is the safe sequence
 (backup, `git rm --cached`, then pull).
 
+Done on the NAS on 2026-09-22 (backup `data/zapzap.db.bak-2026-09-22-1356`, 1400832 bytes, no
+container touched): the clone's index holds the deletion, so the next `git pull` fast-forwards
+and leaves the file in place. Backups `data/*.db.bak-*` are gitignored and refused by the hook.
+
 ## Decisions & History
 
 - **The old `CLAUDE.md` deploy recipe** (`scp` a file, `docker cp` it into the container,
