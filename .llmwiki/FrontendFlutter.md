@@ -18,10 +18,18 @@
   to; the game board replaces it. Still missing against the React client ([[Frontend]]):
   the game board, history, stats, Google sign-in, admin — and the app bar has no entry
   point to history, stats or admin until those screens exist.
+- The card model, play rules and card widgets exist (below) but no screen uses them yet.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
-- No CI job yet: `scripts/ci_scope.sh` has no `frontend-flutter/*` case, so a path there
-  falls to the catch-all and runs **every** job; none of them runs Flutter. Verification is
-  local (below).
+- CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
+  `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale
+  `pubspec.lock` fails the job), `gen-l10n`, `analyze`, `test`,
+  `build web --base-href /app/` and `build apk --debug`. `scripts/ci_scope.sh` selects it,
+  and only it, for a path under `frontend-flutter/` (a `.md` there selects nothing)
+  ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
+- Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `flutter analyze` when the
+  commit touches `frontend-flutter/`; no `.dart_tool` → a refusal naming `flutter pub get`
+  ([[Hooks]]). `scripts/worktree_setup.sh` runs the pub get and gen-l10n (`--no-flutter`
+  skips them).
 
 ### Stack
 
@@ -51,9 +59,12 @@
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
 | `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `pending_game_screen.dart` (stands in for the board at `/game/:id`), `not_found_screen.dart` |
-| `widgets/` | `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`) |
+| `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
+| `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `sortCards` (below) |
+| `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `playErrorMessage(PlayError)` |
+| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`) |
 | `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
-| `models/` | typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
+| `models/` | `card.dart` (above) and the typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
 | `repositories/` | one per domain over `ApiClient`: auth, party, game, history, stats, admin |
 | `l10n/` | `app_fr.arb` (template), `app_en.arb` |
 
@@ -260,9 +271,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   player picks it each round (`GAME_RULES.md`), so React's "Hand Size: 7" is wrong there.
 - **`ConnectedPlayersProvider`** (`providers/connected_players_provider.dart`), app-wide
   and lazy: `GET /players/connected` on sign-in, then `userConnected` (prepended, five at
-  most), `userDisconnected` and `userStatusChanged`. A client never sees its own arrival
-  (Node emits it before subscribing the new stream), so the count starts at 0 for a lone
-  user, as in React. The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
+  most), `userDisconnected` and `userStatusChanged`. A client never sees the *broadcast*
+  of its own arrival — Node emits `userConnected` before subscribing the new stream
+  (`src/api/server.js:101-106` after `:99`) — but the session is registered first, so the
+  `GET /players/connected` the client makes afterwards may already list it; which of the
+  two wins the race decides whether a lone user sees 0 or 1. React behaves the same way. The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
   indicator and sign-out — icons only, so it fits a phone, which the React header does not.
 - **Error text** comes from `partyErrorText` (`widgets/error_banner.dart`), mapping
   `ApiException.code` (`PARTY_NOT_FOUND`, `PARTY_FULL`, `PARTY_STARTED`,
@@ -304,6 +317,33 @@ Dark only, from `frontend/tailwind.config.js`: slate `#0f172a` (background), `#1
 the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are Material
 (the React client uses lucide).
 
+### Cards and play rules
+
+- Ids as the backend's (`GameRules`): 0-51 = suit `id ~/ 13` (spades, hearts, clubs,
+  diamonds) × rank `id % 13 + 1` (Ace 1 .. King 13); 52 red joker, 53 black joker
+  (`lib/models/card.dart`). Value = rank; joker 0, or 25 with `penalty: true`.
+- `analyzePlay(List<int>)` (`lib/utils/rules.dart`), ported from
+  `frontend/src/utils/validation.js` and checked against `GAME_RULES.md`: a single card; a
+  same-rank group ≥ 2, jokers wild, all-joker groups valid (as the backend); a one-suit
+  sequence ≥ 3, jokers filling gaps or extending an end, Ace low only, no K-A wrap, at most
+  13 cards. It returns a `PlayType` and, when refused, a `PlayError` code that the UI turns
+  into text with `playErrorMessage` — no message in `rules.dart`.
+- **Stricter than React:** a repeated id (`[c, c]`) is refused (`PlayError.duplicateCard`);
+  React and the Rust backend accept it ([[GameRules]]).
+- `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring and the counteract penalty are
+  not ported (the backend computes them).
+- Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2, amber glow when
+  selected, opacity 0.5 and no tap when disabled, a localised semantics label);
+  `CardBack` (sizes `xxs` 16 … `lg` 80 px, as `CardBack.jsx`; a painted red lattice, no
+  asset); `CardFan` (the arc of `CardFan.jsx`: under 640 px 50 px cards, ≤ 50°, 8°/card,
+  100 px high, lift 15; else 70 px, ≤ 75°, 12°/card, 150 px, lift 25; selected cards on top;
+  `CardFan.itemKey(i)`).
+- Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
+  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
+  copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
+  `frontend-flutter/THIRD_PARTY.md`. The 54 files weigh 1.26 MB after `svgo` (2.3 MB as
+  published); the twelve court cards are 1.15 MB of it.
+
 ### Localisation
 
 - `frontend-flutter/l10n.yaml`: `arb-dir: lib/l10n`, template `app_fr.arb`,
@@ -313,9 +353,11 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   `AppLocalizations.of(context)`. The React client mixes French and English; the port
   unifies them in the ARB files.
 - The generated `lib/l10n/app_localizations*.dart` are **not committed**
-  (`frontend-flutter/.gitignore`): `flutter pub get` (and so `analyze`, `test`, `build`)
-  regenerates them. Keeps parallel pull requests that each add strings free of conflicts in
-  generated code.
+  (`frontend-flutter/.gitignore`): `flutter gen-l10n` writes them. A `flutter pub get`
+  sometimes does too, but not reliably (not when it finds nothing to resolve), and `flutter
+  analyze` never does (checked 2026-09-22): after an ARB change, run `gen-l10n`. CI, the
+  commit gate and `worktree_setup.sh` run it explicitly. Keeps parallel pull requests that
+  each add strings free of conflicts in generated code.
 - `test/l10n_test.dart` fails when a key is in one ARB file and not the other.
 
 ### Build and test (from `frontend-flutter/`)
@@ -323,7 +365,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan) |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -338,6 +380,9 @@ project `.gitignore`.
   with the React client. The PWA goes on the same domain under `/app/` (same origin as the
   API, no CORS change to the backend) while React stays on `/`; Android is debug-only for
   now. French and English from day one.
+- **CI job and commit gate (2026-09-22, `chore/flutter-ci-gates`).** The commit gate is the
+  analyzer only (seconds); the tests and the two builds are CI's. No image flag: the client
+  is not deployed yet.
 - **API layer (2026-09-22, `feat/flutter-api-client`).** Models parse both backends
   leniently rather than one strictly: production runs Node, the target is Rust, and their
   shapes differ in types more than in names. The 401 hook is a plain callback on
@@ -358,6 +403,10 @@ project `.gitignore`.
   The reconnection lives in `SseClient`, not in the transports, so both platforms retry on
   the same 3 s and a fake transport tests it. The idle timeout exists only on Android:
   `EventSource` notices a dead connection itself.
+- **Card faces from SVG assets (2026-09-22).** React draws faces with the `cardmeister` web
+  component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
+  faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
+  UI localises them.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
 - **Parties, create and lobby (2026-09-22, `feat/flutter-lobby`).** Each screen owns its

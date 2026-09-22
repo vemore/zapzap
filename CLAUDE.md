@@ -103,7 +103,7 @@ fetch, so the fetch is on you.
 ```bash
 git fetch --prune origin
 git worktree add ../zapzap-<short-topic> -b <type>/<short-topic> origin/master
-scripts/worktree_setup.sh ../zapzap-<short-topic>        # npm ci, cargo warm-up; --deploy links .env
+scripts/worktree_setup.sh ../zapzap-<short-topic>        # npm ci, cargo, flutter pub get; --deploy links .env
 ```
 
 An agent launched with `isolation: "worktree"` has its worktree already, and switches to

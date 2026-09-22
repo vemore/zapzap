@@ -197,6 +197,70 @@
   "@sseDisconnected": {
     "description": "Tooltip and screen-reader label of the connection indicator when the real-time stream is closed or reconnecting"
   },
+  "suitSpades": "Pique",
+  "@suitSpades": {
+    "description": "Name of the spades suit, in a card's accessibility label"
+  },
+  "suitHearts": "Cœur",
+  "@suitHearts": {
+    "description": "Name of the hearts suit"
+  },
+  "suitClubs": "Trèfle",
+  "@suitClubs": {
+    "description": "Name of the clubs suit"
+  },
+  "suitDiamonds": "Carreau",
+  "@suitDiamonds": {
+    "description": "Name of the diamonds suit"
+  },
+  "cardLabel": "{rank} de {suit}",
+  "@cardLabel": {
+    "description": "Accessibility label of a card face: its rank symbol (A, 2..10, J, Q, K) and its suit",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      },
+      "suit": {
+        "type": "String"
+      }
+    }
+  },
+  "cardJokerRed": "Joker rouge",
+  "@cardJokerRed": {
+    "description": "Accessibility label of the red joker"
+  },
+  "cardJokerBlack": "Joker noir",
+  "@cardJokerBlack": {
+    "description": "Accessibility label of the black joker"
+  },
+  "cardBack": "Carte face cachée",
+  "@cardBack": {
+    "description": "Accessibility label of a face-down card"
+  },
+  "playErrorEmpty": "Aucune carte sélectionnée",
+  "@playErrorEmpty": {
+    "description": "A play is refused: no card is selected"
+  },
+  "playErrorUnknownCard": "Carte inconnue",
+  "@playErrorUnknownCard": {
+    "description": "A play is refused: a card id is outside the deck"
+  },
+  "playErrorDuplicateCard": "Une carte est sélectionnée deux fois",
+  "@playErrorDuplicateCard": {
+    "description": "A play is refused: the same card appears twice"
+  },
+  "playErrorMixedSuits": "Une suite doit être d'une seule couleur",
+  "@playErrorMixedSuits": {
+    "description": "A play is refused: a sequence mixes suits"
+  },
+  "playErrorSequenceTooShort": "Une suite demande au moins 3 cartes",
+  "@playErrorSequenceTooShort": {
+    "description": "A play is refused: a sequence of fewer than 3 cards"
+  },
+  "playErrorNotConsecutive": "Les cartes ne se suivent pas",
+  "@playErrorNotConsecutive": {
+    "description": "A play is refused: the cards of the sequence are not consecutive, even with the jokers"
+  },
   "errorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
   "@errorNetwork": {
     "description": "No answer from the server (network error or timeout), outside the auth screens"
