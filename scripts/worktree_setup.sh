@@ -40,7 +40,7 @@ done
 
 TREE="$(git -C "${dir:-.}" rev-parse --show-toplevel)"
 # The main checkout is the worktree that owns the shared .git directory.
-MAIN="$(cd "$(git -C "$TREE" rev-parse --git-common-dir)/.." && pwd)"
+MAIN="$(cd "$(git -C "$TREE" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 cd "$TREE"
 
 MARKER="$TREE/.zapzap-setup-in-progress"
