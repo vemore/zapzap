@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ZapZap launcher icon: the lucide "zap" bolt (ISC, the React client's icon set) in amber-400
+     #fbbf24 on slate-900 #0f172a (frontend/tailwind.config.js). Source of icon.png and
+     icon_foreground.png: rsvg-convert -w 1024 (see .llmwiki/FrontendFlutter.md). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 24 24">
+  <rect width="24" height="24" fill="#0f172a"/>
+  <g transform="translate(12 12) scale(0.72) translate(-12 -12)">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+          fill="#fbbf24" stroke="#fbbf24" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+</svg>

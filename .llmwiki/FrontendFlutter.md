@@ -24,8 +24,7 @@
 - Flutter 3.47.2 / Dart 3.13.2, SDK at `~/sdk/flutter` (not pinned in the repository);
   `environment.sdk: ^3.13.2` (`frontend-flutter/pubspec.yaml`).
 - Platforms: `android` and `web` only (`flutter create --platforms=android,web --org
-  com.zapzap`); application id `com.zapzap.zapzap`, label `ZapZap`
-  (`frontend-flutter/android/app/src/main/AndroidManifest.xml`).
+  com.zapzap`). Android: the section below.
 - Dependencies (`frontend-flutter/pubspec.yaml`): provider, http, go_router,
   shared_preferences, flutter_secure_storage, intl, flutter_localizations, flutter_svg;
   lints `flutter_lints` + `prefer_single_quotes` (`frontend-flutter/analysis_options.yaml`).
@@ -57,9 +56,9 @@
   elsewhere (Android), `https://zapzap.ombivince.synology.me`. Trailing slashes are stripped.
 - `apiUri('/x')` → `<base>/api/x`; `sseUri` → `<base>/suscribeupdate` (the backend's spelling,
   [[Architecture]]).
-- Android talking to a local backend from the emulator:
-  `--dart-define=API_BASE_URL=http://10.0.2.2:9999`. The manifest sets no
-  `usesCleartextTraffic`, so plain HTTP may be refused on recent Android; untested.
+- Android talking to a local backend: `--dart-define=API_BASE_URL=http://10.0.2.2:9999`
+  from the emulator (`10.0.2.2` is the host's loopback), `http://<LAN IP>:9999` from a
+  device. Plain HTTP works in the **debug** build only (section Android).
 - `ApiConfig` is provided to the tree as `Provider<ApiConfig>` (`providers/app_providers.dart`).
 
 ### API layer (`frontend-flutter/lib/services/`, `models/`, `repositories/`)
@@ -123,6 +122,34 @@
   tokens replaced by placeholders. `error_*.json` are `{status, body}`. `test/fixtures.dart`
   loads them.
 
+### Android (`frontend-flutter/android/`)
+
+- **Debug only** for now: no release signing (the `release` build type still signs with the
+  debug key, as generated), no store.
+- Application id and namespace `com.zapzap.app` (`android/app/build.gradle.kts`);
+  `MainActivity` in `android/app/src/main/kotlin/com/zapzap/app/`. Label `ZapZap`.
+- `INTERNET` is in the **main** manifest (`android/app/src/main/AndroidManifest.xml`), so
+  every build type reaches the API, not only debug.
+- Cleartext HTTP is allowed in the **debug** build only: `android/app/src/debug/AndroidManifest.xml`
+  sets `android:networkSecurityConfig` to `android/app/src/debug/res/xml/network_security_config.xml`
+  (`cleartextTrafficPermitted="true"`, system CAs). Profile and release keep Android's
+  default, HTTPS only — so they only talk to the production default URL or an `https://` one.
+- The app sends no `Origin` header, which the Node CORS accepts (`src/api/server.js:39-40`).
+- Launcher icon: the lucide `zap` bolt (the React client's icon set) in amber `#fbbf24` on
+  slate `#0f172a`. Sources `frontend-flutter/assets/icon/icon.svg` and `icon_foreground.svg`
+  (adaptive-icon foreground, inside the safe zone); the PNGs next to them are rendered with
+  `rsvg-convert -w 1024 -h 1024 <x>.svg -o <x>.png`, then `dart run flutter_launcher_icons`
+  (config in `frontend-flutter/flutter_launcher_icons.yaml`, not in `pubspec.yaml`) writes
+  the `mipmap-*`, `drawable-*` and `values/colors.xml` resources. The web icons
+  (`web/icons/`) are still Flutter's defaults.
+- `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
+  debug-only cleartext.
+- Emulator: `~/sdk/android` has an `android-31` `google_apis` x86_64 image but no AVD, and
+  the emulator needs KVM (`/dev/kvm`, group `kvm`); without it, check the APK instead:
+  `~/sdk/android/build-tools/36.0.0/aapt2 dump badging <apk>` (package, label,
+  permissions) and `aapt2 dump xmltree --file AndroidManifest.xml <apk>`
+  (`networkSecurityConfig` present in the debug APK only).
+
 ### Theme (`frontend-flutter/lib/utils/app_theme.dart`)
 
 Dark only, from `frontend/tailwind.config.js`: slate `#0f172a` (background), `#1e293b`
@@ -149,10 +176,11 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body) |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body) |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
-| `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`) |
+| `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
+| `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`). Add `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a device on the LAN; without it the APK talks to production over HTTPS |
 
 Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root and the
 project `.gitignore`.
@@ -171,3 +199,8 @@ project `.gitignore`.
   screens map `ApiException.code` to ARB strings.
 - **Generated l10n not committed (2026-09-22)**, unlike countscore: several Flutter pull
   requests will add strings in parallel, and generated files would conflict on every one.
+- **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
+  generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed
+  to reach a local backend from the emulator or the LAN, but a release build must never
+  downgrade to it, so the network security config lives in `src/debug/` rather than in the
+  main manifest.

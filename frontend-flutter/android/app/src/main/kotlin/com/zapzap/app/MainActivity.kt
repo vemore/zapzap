@@ -1,4 +1,4 @@
-package com.zapzap.zapzap
+package com.zapzap.app
 
 import io.flutter.embedding.android.FlutterActivity
 
