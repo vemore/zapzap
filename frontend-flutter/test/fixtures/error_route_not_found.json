@@ -1,0 +1,9 @@
+{
+  "status": 404,
+  "body": {
+    "error": "Not Found",
+    "code": "ROUTE_NOT_FOUND",
+    "path": "/api/nope",
+    "message": "The requested endpoint does not exist"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "gameFinished": false,
+  "round": {
+    "id": "54f13b2d-89a0-4073-b7cb-1e421c446c1c",
+    "roundNumber": 2,
+    "status": "active"
+  },
+  "startingPlayer": 1,
+  "scores": {
+    "0": 28,
+    "1": 49,
+    "2": 0
+  },
+  "eliminatedPlayers": []
+}

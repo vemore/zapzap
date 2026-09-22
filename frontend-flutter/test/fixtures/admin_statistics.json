@@ -1,0 +1,46 @@
+{
+  "success": true,
+  "stats": {
+    "users": {
+      "total": 8
+    },
+    "parties": {
+      "total": 2,
+      "waiting": 1,
+      "playing": 0,
+      "finished": 1,
+      "completionRate": 50
+    },
+    "rounds": {
+      "total": 5
+    },
+    "gamesOverTime": {
+      "daily": [
+        {
+          "period": "2026-09-22",
+          "count": 1
+        }
+      ],
+      "weekly": [
+        {
+          "period": "2026-38",
+          "count": 1
+        }
+      ],
+      "monthly": [
+        {
+          "period": "2026-09",
+          "count": 1
+        }
+      ]
+    },
+    "mostActiveUsers": [
+      {
+        "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+        "username": "Vincent",
+        "gamesPlayed": 1,
+        "wins": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "success": true,
+  "party": {
+    "id": "da33c689-6f43-49d4-ba89-953f105e7960",
+    "name": "Fixture party",
+    "status": "finished",
+    "currentRoundId": "a1aa3f2d-0ab4-4c9c-ae25-35aca727d329"
+  },
+  "players": [
+    {
+      "playerIndex": 0,
+      "userId": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
+      "username": "Vincent"
+    },
+    {
+      "playerIndex": 1,
+      "userId": "2f76f109-185e-45ee-9890-4a5240f0f901",
+      "username": "EasyBot1"
+    },
+    {
+      "playerIndex": 2,
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "username": "MediumBot1"
+    }
+  ],
+  "round": {
+    "id": "a1aa3f2d-0ab4-4c9c-ae25-35aca727d329",
+    "roundNumber": 5,
+    "status": "finished"
+  },
+  "gameState": {
+    "currentTurn": 2,
+    "currentAction": "finished",
+    "deckSize": 11,
+    "lastCardsPlayed": [
+      11
+    ],
+    "cardsPlayed": [
+      7
+    ],
+    "scores": {
+      "0": 122,
+      "1": 58,
+      "2": 77
+    },
+    "playerHand": [],
+    "otherPlayersHandSizes": {
+      "1": 2,
+      "2": 1
+    },
+    "lastAction": {
+      "type": "zapzap",
+      "playerIndex": 2,
+      "wasCounterActed": false,
+      "counterActedByPlayerIndex": null,
+      "callerHandPoints": 3,
+      "roundScores": {
+        "0": 0,
+        "1": 9,
+        "2": 0
+      },
+      "timestamp": 1790094408675
+    },
+    "isGoldenScore": true,
+    "eliminatedPlayers": [
+      0
+    ],
+    "startingPlayer": 1,
+    "allHands": {
+      "0": [],
+      "1": [
+        2,
+        44
+      ],
+      "2": [
+        15
+      ]
+    },
+    "handPoints": {
+      "0": 0,
+      "1": 9,
+      "2": 3
+    },
+    "zapZapCaller": 2,
+    "lowestHandPlayerIndex": 0,
+    "wasCounterActed": false,
+    "counterActedByPlayerIndex": null,
+    "roundScores": {
+      "0": 0,
+      "1": 9,
+      "2": 0
+    },
+    "gameFinished": true,
+    "winner": {
+      "userId": "74a0d812-54b3-4b99-95a3-ca56596fe8bf",
+      "playerIndex": 2,
+      "username": "MediumBot1",
+      "score": 77
+    }
+  }
+}
