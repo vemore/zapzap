@@ -14,7 +14,7 @@
   game, lobby, history, stats, Google sign-in, admin) is the goal, not the state.
 - Not deployed: no compose service, no nginx route for `/app/` yet ([[Deployment]]).
 - CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
-  `subosito/flutter-action`, JDK 17) runs `pub get`, `gen-l10n`, `analyze`, `test`,
+  `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale `pubspec.lock` fails), `gen-l10n`, `analyze`, `test`,
   `build web --base-href /app/` and `build apk --debug`. `scripts/ci_scope.sh` selects it,
   and only it, for a path under `frontend-flutter/` (a `.md` there selects nothing)
   ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).

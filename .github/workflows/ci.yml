@@ -205,7 +205,9 @@ jobs:
           channel: stable
           cache: true
       - run: flutter --version
-      - run: flutter pub get
+      # --enforce-lockfile: a pubspec.yaml change committed without its pubspec.lock fails
+      # here instead of resolving afresh and passing.
+      - run: flutter pub get --enforce-lockfile
       # lib/l10n/app_localizations*.dart are not committed, and a pub get does not always
       # write them: generated explicitly, or analyze reports every AppLocalizations use.
       - run: if [ -f l10n.yaml ]; then flutter gen-l10n; fi
