@@ -39,7 +39,9 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             .ok_or(JoinPartyError::UserNotFound)?;
 
         if user.is_bot() {
-            return Err(JoinPartyError::Validation("Bots cannot join parties directly".into()));
+            return Err(JoinPartyError::Validation(
+                "Bots cannot join parties directly".into(),
+            ));
         }
 
         // Find party

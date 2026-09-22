@@ -56,8 +56,8 @@ mod tests {
 
     #[test]
     fn test_cross_architecture_weight_transfer() {
-        use crate::fast_dqn::FastDQN;
         use crate::fast_dqn::DecisionType as FastDecisionType;
+        use crate::fast_dqn::FastDQN;
 
         // Create DuelingDQN (burn)
         let device = <CpuBackend as burn::tensor::backend::Backend>::Device::default();
@@ -106,9 +106,16 @@ mod tests {
                 if !matches {
                     trans_errors += 1;
                 }
-                println!("  (i={}, o={}): exported[{}]={:.4}, raw[{}]={:.4} {}",
-                    i, o, exported_idx, exported_val, raw_idx, raw_val,
-                    if matches { "✓" } else { "✗" });
+                println!(
+                    "  (i={}, o={}): exported[{}]={:.4}, raw[{}]={:.4} {}",
+                    i,
+                    o,
+                    exported_idx,
+                    exported_val,
+                    raw_idx,
+                    raw_val,
+                    if matches { "✓" } else { "✗" }
+                );
             }
         }
         if trans_errors > 0 {
@@ -138,11 +145,17 @@ mod tests {
             } else {
                 internal_mismatch += 1;
                 if internal_mismatch <= 10 {
-                    println!("Internal weight mismatch [{}]: fast={:.6}, burn={:.6}", i, f, b);
+                    println!(
+                        "Internal weight mismatch [{}]: fast={:.6}, burn={:.6}",
+                        i, f, b
+                    );
                 }
             }
         }
-        println!("\nInternal weight comparison: {} match, {} mismatch", internal_match, internal_mismatch);
+        println!(
+            "\nInternal weight comparison: {} match, {} mismatch",
+            internal_match, internal_mismatch
+        );
 
         // Now check ALL layers to find where divergence happens
         // Get burn's raw weights for each layer
@@ -153,44 +166,94 @@ mod tests {
         let burn_adv_hs_2_w = dqn_burn.get_adv_hand_size_l2_weights_raw();
 
         // Get FastDQN's internal weights for each layer
-        let (fast_s2_w, fast_v1_w, fast_v2_w, fast_ahs1_w, fast_ahs2_w) = fast_dqn.get_all_layer_weights();
+        let (fast_s2_w, fast_v1_w, fast_v2_w, fast_ahs1_w, fast_ahs2_w) =
+            fast_dqn.get_all_layer_weights();
 
         // Compare shared2
-        let s2_match = burn_shared2_w.iter().zip(fast_s2_w.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        println!("\nShared2 weights: {}/{} match", s2_match, burn_shared2_w.len());
+        let s2_match = burn_shared2_w
+            .iter()
+            .zip(fast_s2_w.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        println!(
+            "\nShared2 weights: {}/{} match",
+            s2_match,
+            burn_shared2_w.len()
+        );
 
         // Compare value1
-        let v1_match = burn_value1_w.iter().zip(fast_v1_w.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
+        let v1_match = burn_value1_w
+            .iter()
+            .zip(fast_v1_w.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
         println!("Value1 weights: {}/{} match", v1_match, burn_value1_w.len());
 
         // Compare value2
-        let v2_match = burn_value2_w.iter().zip(fast_v2_w.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
+        let v2_match = burn_value2_w
+            .iter()
+            .zip(fast_v2_w.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
         println!("Value2 weights: {}/{} match", v2_match, burn_value2_w.len());
 
         // Compare advantage hand_size layer 1
-        let ahs1_match = burn_adv_hs_1_w.iter().zip(fast_ahs1_w.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        println!("AdvHandSize L1 weights: {}/{} match", ahs1_match, burn_adv_hs_1_w.len());
+        let ahs1_match = burn_adv_hs_1_w
+            .iter()
+            .zip(fast_ahs1_w.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        println!(
+            "AdvHandSize L1 weights: {}/{} match",
+            ahs1_match,
+            burn_adv_hs_1_w.len()
+        );
 
         // Compare advantage hand_size layer 2
-        let ahs2_match = burn_adv_hs_2_w.iter().zip(fast_ahs2_w.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        println!("AdvHandSize L2 weights: {}/{} match", ahs2_match, burn_adv_hs_2_w.len());
+        let ahs2_match = burn_adv_hs_2_w
+            .iter()
+            .zip(fast_ahs2_w.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        println!(
+            "AdvHandSize L2 weights: {}/{} match",
+            ahs2_match,
+            burn_adv_hs_2_w.len()
+        );
 
         // Print first mismatches for non-matching layers
         if s2_match < burn_shared2_w.len() {
             println!("\nShared2 first 5 mismatches:");
-            for (i, (a, b)) in burn_shared2_w.iter().zip(fast_s2_w.iter()).enumerate().take(5) {
-                println!("  [{}]: burn={:.6}, fast={:.6}, diff={:.6}", i, a, b, (a - b).abs());
+            for (i, (a, b)) in burn_shared2_w
+                .iter()
+                .zip(fast_s2_w.iter())
+                .enumerate()
+                .take(5)
+            {
+                println!(
+                    "  [{}]: burn={:.6}, fast={:.6}, diff={:.6}",
+                    i,
+                    a,
+                    b,
+                    (a - b).abs()
+                );
             }
         }
         if ahs2_match < burn_adv_hs_2_w.len() {
             println!("\nAdvHS L2 first 5 entries:");
-            for (i, (a, b)) in burn_adv_hs_2_w.iter().zip(fast_ahs2_w.iter()).enumerate().take(5) {
-                println!("  [{}]: burn={:.6}, fast={:.6}, diff={:.6}", i, a, b, (a - b).abs());
+            for (i, (a, b)) in burn_adv_hs_2_w
+                .iter()
+                .zip(fast_ahs2_w.iter())
+                .enumerate()
+                .take(5)
+            {
+                println!(
+                    "  [{}]: burn={:.6}, fast={:.6}, diff={:.6}",
+                    i,
+                    a,
+                    b,
+                    (a - b).abs()
+                );
             }
         }
 
@@ -202,31 +265,69 @@ mod tests {
         let burn_ahs1_bias = dqn_burn.get_adv_hand_size_l1_bias_raw();
         let burn_ahs2_bias = dqn_burn.get_adv_hand_size_l2_bias_raw();
 
-        let (fast_s1_bias, fast_s2_bias, fast_v1_bias, fast_v2_bias, fast_ahs1_bias, fast_ahs2_bias) = fast_dqn.get_all_biases();
+        let (
+            fast_s1_bias,
+            fast_s2_bias,
+            fast_v1_bias,
+            fast_v2_bias,
+            fast_ahs1_bias,
+            fast_ahs2_bias,
+        ) = fast_dqn.get_all_biases();
 
         println!("\n=== BIAS COMPARISON ===");
-        let s1b_match = burn_s1_bias.iter().zip(fast_s1_bias.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        let s2b_match = burn_s2_bias.iter().zip(fast_s2_bias.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        let v1b_match = burn_v1_bias.iter().zip(fast_v1_bias.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        let ahs1b_match = burn_ahs1_bias.iter().zip(fast_ahs1_bias.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
-        let ahs2b_match = burn_ahs2_bias.iter().zip(fast_ahs2_bias.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-5).count();
+        let s1b_match = burn_s1_bias
+            .iter()
+            .zip(fast_s1_bias.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        let s2b_match = burn_s2_bias
+            .iter()
+            .zip(fast_s2_bias.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        let v1b_match = burn_v1_bias
+            .iter()
+            .zip(fast_v1_bias.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        let ahs1b_match = burn_ahs1_bias
+            .iter()
+            .zip(fast_ahs1_bias.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
+        let ahs2b_match = burn_ahs2_bias
+            .iter()
+            .zip(fast_ahs2_bias.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-5)
+            .count();
 
         println!("Shared1 bias: {}/{} match", s1b_match, burn_s1_bias.len());
         println!("Shared2 bias: {}/{} match", s2b_match, burn_s2_bias.len());
         println!("Value1 bias: {}/{} match", v1b_match, burn_v1_bias.len());
-        println!("Value2 bias: burn={:.6}, fast={:.6}", burn_v2_bias, fast_v2_bias);
-        println!("AdvHS L1 bias: {}/{} match", ahs1b_match, burn_ahs1_bias.len());
-        println!("AdvHS L2 bias: {}/{} match", ahs2b_match, burn_ahs2_bias.len());
+        println!(
+            "Value2 bias: burn={:.6}, fast={:.6}",
+            burn_v2_bias, fast_v2_bias
+        );
+        println!(
+            "AdvHS L1 bias: {}/{} match",
+            ahs1b_match,
+            burn_ahs1_bias.len()
+        );
+        println!(
+            "AdvHS L2 bias: {}/{} match",
+            ahs2b_match,
+            burn_ahs2_bias.len()
+        );
 
         // Print first bias mismatches if any
         if s1b_match < burn_s1_bias.len() {
             println!("\nShared1 bias mismatches (first 5):");
-            for (i, (a, b)) in burn_s1_bias.iter().zip(fast_s1_bias.iter()).enumerate().take(5) {
+            for (i, (a, b)) in burn_s1_bias
+                .iter()
+                .zip(fast_s1_bias.iter())
+                .enumerate()
+                .take(5)
+            {
                 if (a - b).abs() >= 1e-5 {
                     println!("  [{}]: burn={:.6}, fast={:.6}", i, a, b);
                 }
@@ -268,15 +369,33 @@ mod tests {
         println!("  fast: {:.6}", fast_value);
 
         // Compare h1 element by element
-        let h1_match = burn_h1_slice.iter().zip(fast_h1.iter())
-            .filter(|(a, b)| (*a - *b).abs() < 1e-4).count();
-        println!("\nH1 comparison: {}/{} match (within 1e-4)", h1_match, burn_h1_slice.len());
+        let h1_match = burn_h1_slice
+            .iter()
+            .zip(fast_h1.iter())
+            .filter(|(a, b)| (*a - *b).abs() < 1e-4)
+            .count();
+        println!(
+            "\nH1 comparison: {}/{} match (within 1e-4)",
+            h1_match,
+            burn_h1_slice.len()
+        );
 
         if h1_match < burn_h1_slice.len() {
             println!("H1 mismatches (first 5):");
-            for (i, (a, b)) in burn_h1_slice.iter().zip(fast_h1.iter()).enumerate().take(10) {
+            for (i, (a, b)) in burn_h1_slice
+                .iter()
+                .zip(fast_h1.iter())
+                .enumerate()
+                .take(10)
+            {
                 if (a - b).abs() >= 1e-4 {
-                    println!("  [{}]: burn={:.6}, fast={:.6}, diff={:.6}", i, a, b, (a - b).abs());
+                    println!(
+                        "  [{}]: burn={:.6}, fast={:.6}, diff={:.6}",
+                        i,
+                        a,
+                        b,
+                        (a - b).abs()
+                    );
                 }
             }
         }
@@ -287,12 +406,12 @@ mod tests {
         // Both should be the same if weights are correctly stored as [out, in]
         println!("\n=== MANUAL COMPUTATION TEST FOR NEURON 0 ===");
         let burn_w = burn_shared1_w; // [out, in] format from burn
-        let fast_w = fast_internal;  // [out, in] format stored in FastDQN
+        let fast_w = fast_internal; // [out, in] format stored in FastDQN
 
         // Compute dot product for neuron 0 using burn weights
         let mut burn_sum: f64 = burn_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = 0 * 45 + i;  // burn format: o * in + i
+            let w_idx = 0 * 45 + i; // burn format: o * in + i
             burn_sum += burn_w[w_idx] as f64 * 0.5;
         }
         let burn_relu = (burn_sum as f32).max(0.0);
@@ -300,7 +419,7 @@ mod tests {
         // Compute dot product for neuron 0 using fast weights
         let mut fast_sum: f64 = fast_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = 0 * 45 + i;  // fast format: o * in + i
+            let w_idx = 0 * 45 + i; // fast format: o * in + i
             fast_sum += fast_w[w_idx] as f64 * 0.5;
         }
         let fast_relu = (fast_sum as f32).max(0.0);
@@ -322,7 +441,7 @@ mod tests {
         println!("\n=== TESTING BURN INDEXING HYPOTHESIS ===");
         let mut alt_sum: f64 = burn_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = i * 128 + 0;  // [in, out] indexing for output 0
+            let w_idx = i * 128 + 0; // [in, out] indexing for output 0
             if w_idx < burn_w.len() {
                 alt_sum += burn_w[w_idx] as f64 * 0.5;
             }
@@ -330,7 +449,10 @@ mod tests {
         let alt_relu = (alt_sum as f32).max(0.0);
         println!("Alt sum (using [in, out] indexing): {:.6}", alt_sum);
         println!("Alt output (after ReLU): {:.6}", alt_relu);
-        println!("Does alt match actual burn? {}", (alt_relu - burn_h1_slice[0]).abs() < 1e-4);
+        println!(
+            "Does alt match actual burn? {}",
+            (alt_relu - burn_h1_slice[0]).abs() < 1e-4
+        );
 
         // Test all decision types
         for dt in DecisionType::all() {
@@ -356,7 +478,11 @@ mod tests {
                 assert!(
                     diff < 0.01,
                     "Q-value mismatch at {} for {:?}: burn={}, fast={}, diff={}",
-                    i, dt, burn_v, fast_v, diff
+                    i,
+                    dt,
+                    burn_v,
+                    fast_v,
+                    diff
                 );
             }
         }

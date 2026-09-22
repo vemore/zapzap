@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 
-use crate::domain::entities::{Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus};
+use crate::domain::entities::{
+    Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
+};
 use crate::domain::repositories::{GameAction, PartyRepository, PlayerGameResult, RepositoryError};
 use crate::domain::value_objects::GameState;
 
@@ -32,7 +34,8 @@ impl SqlitePartyRepository {
             name: row.get("name"),
             owner_id: row.get("owner_id"),
             invite_code: row.get("invite_code"),
-            visibility: PartyVisibility::from_str(&visibility_str).unwrap_or(PartyVisibility::Public),
+            visibility: PartyVisibility::from_str(&visibility_str)
+                .unwrap_or(PartyVisibility::Public),
             status: PartyStatus::from_str(&status_str).unwrap_or(PartyStatus::Waiting),
             settings: serde_json::from_str(&settings_json).unwrap_or_default(),
             current_round_id: row.get("current_round_id"),
@@ -136,9 +139,8 @@ impl PartyRepository for SqlitePartyRepository {
 
         // Query parties with player counts in one go
         let query = match status {
-            Some(s) => {
-                sqlx::query(
-                    r#"
+            Some(s) => sqlx::query(
+                r#"
                     SELECT p.*,
                            COUNT(pp.id) as player_count,
                            GROUP_CONCAT(pp.user_id) as player_ids
@@ -149,14 +151,12 @@ impl PartyRepository for SqlitePartyRepository {
                     ORDER BY p.created_at DESC
                     LIMIT ? OFFSET ?
                     "#,
-                )
-                .bind(s.as_str())
-                .bind(limit as i32)
-                .bind(offset as i32)
-            }
-            None => {
-                sqlx::query(
-                    r#"
+            )
+            .bind(s.as_str())
+            .bind(limit as i32)
+            .bind(offset as i32),
+            None => sqlx::query(
+                r#"
                     SELECT p.*,
                            COUNT(pp.id) as player_count,
                            GROUP_CONCAT(pp.user_id) as player_ids
@@ -167,10 +167,9 @@ impl PartyRepository for SqlitePartyRepository {
                     ORDER BY p.created_at DESC
                     LIMIT ? OFFSET ?
                     "#,
-                )
-                .bind(limit as i32)
-                .bind(offset as i32)
-            }
+            )
+            .bind(limit as i32)
+            .bind(offset as i32),
         };
 
         let rows = query
@@ -223,16 +222,14 @@ impl PartyRepository for SqlitePartyRepository {
         offset: u32,
     ) -> Result<Vec<Party>, RepositoryError> {
         let rows = match status {
-            Some(s) => {
-                sqlx::query(
-                    "SELECT * FROM parties WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                )
-                .bind(s.as_str())
-                .bind(limit as i32)
-                .bind(offset as i32)
-                .fetch_all(&self.pool)
-                .await
-            }
+            Some(s) => sqlx::query(
+                "SELECT * FROM parties WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            )
+            .bind(s.as_str())
+            .bind(limit as i32)
+            .bind(offset as i32)
+            .fetch_all(&self.pool)
+            .await,
             None => {
                 sqlx::query("SELECT * FROM parties ORDER BY created_at DESC LIMIT ? OFFSET ?")
                     .bind(limit as i32)
@@ -328,13 +325,12 @@ impl PartyRepository for SqlitePartyRepository {
     }
 
     async fn get_party_players(&self, party_id: &str) -> Result<Vec<PartyPlayer>, RepositoryError> {
-        let rows = sqlx::query(
-            "SELECT * FROM party_players WHERE party_id = ? ORDER BY player_index ASC",
-        )
-        .bind(party_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        let rows =
+            sqlx::query("SELECT * FROM party_players WHERE party_id = ? ORDER BY player_index ASC")
+                .bind(party_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         Ok(rows.iter().map(Self::row_to_player).collect())
     }
@@ -476,13 +472,12 @@ impl PartyRepository for SqlitePartyRepository {
     }
 
     async fn get_game_state(&self, party_id: &str) -> Result<Option<GameState>, RepositoryError> {
-        let result: Option<String> = sqlx::query_scalar(
-            "SELECT state_json FROM game_state WHERE party_id = ?",
-        )
-        .bind(party_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        let result: Option<String> =
+            sqlx::query_scalar("SELECT state_json FROM game_state WHERE party_id = ?")
+                .bind(party_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         match result {
             Some(json) => {
@@ -491,7 +486,10 @@ impl PartyRepository for SqlitePartyRepository {
                     Ok(state) => Ok(Some(state)),
                     Err(e) => {
                         tracing::error!("Failed to parse game state JSON: {}", e);
-                        Err(RepositoryError::Database(format!("Invalid game state JSON: {}", e)))
+                        Err(RepositoryError::Database(format!(
+                            "Invalid game state JSON: {}",
+                            e
+                        )))
                     }
                 }
             }
@@ -596,7 +594,9 @@ impl PartyRepository for SqlitePartyRepository {
                     deck_size: row.get::<i32, _>("deck_size") as u32,
                     last_cards_played: row.get("last_cards_played"),
                     hand_after: row.get("hand_after"),
-                    hand_value_after: row.get::<Option<i32>, _>("hand_value_after").map(|v| v as u16),
+                    hand_value_after: row
+                        .get::<Option<i32>, _>("hand_value_after")
+                        .map(|v| v as u16),
                     created_at: row.get("created_at"),
                 }
             })

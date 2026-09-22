@@ -103,9 +103,7 @@ impl Party {
 
     /// Check if party can be started
     pub fn can_start(&self, current_player_count: usize) -> bool {
-        self.status == PartyStatus::Waiting
-            && current_player_count >= 3
-            && current_player_count <= 8
+        self.status == PartyStatus::Waiting && (3..=8).contains(&current_player_count)
     }
 
     /// Start the party

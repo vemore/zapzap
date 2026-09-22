@@ -97,12 +97,11 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn exists_by_username(&self, username: &str) -> Result<bool, RepositoryError> {
-        let count: i32 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = ?")
-                .bind(username)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        let count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = ?")
+            .bind(username)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         Ok(count > 0)
     }
@@ -193,11 +192,7 @@ impl UserRepository for SqliteUserRepository {
         Ok(())
     }
 
-    async fn find_all_humans(
-        &self,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<User>, RepositoryError> {
+    async fn find_all_humans(&self, limit: u32, offset: u32) -> Result<Vec<User>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT * FROM users WHERE user_type = 'human' ORDER BY created_at DESC LIMIT ? OFFSET ?",
         )

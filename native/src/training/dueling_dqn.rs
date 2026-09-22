@@ -47,7 +47,12 @@ impl DecisionType {
     }
 
     pub fn all() -> [Self; 4] {
-        [Self::HandSize, Self::ZapZap, Self::PlayType, Self::DrawSource]
+        [
+            Self::HandSize,
+            Self::ZapZap,
+            Self::PlayType,
+            Self::DrawSource,
+        ]
     }
 }
 
@@ -220,11 +225,14 @@ impl<B: Backend> DuelingDQN<B> {
     }
 
     /// Get Q-values as a flat vector (for single input)
-    pub fn q_values(&self, features: &[f32], decision_type: DecisionType, device: &B::Device) -> Vec<f32> {
-        let input: Tensor<B, 2> = Tensor::from_data(
-            TensorData::new(features.to_vec(), [1, FEATURE_DIM]),
-            device,
-        );
+    pub fn q_values(
+        &self,
+        features: &[f32],
+        decision_type: DecisionType,
+        device: &B::Device,
+    ) -> Vec<f32> {
+        let input: Tensor<B, 2> =
+            Tensor::from_data(TensorData::new(features.to_vec(), [1, FEATURE_DIM]), device);
         let q = self.forward(input, decision_type);
 
         // Convert to Vec<f32>
@@ -248,7 +256,7 @@ impl<B: Backend> DuelingDQN<B> {
             linear: &Linear<B>,
             weights: &mut Vec<f32>,
             in_features: usize,
-            out_features: usize
+            out_features: usize,
         ) {
             let w_data = linear.weight.val().into_data();
             let w_slice = w_data.as_slice::<f32>().unwrap_or(&[]);
@@ -295,7 +303,10 @@ impl<B: Backend> DuelingDQN<B> {
             &self.advantage_zapzap,
             &self.advantage_play_type,
             &self.advantage_draw_source,
-        ].iter().zip(action_dims.iter()) {
+        ]
+        .iter()
+        .zip(action_dims.iter())
+        {
             extract_linear_transposed(&head.linear1, &mut weights, 64, 32);
             extract_linear_transposed(&head.linear2, &mut weights, 32, action_dim);
         }
@@ -395,7 +406,11 @@ impl<B: Backend> DuelingDQN<B> {
         if let Some(ref bias) = self.value2.bias {
             let b_data = bias.val().into_data();
             let slice = b_data.as_slice::<f32>().unwrap_or(&[0.0]);
-            if !slice.is_empty() { slice[0] } else { 0.0 }
+            if !slice.is_empty() {
+                slice[0]
+            } else {
+                0.0
+            }
         } else {
             0.0
         }

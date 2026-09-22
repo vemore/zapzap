@@ -29,7 +29,10 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
         }
     }
 
-    pub async fn execute(&self, input: DeletePartyInput) -> Result<DeletePartyOutput, DeletePartyError> {
+    pub async fn execute(
+        &self,
+        input: DeletePartyInput,
+    ) -> Result<DeletePartyOutput, DeletePartyError> {
         // Find party
         let party = self
             .party_repo

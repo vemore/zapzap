@@ -8,9 +8,9 @@ use tokio::sync::RwLock;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
-use crate::infrastructure::services::{LlmService, OllamaConfig, OllamaService, SessionManager};
 #[cfg(feature = "bedrock")]
 use crate::infrastructure::services::{BedrockConfig, BedrockService};
+use crate::infrastructure::services::{LlmService, OllamaConfig, OllamaService, SessionManager};
 
 /// Application state shared across all handlers
 #[derive(Clone)]
@@ -111,7 +111,8 @@ impl AppState {
         // Fall back to Ollama if Bedrock not configured/available
         let llm_service: Option<Arc<dyn LlmService>> = if llm_service.is_some() {
             llm_service
-        } else if std::env::var("OLLAMA_BASE_URL").is_ok() || std::env::var("ENABLE_LLM_BOTS").is_ok()
+        } else if std::env::var("OLLAMA_BASE_URL").is_ok()
+            || std::env::var("ENABLE_LLM_BOTS").is_ok()
         {
             let service = OllamaService::new(OllamaConfig::default());
             // Check if Ollama is available

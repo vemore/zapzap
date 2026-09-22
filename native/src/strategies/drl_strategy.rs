@@ -104,7 +104,12 @@ impl DRLStrategy {
 
     /// Extract hand size features into pre-allocated buffer
     #[inline]
-    fn extract_hand_size_features(&mut self, active_player_count: u8, is_golden_score: bool, my_score: u16) -> &[f32; FEATURE_DIM] {
+    fn extract_hand_size_features(
+        &mut self,
+        active_player_count: u8,
+        is_golden_score: bool,
+        my_score: u16,
+    ) -> &[f32; FEATURE_DIM] {
         self.features_buf = FeatureExtractor::extract_hand_size_features(
             active_player_count,
             is_golden_score,
@@ -121,7 +126,12 @@ impl DRLStrategy {
     /// 2: BURN_HIGH - Prioritize removing high-value cards (when hand > 20)
     /// 3: AGGRESSIVE_COMBO - Use combos to pressure opponents close to ZapZap
     /// 4: OPTIMAL - Minimize remaining hand value (HardBot baseline)
-    fn action_to_play(&self, action: usize, hand: &[u8], state: &GameState) -> Option<SmallVec<[u8; 8]>> {
+    fn action_to_play(
+        &self,
+        action: usize,
+        hand: &[u8],
+        state: &GameState,
+    ) -> Option<SmallVec<[u8; 8]>> {
         let valid_plays = card_analyzer::find_all_valid_plays(hand);
         if valid_plays.is_empty() {
             return None;
@@ -150,7 +160,12 @@ impl DRLStrategy {
     /// MULTI-TURN PLANNING:
     /// Example: Hand K♠ K♥ Q♥, last_played has J♥
     /// -> Play K♠ (single), take J♥, next turn play K♥ Q♥ J♥ sequence
-    fn find_human_default_play(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8], state: &GameState) -> Option<SmallVec<[u8; 8]>> {
+    fn find_human_default_play(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+        state: &GameState,
+    ) -> Option<SmallVec<[u8; 8]>> {
         // Analyze ALL opponents to find the most dangerous one
         let mut min_opponent_hand_size = 10usize;
         let mut min_opponent_estimated_value = u16::MAX;
@@ -239,7 +254,11 @@ impl DRLStrategy {
 
     /// Action 0: OPTIMAL - Minimize remaining hand value (same as HardBot)
     /// Best general strategy, baseline for comparison
-    fn find_optimal_play(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
+    fn find_optimal_play(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+    ) -> Option<SmallVec<[u8; 8]>> {
         plays
             .iter()
             .max_by_key(|play| {
@@ -258,7 +277,11 @@ impl DRLStrategy {
     /// Action 1: PRESERVE_COMBOS - Play single cards, save multi-card combos
     /// Strategic use: When close to ZapZap, save combos to catch opponents
     /// or when you want to keep options open for future turns
-    fn find_preserve_combos_play(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
+    fn find_preserve_combos_play(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+    ) -> Option<SmallVec<[u8; 8]>> {
         // Prefer single card plays to preserve combos
         let single_plays: Vec<_> = plays.iter().filter(|p| p.len() == 1).collect();
 
@@ -281,15 +304,17 @@ impl DRLStrategy {
         }
 
         // No singles available, fall back to smallest combo
-        plays
-            .iter()
-            .min_by_key(|play| play.len())
-            .cloned()
+        plays.iter().min_by_key(|play| play.len()).cloned()
     }
 
     /// Action 1 WITH CARD COUNTING: Play singles smartly based on dead ranks
     /// Example: If 3 jacks are in discard, discard the 4th jack (no pair possible)
-    fn find_preserve_combos_play_counted(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8], state: &GameState) -> Option<SmallVec<[u8; 8]>> {
+    fn find_preserve_combos_play_counted(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+        state: &GameState,
+    ) -> Option<SmallVec<[u8; 8]>> {
         // Prefer single card plays to preserve combos
         let single_plays: Vec<_> = plays.iter().filter(|p| p.len() == 1).collect();
 
@@ -310,16 +335,17 @@ impl DRLStrategy {
         }
 
         // No singles available, fall back to smallest combo
-        plays
-            .iter()
-            .min_by_key(|play| play.len())
-            .cloned()
+        plays.iter().min_by_key(|play| play.len()).cloned()
     }
 
     /// Action 2: BURN_HIGH - Prioritize removing high-value cards
     /// Strategic use: When at high score (risk of elimination), get rid of
     /// dangerous cards even if it's not optimal for combos
-    fn find_burn_high_play(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
+    fn find_burn_high_play(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+    ) -> Option<SmallVec<[u8; 8]>> {
         plays
             .iter()
             .max_by_key(|play| {
@@ -346,7 +372,11 @@ impl DRLStrategy {
     /// Action 3: AGGRESSIVE_COMBO - Use multi-card plays to pressure opponents
     /// Strategic use: When opponents have small hands (≤3 cards), reduce your own
     /// hand size quickly to either ZapZap first or minimize loss if they ZapZap
-    fn find_aggressive_combo_play(&self, plays: &[SmallVec<[u8; 8]>], hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
+    fn find_aggressive_combo_play(
+        &self,
+        plays: &[SmallVec<[u8; 8]>],
+        hand: &[u8],
+    ) -> Option<SmallVec<[u8; 8]>> {
         // Prefer larger combos to reduce hand size quickly
         let multi_card_plays: Vec<_> = plays.iter().filter(|p| p.len() > 1).collect();
 
@@ -383,11 +413,7 @@ impl BotStrategy for DRLStrategy {
 
         // Use HUMAN_DEFAULT strategy (action 0) as the primary play style
         // This incorporates: singles preference, burn high when >20, pressure when opponent <=3
-        self.find_human_default_play(
-            &card_analyzer::find_all_valid_plays(hand),
-            hand,
-            state
-        )
+        self.find_human_default_play(&card_analyzer::find_all_valid_plays(hand), hand, state)
     }
 
     fn should_zapzap(&self, hand: &[u8], state: &GameState) -> bool {
@@ -395,7 +421,12 @@ impl BotStrategy for DRLStrategy {
         self.should_zapzap_conservative(hand, state)
     }
 
-    fn select_draw_source(&self, hand: &[u8], last_cards_played: &[u8], _state: &GameState) -> bool {
+    fn select_draw_source(
+        &self,
+        hand: &[u8],
+        last_cards_played: &[u8],
+        _state: &GameState,
+    ) -> bool {
         if last_cards_played.is_empty() {
             return true; // Must draw from deck
         }
@@ -407,15 +438,17 @@ impl BotStrategy for DRLStrategy {
         // - 82% draw from deck when only high cards available
 
         // Priority 1: ALWAYS take jokers (100% in human data)
-        let has_joker = last_cards_played.iter().any(|&c| card_analyzer::is_joker(c));
+        let has_joker = last_cards_played
+            .iter()
+            .any(|&c| card_analyzer::is_joker(c));
         if has_joker {
             return false; // Take from played - jokers are critical
         }
 
         // Priority 2: Take low cards (A, 2, 3) - 87% in human data
-        let has_low_card = last_cards_played.iter().any(|&c| {
-            !card_analyzer::is_joker(c) && card_analyzer::get_card_points(c) <= 3
-        });
+        let has_low_card = last_cards_played
+            .iter()
+            .any(|&c| !card_analyzer::is_joker(c) && card_analyzer::get_card_points(c) <= 3);
         if has_low_card {
             return false; // Take from played - low cards help reach ZapZap
         }
@@ -433,8 +466,11 @@ impl BotStrategy for DRLStrategy {
             if card_analyzer::would_complete_pair(hand, card) {
                 // Only take if it would make a 3+ card combo (pair already exists)
                 let card_rank = card_analyzer::get_rank(card);
-                let same_rank_count = hand.iter()
-                    .filter(|&&c| !card_analyzer::is_joker(c) && card_analyzer::get_rank(c) == card_rank)
+                let same_rank_count = hand
+                    .iter()
+                    .filter(|&&c| {
+                        !card_analyzer::is_joker(c) && card_analyzer::get_rank(c) == card_rank
+                    })
                     .count();
                 if same_rank_count >= 2 {
                     return false; // Take from played - makes 3+ card set
@@ -447,11 +483,8 @@ impl BotStrategy for DRLStrategy {
     }
 
     fn select_hand_size(&self, active_player_count: u8, is_golden_score: bool) -> u8 {
-        let features = FeatureExtractor::extract_hand_size_features(
-            active_player_count,
-            is_golden_score,
-            50,
-        );
+        let features =
+            FeatureExtractor::extract_hand_size_features(active_player_count, is_golden_score, 50);
 
         let mut dqn_clone = self.dqn.clone();
         let action = dqn_clone.greedy_action(&features, DecisionType::HandSize);
@@ -469,26 +502,38 @@ impl DRLStrategy {
         }
 
         self.extract_features(state);
-        let action = self.dqn.select_action(&self.features_buf, DecisionType::PlayType, self.epsilon);
+        let action =
+            self.dqn
+                .select_action(&self.features_buf, DecisionType::PlayType, self.epsilon);
         self.action_to_play(action, hand, state)
     }
 
     /// Select play with epsilon-greedy exploration, returning both the play and the action chosen
     /// This is important for correct transition recording - we need the actual action, not a classification
-    pub fn select_play_with_action(&mut self, hand: &[u8], state: &GameState) -> (Option<SmallVec<[u8; 8]>>, u8) {
+    pub fn select_play_with_action(
+        &mut self,
+        hand: &[u8],
+        state: &GameState,
+    ) -> (Option<SmallVec<[u8; 8]>>, u8) {
         if hand.is_empty() {
             return (None, 0);
         }
 
         self.extract_features(state);
-        let action = self.dqn.select_action(&self.features_buf, DecisionType::PlayType, self.epsilon);
+        let action =
+            self.dqn
+                .select_action(&self.features_buf, DecisionType::PlayType, self.epsilon);
         let play = self.action_to_play(action, hand, state);
         (play, action as u8)
     }
 
     /// Select play ALWAYS using optimal action (action=0)
     /// This is for testing if forcing optimal play improves winrate
-    pub fn select_play_optimal(&mut self, hand: &[u8], state: &GameState) -> (Option<SmallVec<[u8; 8]>>, u8) {
+    pub fn select_play_optimal(
+        &mut self,
+        hand: &[u8],
+        state: &GameState,
+    ) -> (Option<SmallVec<[u8; 8]>>, u8) {
         if hand.is_empty() {
             return (None, 0);
         }
@@ -505,7 +550,9 @@ impl DRLStrategy {
             return false;
         }
 
-        let min_opponent_hand_size = state.hands.iter()
+        let min_opponent_hand_size = state
+            .hands
+            .iter()
             .enumerate()
             .filter(|(i, h)| *i != self.player_index as usize && !h.is_empty())
             .map(|(_, h)| h.len())
@@ -520,7 +567,10 @@ impl DRLStrategy {
             }
             // For hand values 2-5, let neural network decide with exploration
             self.extract_features(state);
-            return self.dqn.select_action(&self.features_buf, DecisionType::ZapZap, self.epsilon) == 1;
+            return self
+                .dqn
+                .select_action(&self.features_buf, DecisionType::ZapZap, self.epsilon)
+                == 1;
         }
 
         // 100% success when opponent has 2+ cards
@@ -538,7 +588,9 @@ impl DRLStrategy {
 
         // For edge cases (hand value 5), let neural network decide
         self.extract_features(state);
-        self.dqn.select_action(&self.features_buf, DecisionType::ZapZap, self.epsilon) == 1
+        self.dqn
+            .select_action(&self.features_buf, DecisionType::ZapZap, self.epsilon)
+            == 1
     }
 
     /// Conservative ZapZap check (no exploration, used in greedy evaluation)
@@ -618,31 +670,54 @@ impl DRLStrategy {
     }
 
     /// Select draw source with epsilon-greedy exploration
-    pub fn select_draw_source_mut(&mut self, _hand: &[u8], last_cards_played: &[u8], state: &GameState) -> bool {
+    pub fn select_draw_source_mut(
+        &mut self,
+        _hand: &[u8],
+        last_cards_played: &[u8],
+        state: &GameState,
+    ) -> bool {
         if last_cards_played.is_empty() {
             return true;
         }
 
         self.extract_features(state);
-        let action = self.dqn.select_action(&self.features_buf, DecisionType::DrawSource, self.epsilon);
+        let action =
+            self.dqn
+                .select_action(&self.features_buf, DecisionType::DrawSource, self.epsilon);
         action == 0
     }
 
     /// Select hand size with epsilon-greedy exploration
-    pub fn select_hand_size_mut(&mut self, active_player_count: u8, is_golden_score: bool, my_score: u16) -> u8 {
+    pub fn select_hand_size_mut(
+        &mut self,
+        active_player_count: u8,
+        is_golden_score: bool,
+        my_score: u16,
+    ) -> u8 {
         self.extract_hand_size_features(active_player_count, is_golden_score, my_score);
-        let action = self.dqn.select_action(&self.features_buf, DecisionType::HandSize, self.epsilon);
+        let action =
+            self.dqn
+                .select_action(&self.features_buf, DecisionType::HandSize, self.epsilon);
         let hand_size = (action + 4) as u8;
         hand_size.clamp(4, 10)
     }
 
     /// Get the action taken for a decision (for transition recording)
-    pub fn get_action(&mut self, features: &[f32; FEATURE_DIM], decision_type: DecisionType) -> usize {
-        self.dqn.select_action(features, decision_type, self.epsilon)
+    pub fn get_action(
+        &mut self,
+        features: &[f32; FEATURE_DIM],
+        decision_type: DecisionType,
+    ) -> usize {
+        self.dqn
+            .select_action(features, decision_type, self.epsilon)
     }
 
     /// Get greedy action (no exploration)
-    pub fn get_greedy_action(&mut self, features: &[f32; FEATURE_DIM], decision_type: DecisionType) -> usize {
+    pub fn get_greedy_action(
+        &mut self,
+        features: &[f32; FEATURE_DIM],
+        decision_type: DecisionType,
+    ) -> usize {
         self.dqn.greedy_action(features, decision_type)
     }
 }
@@ -700,9 +775,9 @@ mod tests {
         let strategy = DRLStrategy::new(0);
         let mut state = GameState::new(4);
 
-        state.hands[0].push(0);  // A♠
+        state.hands[0].push(0); // A♠
         state.hands[0].push(13); // A♥
-        state.hands[0].push(5);  // 6♠
+        state.hands[0].push(5); // 6♠
 
         let hand = &state.hands[0].clone();
         let play = strategy.select_play(hand, &state);
@@ -717,7 +792,7 @@ mod tests {
         let strategy = DRLStrategy::new(0);
         let state = GameState::new(4);
 
-        let low_hand = vec![52, 53];  // Jokers = 0 points
+        let low_hand = vec![52, 53]; // Jokers = 0 points
         let _ = strategy.should_zapzap(&low_hand, &state);
 
         let high_hand = vec![10, 11, 12]; // J, Q, K = 36 points
@@ -785,7 +860,10 @@ mod tests {
 
         // After setting weights, should produce same outputs
         let input = [0.5f32; FEATURE_DIM];
-        let action1 = strategy1.dqn.clone().greedy_action(&input, DecisionType::PlayType);
+        let action1 = strategy1
+            .dqn
+            .clone()
+            .greedy_action(&input, DecisionType::PlayType);
         let mut dqn2 = strategy2.dqn.clone();
         let action2 = dqn2.greedy_action(&input, DecisionType::PlayType);
 

@@ -79,17 +79,24 @@ impl<P: PartyRepository> NextRound<P> {
             let players = self.party_repo.get_party_players(&input.party_id).await?;
 
             // Get elimination order (user_id -> elimination_round)
-            let elimination_order = self.party_repo.get_elimination_order(&input.party_id).await?;
-            let elimination_map: std::collections::HashMap<String, Option<u32>> = elimination_order
-                .into_iter()
-                .collect();
+            let elimination_order = self
+                .party_repo
+                .get_elimination_order(&input.party_id)
+                .await?;
+            let elimination_map: std::collections::HashMap<String, Option<u32>> =
+                elimination_order.into_iter().collect();
 
             // Build player results with elimination info
             let mut player_results: Vec<(u8, u16, String, Option<u32>)> = players
                 .iter()
                 .map(|p| {
                     let elimination_round = elimination_map.get(&p.user_id).cloned().flatten();
-                    (p.player_index, game_state.scores[p.player_index as usize], p.user_id.clone(), elimination_round)
+                    (
+                        p.player_index,
+                        game_state.scores[p.player_index as usize],
+                        p.user_id.clone(),
+                        elimination_round,
+                    )
                 })
                 .collect();
 
@@ -128,13 +135,15 @@ impl<P: PartyRepository> NextRound<P> {
             let results: Vec<PlayerGameResult> = player_results
                 .iter()
                 .enumerate()
-                .map(|(position, (player_index, final_score, user_id, _))| PlayerGameResult {
-                    user_id: user_id.clone(),
-                    final_score: *final_score,
-                    finish_position: (position + 1) as u8,
-                    rounds_played: game_state.round_number as u32,
-                    is_winner: *player_index == winner,
-                })
+                .map(
+                    |(position, (player_index, final_score, user_id, _))| PlayerGameResult {
+                        user_id: user_id.clone(),
+                        final_score: *final_score,
+                        finish_position: (position + 1) as u8,
+                        rounds_played: game_state.round_number as u32,
+                        is_winner: *player_index == winner,
+                    },
+                )
                 .collect();
 
             // Save game results
@@ -167,9 +176,8 @@ impl<P: PartyRepository> NextRound<P> {
 
         // Create scores array
         let mut scores = [0u16; 8];
-        for i in 0..game_state.player_count as usize {
-            scores[i] = game_state.scores[i];
-        }
+        let n = game_state.player_count as usize;
+        scores[..n].copy_from_slice(&game_state.scores[..n]);
 
         // Initialize new round
         let new_round_number = game_state.round_number + 1;

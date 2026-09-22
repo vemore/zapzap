@@ -190,10 +190,11 @@ impl ThibotStrategy {
                     risky_opponents += 1;
                 }
 
-                if opponent_hand_size <= self.params.zapzap_risky_hand_size && tracked_count == 0 {
-                    if my_value >= self.params.zapzap_risky_value_threshold {
-                        risky_opponents += 1;
-                    }
+                if opponent_hand_size <= self.params.zapzap_risky_hand_size
+                    && tracked_count == 0
+                    && my_value >= self.params.zapzap_risky_value_threshold
+                {
+                    risky_opponents += 1;
                 }
             }
         }
@@ -281,11 +282,8 @@ impl ThibotStrategy {
         let hand_value = calculate_hand_value(hand);
 
         plays.into_iter().max_by_key(|play| {
-            let remaining: SmallVec<[u8; 10]> = hand
-                .iter()
-                .filter(|c| !play.contains(c))
-                .copied()
-                .collect();
+            let remaining: SmallVec<[u8; 10]> =
+                hand.iter().filter(|c| !play.contains(c)).copied().collect();
 
             let remaining_value = calculate_hand_value(&remaining);
             let points_removed = (hand_value - remaining_value) as i32;
@@ -524,11 +522,8 @@ impl ThibotStrategy {
 
         if let Some(ref play) = normal_play {
             let play_value = calculate_hand_value(play) as i32;
-            let remaining: SmallVec<[u8; 10]> = hand
-                .iter()
-                .filter(|c| !play.contains(c))
-                .copied()
-                .collect();
+            let remaining: SmallVec<[u8; 10]> =
+                hand.iter().filter(|c| !play.contains(c)).copied().collect();
             let remaining_potential: i32 = remaining
                 .iter()
                 .map(|&c| self.evaluate_card_potential(c, &remaining, state))
@@ -578,6 +573,8 @@ impl Default for ThibotStrategy {
 }
 
 impl BotStrategy for ThibotStrategy {
+    // Both branches are kept apart on purpose: the golden-score value is a tuning knob.
+    #[allow(clippy::if_same_then_else)]
     fn select_hand_size(&self, state: &GameState, _player_index: u8) -> u8 {
         if state.is_golden_score {
             4
@@ -771,12 +768,15 @@ mod tests {
 
         // No discard available - must draw from deck
         state.hands[0] = smallvec::smallvec![0, 1];
-        assert!(matches!(thibot.decide_draw_source(&state, 0), DrawSource::Deck));
+        assert!(matches!(
+            thibot.decide_draw_source(&state, 0),
+            DrawSource::Deck
+        ));
 
         // Discard has ace that would complete pair
         state.hands[0] = smallvec::smallvec![0]; // A♠
         state.last_cards_played = smallvec::smallvec![13]; // A♥
-        // Should prefer discard (completes pair)
+                                                           // Should prefer discard (completes pair)
         assert!(matches!(
             thibot.decide_draw_source(&state, 0),
             DrawSource::Discard(13)

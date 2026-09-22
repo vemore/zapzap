@@ -39,7 +39,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .nest("/api", api::routes::create_api_router(state.clone()))
         .route("/suscribeupdate", axum::routing::get(api::sse::sse_handler))
-        .route("/health", axum::routing::get(api::routes::health::health_handler))
+        .route(
+            "/health",
+            axum::routing::get(api::routes::health::health_handler),
+        )
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);

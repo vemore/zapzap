@@ -32,16 +32,23 @@ impl RegisterUser {
         }
     }
 
-    pub async fn execute(&self, input: RegisterUserInput) -> Result<RegisterUserOutput, RegisterError> {
+    pub async fn execute(
+        &self,
+        input: RegisterUserInput,
+    ) -> Result<RegisterUserOutput, RegisterError> {
         // Validate input
         if input.username.trim().is_empty() {
             return Err(RegisterError::Validation("Username is required".into()));
         }
         if input.username.len() < 3 {
-            return Err(RegisterError::Validation("Username must be at least 3 characters".into()));
+            return Err(RegisterError::Validation(
+                "Username must be at least 3 characters".into(),
+            ));
         }
         if input.password.len() < 4 {
-            return Err(RegisterError::Validation("Password must be at least 4 characters".into()));
+            return Err(RegisterError::Validation(
+                "Password must be at least 4 characters".into(),
+            ));
         }
 
         // Check if username exists

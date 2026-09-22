@@ -54,12 +54,7 @@ impl TransitionCollector {
     }
 
     /// Record a state-action pair (reward computed later)
-    pub fn record_action(
-        &mut self,
-        state: &GameState,
-        action: u8,
-        decision_type: u8,
-    ) {
+    pub fn record_action(&mut self, state: &GameState, action: u8, decision_type: u8) {
         let features = FeatureExtractor::extract(state, self.player_index);
         let hand = state.get_hand(self.player_index);
         let hand_value = card_analyzer::calculate_hand_value(hand) as f32;
@@ -108,9 +103,9 @@ impl TransitionCollector {
 
         // Compute game reward
         let game_reward = match winner_index {
-            Some(w) if w == self.player_index => 1.0,   // Win
-            Some(_) => -0.5,                             // Lose
-            None => 0.0,                                 // Draw
+            Some(w) if w == self.player_index => 1.0, // Win
+            Some(_) => -0.5,                          // Lose
+            None => 0.0,                              // Draw
         };
 
         // Compute round-based reward adjustment
@@ -161,11 +156,7 @@ impl TransitionCollector {
     ///
     /// Note: With ~180 transitions per game and only 1 having reward,
     /// the PER buffer should prioritize terminal transitions for effective learning
-    pub fn finalize_simple(
-        &mut self,
-        final_state: &GameState,
-        game_reward: f32,
-    ) {
+    pub fn finalize_simple(&mut self, final_state: &GameState, game_reward: f32) {
         if self.pending.is_empty() {
             return;
         }
@@ -229,12 +220,7 @@ impl TransitionCollector {
     /// * `final_state` - Game state at end
     /// * `won` - Whether this player won the game
     /// * `gamma` - Discount factor for potential shaping (typically 0.99)
-    pub fn finalize_dense(
-        &mut self,
-        final_state: &GameState,
-        won: bool,
-        gamma: f32,
-    ) {
+    pub fn finalize_dense(&mut self, final_state: &GameState, won: bool, gamma: f32) {
         if self.pending.is_empty() {
             return;
         }

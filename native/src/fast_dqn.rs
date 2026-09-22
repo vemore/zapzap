@@ -55,21 +55,21 @@ impl DecisionType {
 }
 
 /// Layer dimensions matching DuelingDQN (burn)
-const HIDDEN1: usize = 128;  // shared1 output
-const HIDDEN2: usize = 64;   // shared2 output (also input to value & advantage)
+const HIDDEN1: usize = 128; // shared1 output
+const HIDDEN2: usize = 64; // shared2 output (also input to value & advantage)
 const ADV_HIDDEN: usize = 32; // advantage/value hidden
 const MAX_ACTIONS: usize = 7;
 
 // Weight array sizes for shared layers
 const W1_SIZE: usize = FEATURE_DIM * HIDDEN1; // 45 * 128 = 5760
-const W2_SIZE: usize = HIDDEN1 * HIDDEN2;     // 128 * 64 = 8192
+const W2_SIZE: usize = HIDDEN1 * HIDDEN2; // 128 * 64 = 8192
 
 // Value stream weights
-const V1_SIZE: usize = HIDDEN2 * ADV_HIDDEN;  // 64 * 32 = 2048
-const V2_SIZE: usize = ADV_HIDDEN * 1;        // 32 * 1 = 32
+const V1_SIZE: usize = HIDDEN2 * ADV_HIDDEN; // 64 * 32 = 2048
+const V2_SIZE: usize = ADV_HIDDEN * 1; // 32 * 1 = 32
 
 // Advantage head weights (per head)
-const A1_SIZE: usize = HIDDEN2 * ADV_HIDDEN;  // 64 * 32 = 2048
+const A1_SIZE: usize = HIDDEN2 * ADV_HIDDEN; // 64 * 32 = 2048
 const A2_MAX_SIZE: usize = ADV_HIDDEN * MAX_ACTIONS; // 32 * 7 = 224
 
 /// Shared layer 1: 45 -> 128
@@ -352,7 +352,12 @@ impl AdvantageHead {
     }
 
     fn get_weights(&self) -> (&[f32], &[f32], &[f32], &[f32]) {
-        (&self.weights1, &self.bias1, &self.weights2[..self.action_dim * ADV_HIDDEN], &self.bias2[..self.action_dim])
+        (
+            &self.weights1,
+            &self.bias1,
+            &self.weights2[..self.action_dim * ADV_HIDDEN],
+            &self.bias2[..self.action_dim],
+        )
     }
 }
 
@@ -464,7 +469,11 @@ impl FastDQN {
 
     /// Select greedy action (best Q-value)
     #[inline]
-    pub fn greedy_action(&mut self, input: &[f32; FEATURE_DIM], decision_type: DecisionType) -> usize {
+    pub fn greedy_action(
+        &mut self,
+        input: &[f32; FEATURE_DIM],
+        decision_type: DecisionType,
+    ) -> usize {
         let q_values = self.predict(input, decision_type);
         let mut best_action = 0;
         let mut best_value = q_values[0];
@@ -501,7 +510,9 @@ impl FastDQN {
 
     #[inline]
     fn random_range(&mut self, max: usize) -> usize {
-        if max == 0 { return 0; }
+        if max == 0 {
+            return 0;
+        }
         (self.next_random() % max as u64) as usize
     }
 
@@ -517,7 +528,8 @@ impl FastDQN {
         let v1 = self.value.weights1.to_vec();
         let v2 = self.value.weights2.to_vec();
         let ahs1 = self.adv_hand_size.weights1.to_vec();
-        let ahs2 = self.adv_hand_size.weights2[..self.adv_hand_size.action_dim * ADV_HIDDEN].to_vec();
+        let ahs2 =
+            self.adv_hand_size.weights2[..self.adv_hand_size.action_dim * ADV_HIDDEN].to_vec();
         (s2, v1, v2, ahs1, ahs2)
     }
 
@@ -632,7 +644,11 @@ impl FastDQN {
         let v1_b = take_slice(weights, &mut idx, ADV_HIDDEN);
         // Value stream layer2 (32*1 + 1)
         let v2_w = take_slice(weights, &mut idx, ADV_HIDDEN);
-        let v2_b = if idx < weights.len() { weights[idx] } else { 0.0 };
+        let v2_b = if idx < weights.len() {
+            weights[idx]
+        } else {
+            0.0
+        };
         idx += 1;
         self.value.set_weights(v1_w, v1_b, v2_w, v2_b);
 

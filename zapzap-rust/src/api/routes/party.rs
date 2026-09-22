@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::Claims;
 use crate::api::AppState;
-use crate::infrastructure::app_state::GameEvent;
 use crate::application::party::{
     CreateParty, CreatePartyInput, DeleteParty, DeletePartyInput, GetPartyDetails,
-    GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty, LeavePartyInput,
-    ListPartiesInput, ListPublicParties, StartParty, StartPartyInput,
+    GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty, LeavePartyInput, ListPartiesInput,
+    ListPublicParties, StartParty, StartPartyInput,
 };
 use crate::domain::value_objects::PartySettings;
+use crate::infrastructure::app_state::GameEvent;
 
 /// Convert timestamp to ISO 8601 string
 fn timestamp_to_rfc3339(ts: i64) -> String {
@@ -260,12 +260,15 @@ pub async fn create_party(
         ));
     }
 
-    let settings = body.settings.map(|s| PartySettings {
-        hand_size: s.hand_size.unwrap_or(5),
-        max_score: s.max_score.unwrap_or(100),
-        enable_golden_score: s.enable_golden_score.unwrap_or(true),
-        golden_score_threshold: s.golden_score_threshold.unwrap_or(100),
-    }).unwrap_or_default();
+    let settings = body
+        .settings
+        .map(|s| PartySettings {
+            hand_size: s.hand_size.unwrap_or(5),
+            max_score: s.max_score.unwrap_or(100),
+            enable_golden_score: s.enable_golden_score.unwrap_or(true),
+            golden_score_threshold: s.golden_score_threshold.unwrap_or(100),
+        })
+        .unwrap_or_default();
 
     let use_case = CreateParty::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
@@ -447,17 +450,18 @@ pub async fn join_party(
         .await
         .map_err(|e| {
             let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") || err_msg.contains("does not exist") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("full") {
-                (StatusCode::CONFLICT, "PARTY_FULL")
-            } else if err_msg.contains("already in party") {
-                (StatusCode::CONFLICT, "ALREADY_IN_PARTY")
-            } else if err_msg.contains("already started") {
-                (StatusCode::CONFLICT, "PARTY_STARTED")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "JOIN_PARTY_ERROR")
-            };
+            let (status, code) =
+                if err_msg.contains("not found") || err_msg.contains("does not exist") {
+                    (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
+                } else if err_msg.contains("full") {
+                    (StatusCode::CONFLICT, "PARTY_FULL")
+                } else if err_msg.contains("already in party") {
+                    (StatusCode::CONFLICT, "ALREADY_IN_PARTY")
+                } else if err_msg.contains("already started") {
+                    (StatusCode::CONFLICT, "PARTY_STARTED")
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "JOIN_PARTY_ERROR")
+                };
             (
                 status,
                 Json(ErrorResponse {
@@ -469,12 +473,16 @@ pub async fn join_party(
         })?;
 
     // Emit SSE event for playerJoined
-    let event = GameEvent::new("partyUpdate", Some(result.party.id.clone()), Some(claims.user_id.clone()))
-        .with_action("playerJoined")
-        .with_data(serde_json::json!({
-            "username": claims.username,
-            "playerIndex": result.player_index
-        }));
+    let event = GameEvent::new(
+        "partyUpdate",
+        Some(result.party.id.clone()),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("playerJoined")
+    .with_data(serde_json::json!({
+        "username": claims.username,
+        "playerIndex": result.player_index
+    }));
     state.broadcast_event(event);
 
     Ok(Json(JoinPartyResponse {
@@ -520,12 +528,16 @@ pub async fn leave_party(
         })?;
 
     // Emit SSE event for playerLeft
-    let event = GameEvent::new("partyUpdate", Some(party_id_for_event), Some(claims.user_id.clone()))
-        .with_action("playerLeft")
-        .with_data(serde_json::json!({
-            "username": claims.username,
-            "newOwner": result.new_owner_id
-        }));
+    let event = GameEvent::new(
+        "partyUpdate",
+        Some(party_id_for_event),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("playerLeft")
+    .with_data(serde_json::json!({
+        "username": claims.username,
+        "newOwner": result.new_owner_id
+    }));
     state.broadcast_event(event);
 
     Ok(Json(LeavePartyResponse {
@@ -571,12 +583,16 @@ pub async fn start_party(
         })?;
 
     // Emit SSE event for partyStarted
-    let event = GameEvent::new("partyUpdate", Some(party_id_for_event), Some(claims.user_id.clone()))
-        .with_action("partyStarted")
-        .with_data(serde_json::json!({
-            "roundId": result.round.id,
-            "roundNumber": result.round.round_number
-        }));
+    let event = GameEvent::new(
+        "partyUpdate",
+        Some(party_id_for_event),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("partyStarted")
+    .with_data(serde_json::json!({
+        "roundId": result.round.id,
+        "roundNumber": result.round.round_number
+    }));
     state.broadcast_event(event);
 
     Ok(Json(StartPartyResponse {
@@ -632,11 +648,15 @@ pub async fn delete_party(
         })?;
 
     // Emit SSE event for partyDeleted
-    let event = GameEvent::new("partyUpdate", Some(party_id_for_event), Some(claims.user_id.clone()))
-        .with_action("partyDeleted")
-        .with_data(serde_json::json!({
-            "partyName": result.deleted_party_name
-        }));
+    let event = GameEvent::new(
+        "partyUpdate",
+        Some(party_id_for_event),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("partyDeleted")
+    .with_data(serde_json::json!({
+        "partyName": result.deleted_party_name
+    }));
     state.broadcast_event(event);
 
     Ok(Json(DeletePartyResponse {

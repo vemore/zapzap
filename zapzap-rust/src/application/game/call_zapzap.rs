@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
-use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry};
+use crate::domain::repositories::{
+    PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry,
+};
 use crate::domain::services::{check_eliminations, execute_zapzap, is_game_over};
 use crate::domain::value_objects::GameAction;
 use crate::infrastructure::bot::card_analyzer;
@@ -109,7 +111,9 @@ impl<P: PartyRepository> CallZapZap<P> {
                 let player_idx = p.player_index;
                 let hand = game_state.get_hand(player_idx);
                 let hand_value = card_analyzer::calculate_hand_value(hand);
-                let round_score = result.scores.iter()
+                let round_score = result
+                    .scores
+                    .iter()
                     .find(|(idx, _)| *idx == player_idx)
                     .map(|(_, score)| *score)
                     .unwrap_or(0);
@@ -121,8 +125,10 @@ impl<P: PartyRepository> CallZapZap<P> {
                     total_score_after: game_state.get_score(player_idx),
                     hand_points: hand_value,
                     is_zapzap_caller: game_state.zapzap_caller == Some(player_idx),
-                    zapzap_success: game_state.zapzap_caller == Some(player_idx) && !result.counteracted,
-                    was_counteracted: game_state.zapzap_caller == Some(player_idx) && result.counteracted,
+                    zapzap_success: game_state.zapzap_caller == Some(player_idx)
+                        && !result.counteracted,
+                    was_counteracted: game_state.zapzap_caller == Some(player_idx)
+                        && result.counteracted,
                     hand_cards: hand.to_vec(),
                     is_lowest_hand: game_state.lowest_hand_player_index == Some(player_idx),
                     is_eliminated: game_state.is_eliminated(player_idx),
@@ -131,7 +137,11 @@ impl<P: PartyRepository> CallZapZap<P> {
             .collect();
 
         self.party_repo
-            .save_round_scores(&input.party_id, game_state.round_number as u32, round_scores)
+            .save_round_scores(
+                &input.party_id,
+                game_state.round_number as u32,
+                round_scores,
+            )
             .await?;
 
         // If game is over, update party status and save game results
@@ -146,17 +156,24 @@ impl<P: PartyRepository> CallZapZap<P> {
             self.party_repo.save(&party).await?;
 
             // Get elimination order (user_id -> elimination_round)
-            let elimination_order = self.party_repo.get_elimination_order(&input.party_id).await?;
-            let elimination_map: std::collections::HashMap<String, Option<u32>> = elimination_order
-                .into_iter()
-                .collect();
+            let elimination_order = self
+                .party_repo
+                .get_elimination_order(&input.party_id)
+                .await?;
+            let elimination_map: std::collections::HashMap<String, Option<u32>> =
+                elimination_order.into_iter().collect();
 
             // Build player results with elimination info
             let mut player_results: Vec<(u8, u16, String, Option<u32>)> = players
                 .iter()
                 .map(|p| {
                     let elimination_round = elimination_map.get(&p.user_id).cloned().flatten();
-                    (p.player_index, game_state.scores[p.player_index as usize], p.user_id.clone(), elimination_round)
+                    (
+                        p.player_index,
+                        game_state.scores[p.player_index as usize],
+                        p.user_id.clone(),
+                        elimination_round,
+                    )
                 })
                 .collect();
 
@@ -195,13 +212,15 @@ impl<P: PartyRepository> CallZapZap<P> {
             let results: Vec<PlayerGameResult> = player_results
                 .iter()
                 .enumerate()
-                .map(|(position, (player_index, final_score, user_id, _))| PlayerGameResult {
-                    user_id: user_id.clone(),
-                    final_score: *final_score,
-                    finish_position: (position + 1) as u8,
-                    rounds_played: game_state.round_number as u32,
-                    is_winner: *player_index == winner_idx,
-                })
+                .map(
+                    |(position, (player_index, final_score, user_id, _))| PlayerGameResult {
+                        user_id: user_id.clone(),
+                        final_score: *final_score,
+                        finish_position: (position + 1) as u8,
+                        rounds_played: game_state.round_number as u32,
+                        is_winner: *player_index == winner_idx,
+                    },
+                )
                 .collect();
 
             // Save game results

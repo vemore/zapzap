@@ -65,10 +65,8 @@ impl<U: UserRepository, P: PartyRepository> GetPartyDetails<U, P> {
         // Batch fetch all users (avoids N+1 queries)
         let user_ids: Vec<String> = party_players.iter().map(|pp| pp.user_id.clone()).collect();
         let users = self.user_repo.find_by_ids(&user_ids).await?;
-        let users_map: std::collections::HashMap<String, _> = users
-            .into_iter()
-            .map(|u| (u.id.clone(), u))
-            .collect();
+        let users_map: std::collections::HashMap<String, _> =
+            users.into_iter().map(|u| (u.id.clone(), u)).collect();
 
         // Build player info
         let mut players = Vec::with_capacity(party_players.len());

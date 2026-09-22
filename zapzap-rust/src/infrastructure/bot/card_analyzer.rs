@@ -290,11 +290,9 @@ pub fn find_all_valid_plays(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
 pub fn find_max_point_play(hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
     let plays = find_all_valid_plays(hand);
 
-    plays.into_iter().max_by_key(|play| {
-        play.iter()
-            .map(|&c| get_card_points(c) as u32)
-            .sum::<u32>()
-    })
+    plays
+        .into_iter()
+        .max_by_key(|play| play.iter().map(|&c| get_card_points(c) as u32).sum::<u32>())
 }
 
 /// Check if taking a specific card would complete a sequence

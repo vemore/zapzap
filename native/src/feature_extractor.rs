@@ -25,14 +25,8 @@ impl FeatureExtractor {
         let hand_value = card_analyzer::calculate_hand_value(hand) as f32;
         let hand_size = hand.len() as f32;
         let joker_count = hand.iter().filter(|&&c| c >= 52).count() as f32;
-        let high_card_count = hand
-            .iter()
-            .filter(|&&c| c < 52 && (c % 13) >= 9)
-            .count() as f32;
-        let low_card_count = hand
-            .iter()
-            .filter(|&&c| c < 52 && (c % 13) < 4)
-            .count() as f32;
+        let high_card_count = hand.iter().filter(|&&c| c < 52 && (c % 13) >= 9).count() as f32;
+        let low_card_count = hand.iter().filter(|&&c| c < 52 && (c % 13) < 4).count() as f32;
 
         // Valid plays
         let valid_plays = card_analyzer::find_all_valid_plays(hand);
@@ -48,16 +42,8 @@ impl FeatureExtractor {
         // Score features
         let my_score = state.scores[player_index as usize] as f32;
         let opponent_scores = Self::get_opponent_scores(state, player_index, eliminated_mask);
-        let min_opponent_score = opponent_scores
-            .iter()
-            .copied()
-            .min()
-            .unwrap_or(0) as f32;
-        let max_opponent_score = opponent_scores
-            .iter()
-            .copied()
-            .max()
-            .unwrap_or(0) as f32;
+        let min_opponent_score = opponent_scores.iter().copied().min().unwrap_or(0) as f32;
+        let max_opponent_score = opponent_scores.iter().copied().max().unwrap_or(0) as f32;
         let avg_opponent_score = if !opponent_scores.is_empty() {
             opponent_scores.iter().map(|&s| s as f32).sum::<f32>() / opponent_scores.len() as f32
         } else {
@@ -73,12 +59,9 @@ impl FeatureExtractor {
         };
 
         // Opponent hand sizes
-        let opponent_hand_sizes = Self::get_opponent_hand_sizes(state, player_index, eliminated_mask);
-        let min_opponent_hand_size = opponent_hand_sizes
-            .iter()
-            .copied()
-            .min()
-            .unwrap_or(0) as f32;
+        let opponent_hand_sizes =
+            Self::get_opponent_hand_sizes(state, player_index, eliminated_mask);
+        let min_opponent_hand_size = opponent_hand_sizes.iter().copied().min().unwrap_or(0) as f32;
         let avg_opponent_hand_size = if !opponent_hand_sizes.is_empty() {
             opponent_hand_sizes.iter().sum::<u8>() as f32 / opponent_hand_sizes.len() as f32
         } else {
@@ -138,12 +121,11 @@ impl FeatureExtractor {
         } else {
             0.0
         };
-        let should_keep_jokers =
-            if min_opponent_hand_size > 3.0 && !state.is_golden_score {
-                1.0
-            } else {
-                0.0
-            };
+        let should_keep_jokers = if min_opponent_hand_size > 3.0 && !state.is_golden_score {
+            1.0
+        } else {
+            0.0
+        };
 
         // Threat counts
         let zapzap_threats = opponent_hand_sizes
@@ -151,11 +133,7 @@ impl FeatureExtractor {
             .filter(|&&s| s <= 3)
             .count()
             .min(3) as f32;
-        let elimination_threats = opponent_scores
-            .iter()
-            .filter(|&&s| s > 85)
-            .count()
-            .min(3) as f32;
+        let elimination_threats = opponent_scores.iter().filter(|&&s| s > 85).count().min(3) as f32;
 
         // Dangerous opponent next
         let dangerous_opponent_next =
@@ -306,10 +284,19 @@ impl FeatureExtractor {
 
         [
             // Hand features (10) - unknown
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, // bestPlaySize=1
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2, // bestPlaySize=1
             // Game state (10)
-            0.1,                                      // round 1
-            1.0,                                      // full deck
+            0.1, // round 1
+            1.0, // full deck
             0.0, // no discard
             (active_player_count as f32 / 4.0).min(1.0),
             if is_golden_score { 1.0 } else { 0.0 },
@@ -362,7 +349,11 @@ impl FeatureExtractor {
     }
 
     /// Get opponent hand sizes
-    fn get_opponent_hand_sizes(state: &GameState, player_index: u8, eliminated_mask: u8) -> Vec<u8> {
+    fn get_opponent_hand_sizes(
+        state: &GameState,
+        player_index: u8,
+        eliminated_mask: u8,
+    ) -> Vec<u8> {
         let mut sizes = Vec::with_capacity(state.player_count as usize);
         for i in 0..state.player_count {
             if i != player_index && (eliminated_mask & (1 << i)) == 0 {
@@ -404,11 +395,7 @@ impl FeatureExtractor {
 
     /// Calculate rank spread (normalized)
     fn calculate_rank_spread(hand: &[u8]) -> f32 {
-        let ranks: Vec<u8> = hand
-            .iter()
-            .filter(|&&c| c < 52)
-            .map(|&c| c % 13)
-            .collect();
+        let ranks: Vec<u8> = hand.iter().filter(|&&c| c < 52).map(|&c| c % 13).collect();
         if ranks.len() <= 1 {
             return 0.0;
         }

@@ -6,11 +6,14 @@
 //! - Parallel game simulation with rayon
 //! - Training progress tracking
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::Instant;
 
-use burn_core::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::prelude::*;
+use burn_core::optim::{AdamConfig, GradientsParams, Optimizer};
 
 use super::config::TrainingConfig;
 use super::dueling_dqn::{DecisionType, DuelingDQN, DuelingDQNConfig};
@@ -142,17 +145,18 @@ impl Trainer {
         let batch_size = self.get_adaptive_batch_size(decision_type);
 
         // Sample batch
-        let batch = self.buffer.sample::<TrainingBackend>(
-            batch_size,
-            decision_type as u8,
-            &self.device,
-        );
+        let batch =
+            self.buffer
+                .sample::<TrainingBackend>(batch_size, decision_type as u8, &self.device);
 
         // Log sampling failure
         if batch.is_none() {
-            trace_log!(TraceLevel::Training,
+            trace_log!(
+                TraceLevel::Training,
                 "train_step({:?}) - buffer.sample() returned None (buffer size: {})",
-                decision_type, self.buffer.len());
+                decision_type,
+                self.buffer.len()
+            );
             return None;
         }
         let batch = batch?;
@@ -172,13 +176,17 @@ impl Trainer {
 
         // Double DQN: use online network to select actions, target network for values
         // For now, simplified version using same network for both
-        let next_q = self.network.forward(batch.next_states.clone(), decision_type);
+        let next_q = self
+            .network
+            .forward(batch.next_states.clone(), decision_type);
         let next_actions = next_q.argmax(1).reshape([batch_size, 1]);
 
         // Get target Q-values (using CPU backend for target network)
         // Note: In full implementation, target network would run inference here
         // For now, using online network
-        let target_q_all = self.network.forward(batch.next_states.clone(), decision_type);
+        let target_q_all = self
+            .network
+            .forward(batch.next_states.clone(), decision_type);
         let target_q = target_q_all.gather(1, next_actions);
 
         // TD target: r + gamma * Q_target(s', argmax_a Q(s', a)) * (1 - done)
@@ -207,10 +215,18 @@ impl Trainer {
 
         // Update weights with optimizer
         let grads_params = GradientsParams::from_grads(grads, &network);
-        self.network = self.optimizer.step(self.config.learning_rate, network, grads_params);
+        self.network = self
+            .optimizer
+            .step(self.config.learning_rate, network, grads_params);
 
         // Update priorities in buffer
-        let td_errors: Vec<f32> = td_error.clone().abs().into_data().as_slice::<f32>().unwrap().to_vec();
+        let td_errors: Vec<f32> = td_error
+            .clone()
+            .abs()
+            .into_data()
+            .as_slice::<f32>()
+            .unwrap()
+            .to_vec();
         self.buffer.update_priorities(&batch.indices, &td_errors);
 
         // Return average loss
@@ -221,13 +237,23 @@ impl Trainer {
             let td_mean: f32 = td_errors.iter().sum::<f32>() / td_errors.len() as f32;
             let td_max = td_errors.iter().cloned().fold(0.0f32, f32::max);
             let td_min = td_errors.iter().cloned().fold(f32::MAX, f32::min);
-            let rewards_slice = batch.rewards.clone().into_data().as_slice::<f32>().unwrap().to_vec();
+            let rewards_slice = batch
+                .rewards
+                .clone()
+                .into_data()
+                .as_slice::<f32>()
+                .unwrap()
+                .to_vec();
             let rewards_nonzero = rewards_slice.iter().filter(|&&r| r.abs() > 0.001).count();
             let rewards_pos = rewards_slice.iter().filter(|&&r| r > 0.001).count();
             let rewards_neg = rewards_slice.iter().filter(|&&r| r < -0.001).count();
 
             // Get Q-value sample from batch
-            let q_slice = q_values_trace.into_data().as_slice::<f32>().unwrap().to_vec();
+            let q_slice = q_values_trace
+                .into_data()
+                .as_slice::<f32>()
+                .unwrap()
+                .to_vec();
             let q_sample: Vec<f32> = q_slice.iter().take(5).cloned().collect();
 
             eprintln!("[TRAIN] dt={:?} loss={:.6} TD=[mean:{:.4},max:{:.4},min:{:.4}] rewards=[nz:{},+:{},−:{}] Q[0..5]={:?}",
@@ -320,14 +346,23 @@ impl Trainer {
     pub fn train_steps(&mut self, num_steps: usize, games_played: u64) -> (f32, usize) {
         let min_buffer_size = self.config.batch_size * 10;
         if self.buffer.len() < min_buffer_size {
-            trace_log!(TraceLevel::Training,
-                "train_steps - buffer too small ({} < {})", self.buffer.len(), min_buffer_size);
+            trace_log!(
+                TraceLevel::Training,
+                "train_steps - buffer too small ({} < {})",
+                self.buffer.len(),
+                min_buffer_size
+            );
             return (0.0, 0);
         }
 
         // Capture weights before training for comparison
         let weights_before_sample: Vec<f32> = if is_trace_enabled(TraceLevel::Weights) {
-            self.network.get_weights_flat().iter().take(10).cloned().collect()
+            self.network
+                .get_weights_flat()
+                .iter()
+                .take(10)
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
@@ -358,24 +393,39 @@ impl Trainer {
             // Calculate weight change magnitude
             let mut total_delta = 0.0f32;
             let mut max_delta = 0.0f32;
-            for (before, after) in weights_before_sample.iter().zip(weights_after_sample.iter()) {
+            for (before, after) in weights_before_sample
+                .iter()
+                .zip(weights_after_sample.iter())
+            {
                 let delta = (after - before).abs();
                 total_delta += delta;
                 max_delta = max_delta.max(delta);
             }
             let mean_delta = total_delta / weights_before_sample.len() as f32;
 
-            eprintln!("[WEIGHTS] train_steps games={} steps={} weight_delta=[mean:{:.8},max:{:.8}]",
-                games_played, steps_completed, mean_delta, max_delta);
-            eprintln!("[WEIGHTS]   before[0..5]: {:?}", &weights_before_sample[..5]);
+            eprintln!(
+                "[WEIGHTS] train_steps games={} steps={} weight_delta=[mean:{:.8},max:{:.8}]",
+                games_played, steps_completed, mean_delta, max_delta
+            );
+            eprintln!(
+                "[WEIGHTS]   before[0..5]: {:?}",
+                &weights_before_sample[..5]
+            );
             eprintln!("[WEIGHTS]   after[0..5]:  {:?}", &weights_after_sample[..5]);
         }
 
         // Trace training summary
-        trace_log!(TraceLevel::Training,
+        trace_log!(
+            TraceLevel::Training,
             "train_steps games={} steps={} avg_loss={:.6}",
-            games_played, steps_completed,
-            if steps_completed > 0 { total_loss / steps_completed as f32 } else { 0.0 });
+            games_played,
+            steps_completed,
+            if steps_completed > 0 {
+                total_loss / steps_completed as f32
+            } else {
+                0.0
+            }
+        );
 
         // Update training state
         {
@@ -385,7 +435,8 @@ impl Trainer {
             state.epsilon = current_epsilon;
             if steps_completed > 0 {
                 // Running average loss
-                state.avg_loss = 0.99 * state.avg_loss + 0.01 * (total_loss / steps_completed as f32);
+                state.avg_loss =
+                    0.99 * state.avg_loss + 0.01 * (total_loss / steps_completed as f32);
             }
         }
 
@@ -509,11 +560,15 @@ mod tests {
         for i in 0..2000 {
             let decision_type = (i % 4) as u8;
             let action_dim = action_dims[decision_type as usize];
-            let action = (i as u8) % action_dim;  // Ensure action is within bounds
+            let action = (i as u8) % action_dim; // Ensure action is within bounds
 
             // ~20% transitions have non-zero reward
             let reward = if i % 5 == 4 {
-                if i % 10 < 5 { 1.0 } else { -0.5 }
+                if i % 10 < 5 {
+                    1.0
+                } else {
+                    -0.5
+                }
             } else {
                 0.0
             };

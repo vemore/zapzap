@@ -8,7 +8,7 @@ use rand::Rng;
 use super::{BotAction, BotStrategy, DrawSource};
 use crate::domain::value_objects::GameState;
 use crate::infrastructure::bot::card_analyzer::{
-    can_call_zapzap, calculate_hand_value, find_all_valid_plays,
+    calculate_hand_value, can_call_zapzap, find_all_valid_plays,
 };
 
 /// Easy difficulty bot strategy

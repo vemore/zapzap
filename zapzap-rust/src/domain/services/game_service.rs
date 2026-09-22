@@ -117,7 +117,11 @@ pub fn execute_play(state: &mut GameState, cards: &[u8]) -> Result<(), &'static 
 }
 
 /// Execute a draw action
-pub fn execute_draw(state: &mut GameState, from_discard: bool, card_id: Option<u8>) -> Result<u8, &'static str> {
+pub fn execute_draw(
+    state: &mut GameState,
+    from_discard: bool,
+    card_id: Option<u8>,
+) -> Result<u8, &'static str> {
     if state.current_action != GameAction::Draw {
         return Err("Not in draw phase");
     }
@@ -390,7 +394,7 @@ mod tests {
         state.hands[0].clear();
         state.hands[0].push(0); // Ace of spades (1)
         state.hands[0].push(1); // 2 of spades (2) = total 3 points
-        // Give player 1 same value: Ace + 2 (cards 13 and 14 = hearts)
+                                // Give player 1 same value: Ace + 2 (cards 13 and 14 = hearts)
         state.hands[1].clear();
         state.hands[1].push(13); // Ace of hearts (1)
         state.hands[1].push(14); // 2 of hearts (2) = total 3 points
@@ -400,14 +404,25 @@ mod tests {
         let result = execute_zapzap(&mut state).unwrap();
 
         // Player 0 should be counteracted because player 1 has equal hand value
-        assert!(result.counteracted, "Equal hands should result in counteraction");
-        assert_eq!(result.counteracted_by, Some(1), "Player 1 should be the counter-actor");
+        assert!(
+            result.counteracted,
+            "Equal hands should result in counteraction"
+        );
+        assert_eq!(
+            result.counteracted_by,
+            Some(1),
+            "Player 1 should be the counter-actor"
+        );
 
         // The winner should be player 1 (the counter-actor)
         assert_eq!(state.lowest_hand_player_index, Some(1));
 
         // In Golden Score mode, game should now be over with player 1 winning
         let winner = is_game_over(&state);
-        assert_eq!(winner, Some(1), "In Golden Score tie, caller (player 0) should lose");
+        assert_eq!(
+            winner,
+            Some(1),
+            "In Golden Score tie, caller (player 0) should lose"
+        );
     }
 }

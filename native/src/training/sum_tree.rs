@@ -195,7 +195,7 @@ mod tests {
         tree.add(2.0); // idx 1
         tree.add(3.0); // idx 2
         tree.add(4.0); // idx 3
-        // Total = 10
+                       // Total = 10
 
         // Sample from different ranges
         let (idx, _) = tree.get(0.5); // Should be in first segment

@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded PR runs; never cancel a run for a commit already on master,
+# so master keeps a complete green/red record.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Which of the jobs below this change actually needs. Fail-safe: when this job
+  # fails, is cancelled, or writes no output, every job runs.
+  scope:
+    name: Scope — which jobs this change needs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A job-level permissions block replaces the workflow's: contents: read is
+    # repeated here, or actions/checkout fails.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.flags.outputs.rust }}
+      native: ${{ steps.flags.outputs.native }}
+      frontend: ${{ steps.flags.outputs.frontend }}
+      image: ${{ steps.flags.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The classifier decides what is *not* built, so it is tested first: a broken
+      # classifier fails this job, which runs everything.
+      - name: Scope classifier self-test
+        run: scripts/ci_scope_selftest.sh
+
+      # On master and on a manual run every flag is true. On a pull request the flags
+      # come from the files it changes (`.previous_filename` so a rename is judged on
+      # both sides). Never add `|| true` here: failing is how everything gets run.
+      - name: Which jobs this change needs
+        id: flags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\n'
+          if [ "$EVENT" != pull_request ]; then
+            printf "$all" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate \
+            -q '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+          n=$(grep -c . "$RUNNER_TEMP/changed.txt" || true)
+          echo "$n changed path(s):"
+          sed 's/^/  /' "$RUNNER_TEMP/changed.txt"
+          # The endpoint stops listing at 3000 files without an error.
+          if [ "$n" -ge 3000 ]; then
+            printf "$all" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          scripts/ci_scope.sh < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+
+  # Every job below: `!cancelled()` is load-bearing. `needs:` adds an implicit
+  # success(), dropped only when the expression holds a status function; without it
+  # a failed `scope` would skip the job, and a job skipped by `if:` reports Success,
+  # which satisfies branch protection. `!= 'false'` rather than `== 'true'` so an
+  # output-less scope runs everything. Never a workflow-level `paths:` filter: a
+  # filtered workflow reports no status, and a required check that never reports
+  # leaves a pull request waiting forever.
+
+  rust:
+    name: Rust backend — fmt, clippy, test
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.rust != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: zapzap-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zapzap-rust
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      # Unit tests only: tests/api_tests.rs opens an in-memory SQLite with no schema
+      # (the migration call in src/infrastructure/app_state.rs is commented out), so
+      # every request answers 500. Tracked as a wip entry; add `--tests` back with it.
+      - run: cargo test --locked --lib --bins
+
+  native:
+    name: Native engine — fmt, build, test
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.native != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - run: cargo fmt --check
+      # No clippy gate yet, and one known-red test skipped: both are wip entries.
+      - run: cargo test -- --skip strategies::thibot::tests::test_zapzap_decision
+
+  frontend:
+    name: Frontend — build
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.frontend != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # `npm run lint` and `vitest run` are red on master today: wip entries, and
+      # they join this job once green.
+      - run: npm run build
+
+  image:
+    name: Images — backend and frontend build
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.image != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend image
+        run: docker build -t zapzap-rust-backend:ci zapzap-rust
+      - name: Frontend image
+        run: docker build -t zapzap-frontend:ci frontend

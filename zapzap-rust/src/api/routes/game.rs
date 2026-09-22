@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::Claims;
 use crate::api::AppState;
-use crate::infrastructure::app_state::GameEvent;
+use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
 use crate::application::game::{
     CallZapZap, CallZapZapInput, DrawCard, DrawCardInput, GetGameState, GetGameStateInput,
     NextRound, NextRoundInput, PlayCards, PlayCardsInput, SelectHandSize, SelectHandSizeInput,
 };
-use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
+use crate::infrastructure::app_state::GameEvent;
 
 // ============================================================================
 // Request/Response DTOs
@@ -300,7 +300,9 @@ pub async fn get_game_state(
         }
 
         // Build eliminated players list from scores > 100
-        let eliminated_players: Vec<u8> = gs.scores.iter()
+        let eliminated_players: Vec<u8> = gs
+            .scores
+            .iter()
             .enumerate()
             .filter(|(_, &score)| score > 100)
             .map(|(i, _)| i as u8)
@@ -418,11 +420,15 @@ pub async fn select_hand_size(
         })?;
 
     // Emit SSE event
-    let event = GameEvent::new("gameUpdate", Some(party_id_for_event), Some(claims.user_id.clone()))
-        .with_action("selectHandSize")
-        .with_data(serde_json::json!({
-            "handSize": body.hand_size
-        }));
+    let event = GameEvent::new(
+        "gameUpdate",
+        Some(party_id_for_event),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("selectHandSize")
+    .with_data(serde_json::json!({
+        "handSize": body.hand_size
+    }));
     state.broadcast_event(event);
 
     // Spawn background task to trigger bot if it's a bot's turn
@@ -481,9 +487,11 @@ pub async fn play_cards(
                 (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
             } else if err_msg.contains("not in hand") {
                 (StatusCode::BAD_REQUEST, "INVALID_CARDS")
-            } else if err_msg.contains("at least 2") || err_msg.contains("No cards") {
-                (StatusCode::BAD_REQUEST, "INVALID_PLAY")
-            } else if err_msg.contains("Invalid") || err_msg.contains("combination") {
+            } else if err_msg.contains("at least 2")
+                || err_msg.contains("No cards")
+                || err_msg.contains("Invalid")
+                || err_msg.contains("combination")
+            {
                 (StatusCode::BAD_REQUEST, "INVALID_PLAY")
             } else {
                 (StatusCode::INTERNAL_SERVER_ERROR, "PLAY_CARDS_ERROR")
@@ -499,11 +507,15 @@ pub async fn play_cards(
         })?;
 
     // Emit SSE event
-    let event = GameEvent::new("gameUpdate", Some(party_id_for_bot.clone()), Some(claims.user_id.clone()))
-        .with_action("play")
-        .with_data(serde_json::json!({
-            "cardIds": body.card_ids
-        }));
+    let event = GameEvent::new(
+        "gameUpdate",
+        Some(party_id_for_bot.clone()),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("play")
+    .with_data(serde_json::json!({
+        "cardIds": body.card_ids
+    }));
     state.broadcast_event(event);
 
     // Spawn background task to trigger bot if it's a bot's turn
@@ -582,11 +594,15 @@ pub async fn draw_card(
         })?;
 
     // Emit SSE event
-    let event = GameEvent::new("gameUpdate", Some(party_id_for_bot.clone()), Some(claims.user_id.clone()))
-        .with_action("draw")
-        .with_data(serde_json::json!({
-            "source": body.source
-        }));
+    let event = GameEvent::new(
+        "gameUpdate",
+        Some(party_id_for_bot.clone()),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("draw")
+    .with_data(serde_json::json!({
+        "source": body.source
+    }));
     state.broadcast_event(event);
 
     // Spawn background task to trigger bot if it's a bot's turn
@@ -648,12 +664,16 @@ pub async fn call_zapzap(
         })?;
 
     // Emit SSE event
-    let event = GameEvent::new("gameUpdate", Some(party_id_for_event.clone()), Some(claims.user_id.clone()))
-        .with_action("zapzap")
-        .with_data(serde_json::json!({
-            "success": result.success,
-            "counteracted": result.counteracted
-        }));
+    let event = GameEvent::new(
+        "gameUpdate",
+        Some(party_id_for_event.clone()),
+        Some(claims.user_id.clone()),
+    )
+    .with_action("zapzap")
+    .with_data(serde_json::json!({
+        "success": result.success,
+        "counteracted": result.counteracted
+    }));
     state.broadcast_event(event);
 
     // Trigger LLM reflection for any LLM bots in the party (human called ZapZap)
@@ -666,18 +686,27 @@ pub async fn call_zapzap(
 
         tokio::spawn(async move {
             // Get game state for round number
-            let game_state = match state_for_reflection.party_repo.get_game_state(&party_id_for_reflection).await {
+            let game_state = match state_for_reflection
+                .party_repo
+                .get_game_state(&party_id_for_reflection)
+                .await
+            {
                 Ok(Some(gs)) => gs,
                 _ => return,
             };
 
             // Get players to find caller's index
-            let players = match state_for_reflection.party_repo.get_party_players(&party_id_for_reflection).await {
+            let players = match state_for_reflection
+                .party_repo
+                .get_party_players(&party_id_for_reflection)
+                .await
+            {
                 Ok(p) => p,
                 _ => return,
             };
 
-            let caller_idx = players.iter()
+            let caller_idx = players
+                .iter()
                 .find(|p| p.user_id == user_id_for_reflection)
                 .map(|p| p.player_index);
 
@@ -687,7 +716,8 @@ pub async fn call_zapzap(
                 game_state.round_number as u32,
                 caller_idx,
                 counteracted,
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -748,12 +778,20 @@ pub async fn next_round(
         })?;
 
     // Emit SSE event
-    let action = if result.game_finished { "gameFinished" } else { "roundStarted" };
-    let event = GameEvent::new("gameUpdate", Some(party_id_for_event), Some(claims.user_id.clone()))
-        .with_action(action)
-        .with_data(serde_json::json!({
-            "gameFinished": result.game_finished
-        }));
+    let action = if result.game_finished {
+        "gameFinished"
+    } else {
+        "roundStarted"
+    };
+    let event = GameEvent::new(
+        "gameUpdate",
+        Some(party_id_for_event),
+        Some(claims.user_id.clone()),
+    )
+    .with_action(action)
+    .with_data(serde_json::json!({
+        "gameFinished": result.game_finished
+    }));
     state.broadcast_event(event);
 
     // starting_player is stored in GameState, not in Round
@@ -810,7 +848,10 @@ pub async fn trigger_bot(
     Path(party_id): Path<String>,
 ) -> Result<Json<TriggerBotResponse>, (StatusCode, Json<ErrorResponse>)> {
     use crate::domain::repositories::{PartyRepository, UserRepository};
-    use crate::infrastructure::bot::strategies::{BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, MediumBotStrategy, LlmBotStrategy, ThibotStrategy, VinceBotStrategy};
+    use crate::infrastructure::bot::strategies::{
+        BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, LlmBotStrategy,
+        MediumBotStrategy, ThibotStrategy, VinceBotStrategy,
+    };
 
     let max_iterations = 50; // Safety limit
     let mut iterations = 0;
@@ -867,7 +908,9 @@ pub async fn trigger_bot(
             }
         };
 
-        let current_player = players.iter().find(|p| p.player_index == game_state.current_turn);
+        let current_player = players
+            .iter()
+            .find(|p| p.player_index == game_state.current_turn);
         let current_player = match current_player {
             Some(p) => p,
             None => {
@@ -910,7 +953,10 @@ pub async fn trigger_bot(
 
         // Check if bot is eliminated - skip to next player
         if game_state.is_eliminated(current_player.player_index) {
-            tracing::info!("Bot {} is eliminated, advancing to next player", user.username);
+            tracing::info!(
+                "Bot {} is eliminated, advancing to next player",
+                user.username
+            );
             // Advance to next non-eliminated player
             let mut next_turn = (game_state.current_turn + 1) % game_state.player_count;
             let mut attempts = 0;
@@ -922,7 +968,11 @@ pub async fn trigger_bot(
             // Update game state with new current turn
             let mut updated_state = game_state.clone();
             updated_state.current_turn = next_turn;
-            if let Err(e) = state.party_repo.save_game_state(&party_id, &updated_state).await {
+            if let Err(e) = state
+                .party_repo
+                .save_game_state(&party_id, &updated_state)
+                .await
+            {
                 tracing::error!("Failed to update game state: {}", e);
             }
             continue; // Continue loop to process next player
@@ -932,7 +982,10 @@ pub async fn trigger_bot(
         let user_id = user.id.clone();
 
         // Check if this is an LLM bot
-        let is_llm_bot = matches!(user.bot_difficulty, Some(crate::domain::entities::BotDifficulty::Llm));
+        let is_llm_bot = matches!(
+            user.bot_difficulty,
+            Some(crate::domain::entities::BotDifficulty::Llm)
+        );
 
         // Execute bot action based on current action state
         match game_state.current_action {
@@ -943,11 +996,14 @@ pub async fn trigger_bot(
                 tracing::info!("Bot {} selecting hand size: {}", user.username, hand_size);
 
                 let use_case = SelectHandSize::new(state.party_repo.clone());
-                match use_case.execute(SelectHandSizeInput {
-                    party_id: party_id.clone(),
-                    user_id: user_id.clone(),
-                    hand_size,
-                }).await {
+                match use_case
+                    .execute(SelectHandSizeInput {
+                        party_id: party_id.clone(),
+                        user_id: user_id.clone(),
+                        hand_size,
+                    })
+                    .await
+                {
                     Ok(_) => {
                         actions_taken += 1;
                         tracing::info!("Bot {} selected hand size {}", user.username, hand_size);
@@ -972,14 +1028,20 @@ pub async fn trigger_bot(
                     let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
 
                     // Check if should call ZapZap (async)
-                    if llm_strategy.should_call_zapzap_async(&game_state, player_index).await {
+                    if llm_strategy
+                        .should_call_zapzap_async(&game_state, player_index)
+                        .await
+                    {
                         tracing::info!("LLM Bot {} calling ZapZap", user.username);
 
                         let use_case = CallZapZap::new(state.party_repo.clone());
-                        match use_case.execute(CallZapZapInput {
-                            party_id: party_id.clone(),
-                            user_id: user_id.clone(),
-                        }).await {
+                        match use_case
+                            .execute(CallZapZapInput {
+                                party_id: party_id.clone(),
+                                user_id: user_id.clone(),
+                            })
+                            .await
+                        {
                             Ok(_) => {
                                 actions_taken += 1;
                                 tracing::info!("LLM Bot {} called ZapZap", user.username);
@@ -990,7 +1052,9 @@ pub async fn trigger_bot(
                         }
                     } else {
                         // Play cards (async)
-                        let cards_to_play = llm_strategy.select_cards_async(&game_state, player_index).await;
+                        let cards_to_play = llm_strategy
+                            .select_cards_async(&game_state, player_index)
+                            .await;
                         if cards_to_play.is_empty() {
                             tracing::warn!("LLM Bot {} has no valid plays", user.username);
                             return Err((
@@ -1003,17 +1067,28 @@ pub async fn trigger_bot(
                             ));
                         }
 
-                        tracing::info!("LLM Bot {} playing cards: {:?}", user.username, cards_to_play);
+                        tracing::info!(
+                            "LLM Bot {} playing cards: {:?}",
+                            user.username,
+                            cards_to_play
+                        );
 
                         let use_case = PlayCards::new(state.party_repo.clone());
-                        match use_case.execute(PlayCardsInput {
-                            party_id: party_id.clone(),
-                            user_id: user_id.clone(),
-                            card_ids: cards_to_play.clone(),
-                        }).await {
+                        match use_case
+                            .execute(PlayCardsInput {
+                                party_id: party_id.clone(),
+                                user_id: user_id.clone(),
+                                card_ids: cards_to_play.clone(),
+                            })
+                            .await
+                        {
                             Ok(_) => {
                                 actions_taken += 1;
-                                tracing::info!("LLM Bot {} played {:?}", user.username, cards_to_play);
+                                tracing::info!(
+                                    "LLM Bot {} played {:?}",
+                                    user.username,
+                                    cards_to_play
+                                );
                             }
                             Err(e) => {
                                 tracing::error!("LLM Bot play cards error: {}", e);
@@ -1031,10 +1106,18 @@ pub async fn trigger_bot(
                 } else {
                     // Non-LLM bots use sync strategy
                     let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => Box::new(EasyBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Medium) => Box::new(MediumBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => Box::new(ThibotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => Box::new(VinceBotStrategy::new()),
+                        Some(crate::domain::entities::BotDifficulty::Easy) => {
+                            Box::new(EasyBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Medium) => {
+                            Box::new(MediumBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
+                            Box::new(ThibotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
+                            Box::new(VinceBotStrategy::new())
+                        }
                         _ => Box::new(HardBotStrategy::new()),
                     };
 
@@ -1043,10 +1126,13 @@ pub async fn trigger_bot(
                         tracing::info!("Bot {} calling ZapZap", user.username);
 
                         let use_case = CallZapZap::new(state.party_repo.clone());
-                        match use_case.execute(CallZapZapInput {
-                            party_id: party_id.clone(),
-                            user_id: user_id.clone(),
-                        }).await {
+                        match use_case
+                            .execute(CallZapZapInput {
+                                party_id: party_id.clone(),
+                                user_id: user_id.clone(),
+                            })
+                            .await
+                        {
                             Ok(_) => {
                                 actions_taken += 1;
                                 tracing::info!("Bot {} called ZapZap", user.username);
@@ -1073,11 +1159,14 @@ pub async fn trigger_bot(
                         tracing::info!("Bot {} playing cards: {:?}", user.username, cards_to_play);
 
                         let use_case = PlayCards::new(state.party_repo.clone());
-                        match use_case.execute(PlayCardsInput {
-                            party_id: party_id.clone(),
-                            user_id: user_id.clone(),
-                            card_ids: cards_to_play.clone(),
-                        }).await {
+                        match use_case
+                            .execute(PlayCardsInput {
+                                party_id: party_id.clone(),
+                                user_id: user_id.clone(),
+                                card_ids: cards_to_play.clone(),
+                            })
+                            .await
+                        {
                             Ok(_) => {
                                 actions_taken += 1;
                                 tracing::info!("Bot {} played {:?}", user.username, cards_to_play);
@@ -1102,17 +1191,27 @@ pub async fn trigger_bot(
                 let (source_str, card_id) = if is_llm_bot {
                     let memory = state.get_llm_memory(&user_id).await;
                     let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-                    let draw_source = llm_strategy.decide_draw_source_async(&game_state, player_index).await;
+                    let draw_source = llm_strategy
+                        .decide_draw_source_async(&game_state, player_index)
+                        .await;
                     match draw_source {
                         DrawSource::Deck => ("deck".to_string(), None),
                         DrawSource::Discard(card) => ("played".to_string(), Some(card)),
                     }
                 } else {
                     let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => Box::new(EasyBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Medium) => Box::new(MediumBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => Box::new(ThibotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => Box::new(VinceBotStrategy::new()),
+                        Some(crate::domain::entities::BotDifficulty::Easy) => {
+                            Box::new(EasyBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Medium) => {
+                            Box::new(MediumBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
+                            Box::new(ThibotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
+                            Box::new(VinceBotStrategy::new())
+                        }
                         _ => Box::new(HardBotStrategy::new()),
                     };
                     let draw_source = strategy.decide_draw_source(&game_state, player_index);
@@ -1125,12 +1224,15 @@ pub async fn trigger_bot(
                 tracing::info!("Bot {} drawing from {}", user.username, source_str);
 
                 let use_case = DrawCard::new(state.party_repo.clone());
-                match use_case.execute(DrawCardInput {
-                    party_id: party_id.clone(),
-                    user_id: user_id.clone(),
-                    source: source_str.clone(),
-                    card_id,
-                }).await {
+                match use_case
+                    .execute(DrawCardInput {
+                        party_id: party_id.clone(),
+                        user_id: user_id.clone(),
+                        source: source_str.clone(),
+                        card_id,
+                    })
+                    .await
+                {
                     Ok(_) => {
                         actions_taken += 1;
                         tracing::info!("Bot {} drew from {}", user.username, source_str);
@@ -1141,15 +1243,21 @@ pub async fn trigger_bot(
                         if source_str == "played" {
                             tracing::info!("Bot {} retrying with deck", user.username);
                             let use_case = DrawCard::new(state.party_repo.clone());
-                            match use_case.execute(DrawCardInput {
-                                party_id: party_id.clone(),
-                                user_id: user_id.clone(),
-                                source: "deck".to_string(),
-                                card_id: None,
-                            }).await {
+                            match use_case
+                                .execute(DrawCardInput {
+                                    party_id: party_id.clone(),
+                                    user_id: user_id.clone(),
+                                    source: "deck".to_string(),
+                                    card_id: None,
+                                })
+                                .await
+                            {
                                 Ok(_) => {
                                     actions_taken += 1;
-                                    tracing::info!("Bot {} drew from deck (fallback)", user.username);
+                                    tracing::info!(
+                                        "Bot {} drew from deck (fallback)",
+                                        user.username
+                                    );
                                 }
                                 Err(e2) => {
                                     return Err((
@@ -1204,7 +1312,10 @@ pub async fn trigger_bot(
 /// Internal function to trigger bot actions (used by background tasks)
 async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(), String> {
     use crate::domain::repositories::{PartyRepository, UserRepository};
-    use crate::infrastructure::bot::strategies::{BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, MediumBotStrategy, LlmBotStrategy, ThibotStrategy, VinceBotStrategy};
+    use crate::infrastructure::bot::strategies::{
+        BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, LlmBotStrategy,
+        MediumBotStrategy, ThibotStrategy, VinceBotStrategy,
+    };
 
     // Check if there are any active human players
     let players = match state.party_repo.get_party_players(party_id).await {
@@ -1260,7 +1371,10 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
             Err(e) => return Err(e.to_string()),
         };
 
-        let current_player = match players.iter().find(|p| p.player_index == game_state.current_turn) {
+        let current_player = match players
+            .iter()
+            .find(|p| p.player_index == game_state.current_turn)
+        {
             Some(p) => p,
             None => return Ok(()),
         };
@@ -1287,7 +1401,11 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
             }
             let mut updated_state = game_state.clone();
             updated_state.current_turn = next_turn;
-            if let Err(e) = state.party_repo.save_game_state(party_id, &updated_state).await {
+            if let Err(e) = state
+                .party_repo
+                .save_game_state(party_id, &updated_state)
+                .await
+            {
                 tracing::error!("Failed to update game state: {}", e);
             }
             continue;
@@ -1297,20 +1415,30 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
         let user_id = user.id.clone();
 
         // Check if this is an LLM bot
-        let is_llm_bot = matches!(user.bot_difficulty, Some(crate::domain::entities::BotDifficulty::Llm));
+        let is_llm_bot = matches!(
+            user.bot_difficulty,
+            Some(crate::domain::entities::BotDifficulty::Llm)
+        );
 
         // Execute bot action
         match game_state.current_action {
             crate::domain::value_objects::GameAction::SelectHandSize => {
                 let strategy = HardBotStrategy::new();
                 let hand_size = strategy.select_hand_size(&game_state, player_index);
-                tracing::info!("Auto: Bot {} selecting hand size: {}", user.username, hand_size);
+                tracing::info!(
+                    "Auto: Bot {} selecting hand size: {}",
+                    user.username,
+                    hand_size
+                );
                 let use_case = SelectHandSize::new(state.party_repo.clone());
-                use_case.execute(SelectHandSizeInput {
-                    party_id: party_id.to_string(),
-                    user_id: user_id.clone(),
-                    hand_size,
-                }).await.map_err(|e| e.to_string())?;
+                use_case
+                    .execute(SelectHandSizeInput {
+                        party_id: party_id.to_string(),
+                        user_id: user_id.clone(),
+                        hand_size,
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
 
                 // Broadcast SSE event for bot action
                 let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
@@ -1326,18 +1454,27 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
                     let memory = state.get_llm_memory(&user_id).await;
                     let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
 
-                    let can_zapzap = llm_strategy.should_call_zapzap_async(&game_state, player_index).await;
+                    let can_zapzap = llm_strategy
+                        .should_call_zapzap_async(&game_state, player_index)
+                        .await;
                     if can_zapzap {
                         tracing::info!("Auto: LLM Bot {} calling ZapZap!", user.username);
                         let use_case = CallZapZap::new(state.party_repo.clone());
-                        let zapzap_result = use_case.execute(CallZapZapInput {
-                            party_id: party_id.to_string(),
-                            user_id: user_id.clone(),
-                        }).await.map_err(|e| e.to_string())?;
+                        let zapzap_result = use_case
+                            .execute(CallZapZapInput {
+                                party_id: party_id.to_string(),
+                                user_id: user_id.clone(),
+                            })
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                        let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id.clone()))
-                            .with_action("zapzap")
-                            .with_data(serde_json::json!({"isBot": true}));
+                        let event = GameEvent::new(
+                            "gameUpdate",
+                            Some(party_id.to_string()),
+                            Some(user_id.clone()),
+                        )
+                        .with_action("zapzap")
+                        .with_data(serde_json::json!({"isBot": true}));
                         state.broadcast_event(event);
 
                         // Trigger LLM reflection after round finishes
@@ -1347,31 +1484,52 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
                             game_state.round_number as u32,
                             Some(player_index),
                             zapzap_result.counteracted,
-                        ).await;
+                        )
+                        .await;
                     } else {
-                        let cards_to_play = llm_strategy.select_cards_async(&game_state, player_index).await;
+                        let cards_to_play = llm_strategy
+                            .select_cards_async(&game_state, player_index)
+                            .await;
                         if cards_to_play.is_empty() {
                             return Err("LLM Bot has no valid play".to_string());
                         }
-                        tracing::info!("Auto: LLM Bot {} playing cards: {:?}", user.username, cards_to_play);
+                        tracing::info!(
+                            "Auto: LLM Bot {} playing cards: {:?}",
+                            user.username,
+                            cards_to_play
+                        );
                         let use_case = PlayCards::new(state.party_repo.clone());
-                        use_case.execute(PlayCardsInput {
-                            party_id: party_id.to_string(),
-                            user_id: user_id.clone(),
-                            card_ids: cards_to_play.clone(),
-                        }).await.map_err(|e| e.to_string())?;
+                        use_case
+                            .execute(PlayCardsInput {
+                                party_id: party_id.to_string(),
+                                user_id: user_id.clone(),
+                                card_ids: cards_to_play.clone(),
+                            })
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                        let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                            .with_action("play")
-                            .with_data(serde_json::json!({"cardIds": cards_to_play, "isBot": true}));
+                        let event =
+                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
+                                .with_action("play")
+                                .with_data(
+                                    serde_json::json!({"cardIds": cards_to_play, "isBot": true}),
+                                );
                         state.broadcast_event(event);
                     }
                 } else {
                     let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => Box::new(EasyBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Medium) => Box::new(MediumBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => Box::new(ThibotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => Box::new(VinceBotStrategy::new()),
+                        Some(crate::domain::entities::BotDifficulty::Easy) => {
+                            Box::new(EasyBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Medium) => {
+                            Box::new(MediumBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
+                            Box::new(ThibotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
+                            Box::new(VinceBotStrategy::new())
+                        }
                         _ => Box::new(HardBotStrategy::new()),
                     };
 
@@ -1379,14 +1537,18 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
                     if can_zapzap {
                         tracing::info!("Auto: Bot {} calling ZapZap!", user.username);
                         let use_case = CallZapZap::new(state.party_repo.clone());
-                        let zapzap_result = use_case.execute(CallZapZapInput {
-                            party_id: party_id.to_string(),
-                            user_id: user_id.clone(),
-                        }).await.map_err(|e| e.to_string())?;
+                        let zapzap_result = use_case
+                            .execute(CallZapZapInput {
+                                party_id: party_id.to_string(),
+                                user_id: user_id.clone(),
+                            })
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                        let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                            .with_action("zapzap")
-                            .with_data(serde_json::json!({"isBot": true}));
+                        let event =
+                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
+                                .with_action("zapzap")
+                                .with_data(serde_json::json!({"isBot": true}));
                         state.broadcast_event(event);
 
                         // Trigger LLM reflection for any LLM bots in the party
@@ -1396,23 +1558,34 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
                             game_state.round_number as u32,
                             Some(player_index),
                             zapzap_result.counteracted,
-                        ).await;
+                        )
+                        .await;
                     } else {
                         let cards_to_play = strategy.select_cards(&game_state, player_index);
                         if cards_to_play.is_empty() {
                             return Err("Bot has no valid play".to_string());
                         }
-                        tracing::info!("Auto: Bot {} playing cards: {:?}", user.username, cards_to_play);
+                        tracing::info!(
+                            "Auto: Bot {} playing cards: {:?}",
+                            user.username,
+                            cards_to_play
+                        );
                         let use_case = PlayCards::new(state.party_repo.clone());
-                        use_case.execute(PlayCardsInput {
-                            party_id: party_id.to_string(),
-                            user_id: user_id.clone(),
-                            card_ids: cards_to_play.clone(),
-                        }).await.map_err(|e| e.to_string())?;
+                        use_case
+                            .execute(PlayCardsInput {
+                                party_id: party_id.to_string(),
+                                user_id: user_id.clone(),
+                                card_ids: cards_to_play.clone(),
+                            })
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                        let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                            .with_action("play")
-                            .with_data(serde_json::json!({"cardIds": cards_to_play, "isBot": true}));
+                        let event =
+                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
+                                .with_action("play")
+                                .with_data(
+                                    serde_json::json!({"cardIds": cards_to_play, "isBot": true}),
+                                );
                         state.broadcast_event(event);
                     }
                 }
@@ -1421,17 +1594,27 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
                 let (source_str, card_id) = if is_llm_bot {
                     let memory = state.get_llm_memory(&user_id).await;
                     let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-                    let draw_source = llm_strategy.decide_draw_source_async(&game_state, player_index).await;
+                    let draw_source = llm_strategy
+                        .decide_draw_source_async(&game_state, player_index)
+                        .await;
                     match draw_source {
                         DrawSource::Deck => ("deck".to_string(), None),
                         DrawSource::Discard(card) => ("played".to_string(), Some(card)),
                     }
                 } else {
                     let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => Box::new(EasyBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Medium) => Box::new(MediumBotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => Box::new(ThibotStrategy::new()),
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => Box::new(VinceBotStrategy::new()),
+                        Some(crate::domain::entities::BotDifficulty::Easy) => {
+                            Box::new(EasyBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Medium) => {
+                            Box::new(MediumBotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
+                            Box::new(ThibotStrategy::new())
+                        }
+                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
+                            Box::new(VinceBotStrategy::new())
+                        }
                         _ => Box::new(HardBotStrategy::new()),
                     };
                     let draw_source = strategy.decide_draw_source(&game_state, player_index);
@@ -1443,22 +1626,27 @@ async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(
 
                 tracing::info!("Auto: Bot {} drawing from {}", user.username, source_str);
                 let use_case = DrawCard::new(state.party_repo.clone());
-                let draw_result = use_case.execute(DrawCardInput {
-                    party_id: party_id.to_string(),
-                    user_id: user_id.clone(),
-                    source: source_str.clone(),
-                    card_id,
-                }).await;
+                let draw_result = use_case
+                    .execute(DrawCardInput {
+                        party_id: party_id.to_string(),
+                        user_id: user_id.clone(),
+                        source: source_str.clone(),
+                        card_id,
+                    })
+                    .await;
 
                 let final_source = if draw_result.is_err() {
                     // Fallback to deck
                     let use_case = DrawCard::new(state.party_repo.clone());
-                    use_case.execute(DrawCardInput {
-                        party_id: party_id.to_string(),
-                        user_id: user_id.clone(),
-                        source: "deck".to_string(),
-                        card_id: None,
-                    }).await.map_err(|e| e.to_string())?;
+                    use_case
+                        .execute(DrawCardInput {
+                            party_id: party_id.to_string(),
+                            user_id: user_id.clone(),
+                            source: "deck".to_string(),
+                            card_id: None,
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?;
                     "deck".to_string()
                 } else {
                     source_str
@@ -1519,7 +1707,10 @@ async fn trigger_llm_reflection(
         };
 
         // Check if this is an LLM bot
-        if !matches!(user.bot_difficulty, Some(crate::domain::entities::BotDifficulty::Llm)) {
+        if !matches!(
+            user.bot_difficulty,
+            Some(crate::domain::entities::BotDifficulty::Llm)
+        ) {
             continue;
         }
 

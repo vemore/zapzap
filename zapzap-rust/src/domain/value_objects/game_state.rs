@@ -13,18 +13,14 @@ pub const MAX_HAND_SIZE: usize = 10;
 /// Current game action
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum GameAction {
+    #[default]
     SelectHandSize,
     Draw,
     Play,
     ZapZap,
     Finished,
-}
-
-impl Default for GameAction {
-    fn default() -> Self {
-        GameAction::SelectHandSize
-    }
 }
 
 impl GameAction {
@@ -444,8 +440,8 @@ impl GameState {
         // Convert round_scores to object if present
         let round_scores_map: Option<HashMap<String, u16>> = self.round_scores.map(|scores| {
             let mut map = HashMap::new();
-            for i in 0..self.player_count as usize {
-                map.insert(i.to_string(), scores[i]);
+            for (i, score) in scores.iter().take(self.player_count as usize).enumerate() {
+                map.insert(i.to_string(), *score);
             }
             map
         });
@@ -479,8 +475,8 @@ impl GameState {
     pub fn from_json(json_str: &str) -> Result<Self, String> {
         use serde_json::Value;
 
-        let v: Value = serde_json::from_str(json_str)
-            .map_err(|e| format!("JSON parse error: {}", e))?;
+        let v: Value =
+            serde_json::from_str(json_str).map_err(|e| format!("JSON parse error: {}", e))?;
 
         let deck: Vec<u8> = v["deck"]
             .as_array()
@@ -515,17 +511,29 @@ impl GameState {
 
         let last_cards_played: SmallVec<[u8; 8]> = v["lastCardsPlayed"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u8))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let cards_played: SmallVec<[u8; 8]> = v["cardsPlayed"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u8))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let discard_pile: Vec<u8> = v["discardPile"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u8))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut scores: [u16; MAX_PLAYERS] = [0; MAX_PLAYERS];
@@ -560,8 +568,14 @@ impl GameState {
             LastAction {
                 action_type,
                 player_index: la.get("playerIndex").and_then(|p| p.as_u64()).unwrap_or(0) as u8,
-                was_counteracted: la.get("wasCounterActed").and_then(|w| w.as_bool()).unwrap_or(false),
-                caller_hand_points: la.get("callerHandPoints").and_then(|c| c.as_u64()).unwrap_or(0) as u8,
+                was_counteracted: la
+                    .get("wasCounterActed")
+                    .and_then(|w| w.as_bool())
+                    .unwrap_or(false),
+                caller_hand_points: la
+                    .get("callerHandPoints")
+                    .and_then(|c| c.as_u64())
+                    .unwrap_or(0) as u8,
             }
         } else {
             LastAction::default()
@@ -580,10 +594,19 @@ impl GameState {
             }
             Some(scores_arr)
         });
-        let zapzap_caller = v.get("zapZapCaller").and_then(|c| c.as_u64()).map(|c| c as u8);
-        let lowest_hand_player_index = v.get("lowestHandPlayerIndex").and_then(|l| l.as_u64()).map(|l| l as u8);
+        let zapzap_caller = v
+            .get("zapZapCaller")
+            .and_then(|c| c.as_u64())
+            .map(|c| c as u8);
+        let lowest_hand_player_index = v
+            .get("lowestHandPlayerIndex")
+            .and_then(|l| l.as_u64())
+            .map(|l| l as u8);
         let was_counter_acted = v.get("wasCounterActed").and_then(|w| w.as_bool());
-        let counter_acted_by_player_index = v.get("counterActedByPlayerIndex").and_then(|c| c.as_u64()).map(|c| c as u8);
+        let counter_acted_by_player_index = v
+            .get("counterActedByPlayerIndex")
+            .and_then(|c| c.as_u64())
+            .map(|c| c as u8);
 
         Ok(GameState {
             deck,

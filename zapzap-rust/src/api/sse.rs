@@ -2,13 +2,13 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::infrastructure::app_state::{AppState, GameEvent};
 use axum::{
     extract::{Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
 use futures::stream::Stream;
 use serde::Deserialize;
-use crate::infrastructure::app_state::{AppState, GameEvent};
 
 #[derive(Deserialize)]
 pub struct SseParams {
@@ -23,7 +23,9 @@ pub async fn sse_handler(
     let user_info = params.token.and_then(|token| {
         state.jwt_service.verify(&token).ok().map(|claims| {
             // Connect user to session manager
-            state.session_manager.connect(&claims.user_id, &claims.username);
+            state
+                .session_manager
+                .connect(&claims.user_id, &claims.username);
 
             // Broadcast user connected event
             let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone()))

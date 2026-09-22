@@ -40,7 +40,8 @@ impl JwtService {
             iat: now,
         };
 
-        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| JwtError::Sign(e.to_string()))
+        encode(&Header::default(), &claims, &self.encoding_key)
+            .map_err(|e| JwtError::Sign(e.to_string()))
     }
 
     /// Verify and decode a JWT token
