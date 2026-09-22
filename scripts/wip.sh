@@ -20,7 +20,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The main checkout is the worktree that owns the shared .git directory.
-ROOT="$(cd "$(git -C "$HERE" rev-parse --git-common-dir)/.." && pwd)"
+ROOT="$(cd "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 WIP="$ROOT/wip"
 
 case "${1:-}" in

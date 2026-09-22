@@ -1,0 +1,82 @@
+# Architecture
+
+> Scope: the four code bases of the repository (zapzap-rust, frontend, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
+> Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
+> Updated: 2026-09-22
+
+## Facts
+
+### The four parts
+
+| Part | Path | Stack | Role | Status |
+|------|------|-------|------|--------|
+| Rust backend | `zapzap-rust/` | axum 0.7, tokio, sqlx 0.8 (sqlite), jsonwebtoken 9, argon2 + bcrypt (`zapzap-rust/Cargo.toml:10-25`) | HTTP API + SSE on port 9999, bots, persistence | **Target** backend, **not deployed yet** (production runs the Node one, [[Deployment]]). Binary `zapzap-backend` (`zapzap-rust/Cargo.toml:2`) |
+| Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
+| Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; loaded by Node scripts in `scripts/` | Offline tooling only |
+| Legacy backend | `src/`, `app.js` | Node/Express, clean architecture (`src/domain`, `src/use-cases`, `src/infrastructure`, `src/api`) | Former API server (entry `app.js:14-20`, `src/api/server.js`) | **Legacy, yet the one in production** (checked 2026-09-22, [[Deployment]]); no CI job, no gate. Owns the schema bootstrap |
+
+- Old `CLAUDE.md` describes the frontend as "Vanilla JS"; it is React (`frontend/src/main.jsx`, `frontend/src/App.jsx`).
+- Both Rust crates pin toolchain 1.92 (`zapzap-rust/rust-toolchain.toml:4`, `native/rust-toolchain.toml:3`); the backend image uses `rust:1.92-slim-bookworm` (`zapzap-rust/Dockerfile:6`).
+- `native/` is **not** linked into the Rust backend: the backend reimplements game logic and bot strategies itself (`zapzap-rust/src/domain/`, `zapzap-rust/src/infrastructure/bot/`). The legacy Node backend does load the native module optionally (`src/infrastructure/bot/strategies/ThibotBotStrategy.js:20-21`).
+
+### Runtime topology
+
+```
+browser ──> zapzap-proxy (nginx:alpine, :80)
+              ├─ /api/*          -> backend:9999   (nginx/nginx.conf:24-42)
+              ├─ /suscribeupdate -> backend:9999   (SSE, unbuffered, 86400s timeouts, nginx/nginx.conf:45-80)
+              └─ /               -> frontend:80    (nginx serving the Vite build)
+```
+
+- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`zapzap-rust/src/main.rs:39-48`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:51-56`). Route list: [[Api]].
+- Dev mode: Vite proxies `/api` and `/suscribeupdate` to `http://localhost:9999` (`frontend/vite.config.js:7-17`).
+
+### Real-time updates (SSE)
+
+- Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:41`, handler `zapzap-rust/src/api/sse.rs:18`.
+- Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
+- Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and every broadcast as SSE event name `event` with JSON payload (`zapzap-rust/src/api/sse.rs:51-74`).
+- Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).
+- Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Details: [[Backend]], [[Frontend]].
+
+### SQLite database
+
+- Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:47-56`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
+- **The Rust backend never creates tables**: `sqlx::migrate!` is commented out (`zapzap-rust/src/infrastructure/app_state.rs:64`) and there is no `migrations/` directory. The schema is created by the legacy Node code (`src/infrastructure/database/sqlite/DatabaseConnection.js:71-212`: users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions; plus an older `src/infrastructure/database/schemas/schema.sql`) and migrated by `scripts/docker-entrypoint.js`. A fresh DB with the Rust backend alone is empty and unusable; this is also why `zapzap-rust/tests/api_tests.rs` fails (see [[Testing]]).
+- `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
+
+### `data/` directory
+
+`zapzap-rust/data` is a symlink to `../data`, so both backends and the scripts share one directory.
+
+| Content | Producer | Consumer |
+|---------|----------|----------|
+| `zapzap.db` | legacy schema bootstrap, Rust backend at runtime | Rust backend |
+| `hard_vince_genetic_params.json`, `hard_vince_optimized_params.json`, `thibot_genetic_params.json` | `scripts/genetic-optimize-hard-vince.js`, `scripts/optimize-hard-vince.js`, `scripts/genetic-optimize-thibot.js` | the same scripts / legacy JS strategies; the Rust backend does not read them (no reference in `zapzap-rust/src`), see [[Bots]] |
+| `ml_model_*.json` (16 files, up to ~41 MB) | legacy JS ML training | `src/infrastructure/bot/ml/ModelStorage.js:14` (default dir `./data`) |
+| `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors`, `models/default/{config,weights}.json` | `scripts/train-native.js` (default save path `data/models/rust-drl`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
+| `bot-strategies/<botUserId>.json` (untracked) | LLM bot memory | Rust backend, dir overridable by `BOT_STRATEGIES_DIR` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:153-157`) |
+
+### Docker / compose
+
+| File | Era | Services |
+|------|-----|----------|
+| `docker-compose.yml` (root) | Node | `backend` built from root `Dockerfile` (node:20-alpine, `CMD node scripts/docker-entrypoint.js`, `Dockerfile:1-37`), container `zapzap-backend`; `frontend`; `nginx` = `zapzap-proxy`. Passes `GOOGLE_OAUTH_CLIENT_ID`, `BOT_ACTION_DELAY_MS`, `AWS_BEDROCK_*` (`docker-compose.yml:9-23`) |
+| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `nginx` from `../nginx/nginx.conf`. Env only `PORT`, `DATABASE_URL`, `JWT_SECRET` (default `zapzap-secret-key-change-in-production`), `RUST_LOG` (`zapzap-rust/docker-compose.yml:1-25`) |
+
+- Both compose files mount the shared `data/` (`./data` resp. `../data`) at `/app/data`.
+- The Rust compose does not forward `AWS_*`, `OLLAMA_*`, `ENABLE_LLM_BOTS` or `BOT_STRATEGIES_DIR`, which the Rust code reads (see [[Backend]]); the default image is built without the `bedrock` feature (`zapzap-rust/Cargo.toml:60-62`, `zapzap-rust/Dockerfile:33`).
+- Production's `zapzap-backend` container runs `node scripts/docker-entrypoint.js` from the root compose (checked on the NAS 2026-09-22); the Rust compose would name it `zapzap-rust-backend`. [[Deployment]].
+
+### Legacy backend (brief)
+
+- Express app, DI container in `src/infrastructure/di`, routes in `src/api/routes/*Routes.js`, SSE also at `/suscribeupdate` with `?token=` (`src/api/server.js:69-109`).
+- Still the only place that owns the SQLite schema, `POST /api/auth/google` (`src/api/routes/authRoutes.js:120-123`, missing in Rust, see [[Api]]), JS bot strategies and the JS simulation runners (`src/simulation/`).
+- Tests: jest + playwright (see [[Testing]]).
+
+## Decisions & History
+
+- 2025-11-06 `2eb575d`: the Node backend was reworked to clean architecture with the React frontend; this is the code now called legacy.
+- 2025-12-15 `9a1d37f`: `native/` first appears (with the hard bot strategy); later DRL/genetic commits grow it into the training engine that complements the JS `src/simulation/` runners.
+- 2025-12-23 `e4f83da` "rewrite backend in Rust": `zapzap-rust/` mirrors the Node layers (api / application / domain / infrastructure) and reads the DB the Node code had created, which is why no migrations were written (the `migrate!` line was left commented). Same day: background bot triggering (`8a3509b`) and broadcaster overflow mode (`c9ac7a7`, avoids blocking senders when SSE clients lag).
+- 2026-09-22 `1e063d6`: CI added, `Cargo.lock` committed, `data/zapzap.db` untracked, Rust pinned to 1.92.

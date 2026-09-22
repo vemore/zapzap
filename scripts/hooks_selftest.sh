@@ -508,6 +508,16 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 echo "== wiring ===================================================="
+# wip/ lives in the main checkout: found from its root, a subdirectory and a worktree.
+WIPREPO="$SANDBOX/wiprepo"
+git init -q "$WIPREPO" && mkdir -p "$WIPREPO/scripts" "$WIPREPO/sub/dir"
+cp "$ROOT/scripts/wip.sh" "$WIPREPO/scripts/"
+git -C "$WIPREPO" add -A && git -C "$WIPREPO" -c user.email=t@t -c user.name=t commit -qm init
+git -C "$WIPREPO" worktree add -q "$SANDBOX/wipwt" 2>/dev/null
+report "wip.sh path from the main checkout"   "$WIPREPO/wip" "$(cd "$WIPREPO" && scripts/wip.sh path)"
+report "wip.sh path from a subdirectory"      "$WIPREPO/wip" "$(cd "$WIPREPO/sub/dir" && ../../scripts/wip.sh path)"
+report "wip.sh path from a worktree"          "$WIPREPO/wip" "$(cd "$SANDBOX/wipwt" && scripts/wip.sh path)"
+
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }
 done

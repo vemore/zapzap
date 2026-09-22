@@ -1,10 +1,10 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game built with clean architecture, Node.js, Express, and vanilla JavaScript. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, and a Rust simulation engine for bot training. Production still runs the earlier Node.js/Express backend while the switch to Rust is prepared. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
-[![API Version](https://img.shields.io/badge/API-v2.0-blue.svg)](BACKEND_API.md)
+[![API Version](https://img.shields.io/badge/API-v2.0-blue.svg)](.llmwiki/Api.md)
 
 ---
 
@@ -301,73 +301,24 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 
 ## 🏗️ Architecture
 
-### Clean Architecture
+| Part | Path | Stack | Status |
+|---|---|---|---|
+| Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
+| Frontend | `frontend/` | React, Vite, react-router | deployed |
+| Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
+| Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
 
-```
-┌──────────────────────────────────────────────────────┐
-│                   API Layer                          │
-│  Express Routes + Middleware (JWT Auth)              │
-└────────────────────┬─────────────────────────────────┘
-                     │
-┌────────────────────▼─────────────────────────────────┐
-│                 Use Cases Layer                      │
-│  Business Logic (Register, Login, CreateParty, etc)  │
-└────────────────────┬─────────────────────────────────┘
-                     │
-┌────────────────────▼─────────────────────────────────┐
-│              Infrastructure Layer                    │
-│  Repositories (UserRepo, PartyRepo)                  │
-│  Services (JWT, Database)                            │
-└────────────────────┬─────────────────────────────────┘
-                     │
-┌────────────────────▼─────────────────────────────────┐
-│                 Domain Layer                         │
-│  Entities (User, Party, Round)                       │
-│  Value Objects (GameState, PartySettings)            │
-└──────────────────────────────────────────────────────┘
-```
+The detail — module layout, routes, bots, SSE, deployment — lives in the project wiki,
+[`.llmwiki/`](.llmwiki/INDEX.md), written from the code.
 
-### Project Structure
+### Continuous integration
 
-```
-zapzap/
-├── src/                        # Clean Architecture
-│   ├── domain/                 # Domain entities & value objects
-│   │   ├── entities/           # User, Party, Round
-│   │   └── value-objects/      # GameState, PartySettings
-│   ├── use-cases/              # Business logic
-│   │   ├── auth/               # Authentication use cases
-│   │   ├── party/              # Party management use cases
-│   │   └── game/               # Game action use cases
-│   ├── infrastructure/         # Infrastructure implementations
-│   │   ├── database/           # SQLite repositories
-│   │   ├── services/           # JWT, etc.
-│   │   └── di/                 # Dependency injection
-│   └── api/                    # API layer
-│       ├── server.js           # Express app
-│       ├── bootstrap.js        # DI container setup
-│       ├── middleware/         # Auth middleware
-│       └── routes/             # API route handlers
-│
-├── scripts/                    # Utility scripts
-│   ├── init-demo-data.js      # Initialize demo users/party
-│   └── test-api.js            # API integration tests
-│
-├── data/                       # SQLite database
-│   └── zapzap.db              # Game state & users
-│
-├── public/                     # Frontend assets
-│   ├── app_view.js            # UI logic & DOM manipulation
-│   └── app.css                # Styles
-│
-├── views/                      # EJS templates
-│   └── hand.ejs               # Player view template
-│
-├── app.js                      # Entry point
-├── BACKEND_API.md             # API documentation
-├── CLAUDE.md                  # Developer guide
-└── README.md                  # This file
-```
+`.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
+paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
+unit tests), native engine (fmt, tests), frontend (build), images (docker build of the
+backend and the frontend), hooks (the Claude Code hooks self-test). `master` accepts only
+squash-merged pull requests with green checks. What CI does not run yet, and why:
+[`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 
 ---
 
@@ -411,7 +362,7 @@ node scripts/test-api.js
 **Real-time:**
 - `GET /suscribeupdate` - SSE event stream
 
-See [BACKEND_API.md](BACKEND_API.md) for complete API documentation.
+These are the Node routes. The Rust backend's complete list: [`.llmwiki/Api.md`](.llmwiki/Api.md).
 
 ### Running Tests
 
@@ -649,8 +600,9 @@ Player 4: 10 points
 
 ## 📚 Documentation
 
-- **[BACKEND_API.md](BACKEND_API.md)** - Complete API reference
-- **[CLAUDE.md](CLAUDE.md)** - Developer guide for Claude Code
+- **[.llmwiki/INDEX.md](.llmwiki/INDEX.md)** - Project wiki: architecture, API, bots, deployment, testing
+- **[GAME_RULES.md](GAME_RULES.md)** - Complete game rules
+- **[CLAUDE.md](CLAUDE.md)** - Instructions for Claude Code
 
 ---
 
@@ -763,7 +715,7 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 ## 📞 Support
 
 - **Issues:** [GitHub Issues](https://github.com/vemore/zapzap/issues)
-- **Documentation:** [BACKEND_API.md](BACKEND_API.md), [CLAUDE.md](CLAUDE.md)
+- **Documentation:** [.llmwiki/INDEX.md](.llmwiki/INDEX.md), [CLAUDE.md](CLAUDE.md)
 
 ---
 

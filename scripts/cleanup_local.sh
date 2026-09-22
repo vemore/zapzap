@@ -51,7 +51,7 @@ case "${1:-}" in
     *) echo "unknown argument: $1" >&2; exit 2 ;;
 esac
 
-MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+MAIN="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 cd "$MAIN" || exit 1
 git fetch --prune -q origin 2>/dev/null || echo "warning: fetch failed, origin/master may be stale" >&2
 git rev-parse --verify -q origin/master >/dev/null || { echo "no origin/master" >&2; exit 1; }

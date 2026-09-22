@@ -1,173 +1,110 @@
-# CLAUDE.md
+# ZapZap — Instructions for Claude Code
 
-Guide for Claude Code working with ZapZap repository.
+> Budget: ≤ 120 lines; anything past it moves to the wiki page that owns it.
 
-## Project Overview
+ZapZap is a multiplayer rummy-style card game: a Rust backend (`zapzap-rust/`, axum + SQLite,
+the target), a React + Vite frontend (`frontend/`), a Rust simulation engine for bot training
+(`native/`), and the legacy Node backend (`src/`) — **which production still runs** until
+the switch to Rust (`.llmwiki/Deployment.md`).
 
-ZapZap is a multiplayer card game (rummy-style) with Node.js/Express backend, vanilla JS frontend, and a Rust native engine for bot training.
+## Read the wiki first
 
-**Stack:** Node.js, Express, SQLite, Vanilla JS (Vite), Rust (native engine)
+Durable project knowledge lives in **`.llmwiki/`**, not in this file. **Before any
+non-trivial task, read `.llmwiki/INDEX.md` and load the pages your task touches.** Do not
+guess at architecture, routes, rules or deployment — a page already has it. `[[Name]]` in a
+wiki page resolves to `.llmwiki/Name.md`. The game rules are `GAME_RULES.md`.
 
-## Quick Start
+Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip-refine`,
+`deploy`.
 
-```bash
-# Development
-npm start                    # Backend on :9999
-cd frontend && npm run dev   # Frontend on :5173
+## Non-negotiables
 
-# Initialize data
-npm run init-demo            # Create demo users (password: demo123)
-npm run init-bots            # Create bot users
+1. **The database never enters git.** `data/zapzap.db` holds every account; in production it
+   is a file in the NAS clone that a careless `git pull` can delete (`deploy` skill §0).
+2. **A rule change updates `GAME_RULES.md`** and the test that proves it, in the same change.
 
-# Testing
-npm test                     # Jest tests
-node scripts/test-api.js     # API integration tests
-```
+What a hook refuses outright — killing node, secrets, the database, `wip/` in a commit, red
+gates, committing on master, force-push, push to master, stacked pull requests, merges
+without squash — and what it does not cover: `.llmwiki/Hooks.md`.
 
-## Architecture
+## Workflow
 
-```
-src/
-├── domain/entities/         # User, Party, Round, Player
-├── domain/value-objects/    # GameState, PartySettings
-├── use-cases/              # auth/, party/, game/, bot/
-├── infrastructure/         # database/, services/, bot/
-└── api/                    # routes/, middleware/
+- **Work is tracked one file per entry under `wip/`**, which is **local and never committed**
+  (gitignored, main checkout only; `scripts/wip.sh path`): `todo/` committed to now,
+  `todo_nr/` backlog, `done/` closed. `wip/README.md`.
+- **A problem you find but were not asked to fix becomes a `wip/` entry** — not an inline
+  fix, not dropped: `todo_nr/`, or `todo/` when it blocks (security, data loss, crash,
+  production down). Then carry on. From a worktree, write it by the main checkout's path.
+- **Tooling that fights you is a `wip/` entry too** — a skill, hook, wiki procedure or this
+  file that forced a detour. The fix may be a removal; prefer replacing to adding.
+- **An entry is closed after its pull request merges**, by the orchestrator in the main
+  checkout: `mv` to `wip/done/` with a `**Status:** done (date) — closed by #PR` line.
+- **Keep every document a change falsifies true, in the same commit**: its wiki page and
+  `Updated:` date, `README.md`, `GAME_RULES.md`. `.llmwiki/Documentation.md`.
+- **Nothing is finished until it is tested and committed.** The commit hook runs the fast
+  gates, CI runs the tests. `.llmwiki/Hooks.md`, `.llmwiki/Testing.md`.
+- **A finished change is a green pull request against `master`.** Push, `gh pr create --base
+  master` with a body saying what changed and why, `gh pr checks`, fix what fails, report the
+  URL and the check state. Never stack on another branch. A branch held back sets
+  `git config branch.<name>.noPullRequest true`, and you say so.
+- **You merge and deploy your own green pull requests, through `ship-parallel`**, in the lane
+  their risk picked at planning time: squash-merge, deploy what the merge changed (`deploy`
+  skill), smoke-test production; a problem found after is a new pull request.
+  `.llmwiki/ParallelDelivery.md`.
+- **Several tasks at once are several pull requests, in parallel** — one per theme, one agent
+  and worktree each: `ship-parallel`.
+- **Leave the local environment clean**: the main checkout back on a fast-forwarded `master`,
+  then `scripts/cleanup_local.sh` and `--apply` once no agent is working.
 
-frontend/src/               # Vanilla JS + Vite
-
-native/                     # Rust native engine
-├── src/
-│   ├── headless_engine.rs  # Fast game simulation
-│   ├── game_state.rs       # Game state representation
-│   ├── card_analyzer.rs    # Card validation/scoring
-│   ├── strategies/         # Bot strategies (hard, thibot, drl)
-│   └── training/           # DRL training (DuelingDQN, replay buffer)
-```
-
-## Key Files
-
-| Purpose | File |
-|---------|------|
-| Game logic | `src/use-cases/game/CallZapZap.js`, `PlayCards.js`, `DrawCard.js` |
-| Game state | `src/domain/value-objects/GameState.js` |
-| Bot strategies | `src/infrastructure/bot/strategies/` |
-| Card validation | `src/infrastructure/bot/CardAnalyzer.js` |
-| Native engine | `native/src/headless_engine.rs` |
-| DRL training | `native/src/training/trainer.rs` |
-
-## API Endpoints
-
-```
-POST /api/auth/login, /register     # Authentication
-GET  /api/party                     # List parties
-POST /api/party                     # Create party
-POST /api/party/:id/join, /leave, /start
-GET  /api/game/:partyId/state       # Game state
-POST /api/game/:partyId/play, /draw, /zapzap
-GET  /api/bots                      # List available bots
-GET  /suscribeupdate                # SSE real-time updates
-```
-
-## Card System
-
-- **IDs:** 0-12 Spades, 13-25 Hearts, 26-38 Clubs, 39-51 Diamonds, 52-53 Jokers
-- **Values:** A=1, 2-10=face, J=11, Q=12, K=13, Joker=0 (play) / 25 (score)
-- **ZapZap:** Hand ≤5 points to call. If counteracted: +hand + (players-1)×5
-
-## Bot Types
-
-| Type | Difficulty | Description |
-|------|------------|-------------|
-| easy, medium, hard | Bot | Rule-based strategies |
-| hard_vince | Bot | Enhanced hard strategy |
-| thibot | Bot | Thibot strategy |
-| drl | Bot | Deep RL (DuelingDQN) |
-| llm | Bot | LLM-based (requires Ollama) |
-
-## Native Engine (Rust)
+## Commands
 
 ```bash
-cd native
-cargo build --release        # Build
-cargo test                   # Run tests
-cargo test golden_score      # Specific tests
+# Rust backend (toolchain pinned: rust-toolchain.toml)
+cd zapzap-rust && cargo run                      # :9999, needs a DB the Node side initialised
+cargo fmt && cargo clippy --all-targets -- -D warnings
+cargo test --lib --bins                          # tests/api_tests.rs is red: .llmwiki/Testing.md
+
+# Frontend
+cd frontend && npm ci && npm run dev             # :5173, proxies /api to :9999
+npm run build
+
+# Native engine and training
+cd native && cargo test
+node scripts/train-native.js                     # .llmwiki/NativeEngine.md
+
+# Legacy Node backend (what production runs)
+npm start                                        # :9999
+npm run init-demo && npm run init-bots           # demo users (demo123), bot users
+
+# Tooling
+scripts/wip.sh list all                          # the local backlog
+scripts/hooks_selftest.sh                        # the hooks
 ```
 
-**Training:**
-```bash
-node scripts/train-native.js              # Train DRL bot
-node scripts/run-simulation.js            # Run simulations
-node scripts/genetic-optimize-hard.js     # Optimize hard bot
-```
+Kill a local server by port, never by name: `lsof -ti:9999 | xargs kill`.
 
-## Production
+## Code style
 
-**Server:** `vemore@192.168.1.147` (Synology NAS)
-**URL:** `https://zapzap.ombivince.synology.me/`
+- Rust: `cargo fmt`, clippy clean with `-D warnings`; errors via `thiserror`/`anyhow`.
+- Frontend: React function components and hooks; API calls through `frontend/src/services/`.
+- Match the surrounding code: its comment density, naming and idiom.
 
-**Containers:**
-- `zapzap-backend` - Node.js backend
-- `zapzap-frontend` - Nginx serving frontend
-- `zapzap-proxy` - Reverse proxy
+## Git
 
-**Deploy changes:**
-```bash
-# Copy file to production
-scp <file> vemore@192.168.1.147:/tmp/
-ssh vemore@192.168.1.147 "docker cp /tmp/<file> zapzap-backend:/app/<path>"
-ssh vemore@192.168.1.147 "docker restart zapzap-backend"
-
-# Check logs
-ssh vemore@192.168.1.147 "docker logs --tail 50 zapzap-backend"
-```
-
-## Database
-
-**SQLite:** `data/zapzap.db`
-
-**Key tables:** `users`, `parties`, `party_players`, `rounds`, `game_state`, `round_scores`, `game_results`, `game_actions`
+**Start every piece of work on a fresh branch off the current `master`, in its own
+worktree**, before the first commit. The main checkout stays on `master`; the hooks never
+fetch, so the fetch is on you.
 
 ```bash
-sqlite3 data/zapzap.db "SELECT * FROM users;"
-sqlite3 data/zapzap.db ".schema"
+git fetch --prune origin
+git worktree add ../zapzap-<short-topic> -b <type>/<short-topic> origin/master
+scripts/worktree_setup.sh ../zapzap-<short-topic>        # npm ci, cargo warm-up; --deploy links .env
 ```
 
-## Testing Workflow
+An agent launched with `isolation: "worktree"` has its worktree already, and switches to
+`<type>/<short-topic>` off `origin/master` as its first step.
 
-1. Test backend changes with direct API calls first
-2. Test with browser for full integration
-3. Fix any bugs before committing
-4. Commit to local git repo
-
-## Dangerous Commands - NEVER RUN
-
-```bash
-# NEVER - kills VSCode WSL connection
-pkill -9 -f "node"
-killall -9 node
-```
-
-**Safe alternatives:**
-```bash
-lsof -ti:9999 | xargs kill 2>/dev/null   # Kill port 9999
-pkill -f "nodemon"                        # Kill specific process
-```
-
-## Environment Variables
-
-```env
-PORT=9999
-NODE_ENV=development
-DB_PATH=./data/zapzap.db
-JWT_SECRET=your-secret-key
-LOG_LEVEL=info
-```
-
-## Game Rules
-
-See [GAME_RULES.md](GAME_RULES.md) for complete game rules including:
-- Card values and valid combinations
-- Turn flow (play → draw)
-- ZapZap eligibility and scoring
-- Golden Score rules (lowest hand wins, caller loses on tie)
+- Branch names `<type>/<short-topic>`; commit messages `feat:`, `fix:`, `refactor:`, `docs:`,
+  `chore:`.
+- Never force-push, never rewrite a commit on `origin/master`. Bring a branch up to date by
+  merging `master` in: `gh api -X PUT repos/{owner}/{repo}/pulls/<n>/update-branch`.
