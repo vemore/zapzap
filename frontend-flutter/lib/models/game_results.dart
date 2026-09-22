@@ -58,8 +58,9 @@ class ZapZapResult {
   const ZapZapResult({
     required this.zapzapSuccess,
     required this.counteracted,
-    required this.scores,
     required this.callerPoints,
+    this.totalScores,
+    this.roundScores,
     this.counteractedByPlayerIndex,
     this.counteractedBy,
     this.handPoints,
@@ -67,12 +68,16 @@ class ZapZapResult {
 
   factory ZapZapResult.fromJson(JsonMap json) {
     final by = json['counteractedBy'];
+    // The backends put different numbers under the same key: Node sends the
+    // running totals as an object, Rust this round's points as a list.
+    final scores = json['scores'];
     return ZapZapResult(
       zapzapSuccess: Json.boolean(json, 'zapzapSuccess'),
       counteracted: Json.boolean(json, 'counteracted'),
       counteractedByPlayerIndex: Json.intOrNull(by),
       counteractedBy: by?.toString(),
-      scores: Json.intMap(json['scores']),
+      totalScores: scores is Map ? Json.intMap(scores) : null,
+      roundScores: scores is List ? Json.intMap(scores) : null,
       handPoints: json['handPoints'] is Map
           ? Json.intMap(json['handPoints'])
           : null,
@@ -90,9 +95,17 @@ class ZapZapResult {
   /// Who counteracted, as sent (Rust sends a string).
   final String? counteractedBy;
 
-  /// This round's score per player index (Node: an object; Rust: a list of
-  /// `{playerIndex, score}` — both read here).
-  final Map<int, int> scores;
+  /// Node only (`scores` as an object): each player's total score after
+  /// this round.
+  final Map<int, int>? totalScores;
+
+  /// Rust only (`scores` as a list of `{playerIndex, score}`): the points
+  /// each player scored this round.
+  ///
+  /// Exactly one of [totalScores] and [roundScores] is set. Either way the
+  /// finished round's `GET /game/:id/state` carries both (`scores` and
+  /// `roundScores`), so screens should read that rather than this.
+  final Map<int, int>? roundScores;
 
   /// Node only: hand points per player index.
   final Map<int, int>? handPoints;

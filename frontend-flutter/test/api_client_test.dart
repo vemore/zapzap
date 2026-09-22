@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -214,6 +215,74 @@ void main() {
           ),
         ),
       );
+    });
+
+    test(
+      'a TLS failure, not wrapped by the client, is NETWORK_ERROR',
+      () async {
+        for (final failure in <Exception>[
+          const HandshakeException('CERTIFICATE_VERIFY_FAILED'),
+          const TlsException('bad record'),
+          const SocketException('Network is unreachable'),
+        ]) {
+          final api = ApiClient(
+            config: config,
+            httpClient: MockClient((_) async => throw failure),
+          );
+          await expectLater(
+            api.get('/party'),
+            throwsA(
+              isA<ApiException>()
+                  .having((e) => e.code, 'code', ApiErrorCode.network)
+                  .having((e) => e.status, 'status', 0),
+            ),
+            reason: failure.runtimeType.toString(),
+          );
+        }
+      },
+    );
+
+    test('one deadline covers the headers and the body together', () async {
+      // Headers after 60 % of the timeout, the body after another 60 %:
+      // each part alone fits, the whole request does not.
+      const timeout = Duration(milliseconds: 200);
+      const part = Duration(milliseconds: 120);
+      final api = ApiClient(
+        config: config,
+        timeout: timeout,
+        httpClient: MockClient.streaming((request, _) async {
+          await Future<void>.delayed(part);
+          final body = Stream<List<int>>.fromFuture(
+            Future.delayed(part, () => utf8.encode('{}')),
+          );
+          return http.StreamedResponse(body, 200);
+        }),
+      );
+      await expectLater(
+        api.get('/party'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            ApiErrorCode.timeout,
+          ),
+        ),
+      );
+    });
+
+    test('a slow but in-time answer is not a timeout', () async {
+      final api = ApiClient(
+        config: config,
+        timeout: const Duration(milliseconds: 300),
+        httpClient: MockClient.streaming((request, _) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return http.StreamedResponse(
+            Stream.value(utf8.encode('{"ok":true}')),
+            200,
+          );
+        }),
+      );
+      expect(await api.get('/party'), {'ok': true});
     });
 
     test('a 2xx that is not a JSON object is INVALID_RESPONSE', () async {

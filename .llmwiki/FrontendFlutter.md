@@ -83,7 +83,8 @@
   text from `code` (`ApiErrorCode` names the codes they react to).
 - **Repositories** (`repositories/*.dart`), stateless, each `XRepository(ApiClient)`:
   `AuthRepository` (login, register, loginWithGoogle — Node only), `PartyRepository` (list,
-  create, details, join, leave, start, delete, bots, connectedPlayers), `GameRepository`
+  create — `playerCount` required, Node rejects a create without it —, details, join,
+  leave, start, delete, bots, connectedPlayers), `GameRepository`
   (state, selectHandSize, play, drawFromDeck, drawFromPlayed, zapZap, nextRound),
   `HistoryRepository` (mine = `GET /history`, public, details), `StatsRepository` (mine,
   user, leaderboard, bots), `AdminRepository` (users, deleteUser, setAdmin, parties,
@@ -103,6 +104,8 @@
 - **Parsing rules** (`models/json.dart`), because the two backends disagree on types:
   maps keyed by player index arrive with string keys (`{"0": 28}`) and become `Map<int, …>`;
   Rust sends some of them as `[{playerIndex, score}]` (zapzap `scores`, nextRound), read too.
+  A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
+  can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,
   `connectedAt`), or numeric/RFC 3339 strings (Rust `createdAt`); all become UTC `DateTime`.
   Ids are strings even when Node sends an integer (party seat `id`). Node's history
@@ -113,8 +116,11 @@
   enableGoldenScore, goldenScoreThreshold}` on Rust, so `PartySettings` has both, all
   optional; history entries carry `totalRounds`/`winnerFinalScore` (Node) or
   `roundsPlayed`/`userPlacement`/`userScore` (Rust); Node `join` has no `playerIndex`; Node
-  `zapzap` adds a `handPoints` map, Rust sends one number; `counteractedBy` is an index on
-  Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
+  `zapzap` adds a `handPoints` map, Rust sends one number; zapzap `scores` are the running
+  **totals** after the round on Node (an object, `src/use-cases/game/CallZapZap.js:121-125`)
+  but the **round's own points** on Rust (a list, `zapzap-rust/src/domain/services/game_service.rs:228`),
+  so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
+  `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
   the deck, deliberately not parsed.
 - **Fixtures** (`test/fixtures/*.json`): answers captured from the local Node backend
   (`PORT=9911 node app.js` on a worktree database after `npm run init-demo && npm run

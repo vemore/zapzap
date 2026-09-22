@@ -88,7 +88,8 @@ void main() {
 
     final created = await party.create(
       name: 'Friday',
-      settings: const PartySettings(playerCount: 4, handSize: 5),
+      playerCount: 4,
+      settings: const PartySettings(playerCount: 8, handSize: 5),
       botIds: ['b1'],
     );
     expect(created.botsJoined, 2);
@@ -97,6 +98,15 @@ void main() {
       'visibility': 'public',
       'settings': {'playerCount': 4, 'handSize': 5},
       'botIds': ['b1'],
+    });
+    // Without settings, playerCount is still sent (Node rejects a create
+    // without it).
+    await party.create(name: 'Bare', playerCount: 3);
+    expect(backend.lastBody, {
+      'name': 'Bare',
+      'visibility': 'public',
+      'settings': {'playerCount': 3},
+      'botIds': <String>[],
     });
 
     expect((await party.details('p1')).players, hasLength(3));

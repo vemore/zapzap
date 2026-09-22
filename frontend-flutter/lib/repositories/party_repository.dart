@@ -26,10 +26,13 @@ class PartyRepository {
     return Page.fromJson(json, 'parties', PartySummary.fromJson);
   }
 
-  /// `POST /party`. Node requires `settings.playerCount` (3-8): without it
-  /// the answer is 500 `CREATE_PARTY_ERROR`.
+  /// `POST /party`. [playerCount] (3-8, the seats) is required because Node
+  /// answers 500 `CREATE_PARTY_ERROR` without it; Rust ignores it. It is
+  /// sent as `settings.playerCount` and overrides any in [settings], which
+  /// carries the Rust keys (`handSize`, `maxScore`...).
   Future<CreatePartyResult> create({
     required String name,
+    required int playerCount,
     String visibility = 'public',
     PartySettings settings = const PartySettings(),
     List<String> botIds = const [],
@@ -39,7 +42,7 @@ class PartyRepository {
       body: {
         'name': name,
         'visibility': visibility,
-        'settings': settings.toJson(),
+        'settings': {...settings.toJson(), 'playerCount': playerCount},
         'botIds': botIds,
       },
     ),

@@ -81,12 +81,18 @@ class ApiClient {
 
     final http.Response response;
     try {
-      response = await http.Response.fromStream(
-        await _http.send(request).timeout(timeout),
-      ).timeout(timeout);
+      // One deadline for the headers and the body together.
+      response = await _http
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(timeout);
     } on TimeoutException {
       throw ApiException.timeout(timeout);
-    } on http.ClientException catch (error) {
+    } on Exception catch (error) {
+      // ClientException, and the dart:io errors some clients let through
+      // unwrapped (SocketException, TlsException, HandshakeException).
+      // Imported by type they would tie this file to dart:io, which the web
+      // build lacks; every one of them is an Exception.
       throw ApiException.network(error);
     }
 

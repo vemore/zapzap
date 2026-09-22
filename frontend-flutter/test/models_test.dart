@@ -287,12 +287,13 @@ void main() {
       expect(select.handSize, 5);
     });
 
-    test('zapzap (Node: scores and handPoints as objects)', () {
+    test('zapzap (Node: scores are running totals, as an object)', () {
       final result = ZapZapResult.fromJson(fixture('game_zapzap'));
       expect(result.zapzapSuccess, isTrue);
       expect(result.counteracted, isFalse);
       expect(result.counteractedByPlayerIndex, isNull);
-      expect(result.scores, {0: 0, 1: 23, 2: 9});
+      expect(result.totalScores, {0: 0, 1: 23, 2: 9});
+      expect(result.roundScores, isNull);
       expect(result.handPoints, {0: 28, 1: 23, 2: 9});
       expect(result.callerPoints, 3);
       final after = GameSnapshot.fromJson(fixture('game_state_after_zapzap'))
@@ -302,7 +303,7 @@ void main() {
       expect(after.roundScores, {0: 0, 1: 23, 2: 9});
     });
 
-    test('zapzap (Rust: scores as a list, counteractedBy a string)', () {
+    test('zapzap (Rust: scores are the round\'s points, as a list)', () {
       final result = ZapZapResult.fromJson({
         'success': true,
         'zapzapSuccess': false,
@@ -318,8 +319,24 @@ void main() {
       expect(result.counteracted, isTrue);
       expect(result.counteractedBy, '2');
       expect(result.counteractedByPlayerIndex, 2);
-      expect(result.scores, {0: 30, 2: 0});
+      expect(result.roundScores, {0: 30, 2: 0});
+      expect(result.totalScores, isNull);
       expect(result.handPoints, isNull);
+    });
+
+    test('zapzap after round 1: Node totals are not round points', () {
+      // Round 2: totals were {0: 28, 1: 49}; Node reports 28+9 and 49+12.
+      final result = ZapZapResult.fromJson({
+        'success': true,
+        'zapzapSuccess': true,
+        'counteracted': false,
+        'counteractedBy': null,
+        'scores': {'0': 37, '1': 61, '2': 0},
+        'handPoints': {'0': 9, '1': 12, '2': 2},
+        'callerPoints': 2,
+      });
+      expect(result.totalScores, {0: 37, 1: 61, 2: 0});
+      expect(result.roundScores, isNull);
     });
 
     test('next round (Node)', () {
