@@ -18,12 +18,13 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Architecture]] | The four code bases (Rust backend, React frontend, native engine, legacy Node), runtime topology, SSE, `data/`, the compose files | 2026-09-22 |
+| [[Architecture]] | The five code bases (Rust backend, React frontend, Flutter client, native engine, legacy Node), runtime topology, SSE, `data/`, the compose files | 2026-09-22 |
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-22 |
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, no schema of its own | 2026-09-22 |
 | [[Api]] | Every Rust route, its auth and failure codes | 2026-09-22 |
 | [[Bots]] | Bot types and strategies, LLM bot, parameters in `data/` | 2026-09-22 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-22 |
+| [[FrontendFlutter]] | `frontend-flutter/`: the Flutter client (Android + PWA under `/app/`), lib layout, ApiConfig, theme, l10n fr/en, build and tests | 2026-09-22 |
 | [[NativeEngine]] | `native/`: headless engine, DRL training, the Node scripts that drive it | 2026-09-22 |
 
 ## Operations and process

@@ -129,6 +129,10 @@ native/*.node
 zapzap-rust/target/
 # zapzap-rust/Cargo.lock is committed: the image build copies it and CI runs --locked.
 
+# Flutter client (frontend-flutter/.gitignore has the rest)
+frontend-flutter/build/
+frontend-flutter/.dart_tool/
+
 # NAPI-RS build artifacts
 native/artifacts/
 

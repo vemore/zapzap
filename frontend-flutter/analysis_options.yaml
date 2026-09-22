@@ -1,0 +1,12 @@
+# flutter analyze: the recommended Flutter lints, as in countscore.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - web/**
+    - lib/l10n/app_localizations*.dart
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_single_quotes: true

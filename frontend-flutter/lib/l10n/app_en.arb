@@ -1,0 +1,10 @@
+{
+  "@@locale": "en",
+  "appTitle": "ZapZap",
+  "homeTagline": "The multiplayer card game",
+  "homeLoginButton": "Sign in",
+  "loginTitle": "Sign in",
+  "loginComingSoon": "Signing in is coming soon.",
+  "notFoundTitle": "Page not found",
+  "notFoundBackHome": "Back to home"
+}

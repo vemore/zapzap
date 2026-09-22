@@ -1,6 +1,6 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, and a Rust simulation engine for bot training. Production still runs the earlier Node.js/Express backend while the switch to Rust is prepared. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production still runs the earlier Node.js/Express backend while the switch to Rust is prepared. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -305,8 +305,18 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | scaffold, not deployed; Android (debug) + PWA under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 | Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
+
+The Flutter client, from `frontend-flutter/`:
+
+```bash
+flutter pub get && flutter analyze && flutter test
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999
+flutter build web --base-href /app/          # the PWA, served under /app/
+flutter build apk --debug                    # Android, needs the Android SDK
+```
 
 The detail — module layout, routes, bots, SSE, deployment — lives in the project wiki,
 [`.llmwiki/`](.llmwiki/INDEX.md), written from the code.
