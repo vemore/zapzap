@@ -501,7 +501,7 @@ void main() {
           allHands: {
             '0': [0, 1, 2],
             '1': [10, 11],
-            '2': [3],
+            '2': [14],
           },
           roundScores: {'0': 28, '1': 49, '2': 0},
           scores: {'0': 28, '1': 49, '2': 0},
@@ -524,7 +524,7 @@ void main() {
           wasCounterActed: true,
           counterActedByPlayerIndex: 1,
           allHands: {
-            '0': [0, 3],
+            '0': [0, 2],
             '1': [13],
             '2': [22, 9],
           },
@@ -550,26 +550,27 @@ void main() {
       expect(find.byType(GameHand), findsNothing);
 
       // The call held: the green banner, no penalty.
+      expect(find.text('MediumBot1 a réussi son ZapZap !'), findsOneWidget);
       expect(
-        find.text('MediumBot1 a réussi son ZapZap !'),
+        find.text(
+          'Sa main valait 2 points, la plus basse de la table : '
+          'MediumBot1 marque 0.',
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('contré'), findsNothing);
+      expect(find.textContaining('ontré'), findsNothing);
 
       // Lowest round score first, and the badges of the player who closed.
       expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
       expect(topOf(tester, 0), lessThan(topOf(tester, 1)));
-      expect(find.text('#1'), findsOneWidget);
-      expect(find.text('Main la plus basse'), findsOneWidget);
-      expect(find.text('ZapZap'), findsOneWidget);
+      expect(find.byTooltip('Main la plus basse'), findsOneWidget);
+      expect(find.byTooltip('ZapZap'), findsOneWidget);
       expect(find.text('Éliminé'), findsNothing);
 
-      // This round over the total, and every hand revealed.
-      expect(find.text('0 pts'), findsOneWidget);
-      expect(find.text('28 pts'), findsOneWidget);
-      expect(find.text('49 pts'), findsOneWidget);
-      expect(find.text('Cette manche'), findsNWidgets(3));
-      expect(find.text('Score total'), findsNWidgets(3));
+      // This round's points beside the total, and every hand revealed.
+      expect(find.text('+0'), findsOneWidget);
+      expect(find.text('+28'), findsOneWidget);
+      expect(find.text('+49'), findsOneWidget);
       expect(find.byType(PlayingCard), findsNWidgets(6));
 
       await tester.tap(find.byKey(const Key('next-round')));
@@ -577,9 +578,7 @@ void main() {
       expect(backend.paths, contains('/api/game/p1/nextRound'));
     });
 
-    testWidgets('a counteracted ZapZap spells out the penalty', (
-      tester,
-    ) async {
+    testWidgets('a counteracted ZapZap spells out the penalty', (tester) async {
       await pumpGame(tester, zapZapCounteracted());
 
       expect(find.text('Manche 4'), findsOneWidget);
@@ -587,7 +586,10 @@ void main() {
         find.text('Vincent a appelé ZapZap mais a été contré !'),
         findsOneWidget,
       );
-      expect(find.text('Contré par EasyBot1'), findsOneWidget);
+      expect(
+        find.text('Contré par EasyBot1 (1 ≤ 4) : 4 + 10 de pénalité.'),
+        findsOneWidget,
+      );
       expect(
         find.text('Pénalité : 4 + (3 − 1) × 5 = 14 points'),
         findsOneWidget,
@@ -597,8 +599,8 @@ void main() {
       // its crown even though it never called.
       expect(topOf(tester, 1), lessThan(topOf(tester, 2)));
       expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
-      expect(find.text('14 pts'), findsOneWidget);
-      expect(find.text('Main la plus basse'), findsOneWidget);
+      expect(find.text('+14'), findsOneWidget);
+      expect(find.byTooltip('Main la plus basse'), findsOneWidget);
       expect(find.byKey(const Key('next-round')), findsOneWidget);
     });
 
@@ -639,7 +641,7 @@ void main() {
       expect(find.text('Score final : 12 points'), findsOneWidget);
       expect(find.text('Éliminé'), findsOneWidget);
       expect(
-        find.text('Main la plus basse'),
+        find.byTooltip('Main la plus basse'),
         findsNothing,
         reason: 'a player who is out does not hold the lowest hand',
       );
@@ -842,11 +844,7 @@ void main() {
                 currentTurn: 0,
                 currentAction: 'finished',
                 gameFinished: true,
-                winner: {
-                  'playerIndex': 0,
-                  'username': 'Vincent',
-                  'score': 12,
-                },
+                winner: {'playerIndex': 0, 'username': 'Vincent', 'score': 12},
                 eliminatedPlayers: [1, 2],
                 allHands: {
                   '0': [5],

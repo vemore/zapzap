@@ -372,8 +372,15 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
 - **A player's round score** is `roundScores[index]`, else 0 for `lowestHandPlayerIndex`
   and `handPoints[index]` for everybody else, as React reads it. Players are laid out
   lowest round score first; ties keep turn order, which `List.sort` alone does not promise.
-- **Badges**: `#1` for the first of the standings when they are not out, Lowest Hand for
-  `lowestHandPlayerIndex`, Eliminated, ZapZap for `zapZapCaller`. **Eliminated** is
+- **A table, not a card per player** (F1 of the UX study, 2026-09-23): one row per
+  player — rank, name, the revealed hand (`allHands`) in miniature (22 px `PlayingCard`s
+  that overlap as much as the column needs), `+` this round's points, the total —, under a
+  header row; above a 1.2 text scale the miniature goes under the name. Four players and
+  the button fit a 360x740 phone without scrolling, eight at a 1.0 text scale.
+- **Markers**: a bolt for `zapZapCaller` and a crown for `lowestHandPlayerIndex`, icons with
+  a tooltip and a semantic label so a row stays one line; "You" on the caller's own row,
+  which is also tinted with an amber edge (`isMe`, from `myPlayerIndex`); Eliminated in
+  words, not in colour alone. The rank column replaced the `#1` badge. **Eliminated** is
   `eliminatedPlayers` *or* a total above 100 (`GAME_RULES.md`): Node fills the list, React
   only compares the total, and either alone misses a case. A player who is out never gets
   the Lowest Hand badge, as in React: on the last round of a game Node points
@@ -382,17 +389,28 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   then names who counteracted and spells the penalty out:
   `handValue + (activePlayers − 1) × 5`, where `activePlayers` are those whose total
   *before* the round (`total − roundScore`) was 100 or less. React counts the totals after
-  it instead, so it charges a player who was eliminated by this very round.
-- **Each hand is revealed** (`allHands`) as disabled `PlayingCard`s in a `Wrap` — 38 px
-  wide under 640 px, 52 above — with this round's points and the total beside each other in
-  two tiles of equal height (`IntrinsicHeight`: the column they sit in has no height to
-  stretch them to).
-- **The way on** is Next round (`POST /nextRound`, disabled while a move is in flight), or,
-  once `gameFinished`, the winner banner (`winner.username`, its final score) and Back to
-  games.
-- Every badge's text and every name is `Flexible` inside its `Row`: a `Row` that sizes
-  itself to its children hands an unbounded width to its text, and "Main la plus basse"
-  then runs off a 360 px phone at a 1.5 text scale.
+  it instead, so it charges a player who was eliminated by this very round. Under its
+  title, one sentence says why (F2): held — "their hand was worth n points, the lowest at
+  the table: X scores 0"; counteracted — "Counteracted by Y (a ≤ b): hand + penalty". `a`
+  and `b` are the hand values the call was decided on, a Joker counting 0
+  (`handValue(allHands[i])`, `utils/rules.dart`); `hand` is `handPoints`, where the backend
+  counts it 25 — so a caller holding a Joker reads "(1 ≤ 1): 26 + 15".
+- **The danger zone** (F3): under each row a bar of the total towards 100, amber, red above
+  80 (`RoundEndScoreBar`), full once the player is out.
+- **Totals climb** (F5): the total and its bar go from `total − roundScore` to `total` in
+  400 ms (`TweenAnimationBuilder`), at once when `MediaQuery.disableAnimations` is set.
+- **The way on is pinned** under the scrolling table (F4): Next round (`POST /nextRound`,
+  disabled while a move is in flight) with "Round n+1: X picks the hand size" above it, or,
+  once `gameFinished`, Back to games, the winner banner (`winner.username`, its final
+  score) heading the page. X is the seat after this round's `startingPlayer`, skipping
+  whoever is out (`GAME_RULES.md` "Subsequent Rounds", `src/use-cases/game/NextRound.js`).
+- Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
+  sizes itself to its children hands an unbounded width to its text, which then runs off a
+  360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
+  at text scales 1.0 and 1.5.
+- Checked in the PWA (2026-09-23, Chromium at 360x740, the web build against a stand-in API
+  answering a finished round): the held and the counteracted round as in the study's
+  mockup.
 
 ### History and statistics
 
@@ -595,6 +613,12 @@ project `.gitignore`.
   official archive plus its sha256 pins it exactly. The bundle also gets its own image and
   container rather than being copied into the React one, so the two clients are built and
   rolled back separately ([[Deployment]]).
+- **The end of a round is a table (2026-09-23, `feat/flutter-round-end-ux`).** The UX
+  study (F1–F5) found a card per player, ~200 px each, showed three players of four and
+  made comparing a matter of scrolling. A table row per player, the result in one sentence,
+  the player's own row and a bar towards 100, the button pinned with who deals next, and
+  totals that climb, all in the existing theme. The badges of the lowest hand and the
+  caller became icons so a row stays one line.
 - **The web icons are the launcher icon (2026-09-23).** Flutter's default web icons shipped
   until then; they are now rendered from the same `assets/icon/` SVGs as the Android
   launcher icon, plus a maskable variant for the install prompt.

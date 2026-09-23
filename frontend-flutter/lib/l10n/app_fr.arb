@@ -1464,28 +1464,85 @@
   "@gameRoundOverHandLabel": {
     "description": "Label above a player's revealed hand"
   },
-  "gameRoundEndThisRound": "Cette manche",
-  "@gameRoundEndThisRound": {
-    "description": "Label of a player's points for the round that just ended"
+  "gameRoundEndColumnRank": "#",
+  "@gameRoundEndColumnRank": {
+    "description": "Header of the rank column of the end-of-round table"
   },
-  "gameRoundEndTotalScore": "Score total",
-  "@gameRoundEndTotalScore": {
-    "description": "Label of a player's total score"
+  "gameRoundEndColumnPlayer": "Joueur",
+  "@gameRoundEndColumnPlayer": {
+    "description": "Header of the name column of the end-of-round table"
   },
-  "gameRoundEndPoints": "{score} pts",
-  "@gameRoundEndPoints": {
-    "description": "A number of points",
+  "gameRoundEndColumnRound": "Manche",
+  "@gameRoundEndColumnRound": {
+    "description": "Header of the column of this round's points"
+  },
+  "gameRoundEndColumnTotal": "Total",
+  "@gameRoundEndColumnTotal": {
+    "description": "Header of the column of the total score"
+  },
+  "gameRoundEndRoundPoints": "+{score}",
+  "@gameRoundEndRoundPoints": {
+    "description": "What a player scored this round, in the end-of-round table",
     "placeholders": {
       "score": {
         "type": "int"
       }
     }
   },
-  "gameRankBadge": "#{rank}",
-  "@gameRankBadge": {
-    "description": "Badge of the player with the lowest round score",
+  "gameRoundEndDangerLegend": "Barre : total vers 100. Au-delà de 100, le joueur est éliminé.",
+  "@gameRoundEndDangerLegend": {
+    "description": "Legend of the bar under each row of the end-of-round table (GAME_RULES.md, Game Elimination)"
+  },
+  "gameRoundOverZapZapHeldDetail": "Sa main valait {value} points, la plus basse de la table : {player} marque 0.",
+  "@gameRoundOverZapZapHeldDetail": {
+    "description": "Why a ZapZap held (GAME_RULES.md, Final Scoring); the value counts a Joker 0",
     "placeholders": {
-      "rank": {
+      "player": {
+        "type": "String"
+      },
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "gameRoundOverCounteractedDetail": "Contré par {player} ({counter} ≤ {caller}) : {hand} + {penalty} de pénalité.",
+  "@gameRoundOverCounteractedDetail": {
+    "description": "Why a ZapZap was counteracted and what it cost the caller (GAME_RULES.md, counteract)",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "counter": {
+        "type": "int"
+      },
+      "caller": {
+        "type": "int"
+      },
+      "hand": {
+        "type": "int"
+      },
+      "penalty": {
+        "type": "int"
+      }
+    }
+  },
+  "gameNextRoundChooser": "Manche {number} : {player} choisit la taille de la main",
+  "@gameNextRoundChooser": {
+    "description": "Who picks the hand size of the next round (GAME_RULES.md, Subsequent Rounds)",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameNextRoundChooserMe": "Manche {number} : à vous de choisir la taille de la main",
+  "@gameNextRoundChooserMe": {
+    "description": "The caller picks the hand size of the next round",
+    "placeholders": {
+      "number": {
         "type": "int"
       }
     }
