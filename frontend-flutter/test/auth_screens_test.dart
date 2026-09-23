@@ -262,7 +262,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Serveur injoignable. Vérifiez votre connexion.'),
+        find.text('Serveur injoignable. Vérifie ta connexion.'),
         findsOneWidget,
       );
     });

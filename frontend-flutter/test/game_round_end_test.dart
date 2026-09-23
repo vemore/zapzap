@@ -276,7 +276,7 @@ void main() {
           textScale: scale,
         );
 
-        // Only my row carries "Vous" and the amber edge.
+        // Only my row carries "Toi" and the amber edge.
         expect(inRow(0, find.byKey(const Key('roundEndMe'))), findsOneWidget);
         expect(find.byKey(const Key('roundEndMe')), findsOneWidget);
         final mine =
@@ -360,7 +360,7 @@ void main() {
     testWidgets('the rotation wraps round to me', (tester) async {
       await pumpGame(tester, zapZapHeld(startingPlayer: 3));
       expect(
-        find.text('Manche 2 : à vous de choisir la taille de la main'),
+        find.text('Manche 2 : à toi de choisir la taille de la main'),
         findsOneWidget,
       );
     });
