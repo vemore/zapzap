@@ -51,11 +51,7 @@ describe('ListPublicParties Use Case', () => {
             expect(result.parties[1].currentPlayers).toBe(1);
             expect(result.parties[1].isFull).toBe(false);
 
-            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith({
-                status: undefined,
-                limit: 50,
-                offset: 0
-            });
+            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith(undefined, 50, 0);
         });
 
         it('should filter by status', async () => {
@@ -63,11 +59,7 @@ describe('ListPublicParties Use Case', () => {
 
             await listPublicParties.execute({ status: 'waiting' });
 
-            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith({
-                status: 'waiting',
-                limit: 50,
-                offset: 0
-            });
+            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith('waiting', 50, 0);
         });
 
         it('should apply pagination', async () => {
@@ -80,11 +72,7 @@ describe('ListPublicParties Use Case', () => {
 
             expect(result.pagination.limit).toBe(10);
             expect(result.pagination.offset).toBe(20);
-            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith({
-                status: undefined,
-                limit: 10,
-                offset: 20
-            });
+            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith(undefined, 10, 20);
         });
 
         it('should mark full parties correctly', async () => {
@@ -114,11 +102,7 @@ describe('ListPublicParties Use Case', () => {
 
             await listPublicParties.execute({});
 
-            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith({
-                status: undefined,
-                limit: 50,
-                offset: 0
-            });
+            expect(mockPartyRepository.findPublicParties).toHaveBeenCalledWith(undefined, 50, 0);
         });
     });
 

@@ -71,7 +71,7 @@ describe('RegisterUser Use Case', () => {
                 registerUser.execute({
                     password: 'password123'
                 })
-            ).rejects.toThrow('Username is required');
+            ).rejects.toThrow('Le pseudo est requis');
         });
 
         it('should reject empty username', async () => {
@@ -88,7 +88,7 @@ describe('RegisterUser Use Case', () => {
                 registerUser.execute({
                     username: 'testuser'
                 })
-            ).rejects.toThrow('Password is required');
+            ).rejects.toThrow('Le mot de passe est requis');
         });
 
         it('should reject empty password', async () => {
@@ -110,7 +110,7 @@ describe('RegisterUser Use Case', () => {
                     username: 'existinguser',
                     password: 'password123'
                 })
-            ).rejects.toThrow('Username already exists');
+            ).rejects.toThrow('Ce pseudo est déjà pris');
 
             expect(mockUserRepository.save).not.toHaveBeenCalled();
             expect(mockJwtService.sign).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('RegisterUser Use Case', () => {
                     username: 'testuser',
                     password: '12345'
                 })
-            ).rejects.toThrow('Password must be at least 6 characters');
+            ).rejects.toThrow('Le mot de passe doit contenir au moins 6 caractères');
         });
 
         it('should reject invalid username characters', async () => {

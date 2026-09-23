@@ -3,7 +3,9 @@
  */
 
 const fs = require('fs');
-const { DatabaseConnection } = require('../../../src/infrastructure/database/sqlite/connection');
+// The connection production opens (src/api/bootstrap.js), so the repository runs
+// against the schema it meets in production.
+const DatabaseConnection = require('../../../src/infrastructure/database/sqlite/DatabaseConnection');
 const UserRepository = require('../../../src/infrastructure/database/sqlite/repositories/UserRepository');
 const PartyRepository = require('../../../src/infrastructure/database/sqlite/repositories/PartyRepository');
 const User = require('../../../src/domain/entities/User');

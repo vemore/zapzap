@@ -17,7 +17,8 @@ describe('LoginUser Use Case', () => {
 
         // Mock repository
         mockUserRepository = {
-            findByUsername: jest.fn()
+            findByUsername: jest.fn(),
+            updateLastLogin: jest.fn()
         };
 
         // Mock JWT service
@@ -45,9 +46,11 @@ describe('LoginUser Use Case', () => {
             expect(result.token).toBe('mock-jwt-token');
 
             expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('testuser');
+            expect(mockUserRepository.updateLastLogin).toHaveBeenCalledWith(mockUser.id);
             expect(mockJwtService.sign).toHaveBeenCalledWith({
                 userId: mockUser.id,
-                username: 'testuser'
+                username: 'testuser',
+                isAdmin: false
             });
         });
 

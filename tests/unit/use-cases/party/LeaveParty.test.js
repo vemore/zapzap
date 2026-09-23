@@ -60,7 +60,7 @@ describe('LeaveParty Use Case', () => {
 
             expect(result.success).toBe(true);
             expect(result.partyDeleted).toBe(false);
-            expect(mockPartyRepository.removePlayer).toHaveBeenCalledWith('player-2');
+            expect(mockPartyRepository.removePlayer).toHaveBeenCalledWith(mockParty.id, mockUser.id);
         });
 
         it('should transfer ownership when owner leaves', async () => {
