@@ -339,8 +339,10 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 `.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
 unit tests), native engine (fmt, tests), frontend (build), images (docker build of the
-backend and the frontend), hooks (the Claude Code hooks self-test), Flutter client (analyze,
-tests, web and debug apk builds). `master` accepts only
+Rust backend, of the Node backend production runs — root `Dockerfile`, npm 10 — and of both
+frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
+debug apk builds), Node backend (`npm test`: the jest suites in `tests/unit` and
+`tests/integration`, on Node 20). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 
@@ -391,7 +393,8 @@ These are the Node routes. The Rust backend's complete list: [`.llmwiki/Api.md`]
 ### Running Tests
 
 ```bash
-# Run all tests with coverage
+# Run all tests with coverage (tests/unit and tests/integration; jest.config.js
+# leaves tests/e2e to Playwright and frontend/ to vitest)
 npm test
 
 # Run specific test file

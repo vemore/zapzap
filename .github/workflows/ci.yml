@@ -37,6 +37,7 @@ jobs:
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
+      node: ${{ steps.flags.outputs.node }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +58,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -175,6 +176,12 @@ jobs:
             nginx:alpine nginx -t
       - name: Backend image
         run: docker build -t zapzap-rust-backend:ci zapzap-rust
+      # The image production runs today (.llmwiki/Deployment.md): node:20-alpine, whose npm
+      # 10 runs `npm ci --only=production`. A package-lock.json a newer local npm accepts
+      # but npm 10 does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here,
+      # not on the NAS.
+      - name: Node backend image (production)
+        run: docker build -t zapzap-node-backend:ci .
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
@@ -241,3 +248,21 @@ jobs:
       # whatever the image would fail on.
       - run: flutter build web --base-href /app/ --no-web-resources-cdn
       - run: flutter build apk --debug
+
+  node:
+    name: Node backend — jest
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.node != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # The major the production image runs (Dockerfile: node:20-alpine).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # tests/unit and tests/integration against src/, the code production runs;
+      # jest.config.js keeps tests/e2e (Playwright) and frontend/ (vitest) out.
+      - run: npm test
