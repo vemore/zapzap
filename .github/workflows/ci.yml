@@ -109,7 +109,8 @@ jobs:
       - run: cargo test --locked --lib --bins
 
   native:
-    name: Native engine — fmt, clippy, test
+    # Branch protection requires this exact check name: rename it there first.
+    name: Native engine — fmt, build, test
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.native != 'false' }}
     runs-on: ubuntu-latest
