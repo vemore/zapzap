@@ -11,10 +11,11 @@ abstract final class Formats {
   /// score, a game that never finished has no date).
   static const missing = '—';
 
-  /// Date and time of [value] in [locale], e.g. `22/09/2026 14:26` in French.
+  /// Date and time of [value] in [locale], the clock as the locale writes
+  /// it: `22/09/2026 14:26` in French, `9/22/2026 2:26 PM` in English.
   static String dateTime(DateTime? value, String locale) => value == null
       ? missing
-      : DateFormat.yMd(locale).add_Hm().format(value.toLocal());
+      : DateFormat.yMd(locale).add_jm().format(value.toLocal());
 
   /// A 0..1 rate as a percentage with one decimal, as React's
   /// `formatPercentage` (`frontend/src/components/Stats/Statistics.jsx:61`).

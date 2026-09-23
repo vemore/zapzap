@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../providers/party_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/navigation.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/player_slot_selector.dart';
 import '../widgets/zapzap_app_bar.dart';
@@ -42,13 +44,25 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
 
   Future<void> _submit() async {
     final partyId = await _create.submit(_name.text);
-    if (partyId != null && mounted) context.go(AppRoutes.partyPath(partyId));
+    // The lobby takes the form's place: Back from it returns to the list,
+    // not to a form whose party already exists.
+    if (partyId != null && mounted) {
+      context.pushReplacement(AppRoutes.partyPath(partyId));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final named = _name.text.trim().isNotEmpty;
+    final name = _name.text.trim();
+    // Node refuses a name outside 3-50 characters with a generic 500
+    // (`src/use-cases/party/CreateParty.js:47-53`): refuse it here instead.
+    final named = name.length >= partyNameMinLength;
+    final nameError = name.isEmpty
+        ? l10n.createPartyNameRequired
+        : name.length < partyNameMinLength
+        ? l10n.createPartyNameTooShort(partyNameMinLength)
+        : null;
     return Scaffold(
       appBar: ZapZapAppBar(
         title: l10n.createPartyTitle,
@@ -56,7 +70,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
           key: const Key('back-to-parties'),
           tooltip: l10n.lobbyBack,
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go(AppRoutes.parties),
+          onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
       ),
       body: ListenableBuilder(
@@ -73,8 +87,11 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
                 labelText: l10n.createPartyNameLabel,
                 hintText: l10n.createPartyNameHint,
                 border: const OutlineInputBorder(),
-                errorText: named ? null : l10n.createPartyNameRequired,
+                errorText: nameError,
               ),
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(partyNameMaxLength),
+              ],
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<int>(

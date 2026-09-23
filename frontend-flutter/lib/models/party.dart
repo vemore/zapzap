@@ -2,6 +2,10 @@ import 'dart:convert';
 
 import 'json.dart';
 
+/// The seats a party falls back to when the backend sent no `playerCount`,
+/// as in React (`PartyList.jsx:167`, `PartyLobby.jsx:134`).
+const int defaultPartyPlayers = 5;
+
 /// Party statuses, as both backends spell them.
 abstract final class PartyStatus {
   static const waiting = 'waiting';
@@ -132,12 +136,25 @@ class PartySummary {
     status: Json.string(json, 'status'),
     ownerId: Json.string(json, 'ownerId'),
     playerCount: Json.integer(json, 'playerCount'),
-    maxPlayers: Json.integer(json, 'maxPlayers'),
+    maxPlayers: _maxPlayers(json),
     isMember: Json.boolean(json, 'isMember'),
     inviteCode: Json.stringOrNull(json, 'inviteCode'),
     visibility: Json.stringOrNull(json, 'visibility'),
     createdAt: Json.timestamp(json, 'createdAt'),
   );
+
+  /// A row without `maxPlayers` (or with 0) would read "2 / 0" and Full:
+  /// fall back on the settings, then on [defaultPartyPlayers], as React does
+  /// (`settings.playerCount || 5`, `PartyList.jsx:167`).
+  static int _maxPlayers(JsonMap json) {
+    for (final count in [
+      Json.intOrNull(json['maxPlayers']),
+      PartySettings.fromJson(json['settings']).playerCount,
+    ]) {
+      if (count != null && count > 0) return count;
+    }
+    return defaultPartyPlayers;
+  }
 
   final String id;
   final String name;

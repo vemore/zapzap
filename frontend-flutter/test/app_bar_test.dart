@@ -5,6 +5,7 @@ import 'package:zapzap/app.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/screens/history_screen.dart';
 import 'package:zapzap/screens/stats_screen.dart';
+import 'package:zapzap/widgets/connection_indicator.dart';
 
 import 'auth_helpers.dart';
 import 'party_helpers.dart';
@@ -102,6 +103,41 @@ void main() {
       expect(locationOf(tester), AppRoutes.parties);
     });
 
+    testWidgets('history, then statistics: Back unwinds them one at a time', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      await choose(tester, 'menu-history');
+      await choose(tester, 'menu-stats');
+      expect(locationOf(tester), AppRoutes.stats);
+      // The history and statistics carry the signed-in app bar: who is
+      // online and whether the stream is up, beside the menu.
+      expect(find.byKey(const Key('connected-players')), findsOneWidget);
+      expect(find.byType(ConnectionIndicator), findsOneWidget);
+
+      await systemBack(tester);
+      expect(locationOf(tester), AppRoutes.history);
+      expect(find.byType(HistoryScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(locationOf(tester), AppRoutes.parties);
+    });
+
+    testWidgets('the back button of a pushed screen pops it', (tester) async {
+      await pumpApp(tester);
+
+      await choose(tester, 'menu-history');
+      await choose(tester, 'menu-stats');
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+      expect(locationOf(tester), AppRoutes.history);
+
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+      expect(locationOf(tester), AppRoutes.parties);
+    });
+
     testWidgets('a non-admin session has no admin entry', (tester) async {
       await pumpApp(tester);
       await openMenu(tester);
@@ -151,6 +187,26 @@ void main() {
         await openMenu(tester);
         expect(find.text('Historique'), findsOneWidget);
         expect(find.text('Statistiques'), findsOneWidget);
+      });
+
+      testWidgets('the bar with its back button fits the history and the '
+          'statistics at a $scale text scale', (tester) async {
+        await pumpApp(
+          tester,
+          backend: FakeLobbyBackend(
+            connected: [connectedPlayerJson('u1', 'Vincent')],
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        await choose(tester, 'menu-history');
+        expect(find.byKey(const Key('back')), findsOneWidget);
+        expect(find.byKey(const Key('connected-players')), findsOneWidget);
+
+        await choose(tester, 'menu-stats');
+        expect(find.byKey(const Key('back')), findsOneWidget);
+        expect(find.byKey(const Key('connected-players')), findsOneWidget);
       });
     }
   });
