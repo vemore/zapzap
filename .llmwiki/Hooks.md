@@ -30,7 +30,7 @@ commit message or a heredoc that *mentions* a forbidden command passes. When it 
 where a `git commit` or a bare `git push` runs (a `cd $VAR` it cannot resolve, `$(...)`), it
 refuses with `unknown-repo` and asks for `git -C <literal path>`.
 
-`scripts/hooks_selftest.sh` exercises all of it — 168 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 171 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter`, `docker-compose`, `docker` and `curl` — plus
 `scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh`, and
 `deploy.sh` (42 cases: the step order that makes a failed deploy a no-op rather than an
@@ -60,7 +60,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 |---|---|
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
 | `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
-| `frontend/` | `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
+| `frontend/` | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/` (any file, `.md` included) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get` |
 | anything else (docs, legacy `src/`) | none |
 

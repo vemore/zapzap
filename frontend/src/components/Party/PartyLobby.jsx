@@ -59,7 +59,7 @@ function PartyLobby() {
       // Merge party data with players array
       setParty({ ...response.data.party, players: response.data.players || [] });
       setError('');
-    } catch (err) {
+    } catch {
       setError('Failed to load party details');
     } finally {
       setLoading(false);
@@ -70,7 +70,7 @@ function PartyLobby() {
     try {
       await apiClient.post(`/party/${partyId}/leave`);
       navigate('/parties');
-    } catch (err) {
+    } catch {
       setError('Failed to leave party');
     }
   };
@@ -91,7 +91,7 @@ function PartyLobby() {
     try {
       await apiClient.post(`/party/${partyId}/start`);
       navigate(`/game/${partyId}`);
-    } catch (err) {
+    } catch {
       setError('Failed to start game');
     }
   };

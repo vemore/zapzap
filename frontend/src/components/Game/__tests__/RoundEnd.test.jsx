@@ -1,6 +1,35 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import RoundEnd from '../RoundEnd';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+// RoundEnd navigates home once the game is over, so it renders inside a router
+const renderRoundEnd = (props) =>
+  render(
+    <MemoryRouter>
+      <RoundEnd {...props} />
+    </MemoryRouter>
+  );
+
+// Each player is a bordered card: name and badges, hand, "This Round" and "Total Score"
+const cardOf = (name) => screen.getByText(name, { selector: 'span' }).closest('.p-5');
+const cardNames = (container) =>
+  Array.from(container.querySelectorAll('.p-5')).map(
+    (card) => card.querySelector('span.text-lg').textContent
+  );
+const roundScoreOf = (name) =>
+  cardOf(name).querySelector('p.text-xl').textContent; // first box: This Round
+const totalScoreOf = (name) =>
+  cardOf(name).querySelectorAll('p.text-xl')[1].textContent; // second box: Total Score
 
 describe('Phase 7: RoundEnd Component Tests', () => {
   const mockRoundData = {
@@ -15,13 +44,13 @@ describe('Phase 7: RoundEnd Component Tests', () => {
 
   describe('Basic Display', () => {
     it('should render round end title', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
       expect(screen.getByText(/round 5 complete/i)).toBeInTheDocument();
     });
 
     it('should display all players', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
       expect(screen.getByText('Alice')).toBeInTheDocument();
       expect(screen.getByText('Bob')).toBeInTheDocument();
@@ -29,49 +58,45 @@ describe('Phase 7: RoundEnd Component Tests', () => {
     });
 
     it('should show player hands', () => {
-      const { container } = render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      // Should render card displays for each player
-      const hands = container.querySelectorAll('.player-hand-display');
-      expect(hands.length).toBe(3);
+      // Two cards per player, each hand under its own player
+      expect(cardOf('Alice').querySelectorAll('[role="button"]')).toHaveLength(2);
+      expect(cardOf('Bob').querySelectorAll('[role="button"]')).toHaveLength(2);
+      expect(cardOf('Charlie').querySelectorAll('[role="button"]')).toHaveLength(2);
     });
 
     it('should display round scores', () => {
-      const { container } = render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      const roundScores = container.querySelectorAll('.round-score .value');
-      const scoreTexts = Array.from(roundScores).map((el) => el.textContent);
-
-      expect(scoreTexts).toContain('0 points');
-      expect(scoreTexts).toContain('6 points');
-      expect(scoreTexts).toContain('26 points');
+      expect(roundScoreOf('Alice')).toBe('0 pts');
+      expect(roundScoreOf('Bob')).toBe('6 pts');
+      expect(roundScoreOf('Charlie')).toBe('26 pts');
     });
 
     it('should display total scores', () => {
-      const { container } = render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      const totalScores = container.querySelectorAll('.total-score .value');
-      const scoreTexts = Array.from(totalScores).map((el) => el.textContent);
-
-      expect(scoreTexts).toContain('15');
-      expect(scoreTexts).toContain('25');
-      expect(scoreTexts).toContain('50');
+      expect(totalScoreOf('Alice')).toBe('15');
+      expect(totalScoreOf('Bob')).toBe('25');
+      expect(totalScoreOf('Charlie')).toBe('50');
     });
   });
 
   describe('Lowest Hand Indicator', () => {
     it('should highlight player with lowest hand', () => {
-      const { container } = render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      const aliceRow = screen.getByText('Alice').closest('.player-row');
-      expect(aliceRow.className).toMatch(/lowest|winner/i);
+      expect(cardOf('Alice')).toHaveTextContent(/lowest hand/i);
+      expect(cardOf('Alice').className).toMatch(/border-amber-400/);
+      expect(cardOf('Bob')).not.toHaveTextContent(/lowest hand/i);
+      expect(screen.getAllByText(/lowest hand/i)).toHaveLength(1);
     });
 
     it('should show 0 points for lowest hand', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      const aliceRow = screen.getByText('Alice').closest('.player-row');
-      expect(aliceRow.textContent).toMatch(/0.*points/i);
+      expect(roundScoreOf('Alice')).toBe('0 pts');
     });
   });
 
@@ -82,78 +107,81 @@ describe('Phase 7: RoundEnd Component Tests', () => {
         zapZapCaller: '1', // Alice called ZapZap and won
       };
 
-      const { container } = render(<RoundEnd roundData={zapZapData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: zapZapData, onContinue: vi.fn() });
 
-      const zapIndicator = container.querySelector('.zapzap-indicator');
-      expect(zapIndicator.textContent).toMatch(/alice/i);
-      expect(zapIndicator.textContent).toMatch(/successful/i);
+      const zapIndicator = screen.getByText(/successfully called/i).closest('p');
+      expect(zapIndicator).toHaveTextContent(/alice/i);
+      expect(zapIndicator).toHaveTextContent(/successfully called zapzap/i);
+      expect(screen.queryByText(/counteracted/i)).not.toBeInTheDocument();
     });
 
     it('should show counteract when ZapZap failed', () => {
       const counteractData = {
         players: [
           { id: '1', username: 'Alice', hand: [0, 14], handValue: 3, score: 0, totalScore: 15 },
-          { id: '2', username: 'Bob', hand: [0, 13, 26, 39], handValue: 4, score: 29, totalScore: 40 }, // Counteracted!
+          { id: '2', username: 'Bob', hand: [0, 13, 26, 39], handValue: 4, score: 14, totalScore: 40 }, // Counteracted!
           { id: '3', username: 'Charlie', hand: [2, 15], handValue: 6, score: 6, totalScore: 20 },
         ],
         zapZapCaller: '2', // Bob called ZapZap but Alice had lower hand
+        wasCounterActed: true,
         roundNumber: 3,
       };
 
-      const { container } = render(<RoundEnd roundData={counteractData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: counteractData, onContinue: vi.fn() });
 
-      const zapIndicator = container.querySelector('.zapzap-indicator');
-      expect(zapIndicator.textContent).toMatch(/bob/i);
-      expect(zapIndicator.textContent).toMatch(/counteract/i);
+      const zapIndicator = screen.getByText(/called zapzap but was/i).closest('p');
+      expect(zapIndicator).toHaveTextContent(/bob/i);
+      expect(zapIndicator).toHaveTextContent(/counteracted/i);
+      expect(screen.queryByText(/successfully called/i)).not.toBeInTheDocument();
     });
 
     it('should show counteract penalty calculation', () => {
       const counteractData = {
         players: [
           { id: '1', username: 'Alice', hand: [0, 14], handValue: 3, score: 0, totalScore: 15 },
-          { id: '2', username: 'Bob', hand: [0, 13, 26, 39], handValue: 4, score: 29, totalScore: 40 },
+          { id: '2', username: 'Bob', hand: [0, 13, 26, 39], handValue: 4, score: 9, totalScore: 40 },
         ],
         zapZapCaller: '2',
+        wasCounterActed: true,
         roundNumber: 3,
       };
 
-      render(<RoundEnd roundData={counteractData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: counteractData, onContinue: vi.fn() });
 
-      // Should show penalty calculation: 4 + (2 × 5) = 14, but Bob actually has 29
-      // The component should explain the penalty
-      expect(screen.getByText(/penalty/i)).toBeInTheDocument();
+      // Penalty = hand + ((active players − 1) × 5) = 4 + (1 × 5) = 9 (GAME_RULES.md)
+      expect(screen.getByText(/penalty/i)).toHaveTextContent('Penalty: 4 + (1 × 5) = 9 points');
     });
   });
 
   describe('Hand Value Display', () => {
     it('should show hand values', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      // Alice: 3 points
-      const aliceRow = screen.getByText('Alice').closest('.player-row');
-      expect(aliceRow.textContent).toMatch(/3|A.*2/i);
+      // Alice holds A♠ 2♥ (3 points): both cards are under her name
+      expect(cardOf('Alice').querySelector('[aria-label="Card As"]')).not.toBeNull();
+      expect(cardOf('Alice').querySelector('[aria-label="Card 2h"]')).not.toBeNull();
     });
 
     it('should display card names in hands', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
-      // Should show card names (implementation might vary)
-      // At minimum, should show some representation of cards
-      const hands = screen.getAllByText(/♠|♥|♣|♦|joker/i);
-      expect(hands.length).toBeGreaterThan(0);
+      // Standard cards are named by their cardmeister id, jokers by colour
+      expect(screen.getByRole('button', { name: 'Card As' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Joker red' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Card Ah' })).toBeInTheDocument();
     });
   });
 
   describe('Continue Button', () => {
     it('should render continue button', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn() });
 
       expect(screen.getByRole('button', { name: /continue|next/i })).toBeInTheDocument();
     });
 
     it('should call onContinue when button clicked', () => {
       const onContinue = vi.fn();
-      render(<RoundEnd roundData={mockRoundData} onContinue={onContinue} />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue });
 
       const continueButton = screen.getByRole('button', { name: /continue|next/i });
       fireEvent.click(continueButton);
@@ -162,72 +190,83 @@ describe('Phase 7: RoundEnd Component Tests', () => {
     });
 
     it('should disable continue button when disabled', () => {
-      render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} disabled />);
+      renderRoundEnd({ roundData: mockRoundData, onContinue: vi.fn(), disabled: true });
 
       const continueButton = screen.getByRole('button', { name: /continue|next/i });
       expect(continueButton).toBeDisabled();
     });
+
+    it('should offer the way back to the parties once the game is over', () => {
+      const finishedData = {
+        ...mockRoundData,
+        gameFinished: true,
+        winner: { username: 'Alice', score: 15 },
+      };
+      const onContinue = vi.fn();
+      renderRoundEnd({ roundData: finishedData, onContinue });
+
+      expect(screen.getByText(/game over/i)).toBeInTheDocument();
+      expect(screen.getByText('WINNER')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /back to parties/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/parties');
+      expect(onContinue).not.toHaveBeenCalled();
+    });
   });
 
   describe('Eliminated Players', () => {
+    const eliminatedData = {
+      players: [
+        { id: '1', username: 'Alice', hand: [0, 14], handValue: 3, score: 0, totalScore: 95 },
+        { id: '2', username: 'Bob', hand: [10, 24], handValue: 23, score: 23, totalScore: 105 }, // Eliminated!
+      ],
+      zapZapCaller: null,
+      roundNumber: 8,
+    };
+
     it('should mark eliminated players (>100 points)', () => {
-      const eliminatedData = {
-        players: [
-          { id: '1', username: 'Alice', hand: [0, 14], handValue: 3, score: 0, totalScore: 95 },
-          { id: '2', username: 'Bob', hand: [10, 24], handValue: 23, score: 23, totalScore: 105 }, // Eliminated!
-        ],
-        zapZapCaller: null,
-        roundNumber: 8,
-      };
+      renderRoundEnd({ roundData: eliminatedData, onContinue: vi.fn() });
 
-      const { container } = render(<RoundEnd roundData={eliminatedData} onContinue={vi.fn()} />);
-
-      const playerRows = container.querySelectorAll('.player-row');
-      const bobRow = Array.from(playerRows).find((row) => row.textContent.includes('Bob'));
-      expect(bobRow.className).toMatch(/eliminated/i);
+      expect(cardOf('Bob')).toHaveTextContent('Eliminated');
+      expect(cardOf('Bob').className).toMatch(/border-red-500/);
+      expect(cardOf('Alice')).not.toHaveTextContent('Eliminated');
     });
 
     it('should show elimination message', () => {
-      const eliminatedData = {
-        players: [
-          { id: '1', username: 'Alice', hand: [0, 14], handValue: 3, score: 0, totalScore: 95 },
-          { id: '2', username: 'Bob', hand: [10, 24], handValue: 23, score: 23, totalScore: 105 },
-        ],
-        zapZapCaller: null,
-        roundNumber: 8,
-      };
+      renderRoundEnd({ roundData: eliminatedData, onContinue: vi.fn() });
 
-      const { container } = render(<RoundEnd roundData={eliminatedData} onContinue={vi.fn()} />);
-
-      const eliminationsSection = container.querySelector('.eliminations');
-      expect(eliminationsSection.textContent).toMatch(/bob.*eliminated/i);
+      const eliminationsSection = screen.getByText('Eliminated Players').closest('.p-6');
+      expect(eliminationsSection).toHaveTextContent(/bob eliminated with 105 points/i);
+      expect(eliminationsSection).not.toHaveTextContent(/alice/i);
     });
   });
 
   describe('Sorting and Display Order', () => {
     it('should display players in score order (lowest first)', () => {
-      const { container } = render(<RoundEnd roundData={mockRoundData} onContinue={vi.fn()} />);
-
-      const playerRows = container.querySelectorAll('.player-row');
-      const names = Array.from(playerRows).map((row) => row.textContent);
+      const { container } = renderRoundEnd({
+        roundData: {
+          ...mockRoundData,
+          players: [mockRoundData.players[2], mockRoundData.players[0], mockRoundData.players[1]],
+        },
+        onContinue: vi.fn(),
+      });
 
       // Alice (0) should be first, then Bob (6), then Charlie (26)
-      expect(names[0]).toMatch(/alice/i);
-      expect(names[1]).toMatch(/bob/i);
-      expect(names[2]).toMatch(/charlie/i);
+      expect(cardNames(container)).toEqual(['Alice', 'Bob', 'Charlie']);
     });
   });
 
   describe('Loading State', () => {
     it('should handle null roundData', () => {
-      const { container } = render(<RoundEnd roundData={null} onContinue={vi.fn()} />);
+      const { container } = renderRoundEnd({ roundData: null, onContinue: vi.fn() });
 
       expect(container.textContent).toMatch(/loading|calculating/i);
     });
 
     it('should handle empty players array', () => {
       const emptyData = { ...mockRoundData, players: [] };
-      const { container } = render(<RoundEnd roundData={emptyData} onContinue={vi.fn()} />);
+      const { container } = renderRoundEnd({ roundData: emptyData, onContinue: vi.fn() });
 
       expect(container.textContent).toMatch(/no players|error/i);
     });

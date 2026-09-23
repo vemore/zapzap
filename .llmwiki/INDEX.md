@@ -23,7 +23,7 @@ Load this file first. Then read only the pages your task touches.
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (the Node DDL) | 2026-09-23 |
 | [[Api]] | Every Rust route, its auth and failure codes | 2026-09-22 |
 | [[Bots]] | Bot types and strategies, LLM bot, parameters in `data/` | 2026-09-22 |
-| [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-22 |
+| [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-23 |
 | [[FrontendFlutter]] | `frontend-flutter/`: the Flutter client (Android + PWA under `/app/`), lib layout, ApiConfig, API layer, session and routing guard, real-time channel (SSE), theme, l10n fr/en, card model, play rules and card widgets, build and tests | 2026-09-22 |
 | [[NativeEngine]] | `native/`: headless engine, DRL training, the Node scripts that drive it | 2026-09-23 |
 

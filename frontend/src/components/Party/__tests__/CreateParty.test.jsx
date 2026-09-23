@@ -15,32 +15,42 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+// The hand size is not a party setting any more: the starting player picks it
+// at the start of each round (GAME_RULES.md, Round Start) — HandSizeSelector.
+
+function renderCreateParty() {
+  return render(
+    <BrowserRouter>
+      <CreateParty />
+    </BrowserRouter>
+  );
+}
+
+function fillForm({ name = 'Test Party', playerCount = '5' } = {}) {
+  fireEvent.change(screen.getByLabelText(/party name/i), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText(/player count/i), { target: { value: playerCount } });
+}
+
+const createButton = () => screen.getByRole('button', { name: /create party/i });
+
 describe('Phase 3: CreateParty Component Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockNavigate.mockClear();
+    // On mount the form lists the bots a slot can take
+    apiClient.get = vi.fn().mockResolvedValue({ data: { bots: [] } });
   });
 
   describe('Form Rendering', () => {
     it('should render create party form with all fields', () => {
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
+      renderCreateParty();
 
       expect(screen.getByLabelText(/party name/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/player count/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/hand size/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /create/i })).toBeInTheDocument();
+      expect(createButton()).toBeInTheDocument();
     });
 
     it('should have visibility toggle (public/private)', () => {
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
+      renderCreateParty();
 
       expect(screen.getByLabelText(/visibility/i)).toBeInTheDocument();
     });
@@ -50,26 +60,10 @@ describe('Phase 3: CreateParty Component Tests', () => {
     it('should validate player count is between 3-8 (game rule)', async () => {
       apiClient.post = vi.fn();
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const form = screen.getByRole('button', { name: /create/i }).closest('form');
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-
-      // Fill in required fields first
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-
+      renderCreateParty();
       // Test below minimum (< 3)
-      fireEvent.change(playerCountInput, { target: { value: '2' } });
-
-      // Submit the form
-      fireEvent.submit(form);
+      fillForm({ playerCount: '2' });
+      fireEvent.submit(createButton().closest('form'));
 
       await waitFor(() => {
         expect(screen.getByText(/must be between 3 and 8/i)).toBeInTheDocument();
@@ -81,22 +75,9 @@ describe('Phase 3: CreateParty Component Tests', () => {
     it('should reject player count above maximum (> 8)', async () => {
       apiClient.post = vi.fn();
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const form = screen.getByRole('button', { name: /create/i }).closest('form');
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-      fireEvent.change(playerCountInput, { target: { value: '9' } });
-
-      fireEvent.submit(form);
+      renderCreateParty();
+      fillForm({ playerCount: '9' });
+      fireEvent.submit(createButton().closest('form'));
 
       await waitFor(() => {
         expect(screen.getByText(/must be between 3 and 8/i)).toBeInTheDocument();
@@ -113,112 +94,27 @@ describe('Phase 3: CreateParty Component Tests', () => {
         },
       });
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-      fireEvent.click(submitButton);
+      renderCreateParty();
+      fillForm({ playerCount: '5' });
+      fireEvent.click(createButton());
 
       await waitFor(() => {
         expect(apiClient.post).toHaveBeenCalled();
       });
     });
-  });
 
-  describe('Hand Size Validation (README compliance)', () => {
-    it('should validate hand size is between 5-7 (game rule)', async () => {
+    it('should require a party name', async () => {
       apiClient.post = vi.fn();
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const form = screen.getByRole('button', { name: /create/i }).closest('form');
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-
-      // Test below minimum (< 5)
-      fireEvent.change(handSizeInput, { target: { value: '4' } });
-
-      fireEvent.submit(form);
+      renderCreateParty();
+      fillForm({ name: '   ' });
+      fireEvent.submit(createButton().closest('form'));
 
       await waitFor(() => {
-        expect(screen.getByText(/must be between 5 and 7/i)).toBeInTheDocument();
+        expect(screen.getByText(/party name is required/i)).toBeInTheDocument();
       });
 
       expect(apiClient.post).not.toHaveBeenCalled();
-    });
-
-    it('should reject hand size above maximum (> 7)', async () => {
-      apiClient.post = vi.fn();
-
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const form = screen.getByRole('button', { name: /create/i }).closest('form');
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '8' } });
-
-      fireEvent.submit(form);
-
-      await waitFor(() => {
-        expect(screen.getByText(/must be between 5 and 7/i)).toBeInTheDocument();
-      });
-
-      expect(apiClient.post).not.toHaveBeenCalled();
-    });
-
-    it('should accept valid hand size (5-7)', async () => {
-      apiClient.post = vi.fn().mockResolvedValue({
-        data: {
-          success: true,
-          party: { id: '1', name: 'Test Party' },
-        },
-      });
-
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '6' } });
-      fireEvent.click(submitButton);
-
-      await waitFor(() => {
-        expect(apiClient.post).toHaveBeenCalled();
-      });
     });
   });
 
@@ -231,31 +127,20 @@ describe('Phase 3: CreateParty Component Tests', () => {
         },
       });
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'My Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-      fireEvent.click(submitButton);
+      renderCreateParty();
+      fillForm({ name: 'My Party', playerCount: '5' });
+      fireEvent.click(createButton());
 
       await waitFor(() => {
         expect(apiClient.post).toHaveBeenCalledWith(
           '/party',
           expect.objectContaining({
             name: 'My Party',
+            visibility: 'public',
             settings: expect.objectContaining({
               playerCount: 5,
-              handSize: 7,
             }),
+            botIds: [],
           })
         );
       });
@@ -269,21 +154,9 @@ describe('Phase 3: CreateParty Component Tests', () => {
         },
       });
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-      fireEvent.click(submitButton);
+      renderCreateParty();
+      fillForm();
+      fireEvent.click(createButton());
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/party/party-123');
@@ -291,49 +164,29 @@ describe('Phase 3: CreateParty Component Tests', () => {
     });
 
     it('should show error on failed creation', async () => {
-      apiClient.post = vi.fn().mockRejectedValue(new Error('Failed to create party'));
+      apiClient.post = vi.fn().mockRejectedValue(new Error('Network down'));
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
-      fireEvent.click(submitButton);
+      renderCreateParty();
+      fillForm();
+      fireEvent.click(createButton());
 
       await waitFor(() => {
-        expect(screen.getByText(/failed to create party/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/failed to create party/i);
       });
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
 
     it('should disable submit while creating', async () => {
-      apiClient.post = vi.fn(() => new Promise(resolve => setTimeout(() => resolve({ data: { success: true } }), 100)));
+      apiClient.post = vi.fn(() => new Promise(() => {}));
 
-      render(
-        <BrowserRouter>
-          <CreateParty />
-        </BrowserRouter>
-      );
-
-      const nameInput = screen.getByLabelText(/party name/i);
-      const playerCountInput = screen.getByLabelText(/player count/i);
-      const handSizeInput = screen.getByLabelText(/hand size/i);
-      const submitButton = screen.getByRole('button', { name: /create/i });
-
-      fireEvent.change(nameInput, { target: { value: 'Test Party' } });
-      fireEvent.change(playerCountInput, { target: { value: '5' } });
-      fireEvent.change(handSizeInput, { target: { value: '7' } });
+      renderCreateParty();
+      fillForm();
+      const submitButton = createButton();
       fireEvent.click(submitButton);
 
-      expect(submitButton).toBeDisabled();
+      await waitFor(() => {
+        expect(submitButton).toBeDisabled();
+      });
     });
   });
 });

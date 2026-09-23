@@ -14,7 +14,7 @@ describe('Phase 2: ProtectedRoute Component Tests', () => {
 
   describe('Authentication Check', () => {
     it('should render children when user is authenticated', () => {
-      auth.isAuthenticated = vi.fn().mockReturnValue(true);
+      vi.mocked(auth.isAuthenticated).mockReturnValue(true);
 
       render(
         <BrowserRouter>
@@ -35,7 +35,7 @@ describe('Phase 2: ProtectedRoute Component Tests', () => {
     });
 
     it('should redirect to login when user is not authenticated', () => {
-      auth.isAuthenticated = vi.fn().mockReturnValue(false);
+      vi.mocked(auth.isAuthenticated).mockReturnValue(false);
 
       render(
         <BrowserRouter>
@@ -58,7 +58,7 @@ describe('Phase 2: ProtectedRoute Component Tests', () => {
     });
 
     it('should not render protected content when logged out', () => {
-      auth.isAuthenticated = vi.fn().mockReturnValue(false);
+      vi.mocked(auth.isAuthenticated).mockReturnValue(false);
 
       render(
         <BrowserRouter>

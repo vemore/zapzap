@@ -10,10 +10,9 @@ import CardBack from './CardBack';
  * @param {Object[]} players - Array of player objects with username, cardCount, score, isEliminated
  * @param {number} currentTurn - Index of player whose turn it is
  * @param {string} currentUserId - ID of the current user
- * @param {boolean} isGoldenScore - Whether the game is in Golden Score mode
  * @param {number} startingPlayer - Index of the player who started this round
  */
-function PlayerTable({ players = [], currentTurn, currentUserId, isGoldenScore = false, startingPlayer = 0 }) {
+function PlayerTable({ players = [], currentTurn, currentUserId, startingPlayer = 0 }) {
   if (players.length === 0) {
     return (
       <div className="bg-slate-800 rounded-lg shadow-xl p-4 sm:p-8 border border-slate-700 text-center">
