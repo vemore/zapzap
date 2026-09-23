@@ -5,7 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/router.dart';
+import 'package:go_router/go_router.dart';
+import 'package:zapzap/screens/create_party_screen.dart';
 import 'package:zapzap/screens/game_screen.dart';
+import 'package:zapzap/screens/parties_screen.dart';
+import 'package:zapzap/screens/party_lobby_screen.dart';
 
 import 'auth_helpers.dart';
 import 'party_helpers.dart';
@@ -102,6 +106,37 @@ void main() {
     testWidgets('an empty list says so', (tester) async {
       await pumpApp(tester, FakeLobbyBackend());
       expect(find.text('Aucune partie disponible'), findsOneWidget);
+    });
+
+    testWidgets('a failed first load shows the error, not an empty list', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      backend.failures['GET /api/party'] = (
+        status: 500,
+        body: {'error': 'boom'},
+      );
+      await pumpApp(tester, backend);
+
+      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Aucune partie disponible'), findsNothing);
+    });
+
+    testWidgets('a row without maxPlayers reads 5 seats and can be joined', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(id: 'p1', playerCount: 2)..remove('maxPlayers'),
+          ],
+        ),
+      );
+
+      expect(find.text('2 / 5'), findsOneWidget);
+      expect(find.text('Complète'), findsNothing);
+      expect(enabled(tester, 'join-p1'), isTrue);
     });
 
     testWidgets('joining takes a seat and opens the lobby', (tester) async {
@@ -216,6 +251,36 @@ void main() {
       expect(botIds, containsAll(['bot-easy-1', 'bot-easy-2']));
       // and it lands on the new party's lobby
       expect(find.text('Joueurs (0/5)'), findsOneWidget);
+    });
+
+    testWidgets('a name under three characters is refused here', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
+
+      await tester.enterText(find.byKey(const Key('party-name')), ' ab ');
+      await tester.pump();
+      expect(enabled(tester, 'create-submit'), isFalse);
+      expect(
+        find.text('Le nom doit faire au moins 3 caractères'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byKey(const Key('party-name')), 'abc');
+      await tester.pump();
+      expect(enabled(tester, 'create-submit'), isTrue);
+
+      // Fifty at most: the field takes no more.
+      await tester.enterText(find.byKey(const Key('party-name')), 'x' * 60);
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('party-name')))
+            .controller!
+            .text,
+        'x' * 50,
+      );
     });
 
     testWidgets('submit waits for a name', (tester) async {
@@ -453,6 +518,29 @@ void main() {
       expect(find.text('Parties disponibles'), findsOneWidget);
     });
 
+    testWidgets('leaving a party someone already took you out of says so', (
+      tester,
+    ) async {
+      final backend = backendWith([vincent, easyBot]);
+      backend.failures['POST /api/party/p1/leave'] = (
+        status: 403,
+        body: {'error': 'User is not in this party', 'code': 'NOT_IN_PARTY'},
+      );
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      await tester.tap(find.byKey(const Key('leave-party')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Vous n'avez pas de place à cette table."),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('a party that does not exist says so', (tester) async {
       await pumpApp(
         tester,
@@ -650,7 +738,151 @@ void main() {
     });
   });
 
+  group('back navigation', () {
+    // Android's system Back pops the route on top; a screen reached with
+    // `go` would have nothing under it, and Back would leave the app.
+    Future<void> systemBack(WidgetTester tester) async {
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+
+    FakeLobbyBackend backend() => FakeLobbyBackend(
+      parties: [partySummaryJson(id: 'p1', name: 'Open party')],
+      details: partyDetailsJson(
+        id: 'p1',
+        name: 'Open party',
+        players: [
+          partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+        ],
+      ),
+      createdPartyId: 'p1',
+    );
+
+    testWidgets('Back from the create form returns to the list, as does '
+        'its back button', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CreatePartyScreen), findsOneWidget);
+      await systemBack(tester);
+      expect(find.byType(CreatePartyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('back-to-parties')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets("the lobby a new party opens takes the form's place: Back "
+        'returns to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('create-submit')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(CreatePartyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('Back from a joined lobby returns to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('leaving the lobby pops back to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('leave-party')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      // Popped, not stacked: one more Back would leave the app, not
+      // return to the lobby.
+      expect(
+        GoRouter.of(tester.element(find.byType(PartiesScreen))).canPop(),
+        isFalse,
+      );
+    });
+
+    testWidgets('the game a lobby starts takes its place: Back returns to '
+        'the list', (tester) async {
+      final lobby = backend()
+        ..details = partyDetailsJson(
+          id: 'p1',
+          players: [
+            partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+            partyPlayerJson(userId: 'u2', username: 'Alice', playerIndex: 1),
+            partyPlayerJson(userId: 'u3', username: 'Bob', playerIndex: 2),
+          ],
+        );
+      await pumpApp(tester, lobby);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('start-party')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(GameScreen), findsNothing);
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('a lobby opened by a link goes back to the list', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        backend(),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      await tester.tap(find.byKey(const Key('back-to-parties')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+  });
+
   group('connected players', () {
+    testWidgets('no count before the first answer, nor after a failed one', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      backend.failures['GET /api/players/connected'] = (
+        status: 500,
+        body: {'error': 'boom'},
+      );
+      await pumpApp(tester, backend);
+
+      // "0" would claim nobody is online.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('connected-players-count')))
+            .data,
+        '–',
+      );
+    });
+
     testWidgets('the app bar counts them and the stream keeps it up to date', (
       tester,
     ) async {

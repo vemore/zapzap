@@ -10,6 +10,7 @@ import '../providers/sse_provider.dart';
 import '../repositories/game_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/rules.dart';
 import '../widgets/game_action_buttons.dart';
 import '../widgets/game_error_text.dart';
 import '../widgets/game_hand.dart';
@@ -409,6 +410,7 @@ class _GameScreenState extends State<GameScreen> {
               // once the game is over (checked locally, 2026-09-23).
               isLowestHand: !out && index == state.lowestHandPlayerIndex,
               isZapZapCaller: index == state.zapZapCaller,
+              isMe: index == _game.myPlayerIndex,
             );
           }(),
         ),
@@ -418,6 +420,30 @@ class _GameScreenState extends State<GameScreen> {
       return byScore != 0 ? byScore : a.seat.compareTo(b.seat);
     });
     return [for (final row in rows) row.player];
+  }
+
+  /// Who picks the hand size of the next round: the seat after this
+  /// round's starting player, skipping whoever is out (`GAME_RULES.md`,
+  /// "Subsequent Rounds"; `NextRound.js` rotates the same way).
+  int? _nextChooser(List<RoundEndPlayer> players) {
+    final seats = [for (final player in players) player.playerIndex]..sort();
+    final out = {
+      for (final player in players)
+        if (player.isEliminated) player.playerIndex,
+    };
+    final from = seats.indexOf(_game.startingPlayer);
+    for (var step = 1; step <= seats.length; step++) {
+      final seat = seats[(from + step) % seats.length];
+      if (!out.contains(seat)) return seat;
+    }
+    return null;
+  }
+
+  /// The hand value [playerIndex] held, a Joker counting 0: what a ZapZap
+  /// is decided on.
+  int? _zapZapValueOf(GameState state, int? playerIndex) {
+    final hand = playerIndex == null ? null : state.allHands?[playerIndex];
+    return hand == null ? null : handValue(hand);
   }
 
   Widget _roundOver(BuildContext context, AppLocalizations l10n) {
@@ -431,6 +457,7 @@ class _GameScreenState extends State<GameScreen> {
     final active = players
         .where((player) => player.totalScore - player.roundScore <= 100)
         .length;
+    final next = _nextChooser(players);
 
     return GameRoundEnd(
       roundNumber: _game.round?.roundNumber ?? 1,
@@ -443,6 +470,13 @@ class _GameScreenState extends State<GameScreen> {
       callerHandValue: caller == null ? null : state.handPoints?[caller],
       callerRoundScore: caller == null ? null : _roundScoreOf(state, caller),
       activePlayerCount: active,
+      callerZapZapValue: _zapZapValueOf(state, caller),
+      counterActorZapZapValue: _zapZapValueOf(
+        state,
+        state.counterActedByPlayerIndex,
+      ),
+      nextChooserName: next == null ? null : _nameOf(next),
+      nextChooserIsMe: next != null && next == _game.myPlayerIndex,
       gameFinished: _game.isGameFinished,
       winnerName: winner == null
           ? null

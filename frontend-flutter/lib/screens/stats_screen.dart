@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart' hide Page;
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -8,11 +7,13 @@ import '../models/stats.dart';
 import '../providers/auth_provider.dart';
 import '../repositories/stats_repository.dart';
 import '../router.dart';
+import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
 import '../widgets/stats_bots.dart';
 import '../widgets/stats_common.dart';
 import '../widgets/stats_leaderboard.dart';
 import '../widgets/stats_personal.dart';
+import '../widgets/zapzap_app_bar.dart';
 
 /// The three statistics of the React client
 /// (`frontend/src/components/Stats/Statistics.jsx`): the player's own record,
@@ -59,21 +60,12 @@ class _StatsScreenState extends State<StatsScreen> {
     final l10n = AppLocalizations.of(context);
     final currentUserId = context.watch<AuthProvider>().user?.id;
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: l10n.backToParties,
-          onPressed: () => context.go(AppRoutes.parties),
+      appBar: ZapZapAppBar(
+        title: l10n.statsTitle,
+        leading: BackButton(
+          key: const Key('back'),
+          onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
-        title: Text(l10n.statsTitle),
-        actions: [
-          IconButton(
-            key: const Key('stats-history'),
-            icon: const Icon(Icons.history),
-            tooltip: l10n.historyTitle,
-            onPressed: () => context.go(AppRoutes.history),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

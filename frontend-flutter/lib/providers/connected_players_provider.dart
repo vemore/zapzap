@@ -37,7 +37,8 @@ class ConnectedPlayersProvider extends ChangeNotifier {
 
   List<ConnectedPlayer> get players => _players;
 
-  /// `false` until the first answer: the app bar shows nothing yet.
+  /// `false` until the first answer (or presence event): the app bar shows
+  /// no count yet, rather than a "0" that would mean nobody is online.
   bool get loaded => _loaded;
 
   /// Called by `appProviders` on every session change: loads the list once
@@ -58,7 +59,12 @@ class ConnectedPlayersProvider extends ChangeNotifier {
   /// the app bar is worth an error message (React logs and moves on).
   Future<void> load() async {
     try {
-      _players = await _repository.connectedPlayers();
+      // The backend is meant to send five at most; hold it to that here
+      // too, as `userConnected` does, so the count never depends on which
+      // path filled the list.
+      _players = (await _repository.connectedPlayers())
+          .take(maxPlayers)
+          .toList();
       _loaded = true;
     } catch (error) {
       debugPrint('Connected players not loaded: $error');

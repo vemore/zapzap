@@ -171,11 +171,11 @@ String passwordErrorText(AppLocalizations l10n, PasswordError error) =>
 
 /// The text of a failed login or register, from the [ApiException] code.
 String authErrorText(AppLocalizations l10n, Object error) {
-  if (error is! ApiException) return l10n.authErrorGeneric;
-  if (error.isConnectivity) return l10n.authErrorNetwork;
+  if (error is! ApiException) return l10n.errorGeneric;
+  if (error.isConnectivity) return l10n.errorNetwork;
   return switch (error.code) {
     ApiErrorCode.invalidCredentials => l10n.authErrorInvalidCredentials,
     ApiErrorCode.usernameExists => l10n.authErrorUsernameExists,
-    _ => l10n.authErrorGeneric,
+    _ => l10n.errorGeneric,
   };
 }

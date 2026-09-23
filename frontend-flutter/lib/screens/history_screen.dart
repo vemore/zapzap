@@ -7,8 +7,10 @@ import '../models/history.dart';
 import '../models/json.dart';
 import '../repositories/history_repository.dart';
 import '../router.dart';
+import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
 import '../widgets/history_game_tile.dart';
+import '../widgets/zapzap_app_bar.dart';
 
 /// Which listing the history screen shows.
 enum HistoryTab { mine, public }
@@ -51,21 +53,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: l10n.backToParties,
-          onPressed: () => context.go(AppRoutes.parties),
+      appBar: ZapZapAppBar(
+        title: l10n.historyTitle,
+        leading: BackButton(
+          key: const Key('back'),
+          onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
-        title: Text(l10n.historyTitle),
-        actions: [
-          IconButton(
-            key: const Key('history-stats'),
-            icon: const Icon(Icons.bar_chart),
-            tooltip: l10n.statsTitle,
-            onPressed: () => context.go(AppRoutes.stats),
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -108,8 +101,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   return HistoryGameTile(
                     key: Key('history-game-${game.partyId}'),
                     game: game,
+                    // `push`: the system Back returns to this list.
                     onTap: () =>
-                        context.go(AppRoutes.gameDetails(game.partyId)),
+                        context.push(AppRoutes.gameDetails(game.partyId)),
                   );
                 },
               ),

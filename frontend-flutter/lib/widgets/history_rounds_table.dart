@@ -83,10 +83,13 @@ class _Cell extends StatelessWidget {
     final round = score;
     if (round == null) return const Text(Formats.missing);
     final theme = Theme.of(context);
-    final color = round.isLowestHand
-        ? StatsColors.success
-        : round.wasCounterActed
+    // Counteracted before lowest hand: a caller tied for the lowest hand is
+    // counteracted and pays the penalty (`GAME_RULES.md`, Tie Handling), so
+    // the cell must not read as a clean round. React has it the other way.
+    final color = round.wasCounterActed
         ? StatsColors.danger
+        : round.isLowestHand
+        ? StatsColors.success
         : null;
     return Column(
       mainAxisSize: MainAxisSize.min,

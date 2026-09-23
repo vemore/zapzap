@@ -1,11 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:zapzap/models/sse_event.dart';
 import 'package:zapzap/providers/connected_players_provider.dart';
 import 'package:zapzap/providers/create_party_provider.dart';
 import 'package:zapzap/providers/party_provider.dart';
 import 'package:zapzap/repositories/party_repository.dart';
+import 'package:zapzap/services/api_client.dart';
+
+import 'auth_helpers.dart';
 
 import 'party_helpers.dart';
 
@@ -368,6 +374,107 @@ void main() {
       players.follow(false);
       expect(players.players, isEmpty);
       players.dispose();
+    });
+
+    test('the first load keeps five too', () async {
+      final backend = FakeLobbyBackend(
+        connected: [
+          for (var i = 0; i < 7; i++) connectedPlayerJson('u$i', 'Player$i'),
+        ],
+      );
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final players = ConnectedPlayersProvider(
+        repositoryOf(backend),
+        events: events.stream,
+      );
+      expect(players.loaded, isFalse);
+
+      players.follow(true);
+      await pumpEventQueue();
+
+      expect(players.loaded, isTrue);
+      expect(players.players, hasLength(ConnectedPlayersProvider.maxPlayers));
+      expect(players.players.first.username, 'Player0');
+      players.dispose();
+    });
+
+    test('a failed first load leaves it not loaded', () async {
+      final backend = FakeLobbyBackend();
+      backend.failures['GET /api/players/connected'] = (
+        status: 500,
+        body: {'error': 'boom'},
+      );
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final players = ConnectedPlayersProvider(
+        repositoryOf(backend),
+        events: events.stream,
+      );
+
+      players.follow(true);
+      await pumpEventQueue();
+
+      expect(players.loaded, isFalse);
+      expect(players.players, isEmpty);
+      players.dispose();
+    });
+  });
+
+  group('PartyLobbyProvider sequencing', () {
+    test('two loads answering out of order keep the newest', () async {
+      // Each `GET /party/p1` waits on its own completer, so the test decides
+      // the order the answers arrive in.
+      final answers = <Completer<http.Response>>[];
+      final client = ApiClient(
+        config: testConfig,
+        httpClient: MockClient((request) {
+          final answer = Completer<http.Response>();
+          answers.add(answer);
+          return answer.future;
+        }),
+      );
+      http.Response details(int seats) => http.Response(
+        jsonEncode(
+          partyDetailsJson(
+            id: 'p1',
+            players: [
+              for (var i = 0; i < seats; i++)
+                partyPlayerJson(
+                  userId: 'u$i',
+                  username: 'Player$i',
+                  playerIndex: i,
+                ),
+            ],
+          ),
+        ),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final lobby = PartyLobbyProvider(
+        PartyRepository(client),
+        partyId: 'p1',
+        events: events.stream,
+        currentUserId: 'u0',
+      );
+
+      // Two players join a moment apart: two reloads in flight.
+      final older = lobby.load(showSpinner: false);
+      final newer = lobby.load(showSpinner: false);
+      await pumpEventQueue();
+      expect(answers, hasLength(2));
+
+      answers[1].complete(details(3));
+      await newer;
+      expect(lobby.playerCount, 3);
+
+      // The older answer, with one seat fewer, arrives last and is dropped.
+      answers[0].complete(details(2));
+      await older;
+      expect(lobby.playerCount, 3);
+      lobby.dispose();
     });
   });
 }
