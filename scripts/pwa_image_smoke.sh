@@ -58,6 +58,29 @@ check_header() {  # label, path, header name, expected substring
     esac
 }
 
+# The exact value, and only one of it: `add_header` next to an `expires` silently emits two
+# Cache-Control headers, and a substring match would accept both.
+check_cache_control() {  # label, path, expected full value
+    local got
+    got=$(curl -fsS -o /dev/null -D - "$BASE$2" 2>/dev/null | tr -d '\r' \
+        | sed -n 's/^[Cc]ache-[Cc]ontrol: //p' | paste -sd'|' -)
+    [ "$got" = "$3" ] && ok "$1" \
+        || ko "$1" "$2: expected Cache-Control '$3', got '${got:-<none>}'"
+}
+
+# A 200 is not enough: the SPA fallback answers 200 text/html for a path it does not have,
+# so a deleted asset would pass a status-only check.
+check_type() {  # label, path, expected content type prefix
+    local code type
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$2")
+    type=$(curl -s -o /dev/null -w '%{content_type}' "$BASE$2")
+    if [ "$code" = 200 ] && [ "${type#"$3"}" != "$type" ]; then
+        ok "$1"
+    else
+        ko "$1" "$2: expected 200 and content type $3*, got $code $type"
+    fi
+}
+
 docker rm -f "$NAME" >/dev/null 2>&1
 if ! docker run -d --name "$NAME" -p 127.0.0.1:0:80 "$IMAGE" >/dev/null; then
     echo "pwa_image_smoke: cannot start $IMAGE" >&2
@@ -77,6 +100,7 @@ check_status "health check answers"                 /healthz 200
 check_status "/app/ is served"                      /app/ 200
 check_status "/app redirects"                       /app 301
 check_header "/app redirects to /app/"              /app location /app/
+check_header "the redirect keeps the query"         '/app?from=email' location '/app/?from=email'
 check_body   "the bundle is built for /app/"        /app/ '<base href="/app/">'
 check_body   "the manifest is linked"               /app/ 'rel="manifest"'
 
@@ -84,22 +108,41 @@ check_body   "the manifest is linked"               /app/ 'rel="manifest"'
 check_status "a deep link does not 404"             /app/parties 200
 check_body   "a deep link serves the app"           /app/parties '<base href="/app/">'
 check_status "a nested deep link does not 404"      /app/history/42 200
-check_status "an unknown asset still 404s"          /app/assets/nope.png 404
+
+# The fallback must not swallow a missing file: a path with an extension, and anything under
+# assets/, canvaskit/ or icons/, is a file. Without this, deleting a manifest icon or
+# main.dart.js would leave every check green and only break Chrome's install prompt.
+check_status "an unknown asset 404s"                /app/assets/nope.png 404
+check_status "an unknown engine file 404s"          /app/canvaskit/nope.wasm 404
+check_status "an unknown icon 404s"                 /app/icons/nope.png 404
+check_status "an unknown script 404s"               /app/nope.js 404
+check_status "an unknown page 404s"                 /app/nope.html 404
 
 check_body   "the manifest starts at /app/"         /app/manifest.json '"start_url": "/app/"'
 check_body   "the manifest is scoped to /app/"      /app/manifest.json '"scope": "/app/"'
 check_body   "the manifest has a maskable icon"     /app/manifest.json '"purpose": "maskable"'
-check_status "the 192 icon is there"                /app/icons/Icon-192.png 200
-check_status "the 512 icon is there"                /app/icons/Icon-512.png 200
-check_status "the maskable 512 icon is there"       /app/icons/Icon-maskable-512.png 200
-check_status "the service worker is there"          /app/flutter_service_worker.js 200
-check_status "the bootstrap is there"               /app/flutter_bootstrap.js 200
-check_status "the compiled app is there"            /app/main.dart.js 200
+check_type   "the manifest is JSON"                 /app/manifest.json application/json
+check_type   "the 192 icon is a PNG"                /app/icons/Icon-192.png image/png
+check_type   "the 512 icon is a PNG"                /app/icons/Icon-512.png image/png
+check_type   "the maskable 192 icon is a PNG"       /app/icons/Icon-maskable-192.png image/png
+check_type   "the maskable 512 icon is a PNG"       /app/icons/Icon-maskable-512.png image/png
+check_type   "the favicon is a PNG"                 /app/favicon.png image/png
+check_type   "the service worker is a script"       /app/flutter_service_worker.js application/javascript
+check_type   "the bootstrap is a script"            /app/flutter_bootstrap.js application/javascript
+check_type   "the compiled app is a script"         /app/main.dart.js application/javascript
 
-check_header "index.html is never stored"           /app/ cache-control no-store
-check_header "the service worker is never stored"   /app/flutter_service_worker.js cache-control no-store
-check_header "the bootstrap is never stored"        /app/flutter_bootstrap.js cache-control no-store
-check_header "main.dart.js is revalidated"          /app/main.dart.js cache-control no-cache
+# CanvasKit is served from the bundle, not from www.gstatic.com: the build passes
+# --no-web-resources-cdn, so a client that cannot reach Google still runs the app. The
+# files being present is not enough — the loader has to be told to use them.
+check_type   "the engine is served locally"         /app/canvaskit/canvaskit.js application/javascript
+check_type   "the engine wasm is served locally"    /app/canvaskit/canvaskit.wasm application/wasm
+check_body   "the loader uses the local engine"     /app/flutter_bootstrap.js '"useLocalCanvasKit":true'
+
+check_cache_control "index.html is never stored"         /app/ 'no-cache, no-store, must-revalidate'
+check_cache_control "the service worker is never stored" /app/flutter_service_worker.js 'no-cache, no-store, must-revalidate'
+check_cache_control "the bootstrap is never stored"      /app/flutter_bootstrap.js 'no-cache, no-store, must-revalidate'
+check_cache_control "main.dart.js is revalidated"        /app/main.dart.js 'no-cache'
+check_cache_control "an icon is revalidated"             /app/icons/Icon-192.png 'no-cache'
 
 echo "pwa_image_smoke: $((n - fail))/$n checks pass"
 [ "$fail" -eq 0 ]

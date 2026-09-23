@@ -158,6 +158,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # nginx/nginx.conf is baked into no image, only mounted by compose, so nothing else
+      # reads it before production does: a typo there is a crash-looping proxy after
+      # deploy.sh has stopped the old containers. --add-host: nginx resolves the hosts of
+      # its upstream blocks when it loads the configuration.
+      - name: Proxy configuration is valid
+        run: |
+          docker run --rm \
+            --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 \
+            -v "$PWD/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:alpine nginx -t
       - name: Backend image
         run: docker build -t zapzap-rust-backend:ci zapzap-rust
       - name: Frontend image
@@ -221,6 +231,8 @@ jobs:
       - run: if [ -f l10n.yaml ]; then flutter gen-l10n; fi
       - run: flutter analyze
       - run: flutter test
-      # The PWA is served under /app/ on the API's own domain.
-      - run: flutter build web --base-href /app/
+      # The PWA is served under /app/ on the API's own domain, CanvasKit included: the same
+      # flags the image builds with (frontend-flutter/Dockerfile), so this job fails on
+      # whatever the image would fail on.
+      - run: flutter build web --base-href /app/ --no-web-resources-cdn
       - run: flutter build apk --debug

@@ -42,8 +42,14 @@ RUN flutter pub get --enforce-lockfile
 COPY --chown=builder:builder . .
 
 # lib/l10n/app_localizations*.dart are generated, not committed (l10n.yaml).
+#
+# --no-web-resources-cdn: without it the bundle loads CanvasKit from www.gstatic.com at
+# runtime, so a client that cannot reach Google serves a blank page — and the canvaskit/
+# directory copied into the image would be dead weight. With it, the engine is served from
+# /app/canvaskit/ like the rest of the bundle. Keep it in step with the CI build
+# (.github/workflows/ci.yml).
 RUN flutter gen-l10n \
-    && flutter build web --release --base-href /app/
+    && flutter build web --release --base-href /app/ --no-web-resources-cdn
 
 # Stage 2: serve it
 FROM nginx:alpine

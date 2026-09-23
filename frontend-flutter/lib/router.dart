@@ -3,13 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'providers/auth_provider.dart';
 import 'screens/create_party_screen.dart';
 import 'screens/game_details_screen.dart';
+import 'screens/game_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/not_found_screen.dart';
 import 'screens/parties_screen.dart';
 import 'screens/party_lobby_screen.dart';
-import 'screens/pending_game_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/stats_screen.dart';
@@ -27,8 +27,7 @@ abstract final class AppRoutes {
   /// One party's lobby: [partyPath] builds it.
   static const party = '/parties/:id';
 
-  /// A running game. The board itself is not written yet:
-  /// [PendingGameScreen] stands in for it.
+  /// A running game: [GameScreen].
   static const game = '/game/:id';
 
   static const history = '/history';
@@ -97,7 +96,7 @@ GoRouter createRouter({
     GoRoute(
       path: AppRoutes.game,
       builder: (context, state) =>
-          PendingGameScreen(partyId: state.pathParameters['id']!),
+          GameScreen(partyId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: AppRoutes.history,

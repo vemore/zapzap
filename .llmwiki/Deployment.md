@@ -50,12 +50,24 @@ services) and has never been deployed.
   `flutter_service_worker.js` answer with `Cache-Control: no-cache, no-store,
   must-revalidate` and the rest of the bundle with `no-cache`, because no Flutter web output
   file is content-hashed and Flutter 3.47's service worker caches nothing (it unregisters
-  itself on activate); `/app/assets/` and `/app/canvaskit/` 404 instead of falling back;
+  itself on activate); anything under `/app/` with a file extension, and anything under
+  `/app/assets/`, `/app/canvaskit/` or `/app/icons/`, 404s instead of falling back — a
+  missing manifest icon answered with HTML costs the install prompt silently;
   `/healthz` answers the container health check.
-- nginx resolves every upstream host at start-up, so `zapzap-proxy` cannot start before
-  `frontend-flutter` exists: both compose files gate it with
-  `depends_on: frontend-flutter: service_healthy`. A proxy with this conf and no
-  `frontend-flutter` container exits with `host not found in upstream`.
+- The bundle carries CanvasKit itself (`--no-web-resources-cdn`): the engine is served from
+  `/app/canvaskit/`, not from `www.gstatic.com`, so a client that cannot reach Google still
+  gets an app rather than a blank page. The flag is in `frontend-flutter/Dockerfile` **and**
+  in the CI `flutter` job, which must build what the image builds.
+- **The PWA cannot take the site down.** `location /app/` resolves `frontend-flutter`
+  through Docker's DNS (`resolver 127.0.0.11`) with the host in a variable, so nginx starts
+  whether or not the container exists and answers 502 on `/app/` alone. An `upstream` block
+  would be resolved once at start-up and a missing container would stop nginx altogether
+  (`host not found in upstream`), and a `depends_on: frontend-flutter: service_healthy`
+  would hold `zapzap-proxy` in `Created` after `deploy.sh` has already stopped the old
+  containers — `/` and `/api/health` both unreachable, with `restart: unless-stopped`
+  powerless. Neither is used: there is deliberately **no** condition on `frontend-flutter`.
+  Should a proxy ever sit in `Created` after a failed dependency, `docker start
+  zapzap-proxy` restores `/` and `/api/` at once.
 - CI builds the image and runs `scripts/pwa_image_smoke.sh` against it (the `image` job):
   `/app/`, the deep links, the manifest scope, the icons, the cache headers.
 
@@ -66,7 +78,10 @@ services) and has never been deployed.
 `curl http://localhost:80/api/health`. `set -e`: it stops at the first failure. The site is
 down during the build. It builds and starts whatever the compose file declares, so the
 `frontend-flutter` service needs no change to it — but its first build downloads the Flutter
-SDK and adds a few minutes and ~2 GB of images to the host.
+SDK and adds a few minutes and **~3.6 GB** of Docker storage to the host (measured
+2026-09-23: builder stage 3.47 GB — SDK 2.3 GB, pub cache 650 MB —, served image 107 MB, web
+bundle 42 MB). The `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since
+`dart2js` needs about 2 GB and would otherwise be killed mid-build.
 
 ### The production database
 

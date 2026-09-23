@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/screens/game_screen.dart';
 
 import 'auth_helpers.dart';
 import 'party_helpers.dart';
@@ -362,7 +363,7 @@ void main() {
         backend.requests.map((request) => request.url.path),
         contains('/api/party/p1/start'),
       );
-      expect(find.text('Le plateau de jeu arrive bientôt.'), findsOneWidget);
+      expect(find.byType(GameScreen), findsOneWidget);
     });
 
     testWidgets('another client starting the game leads there too', (
@@ -380,7 +381,7 @@ void main() {
         'roundId': 'r1',
       });
 
-      expect(find.text('Le plateau de jeu arrive bientôt.'), findsOneWidget);
+      expect(find.byType(GameScreen), findsOneWidget);
     });
 
     testWidgets('the party being deleted goes back to the list', (
