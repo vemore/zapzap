@@ -77,7 +77,8 @@ Bash call: the hook judges the whole line before any of it runs.
   is not proof the branch is live.
 - **Publishing**: `require-pull-request.sh` reads GitHub, never writes; silent without `gh`,
   unauthenticated, or on a branch with `git config branch.<name>.noPullRequest true`.
-- **The legacy Node backend** (`src/`) has no gate although production runs it ([[KnownLimits]]).
+- **The Node backend** (`src/`), which production runs, has no pre-commit gate: CI's `node`
+  job (jest) and `image` job (root `Dockerfile`) are its only checks ([[Testing]]).
 - **Hard enforcement generally**: a missing or non-executable script exits 127, a timeout
   does not block either. They reduce a class of mistake; they do not make it impossible.
 

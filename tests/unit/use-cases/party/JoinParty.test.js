@@ -117,7 +117,9 @@ describe('JoinParty Use Case', () => {
             expect(result.player.playerIndex).toBe(2);
         });
 
-        it('should start party when full', async () => {
+        // Filling the last seat does not start the game: the owner does, through
+        // StartParty (src/use-cases/party/StartParty.js).
+        it('should leave a full party waiting for the owner to start it', async () => {
             const existingPlayers = [
                 { id: '1', userId: 'user1', playerIndex: 0 },
                 { id: '2', userId: 'user2', playerIndex: 1 },
@@ -141,8 +143,9 @@ describe('JoinParty Use Case', () => {
                 partyId: mockParty.id
             });
 
-            expect(mockParty.status).toBe('playing');
-            expect(mockPartyRepository.save).toHaveBeenCalledWith(mockParty);
+            expect(mockPartyRepository.addPlayer).toHaveBeenCalled();
+            expect(mockParty.status).toBe('waiting');
+            expect(mockPartyRepository.save).not.toHaveBeenCalled();
         });
     });
 

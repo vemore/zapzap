@@ -30,11 +30,12 @@ const NODE_TABLES: [&str; 9] = [
     "users",
 ];
 
-/// The statements a fresh Node database receives: the `createSchema()` DDL string, then
-/// the `CREATE INDEX` calls of `runMigrations()`. (Its `ALTER TABLE ... ADD COLUMN`
-/// statements only fail with "duplicate column name" on a fresh database, and the
-/// password_hash rebuild is skipped there, so neither changes the schema.)
-fn node_ddl() -> String {
+/// The statements a fresh Node database receives, in order: the `createSchema()` DDL
+/// string, then what `runMigrations()` runs — its `ALTER TABLE ... ADD COLUMN` statements
+/// (Node ignores "duplicate column name", so on a fresh database only a column the DDL
+/// lacks is added) and its `CREATE INDEX` calls. The password_hash rebuild is skipped on
+/// a fresh database (password_hash is already nullable), so it is not replayed.
+fn node_statements() -> Vec<String> {
     let start = NODE_SOURCE
         .find("const schema = `")
         .expect("createSchema() DDL not found in DatabaseConnection.js")
@@ -42,7 +43,7 @@ fn node_ddl() -> String {
     let len = NODE_SOURCE[start..]
         .find('`')
         .expect("end of the createSchema() DDL not found");
-    let mut ddl = NODE_SOURCE[start..start + len].to_string();
+    let mut statements = vec![NODE_SOURCE[start..start + len].to_string()];
 
     let migrations = &NODE_SOURCE[NODE_SOURCE
         .find("async runMigrations()")
@@ -50,19 +51,41 @@ fn node_ddl() -> String {
     let migrations = &migrations[..migrations
         .find("async migratePasswordHashNullable()")
         .expect("migratePasswordHashNullable() not found")];
-    let mut indexes = 0;
+    let (mut alters, mut indexes) = (0, 0);
     for line in migrations.lines() {
-        if let Some(rest) = line.trim().strip_prefix("await this.run('CREATE INDEX") {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("sql: 'ALTER TABLE") {
+            let stmt = rest.split('\'').next().unwrap();
+            statements.push(format!("ALTER TABLE{stmt}"));
+            alters += 1;
+        } else if let Some(rest) = line.strip_prefix("await this.run('CREATE INDEX") {
             let stmt = rest.split("')").next().unwrap();
-            ddl.push_str(&format!("\nCREATE INDEX{stmt};"));
+            statements.push(format!("CREATE INDEX{stmt};"));
             indexes += 1;
         }
     }
+    assert!(
+        alters >= 5,
+        "the ALTER TABLE statements of runMigrations() were not read"
+    );
     assert_eq!(
         indexes, 2,
         "expected the two users indexes of runMigrations()"
     );
-    ddl
+    statements
+}
+
+/// Build the schema a fresh Node database gets, as `DatabaseConnection.js` does.
+async fn build_node_schema(db: &SqlitePool) {
+    for stmt in node_statements() {
+        if let Err(e) = sqlx::raw_sql(&stmt).execute(db).await {
+            // runMigrations() ignores exactly this error, and nothing else.
+            assert!(
+                stmt.starts_with("ALTER TABLE") && e.to_string().contains("duplicate column name"),
+                "{stmt}: {e}"
+            );
+        }
+    }
 }
 
 async fn memory_pool() -> SqlitePool {
@@ -123,7 +146,7 @@ async fn dump_rows(db: &SqlitePool) -> Vec<(String, String)> {
 #[tokio::test]
 async fn rust_schema_matches_node_schema() {
     let node = memory_pool().await;
-    sqlx::raw_sql(&node_ddl()).execute(&node).await.unwrap();
+    build_node_schema(&node).await;
 
     let rust = memory_pool().await;
     ensure_schema(&rust).await.unwrap();
@@ -170,7 +193,7 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
         )
         .await
         .unwrap();
-    sqlx::raw_sql(&node_ddl()).execute(&node).await.unwrap();
+    build_node_schema(&node).await;
     sqlx::raw_sql(
         "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
          CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type);
