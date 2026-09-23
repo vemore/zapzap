@@ -32,11 +32,11 @@
   "@authPasswordLabel": {
     "description": "Label of the password field (login and register)"
   },
-  "loginUsernameHint": "Entrez votre pseudo",
+  "loginUsernameHint": "Entre ton pseudo",
   "@loginUsernameHint": {
     "description": "Placeholder of the login username field"
   },
-  "loginPasswordHint": "Entrez votre mot de passe",
+  "loginPasswordHint": "Entre ton mot de passe",
   "@loginPasswordHint": {
     "description": "Placeholder of the login password field"
   },
@@ -253,11 +253,11 @@
   "@playErrorNotConsecutive": {
     "description": "A play is refused: the cards of the sequence are not consecutive, even with the jokers"
   },
-  "errorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
+  "errorNetwork": "Serveur injoignable. Vérifie ta connexion.",
   "@errorNetwork": {
     "description": "No answer from the server (network error or timeout)"
   },
-  "errorGeneric": "Une erreur est survenue. Réessayez.",
+  "errorGeneric": "Une erreur est survenue. Réessaie.",
   "@errorGeneric": {
     "description": "Any failure with no more precise message"
   },
@@ -305,7 +305,7 @@
   "@partiesEmptyTitle": {
     "description": "Title shown when no party exists"
   },
-  "partiesEmptyBody": "Créez la première partie et commencez à jouer !",
+  "partiesEmptyBody": "Crée la première partie et commence à jouer !",
   "@partiesEmptyBody": {
     "description": "Body shown when no party exists"
   },
@@ -373,7 +373,7 @@
   "@createPartyNameLabel": {
     "description": "Label of the party name field"
   },
-  "createPartyNameHint": "Entrez un nom",
+  "createPartyNameHint": "Entre un nom",
   "@createPartyNameHint": {
     "description": "Placeholder of the party name field"
   },
@@ -422,7 +422,7 @@
   "@createPartySlotsTitle": {
     "description": "Title of the per-seat configuration block"
   },
-  "createPartySlotOwner": "Joueur 1 (vous)",
+  "createPartySlotOwner": "Joueur 1 (toi)",
   "@createPartySlotOwner": {
     "description": "The creator's own seat, always the first and always human"
   },
@@ -646,7 +646,7 @@
       }
     }
   },
-  "historyYourPlacement": "Votre place : {place}",
+  "historyYourPlacement": "Ta place : {place}",
   "@historyYourPlacement": {
     "description": "Accessibility label of the finishing-place badge; place is historyPlacement",
     "placeholders": {
@@ -655,7 +655,7 @@
       }
     }
   },
-  "historyYourScore": "vous : {score} pts",
+  "historyYourScore": "toi : {score} pts",
   "@historyYourScore": {
     "description": "My final score in a finished game, next to the winner's, in the history list",
     "placeholders": {
@@ -686,7 +686,7 @@
   "@historySummaryBestPlace": {
     "description": "Caption under my best finishing place, in the history summary"
   },
-  "historyInviteText": "Vos prochaines parties terminées apparaîtront ici.",
+  "historyInviteText": "Tes prochaines parties terminées apparaîtront ici.",
   "@historyInviteText": {
     "description": "Under a short or empty My games list"
   },
@@ -852,7 +852,7 @@
   "@statsPersonalTitle": {
     "description": "Title of the personal statistics card"
   },
-  "statsLoadError": "Impossible de charger vos statistiques.",
+  "statsLoadError": "Impossible de charger tes statistiques.",
   "@statsLoadError": {
     "description": "GET /stats/me failed"
   },
@@ -936,7 +936,7 @@
   "@leaderboardEmpty": {
     "description": "The leaderboard has no row"
   },
-  "leaderboardYou": "(vous)",
+  "leaderboardYou": "(toi)",
   "@leaderboardYou": {
     "description": "Marks the signed-in player's own leaderboard row"
   },
@@ -973,7 +973,7 @@
   "@botStatsLoadError": {
     "description": "GET /stats/bots failed"
   },
-  "botStatsEmpty": "Aucune statistique de bot. Jouez contre des bots !",
+  "botStatsEmpty": "Aucune statistique de bot. Joue contre des bots !",
   "@botStatsEmpty": {
     "description": "No bot has played yet"
   },
@@ -1197,7 +1197,7 @@
   "@gamePlayersWaiting": {
     "description": "Shown when the table carries no seat"
   },
-  "gameYouBadge": "Vous",
+  "gameYouBadge": "Toi",
   "@gameYouBadge": {
     "description": "Badge marking the caller's own row in the player table"
   },
@@ -1539,7 +1539,7 @@
   "@gameHandSizeTitle": {
     "description": "Title of the hand-size selector"
   },
-  "gameHandSizeBody": "Choisissez combien de cartes chaque joueur reçoit.",
+  "gameHandSizeBody": "Choisis combien de cartes chaque joueur reçoit.",
   "@gameHandSizeBody": {
     "description": "Body of the hand-size selector"
   },
@@ -1608,7 +1608,7 @@
   "@gameNextRoundButton": {
     "description": "Button starting the next round"
   },
-  "errorNotYourTurn": "Ce n'est pas votre tour.",
+  "errorNotYourTurn": "Ce n'est pas ton tour.",
   "@errorNotYourTurn": {
     "description": "Refused move: NOT_YOUR_TURN"
   },
@@ -1620,11 +1620,11 @@
   "@errorInvalidPlay": {
     "description": "Refused move: INVALID_PLAY"
   },
-  "errorInvalidCards": "Ces cartes ne sont pas dans votre main.",
+  "errorInvalidCards": "Ces cartes ne sont pas dans ta main.",
   "@errorInvalidCards": {
     "description": "Refused move: INVALID_CARDS"
   },
-  "errorHandTooHigh": "Votre main dépasse 5 points.",
+  "errorHandTooHigh": "Ta main dépasse 5 points.",
   "@errorHandTooHigh": {
     "description": "Refused move: HAND_TOO_HIGH"
   },
@@ -1648,7 +1648,7 @@
   "@gameRefreshFailed": {
     "description": "Banner over a table whose refresh failed; the table stays on screen"
   },
-  "errorNotInParty": "Vous n'avez pas de place à cette table.",
+  "errorNotInParty": "Tu n'as pas de place à cette table.",
   "@errorNotInParty": {
     "description": "Refused move: NOT_IN_PARTY"
   },
@@ -1763,7 +1763,7 @@
       }
     }
   },
-  "gameNextRoundChooserMe": "Manche {number} : à vous de choisir la taille de la main",
+  "gameNextRoundChooserMe": "Manche {number} : à toi de choisir la taille de la main",
   "@gameNextRoundChooserMe": {
     "description": "The caller picks the hand size of the next round",
     "placeholders": {

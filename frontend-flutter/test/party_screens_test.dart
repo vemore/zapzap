@@ -164,7 +164,7 @@ void main() {
       );
       await pumpApp(tester, backend);
 
-      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
       expect(find.text('Aucune partie disponible'), findsNothing);
     });
 
@@ -356,7 +356,7 @@ void main() {
       await tester.tap(find.byKey(const Key('create-submit')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
       expect(find.byKey(const Key('create-submit')), findsOneWidget);
     });
   });
@@ -582,7 +582,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text("Vous n'avez pas de place à cette table."),
+        find.text("Tu n'as pas de place à cette table."),
         findsOneWidget,
       );
     });

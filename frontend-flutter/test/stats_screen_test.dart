@@ -61,7 +61,7 @@ void main() {
 
     expect(find.byType(LeaderboardRow), findsOneWidget);
     expect(highlighted(tester, vincentId), isTrue);
-    expect(find.textContaining('(vous)'), findsOneWidget);
+    expect(find.textContaining('(toi)'), findsOneWidget);
   });
 
   testWidgets('a row that is not mine is neither highlighted nor marked', (
@@ -70,7 +70,7 @@ void main() {
     await pumpStats(tester, userId: 'someone-else');
 
     expect(highlighted(tester, vincentId), isFalse);
-    expect(find.textContaining('(vous)'), findsNothing);
+    expect(find.textContaining('(toi)'), findsNothing);
   });
 
   testWidgets('the leaderboard row shows the wins and the win rate', (
