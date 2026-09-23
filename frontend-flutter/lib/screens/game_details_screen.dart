@@ -143,11 +143,14 @@ class _Summary extends StatelessWidget {
                         color: AppColors.amber400,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        l10n.gameWinnerLabel,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: AppColors.amber400,
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Text(
+                          l10n.gameWinnerLabel,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: AppColors.amber400,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],

@@ -402,9 +402,9 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   360x740 at 1.5, where the players and the moves take half the height and the felt's
   content scrolls inside a whole edge. Checked in the PWA (2026-09-23, Chromium at
   390x844, the web build against a stand-in API in the draw step). `test/game_screen_test.dart`
-  pumps every mode at 360x740 at text scales 1.0 **and** 1.5 — not my turn with a two-line
+  pumps every mode at 360x740 at text scales 1.0, 1.5 **and** 2.0 — not my turn with a two-line
   waiting banner, the tallest action bar (two-line banner over the invalid-play reason)
-  and a Golden Score hand of 10 included — and the wide layout at both scales too; the
+  and a Golden Score hand of 10 included — and the wide layout at every scale too; the
   suite's default 1100x3000 hides clipping.
 - Checked against the local Node backend (2026-09-23): a party of Vincent and two bots
   played through the web build in Chromium — hand size, play, take from the discard, draw,
@@ -463,7 +463,7 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   round's starting player (`orderedPlayers`), each a small card back and the count
   instead of a row of backs, a bar of the total towards 100 (red above 80, full once out)
   and the total; the player to move on an amber edge. Every line has the same height
-  (`GamePlayerTable.rowHeight`, from the text scale), whatever it holds — a "Vous" badge,
+  (`GamePlayerTable.rowHeight`, from the text scale), whatever it holds — a "Toi" badge,
   a card back or "Éliminé".
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
@@ -513,7 +513,7 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
 - Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
   sizes itself to its children hands an unbounded width to its text, which then runs off a
   360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
-  at text scales 1.0 and 1.5.
+  at text scales 1.0, 1.5 and 2.0.
 - Checked in the PWA (2026-09-23, Chromium at 360x740, the web build against a stand-in API
   answering a finished round): the held and the counteracted round as in the study's
   mockup.
@@ -596,8 +596,16 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   too, and `GoldenScoreChip` ellipsizes: with `Expanded` on the title alone the badge takes
   what it asks for, squeezes the title into a column of single letters and is clipped
   anyway. `test/history_screens_test.dart` and `test/stats_screen_test.dart` each end on a
-  `phone width` group at 360×740, at text scale 1 and 1.5, scrolling to every card so it
-  really lays out; an overflow is a layout error, which fails the test.
+  `phone width` group at 360×740, at text scale 1, 1.5 and 2.0, scrolling to every card so
+  it really lays out; an overflow is a layout error, which fails the test. At 2.0 the
+  standings score is `Flexible` beside the name (alone it took the whole row), the rounds
+  table's rows have no maximum height (`dataRowMaxHeight: double.infinity`, a fixed 76
+  clipped a cell) and the winner label wraps beside its icon.
+- **Text scale**: every screen is pinned at 360×740 at text scales 1.5 and 2.0, the
+  largest Android offers. The screens with no phone group of their own — home, splash,
+  login, register, not-found and the game screen's loading, load-failed and "not started"
+  states — are in `test/text_scale_test.dart`, which also checks their key controls lie
+  inside the screen: a clip inside a fixed-size box raises no overflow error.
 
 ### Android (`frontend-flutter/android/`)
 
@@ -678,7 +686,11 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   analyze` never does (checked 2026-09-22): after an ARB change, run `gen-l10n`. CI, the
   commit gate and `worktree_setup.sh` run it explicitly. Keeps parallel pull requests that
   each add strings free of conflicts in generated code.
-- `test/l10n_test.dart` fails when a key is in one ARB file and not the other.
+- `test/l10n_test.dart` fails when a key is in one ARB file and not the other, and when
+  a French message says "vous" (`vousMarkers`: vous, votre, vos, êtes, faites, dites and
+  any word ending in "-ez", but not "rendez-vous", "chez", "nez", "assez").
+- **The French client says "tu"** to the player, everywhere: "Toi", "à toi de choisir",
+  "Choisis…", "Ce n'est pas ton tour.", "Réessaie.".
 
 ### The PWA image (`frontend-flutter/Dockerfile`, `frontend-flutter/nginx.conf`)
 
@@ -722,7 +734,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, a name under 3 characters, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties, a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0 and 1.5, the wide layout at both scales), `test/game_turn_ux_test.dart` (J1–J6, T1, T2: the step chips, the named button, the hand value and its gauge, the ZapZap sheet — cancel and confirm —, the felt in each step and the deck as a target, the hand-size hint and 48 dp targets, the compact opponents at 390×844 and 1280×800 at both text scales, and the new pieces at 360×740), `test/game_felt_layout_test.dart` (the phone felt in the draw step at 360×740 and 390×844, text scales 1.0 and 1.5, in Roboto: never cut, the deck and the take hint in view; the amber draw button), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/history_ux_test.dart` (H1–H3, St1, St2: the place badge on Rust and Node entries, my score, no place on the public tab, the fr/en ordinals, the summary and its push to the statistics, the invitation and its push to the create-party form, the hero figures, `134` without `.0`, the ZapZap bar with and without calls, all at 360×740 at text scales 1.0 and 1.5), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, a name under 3 characters, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at text scales 1.5 and 2.0), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties, a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0, 1.5 and 2.0, the wide layout at each scale), `test/game_turn_ux_test.dart` (J1–J6, T1, T2: the step chips, the named button, the hand value and its gauge, the ZapZap sheet — cancel and confirm —, the felt in each step and the deck as a target, the hand-size hint and 48 dp targets, the compact opponents at 390×844 and 1280×800 at text scales 1.0, 1.5 and 2.0, and the new pieces at 360×740), `test/game_felt_layout_test.dart` (the phone felt in the draw step at 360×740 and 390×844, text scales 1.0 and 1.5, in Roboto: never cut, the deck and the take hint in view; the amber draw button), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/history_ux_test.dart` (H1–H3, St1, St2: the place badge on Rust and Node entries, my score, no place on the public tab, the fr/en ordinals, the summary and its push to the statistics, the invitation and its push to the create-party form, the hero figures, `134` without `.0`, the ZapZap bar with and without calls, all at 360×740 at text scales 1.0, 1.5 and 2.0), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1, 1.5 and 2.0; `test/text_scale_test.dart` (home, splash, login, register, not-found and the game screen's three message states at 360×740, text scale 1.5 and 2.0); `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
@@ -767,6 +779,12 @@ project `.gitignore`.
   `gameTableDiscardLabel` and `gameSeatCards` lost their callers and were dropped. Absorbed:
   the player-list entry of 2026-09-22 (one equal-height line per player, turn order from
   the round's first player).
+  > **Status: Outdated** (2026-09-23) — the whole app says "tu" now (the entry below).
+- **Tutoiement everywhere (2026-09-23, `chore/flutter-tu-voice`).** The user chose "tu",
+  as in the UX study, over the "vous" the first screens used: on the board, the "Vous"
+  badge sat next to "Ton tour". Twenty French strings changed wording only, no key was
+  renamed, and English is unchanged. `test/l10n_test.dart` keeps "vous" out of
+  `app_fr.arb`.
 - **The web icons are the launcher icon (2026-09-23).** Flutter's default web icons shipped
   until then; they are now rendered from the same `assets/icon/` SVGs as the Android
   launcher icon, plus a maskable variant for the install prompt.
@@ -886,7 +904,7 @@ project `.gitignore`.
   The UX study (H1–H3, St1, St2) found the history row said who won but not how I did, the
   history and the statistics linked only through the menu, an empty list said nothing to
   do, and six equal tiles made nothing stand out. The texts keep the app's "vous", not the
-  mockup's "tu". The summary's games and wins come from `/stats/me` rather than the
+  mockup's "tu" (outdated: "tu" everywhere since 2026-09-23). The summary's games and wins come from `/stats/me` rather than the
   history, which is one page of entries (Node answers 20 by default).
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
   generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed

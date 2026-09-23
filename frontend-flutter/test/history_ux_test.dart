@@ -128,7 +128,7 @@ void main() {
       expect(badgeOf(tester, 'won').color, AppColors.amber400);
       expect(badgeOf(tester, 'lost').color, isNull);
       // The row's InkWell merges its texts: the badge reads as a sentence.
-      expect(find.bySemanticsLabel(RegExp('Votre place : 4e')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Ta place : 4e')), findsOneWidget);
       semantics.dispose();
       // The badge is the first thing of the row.
       expect(
@@ -147,7 +147,7 @@ void main() {
       ], statsBody: stats());
 
       expect(inTile('lost', find.text('HardBot1')), findsOneWidget);
-      expect(inTile('lost', find.text('vous : 134 pts')), findsOneWidget);
+      expect(inTile('lost', find.text('toi : 134 pts')), findsOneWidget);
     });
 
     testWidgets('Node: a win of mine still shows first, a loss no badge', (
@@ -176,7 +176,7 @@ void main() {
 
       expect(find.byType(HistoryGameTile), findsOneWidget);
       expect(find.byKey(const Key('history-placement')), findsNothing);
-      expect(find.text('vous : 134 pts'), findsNothing);
+      expect(find.text('toi : 134 pts'), findsNothing);
       expect(find.byKey(const Key('history-summary')), findsNothing);
     });
 
@@ -291,7 +291,7 @@ void main() {
       await pumpHistory(tester, const [], statsBody: stats(games: 0));
 
       expect(
-        find.text('Vos prochaines parties terminées apparaîtront ici.'),
+        find.text('Tes prochaines parties terminées apparaîtront ici.'),
         findsOneWidget,
       );
       expect(find.text('Lancer une partie contre des bots'), findsOneWidget);
@@ -432,7 +432,7 @@ void main() {
   });
 
   group('phone width', () {
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       final at = scale == 1 ? '' : ' at a $scale text scale';
 
       testWidgets('the summary, badges and invitation fit$at', (tester) async {

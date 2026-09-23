@@ -98,11 +98,17 @@ class _StandingsRow extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            l10n.points(player.finalScore),
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: player.isWinner ? AppColors.amber400 : null,
+          const SizedBox(width: 8),
+          // Flexible too: at a 2.0 text scale the score alone would take
+          // the whole row and squeeze the name to nothing.
+          Flexible(
+            child: Text(
+              l10n.points(player.finalScore),
+              textAlign: TextAlign.end,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: player.isWinner ? AppColors.amber400 : null,
+              ),
             ),
           ),
         ],

@@ -242,7 +242,7 @@ void main() {
       expect(find.byKey(const Key('turnSteps')), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(0)), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(2)), findsOneWidget);
-      expect(find.text('Vous'), findsOneWidget);
+      expect(find.text('Toi'), findsOneWidget);
       // Nothing selected yet; one button, for the step at hand.
       expect(enabled(tester, 'play-cards'), isFalse);
       expect(find.byKey(const Key('draw-card')), findsNothing);
@@ -345,7 +345,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text("Vous n'avez pas de place à cette table."),
+        find.text("Tu n'as pas de place à cette table."),
         findsOneWidget,
       );
       expectBoardStanding(tester);
@@ -779,7 +779,7 @@ void main() {
   group('a 360×740 phone', () {
     const phone = Size(360, 740);
 
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('the play phase fits at a text scale of $scale', (
         tester,
       ) async {
@@ -1020,7 +1020,7 @@ void main() {
     }
   });
 
-  for (final scale in [1.0, 1.5]) {
+  for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets(
       'a wide screen puts the players beside the felt at a text scale of '
       '$scale',

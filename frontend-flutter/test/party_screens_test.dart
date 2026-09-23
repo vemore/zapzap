@@ -164,7 +164,7 @@ void main() {
       );
       await pumpApp(tester, backend);
 
-      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
       expect(find.text('Aucune partie disponible'), findsNothing);
     });
 
@@ -356,7 +356,7 @@ void main() {
       await tester.tap(find.byKey(const Key('create-submit')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
       expect(find.byKey(const Key('create-submit')), findsOneWidget);
     });
   });
@@ -582,7 +582,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text("Vous n'avez pas de place à cette table."),
+        find.text("Tu n'as pas de place à cette table."),
         findsOneWidget,
       );
     });
@@ -718,70 +718,93 @@ void main() {
     // A large system font size is the same layout with everything taller
     // and wider; a tile of a fixed height, or a row of unconstrained
     // texts, overflows there and nowhere else.
-    testWidgets('the party list fits at a 1.5 text scale', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(
-          parties: [
-            partySummaryJson(
+    for (final scale in [1.5, 2.0]) {
+      testWidgets('the party list fits at a $scale text scale', (tester) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(
+            parties: [
+              partySummaryJson(
+                id: 'p1',
+                name: 'Une partie au nom particulièrement long',
+                playerCount: 2,
+                isMember: true,
+              ),
+              partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
+            ],
+            connected: [connectedPlayerJson('u1', 'Vincent')],
+          ),
+          size: phone,
+          textScale: scale,
+        );
+        expect(find.byKey(const Key('party-p1')), findsOneWidget);
+        expect(find.byKey(const Key('open-p1')), findsOneWidget);
+      });
+
+      testWidgets('the lobby fits at a $scale text scale', (tester) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(
+            details: partyDetailsJson(
               id: 'p1',
               name: 'Une partie au nom particulièrement long',
-              playerCount: 2,
-              isMember: true,
+              ownerId: 'u1',
+              players: [
+                partyPlayerJson(
+                  userId: 'u1',
+                  username: 'Vincent-au-pseudo-très-long',
+                  playerIndex: 0,
+                ),
+                partyPlayerJson(
+                  userId: 'b1',
+                  username: 'HardVinceBot1',
+                  playerIndex: 1,
+                  userType: 'bot',
+                  botDifficulty: 'hard_vince',
+                ),
+              ],
             ),
-            partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
-          ],
-          connected: [connectedPlayerJson('u1', 'Vincent')],
-        ),
-        size: phone,
-        textScale: 1.5,
-      );
-      expect(find.byKey(const Key('party-p1')), findsOneWidget);
-      expect(find.byKey(const Key('open-p1')), findsOneWidget);
-    });
-
-    testWidgets('the lobby fits at a 1.5 text scale', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(
-          details: partyDetailsJson(
-            id: 'p1',
-            name: 'Une partie au nom particulièrement long',
-            ownerId: 'u1',
-            players: [
-              partyPlayerJson(
-                userId: 'u1',
-                username: 'Vincent-au-pseudo-très-long',
-                playerIndex: 0,
-              ),
-              partyPlayerJson(
-                userId: 'b1',
-                username: 'HardVinceBot1',
-                playerIndex: 1,
-                userType: 'bot',
-                botDifficulty: 'hard_vince',
-              ),
-            ],
           ),
-        ),
-        initialLocation: AppRoutes.partyPath('p1'),
-        size: phone,
-        textScale: 1.5,
-      );
-      expect(find.text('Joueurs (2/5)'), findsOneWidget);
-      expect(find.byKey(const Key('seat-b1')), findsOneWidget);
-    });
+          initialLocation: AppRoutes.partyPath('p1'),
+          size: phone,
+          textScale: scale,
+        );
+        // A ListView lays out — and can overflow — only what is scrolled
+        // into view: scroll down to its last button.
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('leave-party')),
+          200,
+        );
+        expect(find.byKey(const Key('lobby-seats-header')), findsOneWidget);
+        expect(find.byKey(const Key('seat-b1')), findsOneWidget);
+      });
 
-    testWidgets('the create form fits at a 1.5 text scale', (tester) async {
-      await pumpApp(
+      testWidgets('the create form fits at a $scale text scale', (
         tester,
-        FakeLobbyBackend(),
-        initialLocation: AppRoutes.createParty,
-        size: phone,
-        textScale: 1.5,
-      );
-      expect(find.byKey(const Key('slot-0')), findsOneWidget);
-    });
+      ) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(),
+          initialLocation: AppRoutes.createParty,
+          size: phone,
+          textScale: scale,
+        );
+        expect(find.byKey(const Key('slot-0')), findsOneWidget);
+        // The form's ListView builds — and lays out — only what is in
+        // view; its text fields are scrollables too.
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('create-submit')),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byType(ListView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('back navigation', () {
