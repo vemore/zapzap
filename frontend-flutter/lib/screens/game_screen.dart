@@ -19,6 +19,7 @@ import '../widgets/game_player_table.dart';
 import '../widgets/game_round_end.dart';
 import '../widgets/game_table_area.dart';
 import '../widgets/game_zapzap_sheet.dart';
+import '../widgets/phone_board_layout.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The board (`frontend/src/components/Game/GameBoard.jsx`): the players,
@@ -337,24 +338,18 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  /// A phone: one column that fills the height. Each section is `Flexible`
-  /// over its own scroll view, so a large system font shrinks a section
-  /// rather than overflowing the column.
+  /// A phone: one column that fills the height, each section over its own
+  /// scroll view, so a large system font shrinks a section rather than
+  /// overflowing the column. How the height is shared: [PhoneBoardLayout].
   Widget _phoneBoard() => Padding(
     padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      // A section that needs less than its share leaves the slack behind;
-      // spreading it keeps the moves against the bottom of the screen.
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    child: CustomMultiChildLayout(
+      delegate: PhoneBoardLayout(feltFirst: _tableStep == TableStep.draw),
       children: [
-        Flexible(flex: 3, child: _scroll(_playerTable())),
-        const SizedBox(height: 6),
-        Expanded(flex: 4, child: _scroll(_tableArea())),
-        const SizedBox(height: 6),
-        Flexible(flex: 4, child: _scroll(_hand())),
-        const SizedBox(height: 6),
-        _actions(),
+        LayoutId(id: PhoneBoardSlot.players, child: _scroll(_playerTable())),
+        LayoutId(id: PhoneBoardSlot.felt, child: _tableArea()),
+        LayoutId(id: PhoneBoardSlot.hand, child: _scroll(_hand())),
+        LayoutId(id: PhoneBoardSlot.actions, child: _actions()),
       ],
     ),
   );
@@ -372,7 +367,13 @@ class _GameScreenState extends State<GameScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _scroll(_tableArea(cardWidth: 60))),
+              // The felt scrolls inside its own edge (`GameTableArea`).
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: _tableArea(cardWidth: 60),
+                ),
+              ),
               const SizedBox(height: 12),
               Flexible(child: _scroll(_hand())),
               const SizedBox(height: 12),
