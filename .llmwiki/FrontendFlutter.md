@@ -19,7 +19,7 @@
   missing against the React client ([[Frontend]]): Google sign-in, admin.
 - **History and statistics are reached from the app-bar menu** of every signed-in screen
   (`ZapZapAppBar`, below) — the history, the game details and the statistics carry that
-  bar too, with a back button; the deep links (`/#/history`, `/#/stats`) still work. There is **no Admin entry**: `/admin` has the
+  bar too, with a back button; the deep links (`/app/history`, `/app/stats`) still work. There is **no Admin entry**: `/admin` has the
   router guard but no screen, so the menu would lead to the not-found screen.
 - The card model, play rules and card widgets (below) are what the board draws hands with.
 - **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
@@ -195,8 +195,11 @@
   followed when it is a local path (`/x`, not `//host` or a scheme). An unknown path shows
   the not-found screen, signed in or out (`test/app_test.dart`). React's
   `ProtectedRoute` checks only that a token exists, never its expiry
-  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route sits in the
-  URL fragment (`/#/parties`, Flutter's default URL strategy).
+  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route is the URL
+  path under the base href (`/app/parties`): `lib/main.dart` calls `usePathUrlStrategy()`
+  (`flutter_web_plugins`) before `runApp`, a no-op off the web; the browser path less
+  `/app/` is go_router's initial route, which wins over `initialLocation`
+  (`test/deep_link_test.dart`).
 
 ### Real-time channel (SSE)
 
@@ -330,8 +333,11 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 
 - **`GameProvider`**, built and disposed by the screen as the lobby's providers are:
   `GET /game/:id/state`, then the event stream filtered on `partyId` — `play`, `draw`,
-  `selectHandSize`, `zapzap`, `roundStarted` and `gameFinished` refetch without a spinner,
-  `partyDeleted` sets `outcome` and the screen goes back to the list. No move's answer
+  `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished` and `partyStarted` refetch
+  without a spinner, `partyDeleted` sets `outcome` and the screen goes back to the list.
+  `partyStarted` is what takes a client that opened `/game/:id` before the owner started
+  off the "not started yet" page and onto the table with no reload; that page also has a
+  Retry (`Key('retry-game')`) for an event missed while the channel was down. No move's answer
   carries the new table, so every move refetches the state (`GameBoard.jsx` does the same).
   It derives the caller's seat from the user id (`myPlayerIndex`, `isMyTurn`), the card
   counts, the scores, the eliminated players, `orderedPlayers` (turn order from
@@ -353,7 +359,9 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 - **One selection, in the provider**: the tapped ids in tap order, dropped whenever the
   hand changes. React keeps one in `PlayerHand` and another in `GameBoard`, and they drift
   apart. `invalidPlay` is `analyzePlay`'s code; the action bar shows its text and disables
-  Play, and the board stays.
+  Play, and the board stays. The discard card is kept across a refresh that leaves the
+  hand as it was, so `willTakeFromDiscard` checks it is still in `lastCardsPlayed`: a card
+  gone from the pile is never posted, and Take falls back to Draw.
 - **Modes**, from `gameState.currentAction`: `selectHandSize` shows
   `GameHandSizeSelector` (4-7, or 4-10 in Golden Score; it starts on the middle of the
   range, 5 or 7) to the starting player and a waiting card to everyone else; `play`/`draw`
@@ -371,8 +379,10 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 - **Layouts**: under 800 px one column that fills the height — each section is `Flexible`
   over its own scroll view, so a large system font shrinks a section instead of
   overflowing the column —, above it the players beside the felt. `test/game_screen_test.dart`
-  pumps every mode at 360x740 at text scales 1.0 **and** 1.5; the suite's default
-  1100x3000 hides clipping.
+  pumps every mode at 360x740 at text scales 1.0 **and** 1.5 — not my turn with a two-line
+  waiting banner, the tallest action bar (two-line banner over the invalid-play reason)
+  and a Golden Score hand of 10 included — and the wide layout at both scales too; the
+  suite's default 1100x3000 hides clipping.
 - Checked against the local Node backend (2026-09-23): a party of Vincent and two bots
   played through the web build in Chromium — hand size, play, take from the discard, draw,
   the bots' moves arriving over SSE, the end of the round and the next round. Known local
@@ -589,17 +599,17 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   that (35 checks); the `image` CI job runs it. It asserts content types, not only statuses,
   the exact `Cache-Control` value (an `add_header` beside an `expires` emits two), that a
   missing file 404s, and that CanvasKit comes from the bundle.
-- The route deep links use is the hash one: go_router's default on the web, so a link is
-  `/app/#/parties`. `/app/parties` is served the app by the fallback — it loads instead of
-  404ing — but the path is not the route; only a `usePathUrlStrategy()` in `lib/` would make
-  it one.
+- Deep links are path URLs (`usePathUrlStrategy()`, above): `/app/parties` and
+  `/app/history/<partyId>` open their screen from a cold tab or a reload, the fallback
+  serving `index.html` and the app reading the route off the path. No in-app URL carries
+  `#`. The extension rule is why a route may never contain a dot.
 
 ### Build and test (from `frontend-flutter/`)
 
 | Command | What |
 |---|---|
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, a name under 3 characters, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, the hand-size range, the events), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties, and every mode at 360×740 at text scales 1.0 and 1.5), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, a name under 3 characters, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties, a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0 and 1.5, the wide layout at both scales), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
