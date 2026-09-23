@@ -19,7 +19,7 @@
   missing against the React client ([[Frontend]]): Google sign-in, admin.
 - **History and statistics are reached from the app-bar menu** of every signed-in screen
   (`ZapZapAppBar`, below), and from each other's app-bar action; the deep links
-  (`/#/history`, `/#/stats`) still work. There is **no Admin entry**: `/admin` has the
+  (`/app/history`, `/app/stats`) still work. There is **no Admin entry**: `/admin` has the
   router guard but no screen, so the menu would lead to the not-found screen.
 - The card model, play rules and card widgets (below) are what the board draws hands with.
 - **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
@@ -194,8 +194,11 @@
   followed when it is a local path (`/x`, not `//host` or a scheme). An unknown path shows
   the not-found screen, signed in or out (`test/app_test.dart`). React's
   `ProtectedRoute` checks only that a token exists, never its expiry
-  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route sits in the
-  URL fragment (`/#/parties`, Flutter's default URL strategy).
+  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route is the URL
+  path under the base href (`/app/parties`): `lib/main.dart` calls `usePathUrlStrategy()`
+  (`flutter_web_plugins`) before `runApp`, a no-op off the web; the browser path less
+  `/app/` is go_router's initial route, which wins over `initialLocation`
+  (`test/deep_link_test.dart`).
 
 ### Real-time channel (SSE)
 
@@ -558,10 +561,10 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   that (35 checks); the `image` CI job runs it. It asserts content types, not only statuses,
   the exact `Cache-Control` value (an `add_header` beside an `expires` emits two), that a
   missing file 404s, and that CanvasKit comes from the bundle.
-- The route deep links use is the hash one: go_router's default on the web, so a link is
-  `/app/#/parties`. `/app/parties` is served the app by the fallback — it loads instead of
-  404ing — but the path is not the route; only a `usePathUrlStrategy()` in `lib/` would make
-  it one.
+- Deep links are path URLs (`usePathUrlStrategy()`, above): `/app/parties` and
+  `/app/history/<partyId>` open their screen from a cold tab or a reload, the fallback
+  serving `index.html` and the app reading the route off the path. No in-app URL carries
+  `#`. The extension rule is why a route may never contain a dot.
 
 ### Build and test (from `frontend-flutter/`)
 
