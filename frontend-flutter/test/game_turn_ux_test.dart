@@ -4,6 +4,8 @@
 // step, the hand-size choice explained, and the compact opponents. Each
 // group names the item of the study it proves.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
@@ -33,7 +35,7 @@ const List<JsonMap> fourPlayers = [
 void main() {
   const phone = Size(360, 740);
 
-  Future<void> pumpGame(
+  Future<FakeSseTransport> pumpGame(
     WidgetTester tester,
     FakeGameBackend backend, {
     Size size = const Size(1100, 3000),
@@ -46,6 +48,7 @@ void main() {
       tester.platformDispatcher.textScaleFactorTestValue = textScale;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     }
+    final transport = FakeSseTransport();
     await tester.pumpWidget(
       ZapZapApp(
         apiConfig: testConfig,
@@ -53,10 +56,11 @@ void main() {
         initialLocation: AppRoutes.gamePath('p1'),
         apiClient: backend.client(),
         tokenStorage: storedSession(validToken),
-        sseTransport: FakeSseTransport(),
+        sseTransport: transport,
       ),
     );
     await tester.pumpAndSettle();
+    return transport;
   }
 
   FakeGameBackend table({
@@ -282,7 +286,9 @@ void main() {
       expect(find.textContaining('Pénalité'), findsNothing);
     });
 
-    testWidgets('a joker shows what a counteract would score', (tester) async {
+    testWidgets('a joker shows what the hand scores at round end', (
+      tester,
+    ) async {
       // A♠ + 2♠ + a joker: 3 for ZapZap, 28 if counteracted.
       await pumpGame(tester, table(playerHand: [0, 1, 52]));
 
@@ -295,7 +301,10 @@ void main() {
             .value,
         1,
       );
-      expect(find.text('Si contré : 28 pts (joker 25)'), findsOneWidget);
+      // A joker counts 25 at round end for anyone without the lowest hand,
+      // counteracted or not: the label does not tie it to a counteract.
+      expect(find.text('En fin de manche : 28 pts (joker 25)'), findsOneWidget);
+      expect(find.textContaining('contré'), findsNothing);
     });
   });
 
@@ -460,6 +469,72 @@ void main() {
       await tester.tap(find.byKey(const Key('draw-deck')));
       await tester.pumpAndSettle();
       expect(backend.bodyOf('POST', '/api/game/p1/draw'), {'source': 'deck'});
+    });
+
+    testWidgets('a joker from the pile counts 0 for ZapZap, 25 at round end', (
+      tester,
+    ) async {
+      await pumpGame(
+        tester,
+        table(currentAction: 'draw', lastCardsPlayed: [17, 52]),
+      );
+
+      await tester.tap(find.byKey(GameTableArea.discardKey(52)));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Prendre Joker rouge : 0 point pour ZapZap, mais 25 en fin de '
+          "manche si ta main n'est pas la plus basse.",
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining("n'ajoute aucun point"), findsNothing);
+    });
+
+    testWidgets('a refused deck draw keeps the pile pick', (tester) async {
+      final backend = table(currentAction: 'draw', lastCardsPlayed: [17, 19]);
+      backend.failures['POST /api/game/p1/draw'] = (
+        status: 400,
+        body: {'error': 'refused', 'code': 'INVALID_ACTION'},
+      );
+      await pumpGame(tester, backend);
+
+      await tester.tap(find.byKey(GameTableArea.discardKey(19)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('draw-deck')));
+      await tester.pumpAndSettle();
+
+      expect(backend.bodyOf('POST', '/api/game/p1/draw'), {'source': 'deck'});
+      // The pick is still there: the button still takes 7♥, the hint too.
+      expect(primaryLabel(tester), 'Prendre 7♥');
+      expect(find.byKey(const Key('takeHint')), findsOneWidget);
+    });
+
+    testWidgets('a pick the pile no longer holds gets no hint, as the button '
+        'draws', (tester) async {
+      final backend = table(currentAction: 'draw', lastCardsPlayed: [17, 19]);
+      final transport = await pumpGame(tester, backend);
+
+      await tester.tap(find.byKey(GameTableArea.discardKey(19)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('takeHint')), findsOneWidget);
+
+      // Same hand, but 7♥ has left the pile: the pick is stale.
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(
+          currentTurn: 0,
+          currentAction: 'draw',
+          playerHand: const [0, 1, 2, 30, 44],
+          lastCardsPlayed: const [17, 18],
+        ),
+      );
+      transport.last.send(
+        jsonEncode({'partyId': 'p1', 'action': 'draw', 'type': 'gameAction'}),
+      );
+      await tester.pumpAndSettle();
+
+      expect(primaryLabel(tester), 'Piocher');
+      expect(find.byKey(const Key('takeHint')), findsNothing);
     });
   });
 

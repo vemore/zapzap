@@ -306,23 +306,20 @@ class GameProvider extends ChangeNotifier {
     await _act(() => _repository.play(partyId, cards));
   }
 
-  /// Draws: the selected discard card, or the deck.
-  Future<void> draw() async {
+  /// Draws: the selected discard card, or the deck — always the deck with
+  /// [fromDeck], the deck on the felt being a target of its own. The pile
+  /// pick is dropped only once the draw has landed (`_act`), so a refused
+  /// one keeps it.
+  Future<void> draw({bool fromDeck = false}) async {
     if (!canDraw) return;
-    final fromDiscard = willTakeFromDiscard ? _selectedDiscardCard : null;
+    final fromDiscard = !fromDeck && willTakeFromDiscard
+        ? _selectedDiscardCard
+        : null;
     await _act(
       () => fromDiscard == null
           ? _repository.drawFromDeck(partyId)
           : _repository.drawFromPlayed(partyId, fromDiscard),
     );
-  }
-
-  /// Draws from the deck even when a discard card is picked: the deck on the
-  /// felt is a target of its own.
-  Future<void> drawFromDeck() async {
-    if (!canDraw) return;
-    _selectedDiscardCard = null;
-    await _act(() => _repository.drawFromDeck(partyId));
   }
 
   Future<void> zapZap() async {

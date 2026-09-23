@@ -421,22 +421,28 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   stays, under it.
 - **The hand value in plain words** (J3, `GameHand`): "Ta main · 29 pts" — jokers at 0,
   what ZapZap is decided on —, a gauge towards "ZapZap à 5" (`zapZapProgress`: 5 / value,
-  full at 5 or under), and "Si contré : n pts (joker 25)" only when a joker makes the two
-  values differ.
+  full at 5 or under), and "En fin de manche : n pts (joker 25)" only when the hand holds a
+  joker (`hasJoker`) — a joker counts 25 at the end of the round for anyone without the
+  lowest hand, counteracted or not (`GAME_RULES.md`), so the label does not tie it to a
+  counteract.
 - **ZapZap with its risk** (J4): always shown; disabled, it says why — "main 29, il faut 5
   ou moins", or "au début de ton tour" outside the player's play step. A tap opens a
   bottom sheet (`widgets/game_zapzap_sheet.dart`, `confirmZapZap`) that states the
   counteract: the hand at 25 per joker + `counteractPenalty(activePlayers)` =
   (active players − 1) × 5 (`utils/rules.dart`), active players being those not in
   `eliminatedPlayers` (`GameProvider.activePlayerCount`), and in Golden Score that being
-  counteracted loses the game. Only Confirm posts `/zapzap`; Cancel or a dismissal posts
+  counteracted loses the game. `ZapZapRisk.eligible` is the provider's `zapZapEligible`, so
+  the button's reason and its enabled state come from one source. Only Confirm posts `/zapzap`; Cancel or a dismissal posts
   nothing.
 - **The discard pile and the deck** (J5, `GameTableArea.step`, `TableStep`): the pile is
   labelled "À prendre ensuite" and dimmed while the player plays; in the draw step the
   felt takes an amber edge, says "Touche une carte pour la prendre, ou la pioche", the pile
-  goes to full opacity, a picked card adds "Prendre 7♥ ajoute 7 points à ta main", and the
-  deck (`Key('draw-deck')`, moved from the hand onto the felt) is a target of its own —
-  `GameProvider.drawFromDeck` draws from the deck even with a discard card picked.
+  goes to full opacity, the card the draw will take (`takeCard`, the one the button names —
+  never a pick the pile no longer holds) adds "Prendre 7♥ ajoute 7 points à ta main", or for
+  a joker "0 point pour ZapZap, mais 25 en fin de manche si ta main n'est pas la plus
+  basse", and the deck (`Key('draw-deck')`, moved from the hand onto the felt) is a target
+  of its own — `GameProvider.draw(fromDeck: true)` draws from the deck even with a discard
+  card picked, and keeps that pick if the draw is refused.
 - **The hand-size choice** (T1, T2, `GameHandSizeSelector`): 58 × 50 buttons (≥ 48 dp)
   instead of chips, a line on what the choice changes ("Moins de cartes, ZapZap plus
   vite ; plus de cartes, plus de combinaisons"), and "Distribuer N cartes".

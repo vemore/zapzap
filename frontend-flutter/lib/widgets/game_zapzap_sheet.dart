@@ -13,8 +13,18 @@ class ZapZapRisk {
     required this.handValue,
     required this.scoredValue,
     required this.activePlayers,
+    required this.eligible,
+    required this.holdsJoker,
     this.isGoldenScore = false,
   });
+
+  /// Whether the hand may call ZapZap — the board's own
+  /// `GameProvider.zapZapEligible`, so the button's reason and its enabled
+  /// state never disagree.
+  final bool eligible;
+
+  /// The hand holds a joker (`hasJoker`): it counts 25 if counteracted.
+  final bool holdsJoker;
 
   /// The hand, jokers at 0: what the call is decided on.
   final int handValue;
@@ -27,13 +37,9 @@ class ZapZapRisk {
 
   final bool isGoldenScore;
 
-  bool get eligible => handValue <= zapZapThreshold;
   int get opponents => activePlayers - 1;
   int get penalty => counteractPenalty(activePlayers);
   int get counteractedScore => scoredValue + penalty;
-
-  /// The two values differ only when the hand holds a joker.
-  bool get holdsJoker => scoredValue != handValue;
 }
 
 /// Asks before calling ZapZap, stating what a counteract costs; answers

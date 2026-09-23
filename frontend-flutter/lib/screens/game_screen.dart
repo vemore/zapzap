@@ -296,8 +296,9 @@ class _GameScreenState extends State<GameScreen> {
     step: _tableStep,
     deckSize: _game.deckSize,
     selectedDiscardCard: _game.selectedDiscardCard,
+    takeCard: _game.willTakeFromDiscard ? _game.selectedDiscardCard : null,
     onDiscardTap: _game.canSelectDiscard ? _game.selectDiscardCard : null,
-    onDeckTap: _game.canDraw ? _game.drawFromDeck : null,
+    onDeckTap: _game.canDraw ? () => _game.draw(fromDeck: true) : null,
   );
 
   Widget _hand() {
@@ -326,6 +327,8 @@ class _GameScreenState extends State<GameScreen> {
         handValue: values.eligibility,
         scoredValue: values.penalty,
         activePlayers: _game.activePlayerCount,
+        eligible: _game.zapZapEligible,
+        holdsJoker: hasJoker(_game.myHand),
         isGoldenScore: _game.isGoldenScore,
       ),
       onPlay: _game.canPlay ? _game.play : null,

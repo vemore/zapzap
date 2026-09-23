@@ -1424,9 +1424,9 @@
       }
     }
   },
-  "gameHandPenalty": "Si contré : {points} pts (joker 25)",
+  "gameHandPenalty": "En fin de manche : {points} pts (joker 25)",
   "@gameHandPenalty": {
-    "description": "The hand value with jokers at 25, shown when the hand holds a joker",
+    "description": "What the hand scores at the end of the round, jokers at 25 — shown when the hand holds a joker",
     "placeholders": {
       "points": {
         "type": "int"
@@ -1517,6 +1517,15 @@
       "points": {
         "type": "int"
       },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameTableTakeJokerHint": "Prendre {card} : 0 point pour ZapZap, mais 25 en fin de manche si ta main n'est pas la plus basse.",
+  "@gameTableTakeJokerHint": {
+    "description": "What taking a joker from the discard pile does to the hand",
+    "placeholders": {
       "card": {
         "type": "String"
       }

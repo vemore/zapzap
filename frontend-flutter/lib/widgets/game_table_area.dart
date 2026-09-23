@@ -40,6 +40,7 @@ class GameTableArea extends StatefulWidget {
     this.onDiscardTap,
     this.onDeckTap,
     this.selectedDiscardCard,
+    this.takeCard,
     this.cardWidth = 45,
   });
 
@@ -65,6 +66,11 @@ class GameTableArea extends StatefulWidget {
   final VoidCallback? onDeckTap;
 
   final int? selectedDiscardCard;
+
+  /// The discard card the draw will actually take — the one the button
+  /// names —, or `null`: a pick the pile no longer holds gets no hint.
+  final int? takeCard;
+
   final double cardWidth;
 
   /// How long the "Reshuffled!" banner stays, as React
@@ -147,7 +153,7 @@ class _GameTableAreaState extends State<GameTableArea> {
     final l10n = AppLocalizations.of(context);
     final message = _message(l10n);
     final drawing = widget.step == TableStep.draw;
-    final selected = widget.selectedDiscardCard;
+    final take = widget.takeCard;
     return Stack(
       children: [
         Container(
@@ -217,14 +223,11 @@ class _GameTableAreaState extends State<GameTableArea> {
                 runSpacing: 6,
                 children: [_pile(l10n), _deck(l10n)],
               ),
-              if (drawing && selected != null)
+              if (drawing && take != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    l10n.gameTableTakeHint(
-                      GameCard(selected).value(),
-                      l10n.cardShort(GameCard(selected)),
-                    ),
+                    _takeHint(l10n, GameCard(take)),
                     key: const Key('takeHint'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
@@ -264,6 +267,13 @@ class _GameTableAreaState extends State<GameTableArea> {
       ],
     );
   }
+
+  /// What taking [card] does to the hand. A joker counts 0 towards ZapZap
+  /// but 25 at the end of the round for anyone without the lowest hand
+  /// (`GAME_RULES.md`), so it is never "no points".
+  String _takeHint(AppLocalizations l10n, GameCard card) => card.isJoker
+      ? l10n.gameTableTakeJokerHint(l10n.cardShort(card))
+      : l10n.gameTableTakeHint(card.value(), l10n.cardShort(card));
 
   /// The previous player's cards: what the next draw may take. A card is
   /// tappable — and at full opacity — only while this player draws.

@@ -7,8 +7,9 @@ import 'card_fan.dart';
 
 /// The player's own cards, in the fan of `CardFan.jsx`, under what the hand
 /// is worth in plain words (J3 of the UX study): "Ta main · 29 pts" — jokers
-/// at 0, what ZapZap is decided on —, a gauge towards "ZapZap à 5", and the
-/// value a counteract would score only when a joker makes it differ.
+/// at 0, what ZapZap is decided on —, a gauge towards "ZapZap à 5", and, only
+/// when the hand holds a joker, what it scores at the end of the round
+/// (jokers 25, for anyone without the lowest hand).
 ///
 /// Selection is the board's, not this widget's: the React client keeps one
 /// in `PlayerHand` and another in `GameBoard`, and they drift apart.
@@ -46,8 +47,7 @@ class GameHand extends StatelessWidget {
   /// owed).
   final bool disabled;
 
-  /// The two values differ only when the hand holds a joker.
-  bool get _holdsJoker => penaltyValue != eligibilityValue;
+  bool get _holdsJoker => hasJoker(cards);
 
   /// The gauge fills green as the hand comes down to the threshold.
   static const gaugeColor = Color(0xFF4ADE80);
