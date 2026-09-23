@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -30,9 +30,12 @@ commit message or a heredoc that *mentions* a forbidden command passes. When it 
 where a `git commit` or a bare `git push` runs (a `cd $VAR` it cannot resolve, `$(...)`), it
 refuses with `unknown-repo` and asks for `git -C <literal path>`.
 
-`scripts/hooks_selftest.sh` exercises all of it — 126 cases in sandbox repositories, with a
-stubbed `gh`, `cargo`, `npm` and `flutter` — plus `scripts/cleanup_local.sh` and the
-`flutter pub get` of `scripts/worktree_setup.sh`; it is the `hooks` CI job.
+`scripts/hooks_selftest.sh` exercises all of it — 139 cases in sandbox repositories, with a
+stubbed `gh`, `cargo`, `npm`, `flutter`, `docker-compose` and `curl` — plus
+`scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh`, and
+`deploy.sh` (the step order that makes a failed deploy a no-op rather than an outage, and
+its two refusals: [[Deployment]]); it is the `hooks` CI job. `deploy.sh` is not classified by
+`scripts/ci_scope.sh`, so a change to it runs every job, the `hooks` one included.
 
 ### What is refused, and on what evidence
 

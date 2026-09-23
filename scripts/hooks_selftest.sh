@@ -524,6 +524,95 @@ if [ "$(id -u)" != 0 ]; then
     report "cleanup --apply: a failed removal prints git's error" explained "$got"
 fi
 
+echo "== deploy ===================================================="
+# deploy.sh is the production path: the order of its steps is what makes a failed deploy
+# a no-op instead of an outage, and it can only be asserted offline. A sandbox clone with
+# a real origin drives the real script, with docker-compose, curl, jq and sleep stubbed —
+# the compose stub logs its arguments, so the *order* of build/down/up is the assertion.
+DREMOTE="$SANDBOX/deploy-remote.git"
+DPROD="$SANDBOX/deploy-prod"
+DTOOLS="$SANDBOX/deploy-tools"
+DLOG="$SANDBOX/compose.log"
+mkdir -p "$DTOOLS"
+git init -q --bare "$DREMOTE"
+git init -q "$SANDBOX/deploy-src"
+git -C "$SANDBOX/deploy-src" config user.email t@t
+git -C "$SANDBOX/deploy-src" config user.name t
+mkdir -p "$SANDBOX/deploy-src/data"
+cp "$ROOT/deploy.sh" "$SANDBOX/deploy-src/deploy.sh"
+chmod +x "$SANDBOX/deploy-src/deploy.sh"
+git -C "$SANDBOX/deploy-src" add -A
+git -C "$SANDBOX/deploy-src" commit -qm "deploy.sh"
+git -C "$SANDBOX/deploy-src" remote add origin "$DREMOTE"
+git -C "$SANDBOX/deploy-src" push -q -u origin HEAD:refs/heads/main 2>/dev/null
+git clone -q -b main "$DREMOTE" "$DPROD" 2>/dev/null
+git -C "$DPROD" config user.email t@t
+git -C "$DPROD" config user.name t
+printf '#!/bin/sh\nexit 0\n' > "$DTOOLS/sleep"
+printf '#!/bin/sh\ncat >/dev/null 2>&1 || true\nexit 0\n' > "$DTOOLS/jq"
+printf '#!/bin/sh\nexit 0\n' > "$DTOOLS/curl"
+chmod +x "$DTOOLS/sleep" "$DTOOLS/jq" "$DTOOLS/curl"
+compose_stub() {  # exit code for `build` (0 = the build succeeds)
+    printf '#!/bin/sh\necho "$*" >> "%s"\ncase "$1" in build) exit %s ;; esac\nexit 0\n' \
+        "$DLOG" "$1" > "$DTOOLS/docker-compose"
+    chmod +x "$DTOOLS/docker-compose"
+}
+upstream() {  # push one more commit to the sandbox origin
+    git -C "$SANDBOX/deploy-src" commit -q --allow-empty -m "$1"
+    git -C "$SANDBOX/deploy-src" push -q origin HEAD:refs/heads/main 2>/dev/null
+}
+run_deploy() {  # -> the deploy's exit code; $dout is its output, $DLOG the compose calls
+    : > "$DLOG"
+    dout=$(cd "$DPROD" && PATH="$DTOOLS:$PATH" ./deploy.sh 2>&1)
+    return $?
+}
+calls() { tr '\n' '|' < "$DLOG" | sed 's/|$//'; }
+
+# The happy path: pull, build, and only then down/up. `down` carries --remove-orphans so
+# a rollback to a compose file without frontend-flutter cleans up after itself.
+compose_stub 0
+upstream "a change to deploy"
+run_deploy; rc=$?
+report "deploy: exits 0 on the happy path"          0 "$rc"
+report "deploy: builds before it stops anything"    "build|down --remove-orphans|up -d|ps" "$(calls)"
+
+# A failed build must not reach `down`: production keeps serving the old images.
+compose_stub 1
+upstream "a change whose build fails"
+run_deploy; rc=$?
+report "deploy: a failed build exits non-zero"      1 "$rc"
+report "deploy: a failed build stops nothing"       "build" "$(calls)"
+case "$dout" in *"nothing was stopped"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: and says so"                        said "$got"
+# The pull happened, so the fix is just to run it again once the cause is fixed.
+compose_stub 0
+run_deploy; rc=$?
+report "deploy: re-running after a fixed build works" 0 "$rc"
+
+# A tracked production database: refuse before the pull, naming the fix.
+compose_stub 0
+mkdir -p "$DPROD/data"
+echo x > "$DPROD/data/zapzap.db"
+git -C "$DPROD" add -f data/zapzap.db
+upstream "a change nobody gets to deploy"
+before=$(git -C "$DPROD" rev-parse HEAD)
+run_deploy; rc=$?
+report "deploy: refuses while data/zapzap.db is tracked" 1 "$rc"
+report "deploy: and does not pull"                  "$before" "$(git -C "$DPROD" rev-parse HEAD)"
+report "deploy: and runs no docker-compose"         "" "$(calls)"
+case "$dout" in *"git rm --cached data/zapzap.db"*) got=named ;; *) got="missing from the output" ;; esac
+report "deploy: names the fix"                      named "$got"
+git -C "$DPROD" rm -q --cached data/zapzap.db
+report "deploy: git rm --cached keeps the file"     kept "$([ -f "$DPROD/data/zapzap.db" ] && echo kept || echo gone)"
+
+# A pull that would not fast-forward — a hand edit on the NAS, or a detached HEAD after a
+# rollback — is refused rather than merged blind, and again nothing is stopped.
+git -C "$DPROD" commit -q --allow-empty -m "someone edited production by hand"
+upstream "and meanwhile master moved"
+run_deploy; rc=$?
+report "deploy: refuses a pull that is not a fast-forward" 1 "$rc"
+report "deploy: and stops nothing"                  "" "$(calls)"
+
 echo "== wiring ===================================================="
 # wip/ lives in the main checkout: found from its root, a subdirectory and a worktree.
 WIPREPO="$SANDBOX/wiprepo"

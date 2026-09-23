@@ -17,9 +17,11 @@ echo "======================================"
 echo ""
 
 if [ -z "$SERVICE" ]; then
+    # Build first, stop second: a failed build then leaves the running containers alone
+    # instead of leaving nothing running at all (same reason as deploy.sh).
     echo "🔨 Rebuilding all services..."
-    docker-compose down
     docker-compose build
+    docker-compose down --remove-orphans
     docker-compose up -d
 else
     echo "🔨 Rebuilding $SERVICE..."

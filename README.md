@@ -140,8 +140,9 @@ PROXY_PORT=80
 # Start services
 docker-compose up -d
 
-# Stop services
-docker-compose down
+# Stop services (--remove-orphans: also removes a container the compose
+# file no longer declares, which otherwise blocks the network removal)
+docker-compose down --remove-orphans
 
 # View logs (all services)
 docker-compose logs -f
@@ -205,7 +206,7 @@ docker-compose exec backend npm run init-demo
 **Network issues:**
 ```bash
 # Recreate network
-docker-compose down
+docker-compose down --remove-orphans
 docker network prune
 docker-compose up -d
 ```
@@ -213,7 +214,7 @@ docker-compose up -d
 **Rebuild from scratch:**
 ```bash
 # Remove all containers, volumes, and images
-docker-compose down -v
+docker-compose down -v --remove-orphans
 docker-compose build --no-cache
 docker-compose up -d
 ```

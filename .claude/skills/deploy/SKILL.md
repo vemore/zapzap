@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed frontend/, frontend-flutter/, the Node backend, nginx/ or the compose files, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, then down/up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed frontend/, frontend-flutter/, the Node backend, nginx/ or the compose files, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
@@ -20,7 +20,9 @@ the secrets: never print it, never copy it off the NAS.
 The production database is `data/zapzap.db` in that clone, bind-mounted as `/app/data`.
 Until 2026-09-22 git tracked it; master no longer does, so a `git pull` against a clone that
 still tracks it either stops ("local changes would be overwritten") or — if the file were
-unmodified — **deletes the production database**.
+unmodified — **deletes the production database**. `deploy.sh` refuses to run while the file
+is tracked and prints the sequence below, but check it yourself first: the refusal is a net,
+not the procedure.
 
 ```bash
 ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && git ls-files data/zapzap.db'
@@ -43,8 +45,10 @@ before going on.
   master --limit 1`).
 - Note the commit production runs now — the rollback target:
   `ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && git rev-parse --short HEAD'`.
-- `git status --short` on the NAS shows nothing tracked as modified. Anything else: stop and
-  ask the user — someone changed production by hand.
+- `git status --short` on the NAS shows nothing tracked as modified, **except** the staged
+  `D data/zapzap.db` that §0 deliberately left there (2026-09-22). Anything else: stop and
+  ask the user — someone changed production by hand, and `deploy.sh` will refuse the pull
+  rather than merge over it (§2).
 - Back up the database: `cp -p data/zapzap.db data/zapzap.db.bak-$(date +%F-%H%M)` (keep the
   last few; they are gitignored).
 - **Room to build** — a deploy that rebuilds the Flutter PWA image needs both:
@@ -56,9 +60,13 @@ ssh vemore@192.168.1.147 'df -h /volume1; free -m; export PATH=$PATH:/usr/local/
   - **≥ 6 GB free**: the builder stage is 3.47 GB (Flutter SDK 2.3 GB, pub cache 650 MB) and
     the served image 107 MB, plus transient space. Prune with `docker image prune -f`.
   - **≥ 2 GB free RAM**: `dart2js` needs about that; a NAS short of it fails the build
-    mid-way (and the site is already down by then).
-  - **`docker-compose` v2**: v1 ignores `depends_on.condition` and leaves orphan containers
-    behind. If it reports 1.x, say so before going on.
+    mid-way — which since 2026-09-23 costs nothing but the wasted minutes, because
+    `deploy.sh` builds before it stops anything (§2).
+  - **`docker-compose` version**: the NAS runs **1.29.2**, the v1 Python CLI. The procedure
+    here works on it — that is why every `down` carries `--remove-orphans`, which v1 needs
+    to remove a container the compose file no longer declares (it otherwise only warns, and
+    then fails to remove the network). v1 also ignores `depends_on.condition`. Upgrading to
+    v2 is tracked separately; note the version you saw, and do not assume v2 behaviour.
 
 ## 2. Deploy
 
@@ -66,13 +74,26 @@ ssh vemore@192.168.1.147 'df -h /volume1; free -m; export PATH=$PATH:/usr/local/
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && ./deploy.sh'
 ```
 
-`deploy.sh` pulls, stops the four containers, rebuilds the images and starts them. The site
-is down for the build (a few minutes). It exits at the first failing step (`set -e`).
+`deploy.sh` checks the database is untracked, pulls (`--ff-only`), **builds the images while
+the old containers keep serving**, and only then runs `docker-compose down --remove-orphans`
+and `docker-compose up -d`. It exits at the first failing step (`set -e`).
+
+- **The site is down only for the down/up window** — a few seconds; the script prints the
+  figure (`✓ Containers started — downtime was 3s`). The build before it can take minutes
+  and costs no downtime at all.
+- **A failed build is a no-op.** Nothing was stopped, production is still serving the
+  previous images, and the script says so. Fix the cause and run `./deploy.sh` again —
+  **do not roll back**, there is nothing to roll back.
+- **A refusal before the build** — a tracked `data/zapzap.db` (§0), or a pull that would not
+  fast-forward — also leaves production untouched. A non-fast-forward means the clone has
+  local commits, local modifications, or a detached HEAD left by a rollback: fix it by hand
+  (`git status --short`, `git checkout master`), never with a force or a blind merge.
+- **Only a failing `up -d` is an outage**, and the script says what to do — the paragraph
+  below, or §4.
 
 The **first** deploy that carries the Flutter PWA builds `zapzap-frontend-flutter` too: it
 downloads the Flutter SDK inside the image, so allow several extra minutes and **~3.6 GB of
 new Docker storage** (builder 3.47 GB + image 107 MB) — the §1 preflight checks the room.
-If the build fails, the site stays down: roll back (§4).
 
 The PWA cannot take the site down by itself — `/app/` is resolved per request
 (`nginx/nginx.conf`) and no `depends_on` waits on its health, so a broken PWA is a 502 on
@@ -106,16 +127,19 @@ checked.
 
 ## 4. Roll back
 
-To the commit noted in §1, on a detached HEAD, rebuilt the same way:
+To the commit noted in §1, on a detached HEAD, rebuilt in the same order `deploy.sh` uses —
+**build, then down, then up**, so a rollback whose build fails leaves whatever is currently
+serving alone instead of adding an outage to an outage:
 
 ```bash
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \
-  git checkout --detach <previous-sha> && docker-compose down --remove-orphans && \
-  docker-compose build && docker-compose up -d'
+  git checkout --detach <previous-sha> && docker-compose build && \
+  docker-compose down --remove-orphans && docker-compose up -d'
 ```
 
 `--remove-orphans`: a commit older than the Flutter PWA declares no `frontend-flutter`
-service, and without it the container stays up as an orphan. If it survives anyway:
+service, and without it the container stays up as an orphan — on `docker-compose` v1 the
+`down` then only warns and fails to remove the network. If it survives anyway:
 `docker rm -f zapzap-frontend-flutter`.
 
 **Verify a rollback with this list, not §3** — §3 describes the newer deployment, and on a

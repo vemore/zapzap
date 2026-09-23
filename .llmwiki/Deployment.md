@@ -14,7 +14,7 @@
 | Host | `192.168.1.147` (hostname `n150`), user `vemore`, SSH | checked 2026-09-22 |
 | Public URL | `https://zapzap.ombivince.synology.me/` | old `CLAUDE.md` |
 | Checkout | `/home/vemore/workspace/zapzap`, a git clone of `https://github.com/vemore/zapzap.git` on `master`, at `d43e199` (2025-12-20) on 2026-09-22 | `git log -1` on the NAS |
-| Docker | `/usr/local/bin/docker`, `docker-compose` (v1 CLI name) | NAS |
+| Docker | `/usr/local/bin/docker`, `docker-compose` **1.29.2** — the v1 Python CLI, not `docker compose` | `docker-compose version` on the NAS, 2026-09-23 |
 | Secrets | the clone's `.env` (JWT, Google, AWS Bedrock) — never printed, never copied | root `docker-compose.yml:10-22` |
 
 `192.168.1.25` (the user-level `deploy-nas` skill's registry host) refuses SSH and is not
@@ -73,15 +73,41 @@ services) and has never been deployed.
 
 ### How a deploy happens
 
-`deploy.sh` at the root, run in the NAS clone: `git pull`, `docker-compose down`,
-`docker-compose build`, `docker-compose up -d`, a 15 s wait, `docker-compose ps`, and
-`curl http://localhost:80/api/health`. `set -e`: it stops at the first failure. The site is
-down during the build. It builds and starts whatever the compose file declares, so the
-`frontend-flutter` service needs no change to it — but its first build downloads the Flutter
-SDK and adds a few minutes and **~3.6 GB** of Docker storage to the host (measured
-2026-09-23: builder stage 3.47 GB — SDK 2.3 GB, pub cache 650 MB —, served image 107 MB, web
-bundle 42 MB). The `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since
-`dart2js` needs about 2 GB and would otherwise be killed mid-build.
+`deploy.sh` at the root, run in the NAS clone, in this order (`set -e`: it stops at the
+first failure):
+
+1. **refuse if `data/zapzap.db` is tracked** — `git ls-files data/zapzap.db`, before the
+   pull, naming the backup and `git rm --cached` (see the database section below);
+2. `git pull --ff-only` — refused rather than merged when the clone has local commits or a
+   detached HEAD after a rollback;
+3. `docker-compose build` — **the old containers are still up and still serving**;
+4. `docker-compose down --remove-orphans`, then `docker-compose up -d` — the whole downtime;
+5. a 15 s wait, `docker-compose ps`, `curl -m 10 http://localhost:80/api/health`.
+
+**The build comes before the `down`, so a failed build is a no-op**: the images are built
+against the new compose file while the previous ones keep serving, and the script exits
+saying nothing was stopped and no rollback is needed. Only step 4 is downtime — **measured
+3.1 s** locally against a 31 s build (`deploy.sh` itself prints the figure). Before that
+order, any build failure — a dependency timeout, ENOSPC, the OOM killer on `dart2js` — left
+the site stopped for the whole fix-or-rollback cycle.
+
+`--remove-orphans` is on **every** `down` in the procedure, the rollback included: a compose
+file that no longer declares a service (any commit older than the Flutter PWA) otherwise
+leaves the container running, and the `down` then reports `Network ... Resource is still in
+use` and never removes the network — reproduced locally on `docker-compose` v2, and v1
+1.29.2 (what the NAS runs) only warns about the orphan.
+
+`deploy.sh` builds and starts whatever the compose file declares, so the `frontend-flutter`
+service needs no change to it — but its first build downloads the Flutter SDK and adds a few
+minutes and **~3.6 GB** of Docker storage to the host (measured 2026-09-23: builder stage
+3.47 GB — SDK 2.3 GB, pub cache 650 MB —, served image 107 MB, web bundle 42 MB). The
+`deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since `dart2js` needs about
+2 GB; short of it the build now fails harmlessly instead of failing with the site down.
+
+`scripts/hooks_selftest.sh` pins all of this offline (the `hooks` CI job): the step order
+including `--remove-orphans`, that a failing build reaches no `down`, and both refusals. It
+drives the real `deploy.sh` in a sandbox clone with `docker-compose`, `curl`, `jq` and
+`sleep` stubbed.
 
 ### The production database
 
@@ -89,7 +115,8 @@ bundle 42 MB). The `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB f
 clone still **tracks** it (`M data/zapzap.db`), while `master` stopped tracking it (#21). A
 `git pull` there refuses until the file is untracked locally — and had the file been
 unmodified, it would have been deleted. The `deploy` skill's §0 is the safe sequence
-(backup, `git rm --cached`, then pull).
+(backup, `git rm --cached`, then pull), and since 2026-09-23 `deploy.sh` refuses to run at
+all while the file is tracked, printing that sequence.
 
 Done on the NAS on 2026-09-22 (backup `data/zapzap.db.bak-2026-09-22-1356`, 1400832 bytes, no
 container touched): the clone's index holds the deletion, so the next `git pull` fast-forwards
@@ -107,6 +134,17 @@ and leaves the file in place. Backups `data/*.db.bak-*` are gitignored and refus
   resolves its API base from `Uri.base.origin` and nothing about CORS changes
   ([[FrontendFlutter]]). The bundle is built in an image of its own rather than copied into
   the React one, so each client is built, deployed and rolled back on its own.
+- **Build before `down` (2026-09-23).** `deploy.sh` used to stop the four containers and
+  *then* build, so every build failure was an outage lasting the whole fix-or-rollback
+  cycle — and the Flutter PWA image multiplied the ways a build can fail (a 700 MB SDK
+  download, ~3.6 GB of storage, `dart2js` wanting 2 GB of RAM on a NAS that has little
+  spare). Building first costs nothing: `docker-compose build` does not touch running
+  containers, and building against the *new* compose file while the *old* containers serve
+  is exactly the wanted behaviour. Planned downtime went from minutes to ~3 s, and an
+  unplanned one from "the site is down" to "the deploy did nothing".
+  The two refusals added with it — a tracked `data/zapzap.db`, and a pull that would not
+  fast-forward — both stop before anything is built or stopped, because both mean the clone
+  is not in a state anyone should deploy from.
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
   Google login, bot creation, authorization) — tracked in `wip/`.
