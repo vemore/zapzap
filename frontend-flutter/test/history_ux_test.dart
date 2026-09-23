@@ -432,7 +432,7 @@ void main() {
   });
 
   group('phone width', () {
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       final at = scale == 1 ? '' : ' at a $scale text scale';
 
       testWidgets('the summary, badges and invitation fit$at', (tester) async {

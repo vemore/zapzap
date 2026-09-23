@@ -125,7 +125,7 @@ void main() {
     );
   }
 
-  for (final scale in [1.0, 1.5]) {
+  for (final scale in [1.0, 1.5, 2.0]) {
     group('at a text scale of $scale on a 360×740 phone', () {
       testWidgets('F1: one row per player, lowest round first, no scrolling', (
         tester,

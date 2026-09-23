@@ -166,7 +166,7 @@ void main() {
     // which fails the test.
     const phone = Size(360, 740);
 
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('the bar and its menu fit at a $scale text scale', (
         tester,
       ) async {
