@@ -39,18 +39,43 @@ ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && \
 `git rm --cached` keeps the file on disk. Check it is still there (`ls -la data/zapzap.db`)
 before going on.
 
+### Then pull by hand, before running the script
+
+**`deploy.sh` cannot deploy a change to itself.** bash reads the script as it goes and keeps
+the file it opened: after `deploy.sh` pulls a new version of itself, the *old* code carries
+on to the end. So the first deploy after any change to `deploy.sh` would run the previous
+version's steps — for the change of 2026-09-23 that means the old order (stop, then build)
+during the first 3.6 GB Flutter build, with no database guard, no `--ff-only` and no
+`--remove-orphans`. Once the database check above is clean, pull the clone yourself first:
+
+```bash
+ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && git pull --ff-only && git log --oneline -1'
+```
+
+Then run `./deploy.sh` (its own pull is then a no-op). Run it **from the clone root** as
+`./deploy.sh`; it also `cd`s to its own directory, so a call from elsewhere is safe rather
+than silently checking the wrong paths.
+
 ## 1. Preflight
 
 - The commit to deploy is on `origin/master` and its CI is green (`gh run list --branch
   master --limit 1`).
 - Note the commit production runs now — the rollback target:
   `ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && git rev-parse --short HEAD'`.
-- `git status --short` on the NAS shows nothing tracked as modified, **except** the staged
-  `D data/zapzap.db` that §0 deliberately left there (2026-09-22). Anything else: stop and
-  ask the user — someone changed production by hand, and `deploy.sh` will refuse the pull
-  rather than merge over it (§2).
+  **HEAD is only the commit production runs while no deploy has half-happened.** A pull
+  that succeeded and a build that then failed leaves the clone at the new commit with the
+  old images serving, so after any failed deploy read the running images instead:
+  `docker ps --format '{{.Names}}\t{{.Image}}\t{{.CreatedAt}}'`. Note the rollback target
+  *before* anything else, and write it down.
+- `git status --short` on the NAS shows nothing tracked as modified, **except** two entries
+  §0 left there on 2026-09-22 and that are expected: the staged `D data/zapzap.db`, and
+  `?? data/zapzap.db.bak-2026-09-22-1356` — the commit the NAS is on predates the `.gitignore`
+  rule for `data/*.db.bak-*` (#24), so its backups show as untracked until the pull brings
+  that rule in. Anything else: stop and ask the user — someone changed production by hand,
+  and `deploy.sh` will refuse the pull rather than merge over it (§2).
 - Back up the database: `cp -p data/zapzap.db data/zapzap.db.bak-$(date +%F-%H%M)` (keep the
-  last few; they are gitignored).
+  last few). They are gitignored from #24 on, and the commit hook refuses them — but a clone
+  older than #24 shows them as untracked, which is the second expected entry above.
 - **Room to build** — a deploy that rebuilds the Flutter PWA image needs both:
 
 ```bash
@@ -74,22 +99,35 @@ ssh vemore@192.168.1.147 'df -h /volume1; free -m; export PATH=$PATH:/usr/local/
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && ./deploy.sh'
 ```
 
-`deploy.sh` checks the database is untracked, pulls (`--ff-only`), **builds the images while
-the old containers keep serving**, and only then runs `docker-compose down --remove-orphans`
-and `docker-compose up -d`. It exits at the first failing step (`set -e`).
+`deploy.sh` checks the database is untracked (refusing too when git cannot answer), pulls
+(`--ff-only`), **builds the images while the old containers keep serving**, then runs
+`docker-compose down --remove-orphans` and `docker-compose up -d`, and finally **waits until
+every service the compose file declares is healthy and `/api/health` answers 200**. It exits
+at the first failing step (`set -e`, `pipefail`).
 
-- **The site is down only for the down/up window** — a few seconds; the script prints the
-  figure (`✓ Containers started — downtime was 3s`). The build before it can take minutes
-  and costs no downtime at all.
-- **A failed build is a no-op.** Nothing was stopped, production is still serving the
-  previous images, and the script says so. Fix the cause and run `./deploy.sh` again —
-  **do not roll back**, there is nothing to roll back.
-- **A refusal before the build** — a tracked `data/zapzap.db` (§0), or a pull that would not
-  fast-forward — also leaves production untouched. A non-fast-forward means the clone has
-  local commits, local modifications, or a detached HEAD left by a rollback: fix it by hand
-  (`git status --short`, `git checkout master`), never with a force or a blind merge.
-- **Only a failing `up -d` is an outage**, and the script says what to do — the paragraph
-  below, or §4.
+- **The site is down only for the down/up window.** The script's `✓ Site answering again —
+  downtime was 3.4s` is measured from just before the `down` to the first 200, so it
+  counts the containers' start-up too, not just how long compose took. The build before it
+  costs no downtime at all, however long it takes.
+- **A failed build stops nothing.** Production is still serving the previous images, so
+  there is no outage and **nothing to roll back**: fix the cause and run `./deploy.sh`
+  again. But the clone *did* pull, so HEAD no longer says what production runs — read the
+  running images (§1).
+- **A refusal before the build** — a tracked `data/zapzap.db` (§0), git unable to answer, or
+  a pull that would not fast-forward — leaves production untouched. For the pull, read
+  **git's own message**, which the script prints above its own: a diverged branch and a
+  detached HEAD are the usual causes, but so are an untracked file the pull would overwrite
+  and plain DNS or credential failures. Fix it by hand (`git status --short`,
+  `git checkout master`), never with a force or a blind merge.
+- **A failing `down`, a failing `up -d`, or a stack that never becomes healthy are all
+  outages, and the script says so.** A failing `down` may leave the stack half stopped; the
+  script immediately retries `up -d` and then tells you to look at `docker ps -a` (a `down`
+  that fails on "network has active endpoints" usually means a container the compose file
+  no longer declares: `docker rm -f <name>`, then deploy again). A stack that is up but not
+  healthy within 90 s exits non-zero, names each container with its state and prints its
+  last 30 log lines. **`up -d` returning 0 is not success** — a container crash-looping
+  under `restart: unless-stopped` satisfies it, which is exactly what the health wait is
+  there to catch. Roll back (§4) if the logs do not point at something you can fix at once.
 
 The **first** deploy that carries the Flutter PWA builds `zapzap-frontend-flutter` too: it
 downloads the Flutter SDK inside the image, so allow several extra minutes and **~3.6 GB of
@@ -127,9 +165,11 @@ checked.
 
 ## 4. Roll back
 
-To the commit noted in §1, on a detached HEAD, rebuilt in the same order `deploy.sh` uses —
-**build, then down, then up**, so a rollback whose build fails leaves whatever is currently
-serving alone instead of adding an outage to an outage:
+To the commit noted in §1 — **the one you wrote down before deploying**, not whatever HEAD
+says now: a deploy that pulled and then failed already moved HEAD forward. On a detached
+HEAD, rebuilt in the same order `deploy.sh` uses — **build, then down, then up**, so a
+rollback whose build fails leaves whatever is currently serving alone instead of adding an
+outage to an outage:
 
 ```bash
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \

@@ -73,29 +73,52 @@ services) and has never been deployed.
 
 ### How a deploy happens
 
-`deploy.sh` at the root, run in the NAS clone, in this order (`set -e`: it stops at the
-first failure):
+`deploy.sh` at the root, run in the NAS clone, in this order (`set -e` and `set -o pipefail`:
+it stops at the first failure, a failure on the left of a pipe included):
 
-1. **refuse if `data/zapzap.db` is tracked** — `git ls-files data/zapzap.db`, before the
-   pull, naming the backup and `git rm --cached` (see the database section below);
-2. `git pull --ff-only` — refused rather than merged when the clone has local commits or a
-   detached HEAD after a rollback;
+0. `cd "$(dirname "$0")"` — every later step reads paths from the clone; without it
+   `cd data && ../deploy.sh` asked git about a path that does not exist, was told "not
+   tracked", and pulled;
+1. **refuse if `data/zapzap.db` is tracked** — `git ls-files -- data/zapzap.db`, before the
+   pull, naming the backup and `git rm --cached` (see the database section below). It
+   refuses **just as hard when git cannot answer** (git off PATH, a 127): an unanswered
+   question is not a clean bill of health;
+2. `git pull --ff-only` — refused rather than merged, printing **git's own reason** above
+   its own (the cause is not always a diverged branch: an untracked file the pull would
+   overwrite, DNS, credentials);
 3. `docker-compose build` — **the old containers are still up and still serving**;
-4. `docker-compose down --remove-orphans`, then `docker-compose up -d` — the whole downtime;
-5. a 15 s wait, `docker-compose ps`, `curl -m 10 http://localhost:80/api/health`.
+4. `docker-compose down --remove-orphans`, then `docker-compose up -d`;
+5. **wait until every service `docker-compose config --services` lists is `healthy` (or
+   `running`, where it declares no health check) and `/api/health` answers 200**, polling
+   every 2 s for up to 90 s; then `docker-compose ps` and the health payload.
 
-**The build comes before the `down`, so a failed build is a no-op**: the images are built
+**The build comes before the `down`, so a failed build stops nothing**: the images are built
 against the new compose file while the previous ones keep serving, and the script exits
-saying nothing was stopped and no rollback is needed. Only step 4 is downtime — **measured
-3.1 s** locally against a 31 s build (`deploy.sh` itself prints the figure). Before that
-order, any build failure — a dependency timeout, ENOSPC, the OOM killer on `dart2js` — left
-the site stopped for the whole fix-or-rollback cycle.
+saying so. Before that order, any build failure — a dependency timeout, ENOSPC, the OOM
+killer on `dart2js` — left the site stopped for the whole fix-or-rollback cycle. Note the
+clone *has* pulled by then, so **HEAD stops being the commit production runs** after a
+failed deploy; the running images are (`docker ps`).
+
+**Downtime is measured to the first 200, not to `up -d` returning.** `up -d` exits 0 as soon
+as the containers are created — a container crash-looping under `restart: unless-stopped`
+satisfies it — so the old script could print a downtime figure and "Deployment complete"
+over a site that was never coming back. Step 5 is the gate: it exits non-zero, names each
+container with its state and prints its last 30 log lines. Measured locally against the real
+four-container stack: **12.9 s** (the containers' own start-up, the proxy's `depends_on`
+health conditions included) after a build of any length. `down` and `up -d` are both guarded
+too; a failing `down` immediately retries `up -d` before giving up, because that is the one
+step that can leave nothing running.
 
 `--remove-orphans` is on **every** `down` in the procedure, the rollback included: a compose
 file that no longer declares a service (any commit older than the Flutter PWA) otherwise
 leaves the container running, and the `down` then reports `Network ... Resource is still in
 use` and never removes the network — reproduced locally on `docker-compose` v2, and v1
 1.29.2 (what the NAS runs) only warns about the orphan.
+
+**`deploy.sh` cannot deploy a change to itself.** bash keeps the file it opened, so after the
+script pulls a new version of itself the *old* code runs to the end. The first deploy after
+any change to `deploy.sh` must therefore be preceded by a manual `git pull --ff-only` in the
+clone — the `deploy` skill §0 has the sequence.
 
 `deploy.sh` builds and starts whatever the compose file declares, so the `frontend-flutter`
 service needs no change to it — but its first build downloads the Flutter SDK and adds a few
@@ -104,10 +127,12 @@ minutes and **~3.6 GB** of Docker storage to the host (measured 2026-09-23: buil
 `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since `dart2js` needs about
 2 GB; short of it the build now fails harmlessly instead of failing with the site down.
 
-`scripts/hooks_selftest.sh` pins all of this offline (the `hooks` CI job): the step order
-including `--remove-orphans`, that a failing build reaches no `down`, and both refusals. It
-drives the real `deploy.sh` in a sandbox clone with `docker-compose`, `curl`, `jq` and
-`sleep` stubbed.
+`scripts/hooks_selftest.sh` pins all of this offline (the `hooks` CI job, 30 cases): the step
+order including `--remove-orphans`, that a failing build reaches no `down`, that a failing
+`down` retries `up -d`, that an unhealthy container or a silent `/api/health` fails the
+deploy, and every refusal — including the subdirectory invocation and git being unavailable.
+It drives the real `deploy.sh` in a sandbox clone with `docker-compose`, `docker`, `curl`,
+`jq` and `sleep` stubbed.
 
 ### The production database
 
@@ -120,7 +145,13 @@ all while the file is tracked, printing that sequence.
 
 Done on the NAS on 2026-09-22 (backup `data/zapzap.db.bak-2026-09-22-1356`, 1400832 bytes, no
 container touched): the clone's index holds the deletion, so the next `git pull` fast-forwards
-and leaves the file in place. Backups `data/*.db.bak-*` are gitignored and refused by the hook.
+and leaves the file in place.
+
+Backups `data/*.db.bak-*` are gitignored **from #24 on**, and the commit hook refuses them
+([[Hooks]]) — but the NAS is on a commit *older* than #24, so until it pulls, that backup
+shows as `?? data/zapzap.db.bak-2026-09-22-1356` in `git status --short` there. It is
+expected, it is not "someone changed production by hand", and the `deploy` skill §1 lists it
+alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows today.
 
 ## Decisions & History
 
@@ -145,6 +176,17 @@ and leaves the file in place. Backups `data/*.db.bak-*` are gitignored and refus
   The two refusals added with it — a tracked `data/zapzap.db`, and a pull that would not
   fast-forward — both stop before anything is built or stopped, because both mean the clone
   is not in a state anyone should deploy from.
+- **A deploy is not over until the site answers (2026-09-23, same change, after review).**
+  The first version of the above still reported success over a dead deploy: `up -d` returns
+  0 for a container that crash-loops, and the old health check could not fail (no `pipefail`,
+  so the pipeline's status was `jq`'s, and `jq` is happy with empty input). It printed a
+  downtime figure and "Deployment complete" while the site had been unreachable for 27 s and
+  counting. Hence the health wait, `pipefail`, and guards on `down` and `up -d`: the script
+  now refuses to claim a downtime it cannot see the end of. The same review found the
+  database guard failing **open** — `git ls-files` was read relative to `$PWD`, so a run from
+  a subdirectory printed "✓ Not tracked" about a path that does not exist and pulled, which
+  deleted `data/`. The `cd` to the script's directory and the fail-closed check are that fix;
+  both are pinned by `scripts/hooks_selftest.sh`.
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
   Google login, bot creation, authorization) — tracked in `wip/`.
