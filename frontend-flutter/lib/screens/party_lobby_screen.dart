@@ -224,9 +224,11 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
               children: [
                 const Icon(Icons.settings, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  l10n.lobbySettingsTitle,
-                  style: Theme.of(context).textTheme.titleSmall,
+                Flexible(
+                  child: Text(
+                    l10n.lobbySettingsTitle,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
               ],
             ),
@@ -274,6 +276,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
   Widget _seatsHeader(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Wrap(
+      key: const Key('lobby-seats-header'),
       spacing: 12,
       runSpacing: 4,
       crossAxisAlignment: WrapCrossAlignment.center,

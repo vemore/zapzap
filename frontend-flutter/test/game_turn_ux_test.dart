@@ -576,7 +576,7 @@ void main() {
       );
     });
 
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('T2: 48 dp targets and "Distribuer N cartes" at a text '
           'scale of $scale', (tester) async {
         final backend = handSize(golden: true);
@@ -591,6 +591,9 @@ void main() {
         }
         expect(find.text('Distribuer 7 cartes'), findsOneWidget);
 
+        // At a 2.0 text scale the choice sits below the fold.
+        await tester.ensureVisible(find.byKey(GameHandSizeSelector.sizeKey(4)));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(GameHandSizeSelector.sizeKey(4)));
         await tester.pumpAndSettle();
         expect(find.text('Distribuer 4 cartes'), findsOneWidget);
@@ -622,7 +625,7 @@ void main() {
       'desktop': const Size(1280, 800),
     };
     for (final entry in sizes.entries) {
-      for (final scale in [1.0, 1.5]) {
+      for (final scale in [1.0, 1.5, 2.0]) {
         testWidgets('${entry.key}, text scale $scale: "▯ n", the amber edge, '
             'the bar to 100, equal lines in turn order', (tester) async {
           await pumpGame(
@@ -706,7 +709,7 @@ void main() {
 
   // Every new piece at a phone's size, at the largest system font too.
   group('a 360×740 phone', () {
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('the play step with a named move fits at $scale', (
         tester,
       ) async {

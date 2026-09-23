@@ -779,7 +779,7 @@ void main() {
   group('a 360×740 phone', () {
     const phone = Size(360, 740);
 
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('the play phase fits at a text scale of $scale', (
         tester,
       ) async {
@@ -1020,7 +1020,7 @@ void main() {
     }
   });
 
-  for (final scale in [1.0, 1.5]) {
+  for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets(
       'a wide screen puts the players beside the felt at a text scale of '
       '$scale',

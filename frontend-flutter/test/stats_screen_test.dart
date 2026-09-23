@@ -187,7 +187,7 @@ void main() {
     // Anything that does not fit throws a layout error, which fails the
     // test. A 1.5 text scale is the same layout with every text wider: a
     // row of unconstrained texts overflows there and nowhere else.
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets(
         'the statistics fit${scale == 1 ? '' : ' at a $scale text scale'}',
         (tester) async {
