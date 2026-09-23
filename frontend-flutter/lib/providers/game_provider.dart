@@ -165,6 +165,11 @@ class GameProvider extends ChangeNotifier {
   bool isEliminated(int playerIndex) =>
       game?.eliminatedPlayers.contains(playerIndex) ?? false;
 
+  /// The players still in the game: the `active_players` of the counteract
+  /// penalty (`GAME_RULES.md`).
+  int get activePlayerCount =>
+      players.where((player) => !isEliminated(player.playerIndex)).length;
+
   /// The name of the player at [playerIndex], or `null` when no seat
   /// carries it (the screen falls back to "Player n").
   String? nameOf(int? playerIndex) {
@@ -301,10 +306,15 @@ class GameProvider extends ChangeNotifier {
     await _act(() => _repository.play(partyId, cards));
   }
 
-  /// Draws: the selected discard card, or the deck.
-  Future<void> draw() async {
+  /// Draws: the selected discard card, or the deck — always the deck with
+  /// [fromDeck], the deck on the felt being a target of its own. The pile
+  /// pick is dropped only once the draw has landed (`_act`), so a refused
+  /// one keeps it.
+  Future<void> draw({bool fromDeck = false}) async {
     if (!canDraw) return;
-    final fromDiscard = willTakeFromDiscard ? _selectedDiscardCard : null;
+    final fromDiscard = !fromDeck && willTakeFromDiscard
+        ? _selectedDiscardCard
+        : null;
     await _act(
       () => fromDiscard == null
           ? _repository.drawFromDeck(partyId)

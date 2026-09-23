@@ -7,7 +7,9 @@ import '../utils/app_theme.dart';
 /// The start of a round: the starting player picks how many cards are
 /// dealt — 4 to 7, or 4 to 10 in Golden Score (`GAME_RULES.md`). Everyone
 /// else waits. The port of
-/// `frontend/src/components/Game/HandSizeSelector.jsx`.
+/// `frontend/src/components/Game/HandSizeSelector.jsx`, with 58 × 50
+/// targets, a line on what the choice changes and a button that says what
+/// it deals (T1, T2 of the UX study).
 class GameHandSizeSelector extends StatefulWidget {
   const GameHandSizeSelector({
     super.key,
@@ -115,27 +117,44 @@ class _GameHandSizeSelectorState extends State<GameHandSizeSelector> {
             const SizedBox(height: 16),
             Wrap(
               alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 for (var size = minHandSize; size <= widget.maxSize; size++)
-                  ChoiceChip(
+                  _SizeButton(
                     key: GameHandSizeSelector.sizeKey(size),
-                    label: Text('$size'),
+                    size: size,
                     selected: _size == size,
-                    onSelected: widget.busy
+                    onPressed: widget.busy
                         ? null
-                        : (_) => setState(() => _size = size),
+                        : () => setState(() => _size = size),
                   ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(
-              l10n.gameHandSizeSelected(_size),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.amber400,
+            // What the choice changes, not only the figure again (T1).
+            Container(
+              key: const Key('handSizeHint'),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.slate900,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.gameHandSizeSelected(_size),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.amber400,
+                    ),
+                  ),
+                  Text(
+                    l10n.gameHandSizeEffect,
+                    style: const TextStyle(color: AppColors.slate400),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -144,11 +163,63 @@ class _GameHandSizeSelectorState extends State<GameHandSizeSelector> {
               onPressed: widget.busy || widget.onSelect == null
                   ? null
                   : () => widget.onSelect!(_size),
-              child: Text(l10n.gameHandSizeConfirm),
+              child: Text(l10n.gameHandSizeConfirm(_size)),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// One hand size: a 58 × 50 target (T2 of the UX study), well over the
+/// 48 dp minimum, filled amber when picked.
+class _SizeButton extends StatelessWidget {
+  const _SizeButton({
+    super.key,
+    required this.size,
+    required this.selected,
+    this.onPressed,
+  });
+
+  final int size;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  static const minimum = Size(58, 50);
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+    const text = TextStyle(fontSize: 19, fontWeight: FontWeight.w500);
+    final label = Text('$size');
+    return Semantics(
+      selected: selected,
+      child: selected
+          ? FilledButton(
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                minimumSize: minimum,
+                padding: EdgeInsets.zero,
+                shape: shape,
+                textStyle: text,
+              ),
+              child: label,
+            )
+          : OutlinedButton(
+              onPressed: onPressed,
+              style: OutlinedButton.styleFrom(
+                minimumSize: minimum,
+                padding: EdgeInsets.zero,
+                shape: shape,
+                textStyle: text,
+                foregroundColor: AppColors.slate100,
+                side: const BorderSide(color: Color(0xFF64748B)),
+              ),
+              child: label,
+            ),
     );
   }
 }

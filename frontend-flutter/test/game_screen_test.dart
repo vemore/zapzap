@@ -239,13 +239,13 @@ void main() {
       await pumpGame(tester, backend);
 
       expectBoardStanding(tester);
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(0)), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(2)), findsOneWidget);
       expect(find.text('Vous'), findsOneWidget);
-      // Nothing selected yet.
+      // Nothing selected yet; one button, for the step at hand.
       expect(enabled(tester, 'play-cards'), isFalse);
-      expect(enabled(tester, 'draw-card'), isFalse);
+      expect(find.byKey(const Key('draw-card')), findsNothing);
 
       // Three aces: a same-rank group, played in the order they were tapped.
       selectCard(tester, 26);
@@ -291,24 +291,26 @@ void main() {
       expectBoardStanding(tester);
       expect(find.text('En attente de EasyBot1'), findsOneWidget);
       expect(enabled(tester, 'play-cards'), isFalse);
-      expect(enabled(tester, 'draw-card'), isFalse);
+      expect(find.byKey(const Key('draw-card')), findsNothing);
       expect(enabled(tester, 'call-zapzap'), isFalse);
       expect(enabled(tester, 'draw-deck'), isFalse);
     });
 
-    testWidgets('a ZapZap hand shows its badge and enables the button', (
-      tester,
-    ) async {
-      final backend = playing(playerHand: [0, 13, 52]);
-      await pumpGame(tester, backend);
+    testWidgets(
+      'a ZapZap hand enables the button, which calls once confirmed',
+      (tester) async {
+        final backend = playing(playerHand: [0, 13, 52]);
+        await pumpGame(tester, backend);
 
-      expect(find.byKey(const Key('zapzapEligibleBadge')), findsOneWidget);
-      expect(enabled(tester, 'call-zapzap'), isTrue);
+        expect(enabled(tester, 'call-zapzap'), isTrue);
 
-      await tester.tap(find.byKey(const Key('call-zapzap')));
-      await tester.pumpAndSettle();
-      expect(backend.paths, contains('/api/game/p1/zapzap'));
-    });
+        await tester.tap(find.byKey(const Key('call-zapzap')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('zapzap-confirm')));
+        await tester.pumpAndSettle();
+        expect(backend.paths, contains('/api/game/p1/zapzap'));
+      },
+    );
 
     testWidgets('an invalid selection shows its reason and keeps the board', (
       tester,
@@ -366,7 +368,7 @@ void main() {
 
       expect(find.text("Cette combinaison n'est pas valide."), findsOneWidget);
       expectBoardStanding(tester);
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
     });
   });
 
@@ -381,14 +383,14 @@ void main() {
       );
       await pumpGame(tester, backend);
 
-      expect(find.text('À vous — piochez une carte'), findsOneWidget);
+      expect(find.byKey(const Key('drawInstruction')), findsOneWidget);
       expect(find.text('Piocher'), findsOneWidget);
       expect(enabled(tester, 'draw-card'), isTrue);
       expect(enabled(tester, 'draw-deck'), isTrue);
 
       await tester.tap(find.byKey(GameTableArea.discardKey(8)));
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsOneWidget);
+      expect(find.text('Prendre 9♠'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('draw-card')));
       await tester.pumpAndSettle();
@@ -411,14 +413,14 @@ void main() {
       expect(enabled(tester, 'clear-selection'), isFalse);
       await tester.tap(find.byKey(GameTableArea.discardKey(8)));
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsOneWidget);
+      expect(find.text('Prendre 9♠'), findsOneWidget);
       expect(enabled(tester, 'clear-selection'), isTrue);
 
       await tester.tap(find.byKey(const Key('clear-selection')));
       await tester.pumpAndSettle();
 
       expect(find.text('Piocher'), findsOneWidget);
-      expect(find.text('Prendre'), findsNothing);
+      expect(find.textContaining('Prendre'), findsNothing);
     });
 
     testWidgets('the discard pile is dead outside my draw phase', (
@@ -434,7 +436,7 @@ void main() {
         warnIfMissed: false,
       );
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsNothing);
+      expect(find.textContaining('Prendre'), findsNothing);
     });
 
     testWidgets('a reshuffled deck raises its banner, then drops it', (
@@ -681,7 +683,7 @@ void main() {
         'type': 'gameAction',
       });
 
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
     });
 
     testWidgets('a deleted party sends the player back to the list', (
@@ -816,7 +818,7 @@ void main() {
           textScale: scale,
         );
 
-        expect(find.byKey(const Key('turnBanner')), findsOneWidget);
+        expect(find.byKey(const Key('drawInstruction')), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
 
@@ -965,8 +967,8 @@ void main() {
       testWidgets('the tallest action bar fits at a text scale of $scale', (
         tester,
       ) async {
-        // A two-line turn banner over the invalid-play reason box: the
-        // most the bar ever stacks above the buttons.
+        // The steps, the named button, the invalid-play reason box and
+        // ZapZap with its reason: the most the bar ever stacks.
         await pumpGame(
           tester,
           playing(playerHand: [0, 1, 2, 3, 4, 14, 30], lastCardsPlayed: [7]),
@@ -978,7 +980,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byKey(const Key('invalidPlayReason')), findsOneWidget);
-        expect(bannerLines(tester), 2);
+        expect(find.byKey(const Key('turnSteps')), findsOneWidget);
+        expect(
+          find.text('ZapZap · main 22, il faut 5 ou moins'),
+          findsOneWidget,
+        );
         expectBoardStanding(tester);
         expect(tester.takeException(), isNull);
       });

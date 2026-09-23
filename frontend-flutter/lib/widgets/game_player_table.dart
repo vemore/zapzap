@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
@@ -26,20 +28,39 @@ class GameSeat {
   final bool isEliminated;
 }
 
-/// The players, one row each, in turn order — the port of
-/// `frontend/src/components/Game/PlayerTable.jsx`:
-/// `<name> - <score> : <card backs> (<count>)`, the player to move marked
-/// with a green edge, an eliminated one struck through.
+/// The players, one line each, in the order given — turn order, from the
+/// round's starting player (`GameProvider.orderedPlayers`). The port of
+/// `frontend/src/components/Game/PlayerTable.jsx`, made compact by J6 of the
+/// UX study: a small card back and the number of cards instead of a row of
+/// backs, the player to move on an amber edge, and each score's bar towards
+/// 100 — the elimination line — turning red above 80. Every line has the
+/// same height, whatever it holds.
 class GamePlayerTable extends StatelessWidget {
   const GamePlayerTable({super.key, required this.seats});
 
   final List<GameSeat> seats;
 
-  /// Under this width a row shows at most 5 card backs, and the smallest
-  /// ones (`PlayerTable.jsx:150-164`).
-  static const compactBreakpoint = 640.0;
+  /// Past this total a player is out (`GAME_RULES.md`, Game Elimination).
+  static const eliminationScore = 100;
+
+  /// Above this total the bar turns red: the player is close to going out.
+  static const dangerScore = 80;
+
+  static const activeEdgeColor = AppColors.amber400;
+  static const barColor = AppColors.amber400;
+  static const dangerBarColor = AppColors.error;
 
   static Key seatKey(int playerIndex) => ValueKey('gameSeat-$playerIndex');
+  static Key cardCountKey(int playerIndex) =>
+      ValueKey('seatCardCount-$playerIndex');
+  static Key scoreBarKey(int playerIndex) =>
+      ValueKey('seatScoreBar-$playerIndex');
+
+  /// The height of every line: one line of text at the current scale, plus
+  /// room for the card back. Fixed, so a line holding a badge, a card back
+  /// or "Éliminé" is no taller than another.
+  static double rowHeight(BuildContext context) =>
+      math.max(34, MediaQuery.textScalerOf(context).scale(20) + 12);
 
   @override
   Widget build(BuildContext context) {
@@ -53,57 +74,67 @@ class GamePlayerTable extends StatelessWidget {
         ),
       );
     }
+    final height = rowHeight(context);
     return Card(
       color: AppColors.slate800,
       margin: EdgeInsets.zero,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [for (final seat in seats) _SeatRow(seat: seat)],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final seat in seats) _SeatRow(seat: seat, height: height),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _SeatRow extends StatelessWidget {
-  const _SeatRow({required this.seat});
+  const _SeatRow({required this.seat, required this.height});
 
   final GameSeat seat;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final compact =
-        MediaQuery.sizeOf(context).width < GamePlayerTable.compactBreakpoint;
-    final border = seat.isCurrentTurn
-        ? const Color(0xFF4ADE80)
-        : Colors.transparent;
+    final active = seat.isCurrentTurn;
+    final out = seat.isEliminated;
+    final score = seat.score;
+    final danger = out || score > GamePlayerTable.dangerScore;
 
     return Container(
       key: GamePlayerTable.seatKey(seat.playerIndex),
-      padding: const EdgeInsets.fromLTRB(6, 4, 8, 4),
+      height: height,
+      padding: const EdgeInsets.fromLTRB(9, 0, 12, 0),
       decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: border, width: 4)),
-        color: seat.isCurrentTurn
-            ? const Color(0xFF166534).withValues(alpha: 0.25)
-            : seat.isMe
-            ? AppColors.amber600.withValues(alpha: 0.10)
-            : null,
+        border: Border(
+          left: BorderSide(
+            color: active
+                ? GamePlayerTable.activeEdgeColor
+                : Colors.transparent,
+            width: 3,
+          ),
+        ),
+        color: active ? AppColors.amber400.withValues(alpha: 0.10) : null,
       ),
       child: Opacity(
-        opacity: seat.isEliminated ? 0.5 : 1,
+        opacity: out ? 0.5 : 1,
         child: Row(
           children: [
             Icon(
-              seat.isEliminated
+              out
                   ? Icons.dangerous_outlined
-                  : seat.isCurrentTurn
+                  : active
                   ? Icons.play_arrow
                   : Icons.person_outline,
               size: 16,
-              color: seat.isEliminated
+              color: out
                   ? AppColors.error
-                  : seat.isCurrentTurn
-                  ? const Color(0xFF4ADE80)
+                  : active
+                  ? AppColors.amber400
                   : AppColors.slate400,
             ),
             const SizedBox(width: 4),
@@ -118,12 +149,8 @@ class _SeatRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        decoration: seat.isEliminated
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color: seat.isEliminated
-                            ? AppColors.slate400
-                            : AppColors.slate100,
+                        decoration: out ? TextDecoration.lineThrough : null,
+                        color: out ? AppColors.slate400 : AppColors.slate100,
                       ),
                     ),
                   ),
@@ -135,7 +162,7 @@ class _SeatRow extends StatelessWidget {
                         child: Text(
                           l10n.gameYouBadge,
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: 11,
                             color: AppColors.amber400,
                           ),
                         ),
@@ -146,27 +173,46 @@ class _SeatRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            Text(
-              '${seat.score}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: seat.isEliminated ? AppColors.error : AppColors.slate100,
+            Expanded(
+              flex: 2,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: out
+                    ? Text(
+                        l10n.gameEliminatedMark,
+                        style: const TextStyle(color: AppColors.slate400),
+                      )
+                    : _CardCount(seat: seat),
               ),
             ),
             const SizedBox(width: 6),
             Expanded(
-              flex: 4,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: seat.isEliminated
-                      ? Text(
-                          l10n.gameEliminatedMark,
-                          style: const TextStyle(color: AppColors.slate400),
-                        )
-                      : _CardBacks(count: seat.cardCount, compact: compact),
+              flex: 3,
+              child: LinearProgressIndicator(
+                key: GamePlayerTable.scoreBarKey(seat.playerIndex),
+                value: out
+                    ? 1
+                    : score.clamp(0, GamePlayerTable.eliminationScore) /
+                          GamePlayerTable.eliminationScore,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+                color: danger
+                    ? GamePlayerTable.dangerBarColor
+                    : GamePlayerTable.barColor,
+                backgroundColor: AppColors.slate700,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 28),
+              child: Text(
+                '$score',
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: out ? AppColors.error : AppColors.slate100,
                 ),
               ),
             ),
@@ -177,30 +223,31 @@ class _SeatRow extends StatelessWidget {
   }
 }
 
-class _CardBacks extends StatelessWidget {
-  const _CardBacks({required this.count, required this.compact});
+/// "▯ 5": one small card back and the number of cards, instead of a back
+/// per card to count.
+class _CardCount extends StatelessWidget {
+  const _CardCount({required this.seat});
 
-  final int count;
-  final bool compact;
+  final GameSeat seat;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final visible = count.clamp(0, compact ? 5 : 8);
-    final size = compact ? CardBackSize.xxs : CardBackSize.xs;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < visible; i++)
-          Padding(
-            padding: const EdgeInsets.only(right: 2),
-            child: CardBack(size: size),
+    return Semantics(
+      label: l10n.gameHandCards(seat.cardCount),
+      excludeSemantics: true,
+      child: Row(
+        key: GamePlayerTable.cardCountKey(seat.playerIndex),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CardBack(size: CardBackSize.xxs),
+          const SizedBox(width: 4),
+          Text(
+            '${seat.cardCount}',
+            style: const TextStyle(color: AppColors.slate400),
           ),
-        Text(
-          l10n.gameSeatCards(count),
-          style: const TextStyle(fontSize: 11, color: AppColors.slate400),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

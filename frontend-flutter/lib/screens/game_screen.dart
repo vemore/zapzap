@@ -18,6 +18,7 @@ import '../widgets/game_hand_size_selector.dart';
 import '../widgets/game_player_table.dart';
 import '../widgets/game_round_end.dart';
 import '../widgets/game_table_area.dart';
+import '../widgets/game_zapzap_sheet.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The board (`frontend/src/components/Game/GameBoard.jsx`): the players,
@@ -276,14 +277,28 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _playerTable() => GamePlayerTable(seats: _seats());
 
+  /// Where this player's turn stands, for the felt.
+  TableStep get _tableStep {
+    if (!_game.isMyTurn) return TableStep.waiting;
+    return switch (_game.currentAction) {
+      GameAction.play => TableStep.play,
+      GameAction.draw => TableStep.draw,
+      _ => TableStep.waiting,
+    };
+  }
+
   Widget _tableArea({double cardWidth = 45}) => GameTableArea(
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
     playerName: _nameOf,
     cardWidth: cardWidth,
+    step: _tableStep,
+    deckSize: _game.deckSize,
     selectedDiscardCard: _game.selectedDiscardCard,
+    takeCard: _game.willTakeFromDiscard ? _game.selectedDiscardCard : null,
     onDiscardTap: _game.canSelectDiscard ? _game.selectDiscardCard : null,
+    onDeckTap: _game.canDraw ? () => _game.draw(fromDeck: true) : null,
   );
 
   Widget _hand() {
@@ -293,28 +308,34 @@ class _GameScreenState extends State<GameScreen> {
       selectedCards: _game.selectedCards,
       eligibilityValue: values.eligibility,
       penaltyValue: values.penalty,
-      zapZapEligible: _game.zapZapEligible,
-      deckSize: _game.deckSize,
       disabled: !_game.isMyTurn || _game.currentAction != GameAction.play,
       onCardTap: _game.toggleCard,
       onClearSelection: _game.hasSelection ? _game.clearSelection : null,
-      onDrawFromDeck: _game.canDraw && !_game.willTakeFromDiscard
-          ? _game.draw
-          : null,
     );
   }
 
-  Widget _actions() => GameActionButtons(
-    isMyTurn: _game.isMyTurn,
-    currentAction: _game.currentAction,
-    currentPlayerName: _nameOf(_game.currentTurn),
-    selectedCount: _game.selectedCards.length,
-    invalidPlay: _game.invalidPlay,
-    takeFromDiscard: _game.willTakeFromDiscard,
-    onPlay: _game.canPlay ? _game.play : null,
-    onDraw: _game.canDraw ? _game.draw : null,
-    onZapZap: _game.canZapZap ? _game.zapZap : null,
-  );
+  Widget _actions() {
+    final values = _game.handValues;
+    return GameActionButtons(
+      isMyTurn: _game.isMyTurn,
+      currentAction: _game.currentAction,
+      currentPlayerName: _nameOf(_game.currentTurn),
+      selectedCards: _game.selectedCards,
+      invalidPlay: _game.invalidPlay,
+      takeCard: _game.willTakeFromDiscard ? _game.selectedDiscardCard : null,
+      zapZapRisk: ZapZapRisk(
+        handValue: values.eligibility,
+        scoredValue: values.penalty,
+        activePlayers: _game.activePlayerCount,
+        eligible: _game.zapZapEligible,
+        holdsJoker: hasJoker(_game.myHand),
+        isGoldenScore: _game.isGoldenScore,
+      ),
+      onPlay: _game.canPlay ? _game.play : null,
+      onDraw: _game.canDraw ? _game.draw : null,
+      onZapZap: _game.canZapZap ? _game.zapZap : null,
+    );
+  }
 
   /// A phone: one column that fills the height. Each section is `Flexible`
   /// over its own scroll view, so a large system font shrinks a section

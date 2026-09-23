@@ -1,5 +1,15 @@
-/// The four suits, in the order of the card ids (`id ~/ 13`).
-enum Suit { spades, hearts, clubs, diamonds }
+/// The four suits, in the order of the card ids (`id ~/ 13`), with the
+/// symbol printed on the card — not translated, like the rank symbols.
+enum Suit {
+  spades('♠'),
+  hearts('♥'),
+  clubs('♣'),
+  diamonds('♦');
+
+  const Suit(this.symbol);
+
+  final String symbol;
+}
 
 /// A ZapZap card, identified as by the backend and the React client
 /// (`frontend/src/utils/cards.js`): 0-12 spades, 13-25 hearts, 26-38 clubs,

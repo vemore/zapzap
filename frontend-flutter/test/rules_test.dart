@@ -201,6 +201,26 @@ void main() {
     });
   });
 
+  group('the ZapZap gauge and the counteract penalty', () {
+    test('the gauge is full at 5 or under, threshold / value above', () {
+      expect(zapZapProgress(0), 1);
+      expect(zapZapProgress(5), 1);
+      expect(zapZapProgress(29), closeTo(5 / 29, 1e-9));
+    });
+
+    test('a joker is what makes the two values differ', () {
+      expect(hasJoker([0, 52]), isTrue);
+      expect(hasJoker([0, 13]), isFalse);
+    });
+
+    test('(active players − 1) × 5 (GAME_RULES.md, Final Scoring)', () {
+      expect(counteractPenalty(4), 15);
+      expect(counteractPenalty(3), 10);
+      expect(counteractPenalty(2), 5);
+      expect(counteractPenalty(1), 0);
+    });
+  });
+
   group('sorting', () {
     test('by suit then rank, jokers last', () {
       expect(sortCards([53, 13, 12, 0, 52, 40]), [0, 12, 13, 40, 52, 53]);
