@@ -248,7 +248,7 @@ impl FeatureExtractor {
                 issues.push(format!("f[{}]=NaN", i));
             } else if f.is_infinite() {
                 issues.push(format!("f[{}]=Inf", i));
-            } else if f < -1.5 || f > 2.0 {
+            } else if !(-1.5..=2.0).contains(&f) {
                 issues.push(format!("f[{}]={:.3}(OOR)", i, f));
             }
         }

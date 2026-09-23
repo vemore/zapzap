@@ -203,6 +203,8 @@ fi
 if printf '%s\n' "$paths" | grep -qE '^native/'; then
     command -v cargo >/dev/null 2>&1 || needs_setup "cargo is not on PATH" "install Rust with rustup (.llmwiki/NativeEngine.md)"
     run_gate "cargo fmt --check (native)" bash -c "cd '$ROOT/native' && cargo fmt --check"
+    run_gate "cargo clippy --all-targets -- -D warnings (native)" \
+        env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 
 if printf '%s\n' "$paths" | grep -qE '^frontend/'; then

@@ -61,9 +61,9 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
 
 ```bash
 # Rust backend (toolchain pinned: rust-toolchain.toml)
-cd zapzap-rust && cargo run                      # :9999, needs a DB the Node side initialised
+cd zapzap-rust && cargo run                      # :9999, needs the DB file; creates missing tables
 cargo fmt && cargo clippy --all-targets -- -D warnings
-cargo test --lib --bins                          # tests/api_tests.rs is red: .llmwiki/Testing.md
+cargo test                                       # unit + API integration tests: .llmwiki/Testing.md
 
 # Frontend
 cd frontend && npm ci && npm run dev             # :5173, proxies /api to :9999

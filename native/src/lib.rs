@@ -426,6 +426,7 @@ pub fn get_feature_dimension() -> u32 {
 /// Extract features from a game state for ML
 /// Returns 45-dimensional feature vector
 #[napi]
+#[allow(clippy::too_many_arguments)] // N-API entry point: the JS caller passes positional arguments
 pub fn extract_features(
     hand: Vec<u8>,
     player_index: u8,
@@ -548,7 +549,7 @@ pub fn dqn_predict(features: Vec<f64>, decision_type: String) -> Vec<f64> {
         .as_ref()
         .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_name(&decision_type).unwrap_or(DecisionType::PlayType);
 
     // Convert f64 to f32 for internal processing
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
@@ -565,7 +566,7 @@ pub fn dqn_select_action(features: Vec<f64>, decision_type: String, epsilon: f64
         .as_mut()
         .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_name(&decision_type).unwrap_or(DecisionType::PlayType);
 
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
     dqn.select_action(&features_f32, dt, epsilon as f32) as u32
@@ -579,7 +580,7 @@ pub fn dqn_greedy_action(features: Vec<f64>, decision_type: String) -> u32 {
         .as_ref()
         .expect("DQN not initialized. Call dqn_init first.");
 
-    let dt = DecisionType::from_str(&decision_type).unwrap_or(DecisionType::PlayType);
+    let dt = DecisionType::from_name(&decision_type).unwrap_or(DecisionType::PlayType);
 
     let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
     dqn.greedy_action(&features_f32, dt) as u32

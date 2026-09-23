@@ -55,7 +55,8 @@ describe('DrawCard Use Case', () => {
             getRoundById: jest.fn(),
             getGameState: jest.fn(),
             getPartyPlayers: jest.fn(),
-            saveGameState: jest.fn()
+            saveGameState: jest.fn(),
+            recordGameAction: jest.fn()
         };
 
         mockUserRepository = {
@@ -91,6 +92,15 @@ describe('DrawCard Use Case', () => {
             expect(result.handSize).toBe(4);
             expect(result.gameState.currentAction).toBe('play');
             expect(result.gameState.currentTurn).toBe(1); // Next turn
+            // A human draw is recorded for replay analysis.
+            expect(mockPartyRepository.recordGameAction).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    partyId: mockParty.id,
+                    userId: mockUser.id,
+                    actionType: 'draw',
+                    actionData: expect.objectContaining({ source: 'deck', cardDrawn: 4 })
+                })
+            );
         });
 
         it('should draw from played cards successfully', async () => {
@@ -312,7 +322,7 @@ describe('DrawCard Use Case', () => {
                     partyId: mockParty.id,
                     source: 'deck'
                 })
-            ).rejects.toThrow('Current action is not DRAW');
+            ).rejects.toThrow('Cannot draw at this time - you must play cards first');
         });
 
         it('should reject draw from empty deck', async () => {

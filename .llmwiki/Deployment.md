@@ -236,3 +236,6 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
   Google login, bot creation, authorization) — tracked in `wip/`.
+  > **Status: Outdated** (2026-09-23) — the schema bootstrap gap is closed: the Rust backend
+  > creates the Node schema itself, and on the production file that step is a no-op
+  > ([[Backend]]). The other gaps stand.

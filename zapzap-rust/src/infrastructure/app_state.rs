@@ -60,8 +60,8 @@ impl AppState {
         // Connect to database
         let db = SqlitePool::connect(&db_url).await?;
 
-        // Run migrations if needed
-        // sqlx::migrate!("./migrations").run(&db).await?;
+        // Create the tables and indexes that are missing (a no-op on a Node-built database)
+        crate::infrastructure::database::schema::ensure_schema(&db).await?;
 
         // Create JWT service
         let jwt_secret = std::env::var("JWT_SECRET")

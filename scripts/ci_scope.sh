@@ -21,8 +21,9 @@ frontend=false
 image=false
 hooks=false
 flutter=false
+node=false
 
-everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -49,16 +50,30 @@ while IFS= read -r path; do
         # The reverse proxy configuration, baked into no image but mounted by compose.
         nginx/*) image=true ;;
 
-        # The Claude Code hooks and the scripts scripts/hooks_selftest.sh exercises.
-        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh)
+        # The Claude Code hooks and the scripts scripts/hooks_selftest.sh exercises
+        # (deploy.sh is driven there; rebuild.sh is its sibling). No image holds them.
+        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|deploy.sh|rebuild.sh)
             hooks=true ;;
 
         # The smoke test the image job runs against the Flutter PWA image.
         scripts/pwa_image_smoke.sh) image=true ;;
 
-        # The legacy Node backend (src/ and its root files): no job tests it, it is
-        # no longer deployed (.llmwiki/Architecture.md).
-        src/*|tests/*|views/*|public/*|app.js|logger.js|jest.config.js|playwright.config.js|eslint.config.mjs|package.json|package-lock.json) ;;
+        # The Node schema, which zapzap-rust/tests/schema_tests.rs reads and compares
+        # with the Rust backend's copy: a change to it needs the rust job too.
+        src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true ;;
+
+        # The Node backend, which production runs (.llmwiki/Deployment.md): its code and
+        # dependencies are tested by jest and baked into the root Dockerfile's image.
+        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true ;;
+
+        # What the Node image holds but jest does not load, and the image's own recipe.
+        views/*|public/*|Dockerfile|.dockerignore) image=true ;;
+
+        # The jest suites and their configuration.
+        tests/*|jest.config.js) node=true ;;
+
+        # Configurations no job runs: Playwright (tests/e2e) and the root ESLint.
+        playwright.config.js|eslint.config.mjs) ;;
 
         # Everything else: .github/, .claude/, scripts/, a root config, a path
         # nobody has classified yet.
@@ -66,4 +81,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node"

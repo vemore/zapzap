@@ -37,6 +37,7 @@ jobs:
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
+      node: ${{ steps.flags.outputs.node }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +58,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -102,12 +103,12 @@ jobs:
           workspaces: zapzap-rust
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      # Unit tests only: tests/api_tests.rs opens an in-memory SQLite with no schema
-      # (the migration call in src/infrastructure/app_state.rs is commented out), so
-      # every request answers 500. Tracked as a wip entry; add `--tests` back with it.
-      - run: cargo test --locked --lib --bins
+      # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
+      # SQLite, tests/schema_tests.rs checks the schema against the Node DDL in ../src.
+      - run: cargo test --locked --lib --bins --tests
 
   native:
+    # Branch protection requires this exact check name: rename it there first.
     name: Native engine — fmt, build, test
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.native != 'false' }}
@@ -121,13 +122,13 @@ jobs:
       # Pinned with rust-toolchain.toml in the crate: a newer clippy is a red build.
       - uses: dtolnay/rust-toolchain@1.92
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: native
       - run: cargo fmt --check
-      # No clippy gate yet, and one known-red test skipped: both are wip entries.
-      - run: cargo test -- --skip strategies::thibot::tests::test_zapzap_decision
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
 
   frontend:
     name: Frontend — build
@@ -178,6 +179,12 @@ jobs:
             nginx:alpine nginx -t
       - name: Backend image
         run: docker build -t zapzap-rust-backend:ci zapzap-rust
+      # The image production runs today (.llmwiki/Deployment.md): node:20-alpine, whose npm
+      # 10 runs `npm ci --only=production`. A package-lock.json a newer local npm accepts
+      # but npm 10 does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here,
+      # not on the NAS.
+      - name: Node backend image (production)
+        run: docker build -t zapzap-node-backend:ci .
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
@@ -244,3 +251,21 @@ jobs:
       # whatever the image would fail on.
       - run: flutter build web --base-href /app/ --no-web-resources-cdn
       - run: flutter build apk --debug
+
+  node:
+    name: Node backend — jest
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.node != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # The major the production image runs (Dockerfile: node:20-alpine).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # tests/unit and tests/integration against src/, the code production runs;
+      # jest.config.js keeps tests/e2e (Playwright) and frontend/ (vitest) out.
+      - run: npm test

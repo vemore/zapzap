@@ -56,7 +56,8 @@ describe('PlayCards Use Case', () => {
             getRoundById: jest.fn(),
             getGameState: jest.fn(),
             getPartyPlayers: jest.fn(),
-            saveGameState: jest.fn()
+            saveGameState: jest.fn(),
+            recordGameAction: jest.fn()
         };
 
         mockUserRepository = {
@@ -79,18 +80,29 @@ describe('PlayCards Use Case', () => {
             mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
             mockPartyRepository.saveGameState.mockResolvedValue(true);
 
+            // Card ids are suit * 13 + rank: 10, 11, 12 are J, Q, K of one suit.
             const result = await playCards.execute({
                 userId: mockUser.id,
                 partyId: mockParty.id,
-                cardIds: [10, 11]
+                cardIds: [10, 11, 12]
             });
 
             expect(result.success).toBe(true);
-            expect(result.cardsPlayed).toEqual([10, 11]);
-            expect(result.remainingCards).toBe(3);
+            expect(result.cardsPlayed).toEqual([10, 11, 12]);
+            expect(result.remainingCards).toBe(2);
             expect(result.gameState.currentAction).toBe('draw');
 
             expect(mockPartyRepository.saveGameState).toHaveBeenCalled();
+            // A human play is recorded for replay analysis.
+            expect(mockPartyRepository.recordGameAction).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    partyId: mockParty.id,
+                    userId: mockUser.id,
+                    actionType: 'play',
+                    handBefore: [10, 11, 12, 13, 14],
+                    handAfter: [13, 14]
+                })
+            );
         });
 
         it('should update game state correctly', async () => {
@@ -283,7 +295,8 @@ describe('PlayCards Use Case', () => {
             ).rejects.toThrow('Card 99 not in hand');
         });
 
-        it('should reject playing single card', async () => {
+        // A single card is a legal play (GAME_RULES.md); two cards of different ranks are not.
+        it('should reject two cards that are neither a pair nor a sequence', async () => {
             const players = [
                 { id: 'p0', userId: mockUser.id, playerIndex: 0 }
             ];
@@ -298,9 +311,32 @@ describe('PlayCards Use Case', () => {
                 playCards.execute({
                     userId: mockUser.id,
                     partyId: mockParty.id,
-                    cardIds: [10]
+                    cardIds: [10, 11]
                 })
-            ).rejects.toThrow('Must play at least 2 cards');
+            ).rejects.toThrow('Invalid card play');
+            expect(mockPartyRepository.saveGameState).not.toHaveBeenCalled();
+        });
+
+        it('should accept a single card', async () => {
+            const players = [
+                { id: 'p0', userId: mockUser.id, playerIndex: 0 }
+            ];
+
+            mockUserRepository.findById.mockResolvedValue(mockUser);
+            mockPartyRepository.findById.mockResolvedValue(mockParty);
+            mockPartyRepository.getRoundById.mockResolvedValue(mockRound);
+            mockPartyRepository.getGameState.mockResolvedValue(mockGameState);
+            mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
+            mockPartyRepository.saveGameState.mockResolvedValue(true);
+
+            const result = await playCards.execute({
+                userId: mockUser.id,
+                partyId: mockParty.id,
+                cardIds: [10]
+            });
+
+            expect(result.cardsPlayed).toEqual([10]);
+            expect(result.remainingCards).toBe(4);
         });
 
         it('should reject user not in party', async () => {

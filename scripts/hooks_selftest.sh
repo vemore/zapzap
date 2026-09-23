@@ -243,6 +243,12 @@ tree_commit "a backend change with a red cargo gate" 2 "cargo fmt --check (zapza
 unstage "zapzap-rust/src/lib.rs"
 stage "native/src/lib.rs"
 tree_commit "a native change with a red cargo fmt" 2 "cargo fmt --check (native)"
+# A cargo that passes fmt and fails clippy: the native gate must run clippy too.
+printf '#!/bin/sh\necho "stub cargo $*"\ncase "$*" in *clippy*) exit 1 ;; esac\nexit 0\n' > "$TOOLS/cargo"
+tree_commit "a native change with a red cargo clippy" 2 "cargo clippy --all-targets -- -D warnings (native)"
+stub_tool cargo 0
+tree_commit "a native change with green cargo gates" 0
+stub_tool cargo 1
 unstage "native/src/lib.rs"
 stage "src/api/app.js"
 tree_commit "the legacy Node backend runs no gate" 0
