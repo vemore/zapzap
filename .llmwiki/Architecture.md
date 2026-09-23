@@ -14,7 +14,7 @@
 | Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
 | Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **Playable**: the session, the party list, create-party, the lobby, the game board and the end of a round and of a game, the history and the statistics; no Google sign-in, no admin. [[FrontendFlutter]], [[Deployment]] |
 | Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; loaded by Node scripts in `scripts/` | Offline tooling only |
-| Legacy backend | `src/`, `app.js` | Node/Express, clean architecture (`src/domain`, `src/use-cases`, `src/infrastructure`, `src/api`) | Former API server (entry `app.js:14-20`, `src/api/server.js`) | **Legacy, yet the one in production** (checked 2026-09-22, [[Deployment]]); no CI job, no gate. Owns the schema bootstrap |
+| Legacy backend | `src/`, `app.js` | Node/Express, clean architecture (`src/domain`, `src/use-cases`, `src/infrastructure`, `src/api`) | Former API server (entry `app.js:14-20`, `src/api/server.js`) | **Legacy, yet the one in production** (checked 2026-09-22, [[Deployment]]); no CI job, no gate. Owns the upgrades of old schemas (`runMigrations()`) |
 
 - Old `CLAUDE.md` describes the frontend as "Vanilla JS"; it is React (`frontend/src/main.jsx`, `frontend/src/App.jsx`).
 - Both Rust crates pin toolchain 1.92 (`zapzap-rust/rust-toolchain.toml:4`, `native/rust-toolchain.toml:3`); the backend image uses `rust:1.92-slim-bookworm` (`zapzap-rust/Dockerfile:6`).
@@ -46,7 +46,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### SQLite database
 
 - Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:47-56`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
-- **The Rust backend never creates tables**: `sqlx::migrate!` is commented out (`zapzap-rust/src/infrastructure/app_state.rs:64`) and there is no `migrations/` directory. The schema is created by the legacy Node code (`src/infrastructure/database/sqlite/DatabaseConnection.js:71-212`: users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions; plus an older `src/infrastructure/database/schemas/schema.sql`) and migrated by `scripts/docker-entrypoint.js`. A fresh DB with the Rust backend alone is empty and unusable; this is also why `zapzap-rust/tests/api_tests.rs` fails (see [[Testing]]).
+- **Both backends create the same schema**: the Node code in `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) plus its `runMigrations()`, the Rust backend at startup from a verbatim copy, `zapzap-rust/src/infrastructure/database/schema.sql` (`zapzap-rust/src/infrastructure/app_state.rs:64`). All `IF NOT EXISTS`, so the Rust step is a no-op on a Node-built DB; `zapzap-rust/tests/schema_tests.rs` keeps the two identical ([[Backend]]). Older Node databases are upgraded by the Node side only (`runMigrations()`, `scripts/docker-entrypoint.js`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
 
 ### `data/` directory
@@ -55,7 +55,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 
 | Content | Producer | Consumer |
 |---------|----------|----------|
-| `zapzap.db` | legacy schema bootstrap, Rust backend at runtime | Rust backend |
+| `zapzap.db` | schema bootstrap by either backend (same DDL), Rust backend at runtime | Rust backend |
 | `hard_vince_genetic_params.json`, `hard_vince_optimized_params.json`, `thibot_genetic_params.json` | `scripts/genetic-optimize-hard-vince.js`, `scripts/optimize-hard-vince.js`, `scripts/genetic-optimize-thibot.js` | the same scripts / legacy JS strategies; the Rust backend does not read them (no reference in `zapzap-rust/src`), see [[Bots]] |
 | `ml_model_*.json` (16 files, up to ~41 MB) | legacy JS ML training | `src/infrastructure/bot/ml/ModelStorage.js:14` (default dir `./data`) |
 | `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors`, `models/default/{config,weights}.json` | `scripts/train-native.js` (default save path `data/models/rust-drl`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
@@ -76,7 +76,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### Legacy backend (brief)
 
 - Express app, DI container in `src/infrastructure/di`, routes in `src/api/routes/*Routes.js`, SSE also at `/suscribeupdate` with `?token=` (`src/api/server.js:69-109`).
-- Still the only place that owns the SQLite schema, `POST /api/auth/google` (`src/api/routes/authRoutes.js:120-123`, missing in Rust, see [[Api]]), JS bot strategies and the JS simulation runners (`src/simulation/`).
+- Still the only place that upgrades an old SQLite schema (`runMigrations()`), `POST /api/auth/google` (`src/api/routes/authRoutes.js:120-123`, missing in Rust, see [[Api]]), JS bot strategies and the JS simulation runners (`src/simulation/`).
 - Tests: jest + playwright (see [[Testing]]).
 
 ## Decisions & History
@@ -85,5 +85,6 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - 2025-12-15 `9a1d37f`: `native/` first appears (with the hard bot strategy); later DRL/genetic commits grow it into the training engine that complements the JS `src/simulation/` runners.
 - 2025-12-23 `e4f83da` "rewrite backend in Rust": `zapzap-rust/` mirrors the Node layers (api / application / domain / infrastructure) and reads the DB the Node code had created, which is why no migrations were written (the `migrate!` line was left commented). Same day: background bot triggering (`8a3509b`) and broadcaster overflow mode (`c9ac7a7`, avoids blocking senders when SSE clients lag).
 - 2026-09-22 `1e063d6`: CI added, `Cargo.lock` committed, `data/zapzap.db` untracked, Rust pinned to 1.92.
+- 2026-09-23 `fix/rust-api-schema`: the Rust backend creates the Node schema itself (`IF NOT EXISTS`, no sqlx migrations), so it no longer needs a DB the Node side initialised. [[Backend]].
 - 2026-09-23 `feat/flutter-pwa-deploy`: the PWA gets its own image and compose service, and the proxy a `/app/` route — one more container in the topology above. [[Deployment]].
 - 2026-09-22 `feat/flutter-scaffold`: `frontend-flutter/` created — a Flutter client (Android + PWA) to reach parity with the React one; React stays on `/`, the PWA goes under `/app/` so the API is same-origin. [[FrontendFlutter]].

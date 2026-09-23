@@ -58,6 +58,10 @@ while IFS= read -r path; do
         # The smoke test the image job runs against the Flutter PWA image.
         scripts/pwa_image_smoke.sh) image=true ;;
 
+        # The Node schema, which zapzap-rust/tests/schema_tests.rs reads and compares
+        # with the Rust backend's copy: a change to it needs the rust job too.
+        src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true ;;
+
         # The Node backend, which production runs (.llmwiki/Deployment.md): its code and
         # dependencies are tested by jest and baked into the root Dockerfile's image.
         src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true ;;
