@@ -551,6 +551,11 @@ git -C "$DPROD" config user.name t
 printf '#!/bin/sh\nexit 0\n' > "$DTOOLS/sleep"
 printf '#!/bin/sh\ncat >/dev/null 2>&1 || true\nexit 0\n' > "$DTOOLS/jq"
 chmod +x "$DTOOLS/sleep" "$DTOOLS/jq"
+DSTATES="$SANDBOX/deploy-states"     # one file per service, holding its container state
+mkdir -p "$DSTATES"
+DSERVICES="$SANDBOX/deploy-services" # what `docker-compose config --services` answers
+services_stub() { printf '%s\n' "$@" > "$DSERVICES"; }
+services_stub backend frontend nginx frontend-flutter
 compose_stub() {  # exit code of `build`, of `down`, of `up` (0 = that step succeeds)
     cat > "$DTOOLS/docker-compose" <<STUBEOF
 #!/bin/sh
@@ -559,17 +564,30 @@ case "\$1" in
     build) exit $1 ;;
     down)  exit $2 ;;
     up)    exit $3 ;;
-    config) echo backend ;;                 # \`config --services\`
-    port)  echo 0.0.0.0:80 ;;               # \`port nginx 80\`
-    ps)    [ "\$2" = -q ] && echo cafecafe ;;
+    config) cat "$DSERVICES" ;;             # \`config --services\`
+    port)  echo 0.0.0.0:80 ;;               # \`port <proxy> 80\`
+    ps)    [ "\$2" = -q ] && echo "cid-\$3" ;;
 esac
 exit 0
 STUBEOF
     chmod +x "$DTOOLS/docker-compose"
 }
-health_stub() {  # what \`docker inspect\` reports for every container
-    printf '#!/bin/sh\ncase "$1" in inspect) echo %s ;; esac\nexit 0\n' "$1" > "$DTOOLS/docker"
-    chmod +x "$DTOOLS/docker"
+# `docker inspect -f ... cid-<service>` answers per service, so one container can be
+# unhealthy while the others are fine — which is the whole point of the split verdict.
+cat > "$DTOOLS/docker" <<STUBEOF
+#!/bin/sh
+case "\$1" in
+    inspect)
+        for a in "\$@"; do last=\$a; done
+        svc=\${last#cid-}
+        if [ -f "$DSTATES/\$svc" ]; then cat "$DSTATES/\$svc"; else echo healthy; fi ;;
+esac
+exit 0
+STUBEOF
+chmod +x "$DTOOLS/docker"
+health_stub() {  # service, state -- everything not named is healthy
+    rm -f "$DSTATES"/*
+    [ $# -eq 0 ] || echo "$2" > "$DSTATES/$1"
 }
 site_stub() {  # exit code of curl: 0 = /api/health answers, 7 = nothing listening
     printf '#!/bin/sh\nexit %s\n' "$1" > "$DTOOLS/curl"
@@ -596,7 +614,7 @@ any_call() { tr '\n' '|' < "$DLOG" | sed 's/|$//'; }
 
 # The happy path: pull, build, and only then down/up. `down` carries --remove-orphans so
 # a rollback to a compose file without frontend-flutter cleans up after itself.
-compose_stub 0 0 0; health_stub healthy; site_stub 0
+compose_stub 0 0 0; health_stub; site_stub 0
 upstream "a change to deploy"
 run_deploy; rc=$?
 report "deploy: exits 0 on the happy path"          0 "$rc"
@@ -630,25 +648,61 @@ report "deploy: and tries to start the stack again" "build|down --remove-orphans
 case "$dout" in *"may be DOWN"*) got=warned ;; *) got="missing from the output" ;; esac
 report "deploy: and says production may be down"    warned "$got"
 
-# `up -d` returning 0 proves nothing: a container that crash-loops satisfies it. The
-# script must wait for health, then fail loudly with the container and its logs.
-compose_stub 0 0 0; health_stub restarting
+# `up -d` returning 0 proves nothing: a container that crash-loops satisfies it. An
+# *essential* one — what serves /, /api/ and /suscribeupdate — is an outage: fail loudly
+# with the container and its logs.
+compose_stub 0 0 0; health_stub backend restarting
 upstream "a change that builds and then crash-loops"
 run_deploy; rc=$?
-report "deploy: an unhealthy container fails the deploy" 1 "$rc"
+report "deploy: an unhealthy backend fails the deploy"   1 "$rc"
 case "$dout" in *"backend(restarting)"*) got=named ;; *) got="missing from the output" ;; esac
 report "deploy: and names the container and its state"   named "$got"
 case "$dout" in *"last 30 lines of backend"*) got=shown ;; *) got="missing from the output" ;; esac
 report "deploy: and shows its logs"                      shown "$got"
+case "$dout" in *"production is DOWN"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: and calls it an outage"                  said "$got"
+
+# A *non-essential* one is not. `frontend-flutter` is resolved per request by nginx
+# (#36), so an unhealthy PWA costs /app/ a 502 and nothing else: the script must warn,
+# not cry outage, or the operator rolls back a site that is serving.
+health_stub frontend-flutter unhealthy
+upstream "a change whose PWA container is broken"
+run_deploy; rc=$?
+report "deploy: an unhealthy PWA does not read as an outage" 2 "$rc"
+case "$dout" in *"production is DOWN"*) got="called it an outage" ;; *) got=no ;; esac
+report "deploy: and never says production is down"       no "$got"
+case "$dout" in *"WARNING"*"frontend-flutter(unhealthy)"*) got=warned ;; *) got="missing from the output" ;; esac
+report "deploy: names it in a warning instead"           warned "$got"
+case "$dout" in *"Site answering again"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: and confirms the site came back"         said "$got"
+case "$dout" in *'`/app/`'*502*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: says what it costs (/app/ answers 502)"  said "$got"
+case "$dout" in *"Rolling back is OPTIONAL"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: and that a rollback is optional"         said "$got"
+case "$dout" in *"last 30 lines of frontend-flutter"*) got=shown ;; *) got="missing from the output" ;; esac
+report "deploy: shows its logs too"                      shown "$got"
+case "$dout" in *"DEGRADED"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: and its final banner is not a success"   said "$got"
 
 # Containers all up, but the site does not answer: still a failed deploy, not a success.
-health_stub healthy; site_stub 7
+health_stub; site_stub 7
 upstream "a change that starts but does not serve"
 run_deploy; rc=$?
 report "deploy: a silent /api/health fails the deploy"   1 "$rc"
 case "$dout" in *"does not answer 200"*) got=said ;; *) got="missing from the output" ;; esac
 report "deploy: and says so"                             said "$got"
 site_stub 0
+
+# A compose file that does not declare an essential service: the split verdict would
+# silently treat a missing `frontend` as optional, so refuse before building anything.
+services_stub backend nginx
+upstream "a change that drops the frontend service"
+run_deploy; rc=$?
+report "deploy: refuses a compose file missing an essential service" 1 "$rc"
+report "deploy: and builds nothing"                      "" "$(calls)"
+case "$dout" in *"expects a service named 'frontend'"*) got=named ;; *) got="missing from the output" ;; esac
+report "deploy: naming the service and the three files"  named "$got"
+services_stub backend frontend nginx frontend-flutter
 
 # A tracked production database: refuse before the pull, naming the fix.
 compose_stub 0 0 0

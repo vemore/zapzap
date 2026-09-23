@@ -7,8 +7,9 @@
 # file while the old containers keep serving, so a build that fails — a network
 # timeout on a dependency, ENOSPC, the OOM killer taking dart2js — stops nothing.
 # The downtime is the down/up window, and it is not over until the site answers
-# again: the script waits for every container and for /api/health, and exits
-# non-zero if they never come.
+# again: the script waits for the services that serve the site and for /api/health,
+# and exits 1 if they never come. A service that does not serve the site — the
+# Flutter PWA — is a warning and exit 2, never an outage.
 #
 # NOTE: bash keeps executing the *old* file after `git pull` replaces this script,
 # so the very first deploy after a change to deploy.sh runs the previous version.
@@ -29,6 +30,27 @@ echo "🃏 ZapZap Deployment Script"
 echo "======================================"
 echo "Clone: $(pwd)"
 echo ""
+
+# Which services actually serve the site, and which one is the reverse proxy. Both names
+# are here, once, because they tie this script to two other files:
+#
+#   - `nginx` is the proxy service of docker-compose.yml, whose published port this
+#     script asks for (`docker-compose port`) and whose health decides the site;
+#   - `backend` and `frontend` are what that proxy cannot start without — its
+#     `depends_on: condition: service_healthy` entries — and what nginx/nginx.conf
+#     proxies `/`, `/api/` and `/suscribeupdate` to.
+#
+# Everything else the compose file declares is NOT essential, deliberately.
+# `frontend-flutter` is the case that matters: nginx resolves it per request
+# (nginx/nginx.conf:99-108), so a PWA container that never becomes healthy costs `/app/`
+# a 502 and nothing else (#36, .llmwiki/Deployment.md). Renaming or adding a service
+# here means updating docker-compose.yml, nginx/nginx.conf and this line together.
+PROXY_SERVICE=nginx
+ESSENTIAL_SERVICES="backend frontend $PROXY_SERVICE"
+
+is_essential() {  # service name
+    case " $ESSENTIAL_SERVICES " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
 
 # Milliseconds since the epoch, so the reported downtime does not truncate to whole
 # seconds. bash 5 has EPOCHREALTIME; GNU date's %3N covers older bash; failing both,
@@ -100,6 +122,25 @@ printf '%s\n' "$pull_output"
 echo "✓ Code updated"
 echo ""
 
+# The pull may have renamed or dropped a service, and ESSENTIAL_SERVICES above would then
+# quietly treat a service that serves the site as optional — the health gate would pass
+# over an outage. Check the two lists agree now, while nothing has been built or stopped.
+declared=$(docker-compose config --services)
+for service in $ESSENTIAL_SERVICES; do
+    case " $(printf '%s\n' "$declared" | tr '\n' ' ') " in
+        *" $service "*) ;;
+        *)
+            echo "" >&2
+            echo "✗ REFUSING TO DEPLOY: deploy.sh expects a service named '$service'," >&2
+            echo "  which this compose file does not declare. It declares:" >&2
+            printf '%s\n' "$declared" | sed 's/^/    /' >&2
+            echo "  Nothing was built and nothing was stopped. ESSENTIAL_SERVICES and" >&2
+            echo "  PROXY_SERVICE at the top of deploy.sh, docker-compose.yml and" >&2
+            echo "  nginx/nginx.conf have to be changed together." >&2
+            exit 1 ;;
+    esac
+done
+
 # Build images — the old containers are still up and still serving while this runs.
 echo "🔨 Building Docker images (production is still serving the old ones)..."
 if ! docker-compose build; then
@@ -152,23 +193,27 @@ echo "✓ Containers started"
 echo ""
 
 # `up -d` returning 0 means the containers were created, not that anything works: a
-# container that crash-loops under `restart: unless-stopped` satisfies it. So poll
-# until every service the compose file declares is healthy (or running, where it
-# declares no health check) *and* /api/health answers 200 — and fail loudly if that
-# never happens, instead of printing a downtime figure that stopped being true.
-proxy_port=$(docker-compose port nginx 80 2>/dev/null | sed 's/.*://' || true)
+# container that crash-loops under `restart: unless-stopped` satisfies it. So poll the
+# containers' real state, and split the verdict in two, because the compose file's
+# services are not equally load-bearing:
+#
+#   ESSENTIAL_SERVICES not healthy, or /api/health not answering 200  -> outage, exit 1
+#   any other service not healthy, with the site answering            -> degraded, exit 2
+#
+# Collapsing the two would make an unhealthy `frontend-flutter` — the newest container
+# and the likeliest to misbehave — read as "production is DOWN" and push the operator
+# into a rollback the site does not need.
+proxy_port=$(docker-compose port "$PROXY_SERVICE" 80 2>/dev/null | sed 's/.*://' || true)
 case "$proxy_port" in ''|*[!0-9]*) proxy_port=80 ;; esac
 health_url="http://localhost:$proxy_port/api/health"
 
-echo "⏳ Waiting for every container to be healthy and $health_url to answer..."
-tries=45          # x 2 s = 90 s, more than the compose start_period of any service
-unhealthy=""
-while :; do
-    unhealthy=""
-    for service in $(docker-compose config --services); do
+# Echoes "<service>(<state>)" for every service of $1 that is not healthy or running.
+not_healthy() {  # space-separated service names
+    local service cid state out=""
+    for service in $1; do
         cid=$(docker-compose ps -q "$service" 2>/dev/null | head -1)
         if [ -z "$cid" ]; then
-            unhealthy="$unhealthy $service(no container)"
+            out="$out $service(no container)"
             continue
         fi
         state=$(docker inspect -f \
@@ -176,9 +221,31 @@ while :; do
             "$cid" 2>/dev/null || true)
         case "$state" in
             healthy|running) ;;
-            *) unhealthy="$unhealthy $service(${state:-unknown})" ;;
+            *) out="$out $service(${state:-unknown})" ;;
         esac
     done
+    printf '%s' "$out"
+}
+
+# The last 30 log lines of each "<service>(<state>)" in $1, on the given stream.
+log_tails() {  # entries
+    local entry service
+    for entry in $1; do
+        service=${entry%%(*}
+        echo ""
+        echo "  --- last 30 lines of $service ---"
+        docker-compose logs --tail 30 "$service" 2>/dev/null || true
+    done
+}
+
+optional_services=$(docker-compose config --services | while read -r s; do
+    is_essential "$s" || printf '%s ' "$s"
+done)
+
+echo "⏳ Waiting for $ESSENTIAL_SERVICES to be healthy and $health_url to answer..."
+tries=45          # x 2 s = 90 s, more than the compose start_period of any service
+while :; do
+    unhealthy=$(not_healthy "$ESSENTIAL_SERVICES")
     if [ -z "$unhealthy" ] && curl -fsS -m 5 -o /dev/null "$health_url" 2>/dev/null; then
         break
     fi
@@ -189,16 +256,11 @@ while :; do
             "$(( $(now_ms) - downtime_start_ms ))") and is not coming back:" >&2
         if [ -n "$unhealthy" ]; then
             echo "  containers not healthy:$unhealthy" >&2
+            log_tails "$unhealthy" >&2
         else
-            echo "  every container is up, but $health_url does not answer 200" >&2
-            unhealthy=$(docker-compose config --services | tr '\n' ' ')
+            echo "  every essential container is up, but $health_url does not answer 200" >&2
+            log_tails "$ESSENTIAL_SERVICES" >&2
         fi
-        for service in $unhealthy; do
-            service=${service%%(*}
-            echo "" >&2
-            echo "  --- last 30 lines of $service ---" >&2
-            docker-compose logs --tail 30 "$service" >&2 2>/dev/null || true
-        done
         echo "" >&2
         echo "  Roll back: .claude/skills/deploy/SKILL.md §4. If zapzap-proxy sits in" >&2
         echo "  Created, \`docker start zapzap-proxy\` restores / and /api/ at once." >&2
@@ -208,6 +270,43 @@ while :; do
 done
 echo "✓ Site answering again — downtime was $(seconds_of "$(( $(now_ms) - downtime_start_ms ))")"
 echo ""
+
+# The site is up. Give the non-essential services their own, shorter grace period: they
+# cost nothing while they start, and their failure is a warning, not an outage.
+degraded=""
+if [ -n "$optional_services" ]; then
+    tries=30      # x 2 s = 60 s
+    while :; do
+        degraded=$(not_healthy "$optional_services")
+        [ -z "$degraded" ] && break
+        tries=$((tries - 1))
+        [ "$tries" -le 0 ] && break
+        sleep 2
+    done
+fi
+if [ -n "$degraded" ]; then
+    echo "⚠  WARNING — the site is up, but a non-essential service is not:$degraded" >&2
+    echo "   Serving normally: $ESSENTIAL_SERVICES are healthy and $health_url" >&2
+    echo "   answered 200, so \`/\` (the React client), \`/api/\` and \`/suscribeupdate\`" >&2
+    echo "   are unaffected." >&2
+    for entry in $degraded; do
+        case "${entry%%(*}" in
+            frontend-flutter)
+                echo "   Cost: \`/app/\` — the Flutter PWA — answers 502 until that container is" >&2
+                echo "   healthy. nginx resolves it per request (nginx/nginx.conf), which is why" >&2
+                echo "   it cannot take the rest of the site with it." >&2 ;;
+            *)
+                echo "   Cost: whatever ${entry%%(*} serves. It is not on the path to \`/\` or" >&2
+                echo "   \`/api/\`, so those keep working." >&2 ;;
+        esac
+    done
+    log_tails "$degraded" >&2
+    echo "" >&2
+    echo "   Rolling back is OPTIONAL here (.claude/skills/deploy/SKILL.md §4): the site is" >&2
+    echo "   serving, so fixing it in a new pull request and deploying again is usually" >&2
+    echo "   better than a rollback. Do not read this as an outage." >&2
+    echo "" >&2
+fi
 
 # Check status
 echo "📊 Container status:"
@@ -220,7 +319,11 @@ curl -fsS -m 10 "$health_url" | jq . || echo "(could not print the health payloa
 echo ""
 
 echo "======================================"
-echo "✨ Deployment complete!"
+if [ -n "$degraded" ]; then
+    echo "⚠  Deployed, DEGRADED:$degraded"
+else
+    echo "✨ Deployment complete!"
+fi
 echo "======================================"
 echo ""
 echo "📝 Useful commands:"
@@ -230,3 +333,10 @@ echo "  - Frontend logs:    docker-compose logs -f frontend"
 echo "  - Stop:             docker-compose down --remove-orphans"
 echo "  - Restart service:  docker-compose restart [service]"
 echo ""
+
+# Exit status, deliberately three-valued so a caller can tell the cases apart:
+#   0  deployed, everything healthy
+#   1  refused before touching anything, or an outage (see the message)
+#   2  deployed and serving, but a non-essential service is not healthy
+# Non-zero so no script can miss it; distinct so no script mistakes it for an outage.
+[ -z "$degraded" ] || exit 2

@@ -88,9 +88,42 @@ it stops at the first failure, a failure on the left of a pipe included):
    overwrite, DNS, credentials);
 3. `docker-compose build` — **the old containers are still up and still serving**;
 4. `docker-compose down --remove-orphans`, then `docker-compose up -d`;
-5. **wait until every service `docker-compose config --services` lists is `healthy` (or
-   `running`, where it declares no health check) and `/api/health` answers 200**, polling
-   every 2 s for up to 90 s; then `docker-compose ps` and the health payload.
+5. **wait until `backend`, `frontend` and `nginx` are `healthy` (or `running`, where a
+   service declares no health check) and `/api/health` answers 200**, polling every 2 s for
+   up to 90 s; then a 60 s grace for the other services, `docker-compose ps` and the health
+   payload.
+
+Between 3 and 4 it also **refuses if the compose file stops declaring one of the essential
+services**, while nothing has been built or stopped: `ESSENTIAL_SERVICES` and
+`PROXY_SERVICE` at the top of `deploy.sh`, `docker-compose.yml` and `nginx/nginx.conf` have
+to change together, and a rename must not silently demote a service that serves the site.
+
+### What the script calls essential, and what it does not
+
+`ESSENTIAL_SERVICES` is `backend frontend nginx` — the proxy plus the two services its
+`depends_on: condition: service_healthy` waits on, which are what `nginx/nginx.conf` proxies
+`/`, `/api/` and `/suscribeupdate` to. `PROXY_SERVICE` is `nginx`, and the published port
+comes from `docker-compose port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
+Both names live in one place in the script, with a comment tying them to the two other files.
+
+**`frontend-flutter` is deliberately outside that set.** nginx resolves it per request
+(`nginx/nginx.conf:99-108`), so a PWA container that never becomes healthy costs `/app/` a
+502 and nothing else — the design decision of #36, and treating it as essential would undo
+it at exactly the wrong moment, since on the deploy that first carries the PWA that
+container is the newest and likeliest to misbehave. So the verdict is split, and so is the
+exit status:
+
+| Exit | Meaning |
+|---|---|
+| `0` | deployed, every container healthy |
+| `1` | refused before touching anything, or an outage (an essential service, or `/api/health`) |
+| `2` | deployed and serving, but a non-essential service is not healthy |
+
+Exit 2 prints a `⚠ WARNING` naming the container and its state, says which services *are*
+serving and that `/`, `/api/` and `/suscribeupdate` are unaffected, spells out the cost
+(`/app/` answers 502), shows the container's last 30 log lines, says a rollback is
+**optional**, and ends with `⚠ Deployed, DEGRADED: …` instead of `✨ Deployment complete!`.
+Non-zero so no script can miss it, distinct so no script mistakes it for an outage.
 
 **The build comes before the `down`, so a failed build stops nothing**: the images are built
 against the new compose file while the previous ones keep serving, and the script exits
@@ -105,9 +138,10 @@ satisfies it — so the old script could print a downtime figure and "Deployment
 over a site that was never coming back. Step 5 is the gate: it exits non-zero, names each
 container with its state and prints its last 30 log lines. Measured locally against the real
 four-container stack: **12.9 s** (the containers' own start-up, the proxy's `depends_on`
-health conditions included) after a build of any length. `down` and `up -d` are both guarded
-too; a failing `down` immediately retries `up -d` before giving up, because that is the one
-step that can leave nothing running.
+health conditions included) after a build of any length. A broken non-essential service does
+not change the figure: the gate that ends the downtime is the essential set plus
+`/api/health`. `down` and `up -d` are both guarded too; a failing `down` immediately retries
+`up -d` before giving up, because that is the one step that can leave nothing running.
 
 `--remove-orphans` is on **every** `down` in the procedure, the rollback included: a compose
 file that no longer declares a service (any commit older than the Flutter PWA) otherwise
@@ -127,12 +161,14 @@ minutes and **~3.6 GB** of Docker storage to the host (measured 2026-09-23: buil
 `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since `dart2js` needs about
 2 GB; short of it the build now fails harmlessly instead of failing with the site down.
 
-`scripts/hooks_selftest.sh` pins all of this offline (the `hooks` CI job, 30 cases): the step
+`scripts/hooks_selftest.sh` pins all of this offline (the `hooks` CI job, 42 cases): the step
 order including `--remove-orphans`, that a failing build reaches no `down`, that a failing
-`down` retries `up -d`, that an unhealthy container or a silent `/api/health` fails the
-deploy, and every refusal — including the subdirectory invocation and git being unavailable.
-It drives the real `deploy.sh` in a sandbox clone with `docker-compose`, `docker`, `curl`,
-`jq` and `sleep` stubbed.
+`down` retries `up -d`, that an unhealthy **essential** container or a silent `/api/health`
+fails the deploy while an unhealthy `frontend-flutter` only warns and exits 2, that a compose
+file missing an essential service refuses before building, and every refusal — including the
+subdirectory invocation and git being unavailable. It drives the real `deploy.sh` in a
+sandbox clone with `docker-compose`, `docker`, `curl`, `jq` and `sleep` stubbed, the `docker`
+stub answering a state per service.
 
 ### The production database
 
@@ -187,6 +223,16 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   a subdirectory printed "✓ Not tracked" about a path that does not exist and pulled, which
   deleted `data/`. The `cd` to the script's directory and the fail-closed check are that fix;
   both are pinned by `scripts/hooks_selftest.sh`.
+- **The health gate is split, because the services are not equal (2026-09-23, same change,
+  second review).** Requiring *every* service to be healthy would have made an unhealthy
+  `frontend-flutter` print "production is DOWN" and exit 1 — false, and an invitation to roll
+  back a site that is serving, on the very deploy where that container is newest. #36 made
+  the PWA non-essential on purpose (nginx resolves it per request, no `depends_on` on it),
+  and the deploy script now agrees with the proxy: essential means "the proxy and what it
+  cannot start without", everything else is a warning and exit 2. The two service names are
+  named once in the script instead of being spread through it, and the script refuses before
+  building if the compose file stops declaring one of them — the cheapest guard against the
+  set going stale.
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
   Google login, bot creation, authorization) — tracked in `wip/`.

@@ -102,8 +102,29 @@ ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/work
 `deploy.sh` checks the database is untracked (refusing too when git cannot answer), pulls
 (`--ff-only`), **builds the images while the old containers keep serving**, then runs
 `docker-compose down --remove-orphans` and `docker-compose up -d`, and finally **waits until
-every service the compose file declares is healthy and `/api/health` answers 200**. It exits
-at the first failing step (`set -e`, `pipefail`).
+`backend`, `frontend` and `nginx` are healthy and `/api/health` answers 200**. It exits at
+the first failing step (`set -e`, `pipefail`).
+
+**Read its exit status; it is three-valued.**
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| `0` | deployed, every container healthy | §3 |
+| `1` | refused before touching anything, **or** an outage | the message says which; §4 for an outage |
+| `2` | deployed and serving, but a **non-essential** service is not healthy | §3, then fix that service in a new pull request |
+
+The essential set is `backend frontend nginx` — the proxy plus what its `depends_on`
+conditions wait on, which is what serves `/`, `/api/` and `/suscribeupdate`. It is named
+once at the top of `deploy.sh` (`ESSENTIAL_SERVICES`, `PROXY_SERVICE`), and the script
+**refuses before building** if the compose file stops declaring one of them, so a rename
+cannot quietly turn an essential service into an optional one. **`frontend-flutter` is
+deliberately not in it**: nginx resolves the PWA per request (`nginx/nginx.conf`), so a PWA
+container that never becomes healthy costs `/app/` a 502 and nothing else. That case prints
+a `⚠ WARNING` naming the container and its state, says the React client and the API are
+unaffected, shows its last 30 log lines, says a rollback is **optional**, ends with
+`⚠ Deployed, DEGRADED: …` instead of `✨ Deployment complete!`, and exits **2**. Do not read
+it as an outage and do not roll back for it by reflex — the site is serving, and fixing the
+PWA in a new pull request keeps it that way.
 
 - **The site is down only for the down/up window.** The script's `✓ Site answering again —
   downtime was 3.4s` is measured from just before the `down` to the first 200, so it
@@ -119,15 +140,21 @@ at the first failing step (`set -e`, `pipefail`).
   detached HEAD are the usual causes, but so are an untracked file the pull would overwrite
   and plain DNS or credential failures. Fix it by hand (`git status --short`,
   `git checkout master`), never with a force or a blind merge.
-- **A failing `down`, a failing `up -d`, or a stack that never becomes healthy are all
-  outages, and the script says so.** A failing `down` may leave the stack half stopped; the
-  script immediately retries `up -d` and then tells you to look at `docker ps -a` (a `down`
-  that fails on "network has active endpoints" usually means a container the compose file
-  no longer declares: `docker rm -f <name>`, then deploy again). A stack that is up but not
-  healthy within 90 s exits non-zero, names each container with its state and prints its
-  last 30 log lines. **`up -d` returning 0 is not success** — a container crash-looping
-  under `restart: unless-stopped` satisfies it, which is exactly what the health wait is
-  there to catch. Roll back (§4) if the logs do not point at something you can fix at once.
+- **A failing `down`, a failing `up -d`, or an *essential* service that never becomes
+  healthy are all outages, and the script says so.** A failing `down` may leave the stack
+  half stopped; the script immediately retries `up -d` and then tells you to look at
+  `docker ps -a` (a `down` that fails on "network has active endpoints" usually means a
+  container the compose file no longer declares: `docker rm -f <name>`, then deploy again).
+  An essential service not healthy — or `/api/health` not answering 200 — within 90 s exits
+  **1**, names each container with its state and prints its last 30 log lines. **`up -d`
+  returning 0 is not success**: a container crash-looping under `restart: unless-stopped`
+  satisfies it, which is exactly what the health wait is there to catch. Roll back (§4) if
+  the logs do not point at something you can fix at once.
+- **A non-essential service that never becomes healthy is not an outage.** It gets its own
+  60 s grace once the site is answering, then a `⚠ WARNING`, its logs, and exit **2**. For
+  `frontend-flutter` that means `/app/` answers 502 while `/`, `/api/` and `/suscribeupdate`
+  serve normally — verify with §3's list and the PWA checks will fail, which is expected;
+  the fix is a new pull request, not a rollback.
 
 The **first** deploy that carries the Flutter PWA builds `zapzap-frontend-flutter` too: it
 downloads the Flutter SDK inside the image, so allow several extra minutes and **~3.6 GB of
