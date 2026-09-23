@@ -59,6 +59,19 @@ abstract final class AppRoutes {
 GoRouter createRouter({
   required AuthProvider auth,
   String initialLocation = AppRoutes.home,
+}) {
+  // Screens reached from another are `push`ed (`utils/navigation.dart`), and
+  // go_router leaves the browser URL on the screen below unless this is set.
+  // Every route here is top-level and needs nothing from the one below it, so
+  // the pushed screen's own path is a real deep link: a reload keeps it, and
+  // a lobby's URL can be shared. Only the web reads it.
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+  return _router(auth: auth, initialLocation: initialLocation);
+}
+
+GoRouter _router({
+  required AuthProvider auth,
+  required String initialLocation,
 }) => GoRouter(
   initialLocation: initialLocation,
   refreshListenable: auth,
