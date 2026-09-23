@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../router.dart';
 import 'connected_players.dart';
 import 'connection_indicator.dart';
 
 /// The app bar of the signed-in screens: who is online, whether the event
-/// stream is up, and the way out. Icons only, so it fits a phone.
+/// stream is up, where else to go, and the way out. Icons only, so it fits a
+/// phone.
 ///
 /// Signing out needs no navigation: the router follows [AuthProvider].
 class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -37,7 +40,65 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.logout),
           onPressed: () => context.read<AuthProvider>().logout(),
         ),
+        const _NavigationMenu(),
       ],
     );
   }
+}
+
+/// The screens the app bar leads to, as a menu rather than one button each:
+/// on Android there is no URL bar, and four more icons would not fit a 360 px
+/// bar at a large system font.
+///
+/// There is no Admin entry: `/admin` ([AppRoutes.admin]) has no screen yet —
+/// only the router guard — so the entry would land on the not-found screen.
+/// It belongs here once the admin screen exists.
+class _NavigationMenu extends StatelessWidget {
+  const _NavigationMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return PopupMenuButton<String>(
+      key: const Key('app-bar-menu'),
+      tooltip: l10n.appBarMenu,
+      position: PopupMenuPosition.under,
+      // `push`, not `go`: the destination goes on top of the screen the
+      // player came from, so the Android system Back button returns to it.
+      onSelected: (route) => context.push(route),
+      itemBuilder: (context) => [
+        _item(
+          key: const Key('menu-history'),
+          route: AppRoutes.history,
+          icon: Icons.history,
+          label: l10n.historyTitle,
+        ),
+        _item(
+          key: const Key('menu-stats'),
+          route: AppRoutes.stats,
+          icon: Icons.bar_chart,
+          label: l10n.statsTitle,
+        ),
+      ],
+    );
+  }
+
+  /// One destination. [Flexible] around the label so a long translation at a
+  /// large system font wraps instead of overflowing the menu.
+  PopupMenuItem<String> _item({
+    required Key key,
+    required String route,
+    required IconData icon,
+    required String label,
+  }) => PopupMenuItem<String>(
+    key: key,
+    value: route,
+    child: Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Flexible(child: Text(label)),
+      ],
+    ),
+  );
 }

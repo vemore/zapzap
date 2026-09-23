@@ -103,6 +103,14 @@ class FakeGameBackend {
   /// route answers instead.
   final Map<String, ({int status, JsonMap body})> failures = {};
 
+  /// Awaited before a `GET /state` answers, with the 1-based call number.
+  /// The body is captured *before* the wait, so a test can hold answer 1
+  /// back until answer 2 has landed and check which one the board keeps.
+  Future<void> Function(int call)? onState;
+
+  /// How many times `GET /state` has been called.
+  int stateCalls = 0;
+
   final List<http.Request> requests = [];
 
   /// The paths of every request, in order.
@@ -130,13 +138,16 @@ class FakeGameBackend {
       return _json({'players': connected});
     }
     if (path.endsWith('/state')) {
-      if (state == null) {
+      final call = ++stateCalls;
+      final body = state;
+      if (onState != null) await onState!(call);
+      if (body == null) {
         return _json({
           'error': 'Party not found',
           'code': 'PARTY_NOT_FOUND',
         }, 404);
       }
-      return _json(state!);
+      return _json(body);
     }
     if (path.endsWith('/play')) {
       return _json({

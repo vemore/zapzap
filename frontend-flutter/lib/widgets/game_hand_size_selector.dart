@@ -44,6 +44,20 @@ class GameHandSizeSelector extends StatefulWidget {
 class _GameHandSizeSelectorState extends State<GameHandSizeSelector> {
   late int _size = widget.initialSize;
 
+  /// Golden Score can end between two rounds (a player is back in the game
+  /// on the Rust side), and the range shrinks from 4-10 to 4-7 under a
+  /// selector still showing 8, 9 or 10 — which the backend refuses with
+  /// `INVALID_HAND_SIZE`.
+  @override
+  void didUpdateWidget(GameHandSizeSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.maxSize != oldWidget.maxSize && _size > widget.maxSize) {
+      setState(
+        () => _size = widget.initialSize.clamp(minHandSize, widget.maxSize),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);

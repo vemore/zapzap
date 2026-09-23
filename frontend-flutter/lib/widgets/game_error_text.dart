@@ -22,7 +22,7 @@ String gameErrorText(AppLocalizations l10n, Object error) {
     GameErrorCode.deckEmpty => l10n.errorDeckEmpty,
     GameErrorCode.invalidHandSize => l10n.errorInvalidHandSize,
     GameErrorCode.roundNotFinished => l10n.errorRoundNotFinished,
-    GameErrorCode.gameNotStarted => l10n.errorGameNotStarted,
+    GameErrorCode.notInParty => l10n.errorNotInParty,
     ApiErrorCode.partyNotFound => l10n.errorPartyNotFound,
     _ => l10n.errorGeneric,
   };

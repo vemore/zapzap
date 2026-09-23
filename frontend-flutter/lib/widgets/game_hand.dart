@@ -40,6 +40,10 @@ class GameHand extends StatelessWidget {
   final bool zapZapEligible;
   final int deckSize;
   final ValueChanged<int>? onCardTap;
+
+  /// `null` disables Clear. The board decides: there is something to clear
+  /// when cards *or* a discard card are selected, and the discard one is
+  /// picked in the draw phase, where the hand itself is disabled.
   final VoidCallback? onClearSelection;
 
   /// Given only when a draw from the deck is allowed.
@@ -141,7 +145,7 @@ class GameHand extends StatelessWidget {
               children: [
                 TextButton.icon(
                   key: const Key('clear-selection'),
-                  onPressed: selectedCards.isEmpty ? null : onClearSelection,
+                  onPressed: onClearSelection,
                   style: TextButton.styleFrom(
                     minimumSize: Size.zero,
                     padding: const EdgeInsets.symmetric(
