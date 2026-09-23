@@ -165,6 +165,11 @@ class GameProvider extends ChangeNotifier {
   bool isEliminated(int playerIndex) =>
       game?.eliminatedPlayers.contains(playerIndex) ?? false;
 
+  /// The players still in the game: the `active_players` of the counteract
+  /// penalty (`GAME_RULES.md`).
+  int get activePlayerCount =>
+      players.where((player) => !isEliminated(player.playerIndex)).length;
+
   /// The name of the player at [playerIndex], or `null` when no seat
   /// carries it (the screen falls back to "Player n").
   String? nameOf(int? playerIndex) {
@@ -310,6 +315,14 @@ class GameProvider extends ChangeNotifier {
           ? _repository.drawFromDeck(partyId)
           : _repository.drawFromPlayed(partyId, fromDiscard),
     );
+  }
+
+  /// Draws from the deck even when a discard card is picked: the deck on the
+  /// felt is a target of its own.
+  Future<void> drawFromDeck() async {
+    if (!canDraw) return;
+    _selectedDiscardCard = null;
+    await _act(() => _repository.drawFromDeck(partyId));
   }
 
   Future<void> zapZap() async {

@@ -1121,15 +1121,6 @@
   "@gameYouBadge": {
     "description": "Badge marking the caller's own row in the player table"
   },
-  "gameSeatCards": "({count})",
-  "@gameSeatCards": {
-    "description": "How many cards a seat holds, after its card backs",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "gameEliminatedMark": "Éliminé",
   "@gameEliminatedMark": {
     "description": "Shown instead of the card backs of an eliminated player"
@@ -1137,15 +1128,6 @@
   "gameTablePlayedLabel": "Posées",
   "@gameTablePlayedLabel": {
     "description": "Label of the cards laid down this turn"
-  },
-  "gameTableDiscardLabel": "Défausse ({count})",
-  "@gameTableDiscardLabel": {
-    "description": "Label of the discard pile and its size",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
   },
   "gameTableEmpty": "Vide",
   "@gameTableEmpty": {
@@ -1224,22 +1206,6 @@
       }
     }
   },
-  "gameHandValues": "ZapZap {eligibility} · Pénalité {penalty}",
-  "@gameHandValues": {
-    "description": "The hand value with jokers at 0, then at 25",
-    "placeholders": {
-      "eligibility": {
-        "type": "int"
-      },
-      "penalty": {
-        "type": "int"
-      }
-    }
-  },
-  "gameZapZapEligible": "ZapZap possible",
-  "@gameZapZapEligible": {
-    "description": "Badge shown when the hand is worth 5 points or less"
-  },
   "gameDeckLabel": "Pioche {count}",
   "@gameDeckLabel": {
     "description": "The deck button and how many cards are left in it",
@@ -1266,14 +1232,6 @@
   "@gameHandEmpty": {
     "description": "Shown when the caller holds no card"
   },
-  "gameTurnPlay": "À vous — posez des cartes",
-  "@gameTurnPlay": {
-    "description": "Turn banner: the caller must play"
-  },
-  "gameTurnDraw": "À vous — piochez une carte",
-  "@gameTurnDraw": {
-    "description": "Turn banner: the caller must draw"
-  },
   "gameTurnWaiting": "En attente de {player}",
   "@gameTurnWaiting": {
     "description": "Turn banner: another player is to move",
@@ -1283,30 +1241,210 @@
       }
     }
   },
-  "gamePlayButton": "Poser",
-  "@gamePlayButton": {
-    "description": "Button playing the selected cards"
+  "gameDrawButton": "Piocher",
+  "@gameDrawButton": {
+    "description": "Button drawing from the deck"
   },
-  "gamePlayButtonCount": "Poser {count}",
-  "@gamePlayButtonCount": {
-    "description": "Button playing the selected cards, with how many",
+  "gameZapZapButton": "ZapZap !",
+  "@gameZapZapButton": {
+    "description": "Button calling ZapZap"
+  },
+  "gameStepPlay": "① Jouer",
+  "@gameStepPlay": {
+    "description": "Turn step 1, the current or the next one"
+  },
+  "gameStepPlayDone": "✓ Jouer",
+  "@gameStepPlayDone": {
+    "description": "Turn step 1 once done"
+  },
+  "gameStepDraw": "② Piocher",
+  "@gameStepDraw": {
+    "description": "Turn step 2"
+  },
+  "gameStepYourTurn": "Ton tour",
+  "@gameStepYourTurn": {
+    "description": "Beside the turn steps: it is the caller's turn"
+  },
+  "gameMovePlay": "Jouer",
+  "@gameMovePlay": {
+    "description": "Primary button of the play step when the selection names no move"
+  },
+  "gameMovePlaySingle": "Jouer {card}",
+  "@gameMovePlaySingle": {
+    "description": "Primary button: play one card",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayPair": "Jouer la paire de {rank}",
+  "@gameMovePlayPair": {
+    "description": "Primary button: play two cards of one rank",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayGroup": "Jouer le groupe de {rank} ({count} cartes)",
+  "@gameMovePlayGroup": {
+    "description": "Primary button: play three or more cards of one rank",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayJokers": "Jouer {count} jokers",
+  "@gameMovePlayJokers": {
+    "description": "Primary button: play jokers only",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "gameDrawButton": "Piocher",
-  "@gameDrawButton": {
-    "description": "Button drawing from the deck"
+  "gameMovePlaySequence": "Jouer la suite ({count} cartes)",
+  "@gameMovePlaySequence": {
+    "description": "Primary button: play a sequence",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-  "gameTakeButton": "Prendre",
-  "@gameTakeButton": {
-    "description": "Button taking the selected card from the discard pile"
+  "gameMoveTake": "Prendre {card}",
+  "@gameMoveTake": {
+    "description": "Primary button of the draw step: take the selected discard card",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
   },
-  "gameZapZapButton": "ZapZap !",
-  "@gameZapZapButton": {
-    "description": "Button calling ZapZap"
+  "gameHandTitle": "Ta main · {points} pts",
+  "@gameHandTitle": {
+    "description": "The caller's hand value, jokers at 0",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapThreshold": "ZapZap à {threshold}",
+  "@gameZapZapThreshold": {
+    "description": "Label of the gauge towards the ZapZap threshold",
+    "placeholders": {
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "gameHandPenalty": "Si contré : {points} pts (joker 25)",
+  "@gameHandPenalty": {
+    "description": "The hand value with jokers at 25, shown when the hand holds a joker",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapNeedLow": "ZapZap · main {points}, il faut {threshold} ou moins",
+  "@gameZapZapNeedLow": {
+    "description": "Disabled ZapZap button: the hand is too high",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapNotNow": "ZapZap · au début de ton tour",
+  "@gameZapZapNotNow": {
+    "description": "Disabled ZapZap button: not the play step of the caller's turn"
+  },
+  "gameZapZapSheetTitle": "{points, plural, =0{Appeler ZapZap avec 0 point ?} =1{Appeler ZapZap avec 1 point ?} other{Appeler ZapZap avec {points} points ?}}",
+  "@gameZapZapSheetTitle": {
+    "description": "Title of the ZapZap confirmation sheet",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetWin": "Tu gagnes la manche si aucun adversaire n'a {points} ou moins.",
+  "@gameZapZapSheetWin": {
+    "description": "ZapZap confirmation: when the call holds",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetOpponents": "{count, plural, =1{1 adversaire} other{{count} adversaires}}",
+  "@gameZapZapSheetOpponents": {
+    "description": "How many opponents the counteract penalty counts",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetRisk": "Sinon tu es contré : ta main, {hand}, + {penalty} de pénalité ({opponents} × 5) = {total} points.",
+  "@gameZapZapSheetRisk": {
+    "description": "ZapZap confirmation: what a counteract costs",
+    "placeholders": {
+      "hand": {
+        "type": "int"
+      },
+      "penalty": {
+        "type": "int"
+      },
+      "opponents": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetJoker": "Le joker y compte alors 25.",
+  "@gameZapZapSheetJoker": {
+    "description": "ZapZap confirmation: the hand holds a joker"
+  },
+  "gameZapZapSheetGolden": "Score en or : contré, tu perds la partie.",
+  "@gameZapZapSheetGolden": {
+    "description": "ZapZap confirmation in Golden Score"
+  },
+  "gameTableNextLabel": "À prendre ensuite",
+  "@gameTableNextLabel": {
+    "description": "Label of the discard pile: the cards the next draw may take"
+  },
+  "gameTableDrawHint": "Touche une carte pour la prendre, ou la pioche",
+  "@gameTableDrawHint": {
+    "description": "Instruction on the felt during the draw step"
+  },
+  "gameTableTakeHint": "{points, plural, =0{Prendre {card} n'ajoute aucun point à ta main.} =1{Prendre {card} ajoute 1 point à ta main.} other{Prendre {card} ajoute {points} points à ta main.}}",
+  "@gameTableTakeHint": {
+    "description": "What taking the selected discard card does to the hand value",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameHandSizeEffect": "Moins de cartes, ZapZap plus vite ; plus de cartes, plus de combinaisons.",
+  "@gameHandSizeEffect": {
+    "description": "What the hand size changes"
   },
   "gameHandSizeTitle": "Nombre de cartes",
   "@gameHandSizeTitle": {
@@ -1329,9 +1467,14 @@
       }
     }
   },
-  "gameHandSizeConfirm": "Distribuer",
+  "gameHandSizeConfirm": "Distribuer {count} cartes",
   "@gameHandSizeConfirm": {
-    "description": "Button confirming the hand size"
+    "description": "Button dealing the picked hand size",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "gameHandSizeWaitingTitle": "En attente",
   "@gameHandSizeWaitingTitle": {

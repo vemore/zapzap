@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
+import '../utils/rules.dart';
 import 'card_fan.dart';
 
-/// The player's own cards, in the fan of `CardFan.jsx`, with the header of
-/// `frontend/src/components/Game/PlayerHand.jsx`: how many cards, the two
-/// hand values (jokers at 0 for ZapZap, at 25 for the score), the "ZapZap
-/// eligible" badge, and the deck button that draws.
+/// The player's own cards, in the fan of `CardFan.jsx`, under what the hand
+/// is worth in plain words (J3 of the UX study): "Ta main · 29 pts" — jokers
+/// at 0, what ZapZap is decided on —, a gauge towards "ZapZap à 5", and the
+/// value a counteract would score only when a joker makes it differ.
 ///
 /// Selection is the board's, not this widget's: the React client keeps one
 /// in `PlayerHand` and another in `GameBoard`, and they drift apart.
@@ -18,11 +19,8 @@ class GameHand extends StatelessWidget {
     required this.selectedCards,
     required this.eligibilityValue,
     required this.penaltyValue,
-    required this.zapZapEligible,
-    required this.deckSize,
     this.onCardTap,
     this.onClearSelection,
-    this.onDrawFromDeck,
     this.disabled = false,
   });
 
@@ -37,8 +35,6 @@ class GameHand extends StatelessWidget {
   /// The hand's value with jokers at 25 (what it would score).
   final int penaltyValue;
 
-  final bool zapZapEligible;
-  final int deckSize;
   final ValueChanged<int>? onCardTap;
 
   /// `null` disables Clear. The board decides: there is something to clear
@@ -46,12 +42,15 @@ class GameHand extends StatelessWidget {
   /// picked in the draw phase, where the hand itself is disabled.
   final VoidCallback? onClearSelection;
 
-  /// Given only when a draw from the deck is allowed.
-  final VoidCallback? onDrawFromDeck;
-
   /// The cards cannot be selected (not this player's turn, or a draw is
   /// owed).
   final bool disabled;
+
+  /// The two values differ only when the hand holds a joker.
+  bool get _holdsJoker => penaltyValue != eligibilityValue;
+
+  /// The gauge fills green as the hand comes down to the threshold.
+  static const gaugeColor = Color(0xFF4ADE80);
 
   @override
   Widget build(BuildContext context) {
@@ -66,60 +65,60 @@ class GameHand extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // A `Wrap`: at a large text size the header folds instead of
-            // overflowing.
+            // A `Wrap`: at a large text size the gauge folds under the
+            // value instead of overflowing.
             Wrap(
+              alignment: WrapAlignment.spaceBetween,
               spacing: 8,
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
-                  l10n.gameHandCards(cards.length),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  l10n.gameHandTitle(eligibilityValue),
+                  key: const Key('handValue'),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                Text(
-                  l10n.gameHandValues(eligibilityValue, penaltyValue),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      l10n.gameZapZapThreshold(zapZapThreshold),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.slate400,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      width: 60,
+                      child: LinearProgressIndicator(
+                        key: const Key('zapzapGauge'),
+                        value: zapZapProgress(eligibilityValue),
+                        minHeight: 6,
+                        borderRadius: BorderRadius.circular(3),
+                        color: GameHand.gaugeColor,
+                        backgroundColor: AppColors.slate700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            if (_holdsJoker)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  l10n.gameHandPenalty(penaltyValue),
+                  key: const Key('handPenaltyValue'),
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.slate400,
                   ),
                 ),
-                if (zapZapEligible)
-                  Container(
-                    key: const Key('zapzapEligibleBadge'),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.amber400.withValues(alpha: 0.2),
-                      border: Border.all(color: AppColors.amber400),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      l10n.gameZapZapEligible,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.amber400,
-                      ),
-                    ),
-                  ),
-                OutlinedButton.icon(
-                  key: const Key('draw-deck'),
-                  onPressed: onDrawFromDeck,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size.zero,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(Icons.style, size: 16),
-                  label: Text(l10n.gameDeckLabel(deckSize)),
-                ),
-              ],
-            ),
+              ),
             const SizedBox(height: 4),
             if (cards.isEmpty)
               Padding(
