@@ -36,7 +36,9 @@ class _PartiesScreenState extends State<PartiesScreen> {
     super.dispose();
   }
 
-  void _open(PartySummary party) => context.go(
+  // `push` rather than `go` everywhere below: the lobby, the game and the
+  // form go on top of the list, so the Android system Back returns to it.
+  void _open(PartySummary party) => context.push(
     party.status == PartyStatus.playing
         ? AppRoutes.gamePath(party.id)
         : AppRoutes.partyPath(party.id),
@@ -44,7 +46,7 @@ class _PartiesScreenState extends State<PartiesScreen> {
 
   Future<void> _join(PartySummary party) async {
     if (await _parties.join(party.id) && mounted) {
-      context.go(AppRoutes.partyPath(party.id));
+      context.push(AppRoutes.partyPath(party.id));
     }
   }
 
@@ -55,7 +57,7 @@ class _PartiesScreenState extends State<PartiesScreen> {
       appBar: ZapZapAppBar(title: l10n.partiesTitle),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('create-party'),
-        onPressed: () => context.go(AppRoutes.createParty),
+        onPressed: () => context.push(AppRoutes.createParty),
         icon: const Icon(Icons.add),
         label: Text(l10n.partiesCreateButton),
       ),
@@ -90,7 +92,10 @@ class _PartiesScreenState extends State<PartiesScreen> {
                             onRetry: _parties.load,
                           ),
                         ],
-                        if (_parties.parties.isEmpty) ...[
+                        // A failed first load has no list to speak of: the
+                        // banner alone, not "no party yet" under it.
+                        if (_parties.parties.isEmpty &&
+                            _parties.error == null) ...[
                           const SizedBox(height: 48),
                           const Icon(Icons.groups, size: 56),
                           const SizedBox(height: 12),

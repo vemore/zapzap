@@ -7,6 +7,8 @@ import '../models/sse_event.dart';
 import '../repositories/party_repository.dart';
 import '../services/api_exception.dart';
 
+export '../models/party.dart' show defaultPartyPlayers;
+
 /// The party error codes the lobby reacts to, on top of [ApiErrorCode].
 abstract final class PartyErrorCode {
   /// `POST /party/:id/join` when the caller already has a seat: React opens
@@ -17,6 +19,10 @@ abstract final class PartyErrorCode {
   static const partyPlaying = 'PARTY_PLAYING';
   static const notOwner = 'NOT_OWNER';
   static const notAuthorized = 'NOT_AUTHORIZED';
+
+  /// Leave (and start, on Rust) by someone without a seat: another client
+  /// already took them out.
+  static const notInParty = 'NOT_IN_PARTY';
 }
 
 /// A rummy hand is dealt to 3 players at least and 8 at most
@@ -24,9 +30,10 @@ abstract final class PartyErrorCode {
 const int minPartyPlayers = 3;
 const int maxPartyPlayers = 8;
 
-/// The seats a party falls back to when the backend sent no `playerCount`,
-/// as in React (`PartyList.jsx:167`, `PartyLobby.jsx:134`).
-const int defaultPartyPlayers = 5;
+/// A party name is 3 to 50 characters once trimmed, as Node requires
+/// (`src/use-cases/party/CreateParty.js:47-53`).
+const int partyNameMinLength = 3;
+const int partyNameMaxLength = 50;
 
 /// The public party list (`GET /party`), what the parties screen shows.
 ///
@@ -145,6 +152,9 @@ class PartyLobbyProvider extends ChangeNotifier {
   bool _busy = false;
   bool _disposed = false;
 
+  /// The newest [load]; an answer to an older one is dropped.
+  int _loadGeneration = 0;
+
   PartyDetails? get details => _details;
   bool get loading => _loading;
   Object? get error => _error;
@@ -192,13 +202,19 @@ class PartyLobbyProvider extends ChangeNotifier {
 
   /// (Re)loads the party. [showSpinner] false is a refresh driven by an
   /// event or by a pull: the current seats stay on screen meanwhile.
+  ///
+  /// Two players joining a moment apart start two loads, which can answer
+  /// out of order. Only the newest one is kept ([_loadGeneration], as in
+  /// `GameProvider.load`); an older answer, good or bad, is dropped.
   Future<void> load({bool showSpinner = true}) async {
     if (showSpinner && !_loading) {
       _loading = true;
       _notify();
     }
+    final generation = ++_loadGeneration;
     try {
       final details = await _repository.details(partyId);
+      if (generation != _loadGeneration) return;
       _details = details;
       _error = null;
       // The game may have started while this client was away, or between
@@ -207,6 +223,7 @@ class PartyLobbyProvider extends ChangeNotifier {
         _outcome = LobbyOutcome.started;
       }
     } catch (error) {
+      if (generation != _loadGeneration) return;
       if (error is ApiException && error.code == ApiErrorCode.partyNotFound) {
         _details = null;
       }
