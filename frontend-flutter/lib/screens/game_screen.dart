@@ -137,6 +137,9 @@ class _GameScreenState extends State<GameScreen> {
         Icons.hourglass_empty,
         l10n.gameNotStartedTitle,
         l10n.gameNotStartedBody,
+        // `partyStarted` refetches on its own; the button covers an event
+        // this client missed while its channel was down.
+        onRetry: _game.load,
       );
     }
     final content = switch (_game.currentAction) {

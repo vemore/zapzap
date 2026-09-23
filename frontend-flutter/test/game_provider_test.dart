@@ -392,6 +392,38 @@ void main() {
       expect(game.selectedDiscardCard, isNull, reason: 'cleared after a draw');
     });
 
+    test('a discard card the pile no longer holds is not posted', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'draw',
+            lastCardsPlayed: [7, 8],
+          ),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      game.selectDiscardCard(8);
+      expect(game.willTakeFromDiscard, isTrue);
+
+      // The pile changes under the selection; the hand does not, so the
+      // selection survives the refresh.
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(
+          currentTurn: 0,
+          currentAction: 'draw',
+          lastCardsPlayed: [20, 21],
+        ),
+      );
+      await game.load(showSpinner: false);
+
+      expect(game.selectedDiscardCard, 8);
+      expect(game.willTakeFromDiscard, isFalse);
+      await game.draw();
+      expect(backend.bodyOf('POST', '/api/game/p1/draw'), {'source': 'deck'});
+    });
+
     test(
       'ZapZap needs a hand of 5 points or less, in the play phase',
       () async {
@@ -507,15 +539,40 @@ void main() {
         'zapzap',
         'roundStarted',
         'gameFinished',
+        'partyStarted',
       ]) {
         events.add(event(action));
         await pumpEventQueue();
       }
       expect(
         backend.paths.where((p) => p.endsWith('/state')).length,
-        before + 6,
+        before + 7,
       );
     });
+
+    test(
+      'the owner starting the party puts a waiting client on the table',
+      () async {
+        final backend = FakeGameBackend(
+          state: gameSnapshotJson(gameState: null),
+        );
+        final game = provider(backend);
+        await game.load();
+        expect(game.isStarted, isFalse);
+
+        backend.state = gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'selectHandSize',
+          ),
+        );
+        events.add(event('partyStarted'));
+        await pumpEventQueue();
+
+        expect(game.isStarted, isTrue);
+        expect(game.currentAction, GameAction.selectHandSize);
+      },
+    );
 
     test('a deleted party ends the board', () async {
       final backend = FakeGameBackend(
