@@ -167,8 +167,10 @@ class GameActionButtons extends StatelessWidget {
       key: Key(draw ? 'draw-card' : 'play-cards'),
       onPressed: draw ? onDraw : onPlay,
       style: FilledButton.styleFrom(
-        backgroundColor: draw ? const Color(0xFF2563EB) : AppColors.amber500,
-        foregroundColor: draw ? AppColors.slate100 : AppColors.slate900,
+        // One colour for the move at hand, the theme's primary: the step
+        // chips say which step it is.
+        backgroundColor: AppColors.amber500,
+        foregroundColor: AppColors.slate900,
         disabledBackgroundColor: AppColors.slate700,
         disabledForegroundColor: AppColors.slate400,
         minimumSize: const Size(0, 48),
