@@ -1,5 +1,8 @@
 /**
  * Unit tests for PartySettings Value Object
+ *
+ * The hand size is no longer a party setting: the starting player picks it at the
+ * start of each round (GAME_RULES.md, src/use-cases/game/SelectHandSize.js).
  */
 
 const PartySettings = require('../../../../src/domain/value-objects/PartySettings');
@@ -9,21 +12,18 @@ describe('PartySettings Value Object', () => {
         it('should create settings with valid properties', () => {
             const settings = new PartySettings({
                 playerCount: 5,
-                handSize: 7,
                 allowSpectators: true,
                 roundTimeLimit: 300
             });
 
             expect(settings.playerCount).toBe(5);
-            expect(settings.handSize).toBe(7);
             expect(settings.allowSpectators).toBe(true);
             expect(settings.roundTimeLimit).toBe(300);
         });
 
         it('should use default values for optional properties', () => {
             const settings = new PartySettings({
-                playerCount: 5,
-                handSize: 7
+                playerCount: 5
             });
 
             expect(settings.allowSpectators).toBe(false);
@@ -32,8 +32,7 @@ describe('PartySettings Value Object', () => {
 
         it('should be immutable', () => {
             const settings = new PartySettings({
-                playerCount: 5,
-                handSize: 7
+                playerCount: 5
             });
 
             expect(Object.isFrozen(settings)).toBe(true);
@@ -42,8 +41,7 @@ describe('PartySettings Value Object', () => {
         it('should throw error for invalid player count (too low)', () => {
             expect(() => {
                 new PartySettings({
-                    playerCount: 2,
-                    handSize: 7
+                    playerCount: 2
                 });
             }).toThrow('Player count must be between 3 and 8');
         });
@@ -51,35 +49,26 @@ describe('PartySettings Value Object', () => {
         it('should throw error for invalid player count (too high)', () => {
             expect(() => {
                 new PartySettings({
-                    playerCount: 9,
-                    handSize: 7
+                    playerCount: 9
                 });
             }).toThrow('Player count must be between 3 and 8');
         });
 
-        it('should throw error for invalid hand size (too low)', () => {
-            expect(() => {
-                new PartySettings({
-                    playerCount: 5,
-                    handSize: 4
-                });
-            }).toThrow('Hand size must be between 5 and 7');
-        });
+        it('should not keep a hand size (chosen per round, not per party)', () => {
+            const settings = new PartySettings({
+                playerCount: 5,
+                handSize: 7
+            });
 
-        it('should throw error for invalid hand size (too high)', () => {
-            expect(() => {
-                new PartySettings({
-                    playerCount: 5,
-                    handSize: 8
-                });
-            }).toThrow('Hand size must be between 5 and 7');
+            expect(settings.handSize).toBeUndefined();
+            expect(settings.toObject()).not.toHaveProperty('handSize');
+            expect(JSON.parse(settings.toJSON())).not.toHaveProperty('handSize');
         });
 
         it('should throw error for negative time limit', () => {
             expect(() => {
                 new PartySettings({
                     playerCount: 5,
-                    handSize: 7,
                     roundTimeLimit: -1
                 });
             }).toThrow('Round time limit must be a non-negative number');
@@ -91,7 +80,6 @@ describe('PartySettings Value Object', () => {
             const settings = PartySettings.createDefault();
 
             expect(settings.playerCount).toBe(5);
-            expect(settings.handSize).toBe(7);
             expect(settings.allowSpectators).toBe(false);
             expect(settings.roundTimeLimit).toBe(0);
         });
@@ -101,7 +89,6 @@ describe('PartySettings Value Object', () => {
         it('should serialize to JSON and deserialize back', () => {
             const original = new PartySettings({
                 playerCount: 6,
-                handSize: 5,
                 allowSpectators: true,
                 roundTimeLimit: 600
             });
@@ -110,9 +97,17 @@ describe('PartySettings Value Object', () => {
             const restored = PartySettings.fromJSON(json);
 
             expect(restored.playerCount).toBe(original.playerCount);
-            expect(restored.handSize).toBe(original.handSize);
             expect(restored.allowSpectators).toBe(original.allowSpectators);
             expect(restored.roundTimeLimit).toBe(original.roundTimeLimit);
+        });
+
+        it('should read settings stored with a legacy hand size', () => {
+            const restored = PartySettings.fromJSON(
+                JSON.stringify({ playerCount: 4, handSize: 7, allowSpectators: false, roundTimeLimit: 0 })
+            );
+
+            expect(restored.playerCount).toBe(4);
+            expect(restored.handSize).toBeUndefined();
         });
     });
 
@@ -120,17 +115,15 @@ describe('PartySettings Value Object', () => {
         it('should convert to plain object', () => {
             const settings = new PartySettings({
                 playerCount: 5,
-                handSize: 7,
                 allowSpectators: false,
                 roundTimeLimit: 0
             });
 
-            const obj = settings.toObject();
-
-            expect(obj.playerCount).toBe(5);
-            expect(obj.handSize).toBe(7);
-            expect(obj.allowSpectators).toBe(false);
-            expect(obj.roundTimeLimit).toBe(0);
+            expect(settings.toObject()).toEqual({
+                playerCount: 5,
+                allowSpectators: false,
+                roundTimeLimit: 0
+            });
         });
     });
 
@@ -138,14 +131,12 @@ describe('PartySettings Value Object', () => {
         it('should return true for equal settings', () => {
             const settings1 = new PartySettings({
                 playerCount: 5,
-                handSize: 7,
                 allowSpectators: false,
                 roundTimeLimit: 300
             });
 
             const settings2 = new PartySettings({
                 playerCount: 5,
-                handSize: 7,
                 allowSpectators: false,
                 roundTimeLimit: 300
             });
@@ -155,27 +146,39 @@ describe('PartySettings Value Object', () => {
 
         it('should return false for different player count', () => {
             const settings1 = new PartySettings({
-                playerCount: 5,
-                handSize: 7
+                playerCount: 5
             });
 
             const settings2 = new PartySettings({
-                playerCount: 6,
-                handSize: 7
+                playerCount: 6
             });
 
             expect(settings1.equals(settings2)).toBe(false);
         });
 
-        it('should return false for different hand size', () => {
+        it('should return false for different spectator setting', () => {
             const settings1 = new PartySettings({
                 playerCount: 5,
-                handSize: 7
+                allowSpectators: false
             });
 
             const settings2 = new PartySettings({
                 playerCount: 5,
-                handSize: 6
+                allowSpectators: true
+            });
+
+            expect(settings1.equals(settings2)).toBe(false);
+        });
+
+        it('should return false for different round time limit', () => {
+            const settings1 = new PartySettings({
+                playerCount: 5,
+                roundTimeLimit: 0
+            });
+
+            const settings2 = new PartySettings({
+                playerCount: 5,
+                roundTimeLimit: 60
             });
 
             expect(settings1.equals(settings2)).toBe(false);
@@ -183,11 +186,10 @@ describe('PartySettings Value Object', () => {
 
         it('should return false for non-PartySettings object', () => {
             const settings = new PartySettings({
-                playerCount: 5,
-                handSize: 7
+                playerCount: 5
             });
 
-            expect(settings.equals({ playerCount: 5, handSize: 7 })).toBe(false);
+            expect(settings.equals({ playerCount: 5, allowSpectators: false, roundTimeLimit: 0 })).toBe(false);
         });
     });
 
@@ -195,7 +197,6 @@ describe('PartySettings Value Object', () => {
         it('should create new instance with changed properties', () => {
             const original = new PartySettings({
                 playerCount: 5,
-                handSize: 7,
                 allowSpectators: false,
                 roundTimeLimit: 0
             });
@@ -203,7 +204,6 @@ describe('PartySettings Value Object', () => {
             const modified = original.with({ playerCount: 6 });
 
             expect(modified.playerCount).toBe(6);
-            expect(modified.handSize).toBe(7);
             expect(modified.allowSpectators).toBe(false);
             expect(modified.roundTimeLimit).toBe(0);
 
@@ -216,14 +216,13 @@ describe('PartySettings Value Object', () => {
 
             const modified = original.with({
                 playerCount: 8,
-                handSize: 5,
-                allowSpectators: true
+                allowSpectators: true,
+                roundTimeLimit: 120
             });
 
             expect(modified.playerCount).toBe(8);
-            expect(modified.handSize).toBe(5);
             expect(modified.allowSpectators).toBe(true);
-            expect(modified.roundTimeLimit).toBe(0);
+            expect(modified.roundTimeLimit).toBe(120);
         });
 
         it('should throw error for invalid changes', () => {
