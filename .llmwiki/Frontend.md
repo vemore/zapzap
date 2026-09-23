@@ -11,6 +11,7 @@
 - Vite 7 (`vite` ^7.2.6) with `@vitejs/plugin-react` — `frontend/package.json:31,42`, `frontend/vite.config.js:6`.
 - Not vanilla JS: the root `CLAUDE.md` and root `README.md` ("vanilla JavaScript") describe the pre-React era; `frontend/README.md` is the untouched Vite template.
 - Card faces are drawn by the `cardmeister` web component loaded as a global script: `frontend/index.html:9` (`/elements.cardmeister.full.js`, shipped in `frontend/public/`). `frontend/src/utils/cardAdapter.js:2` converts ZapZap numeric ids (0-53, see [[GameRules]]) to cardmeister `cid`. `deck-of-cards` is still a dependency (`frontend/package.json:20`) but no source file imports it.
+- Jokers are not cardmeister's: `PlayingCard.jsx` shows `/joker-red.svg` or `/joker-black.svg` (`frontend/public/`) in an `<img>` — David Bellot's LGPL jokers, the same files as the Flutter client's ([[FrontendFlutter]]); licence in `frontend/THIRD_PARTY.md`.
 - Several test-only packages sit in `dependencies` (`@testing-library/*`, `jsdom`, `vitest`) — `frontend/package.json:17-18,22,25`.
 
 ### Scripts (`frontend/package.json:6-14`)

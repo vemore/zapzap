@@ -103,6 +103,52 @@ void main() {
       expect(find.text('Complète'), findsOneWidget);
     });
 
+    testWidgets('a seat taken elsewhere shows up without a pull, once the '
+        'burst is over', (tester) async {
+      final backend = FakeLobbyBackend(
+        parties: [
+          partySummaryJson(id: 'p1', name: 'Open party', playerCount: 2),
+        ],
+      );
+      final transport = await pumpApp(tester, backend);
+      expect(find.text('2 / 5'), findsOneWidget);
+
+      backend.parties = [
+        partySummaryJson(id: 'p1', name: 'Open party', playerCount: 3),
+      ];
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'userId': 'u2',
+        'action': 'playerJoined',
+        'playerIndex': 2,
+      });
+      // Debounced: nothing yet, in case more seats follow.
+      expect(find.text('2 / 5'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('3 / 5'), findsOneWidget);
+      expect(find.text('2 / 5'), findsNothing);
+    });
+
+    testWidgets('a party deleted elsewhere leaves the list', (tester) async {
+      final backend = FakeLobbyBackend(
+        parties: [partySummaryJson(id: 'p1', name: 'Doomed party')],
+      );
+      final transport = await pumpApp(tester, backend);
+      expect(find.text('Doomed party'), findsOneWidget);
+
+      backend.parties = [];
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'partyDeleted',
+      });
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Doomed party'), findsNothing);
+      expect(find.text('Aucune partie disponible'), findsOneWidget);
+    });
+
     testWidgets('an empty list says so', (tester) async {
       await pumpApp(tester, FakeLobbyBackend());
       expect(find.text('Aucune partie disponible'), findsOneWidget);

@@ -276,8 +276,15 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   the widgets below take plain data. Only `ConnectedPlayersProvider` is app-wide.
 - **`PartyListProvider`** (`providers/party_provider.dart`): `GET /party`, pull-to-refresh
   (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
-  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). The list is
-  **not** refreshed by the event stream, as in React. A card shows the seats taken, the
+  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). **The event
+  stream keeps the list current** (React waits for a reload): `playerJoined`, `playerLeft`,
+  `partyStarted`, `partyDeleted` and `gameFinished` (`refreshingActions`), about any party,
+  reload it without a spinner `refreshDelay` (1 s) after the last one, so a burst of bot
+  joins is one `GET /party`; a game move reloads nothing. Only the newest load's answer is
+  kept (`_loadGeneration`, as in the lobby), so a pull and an event answering out of order
+  never show the older list. Dispose cancels the pending reload and the subscription. No
+  event announces a party being created: a new one appears with the next event about any
+  party, or on pull-to-refresh. A card shows the seats taken, the
   status and the one action: Join (disabled when full, playing or finished), Return to
   lobby, or Continue game for a party the caller is in (`isMember`). A row without
   `maxPlayers` (or with 0) falls back to `settings.playerCount`, then to 5
@@ -569,10 +576,14 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   100 px high, lift 15; else 70 px, ≤ 75°, 12°/card, 150 px, lift 25; selected cards on top;
   `CardFan.itemKey(i)`).
 - Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
-  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
-  copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
-  `frontend-flutter/THIRD_PARTY.md`. The 54 files weigh 1.26 MB after `svgo` (2.3 MB as
-  published); the twelve court cards are 1.15 MB of it.
+  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`, David
+  Bellot's LGPL SVG-cards jokers reframed into the faces' `0 0 360 540` frame (same outline,
+  same scale for both, no `<use>`, `<text>` or `<style>`); rendered with `flutter_svg`,
+  stretched into the width × 1.4 box (`BoxFit.fill`). `frontend/public/joker-*.svg` are the
+  same bytes. Licence and the changes made: `frontend-flutter/THIRD_PARTY.md`. The 54 files
+  weigh 1.32 MB after `svgo` (the jokers 31.6 and 24.5 KB); the twelve court cards are
+  1.15 MB of it. `test/card_widgets_test.dart` pins the jokers' frame and pumps them beside a
+  face at 38 and 80 px.
 
 ### Localisation
 
@@ -692,6 +703,12 @@ project `.gitignore`.
   component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
   faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
   UI localises them.
+- **Bellot jokers (2026-09-23, `feat/joker-artwork`).** The home-made 80 × 112 clown
+  jokers clashed with the English-pattern faces; the user picked David Bellot's Wikimedia
+  jokers. They are bundled, never hot-linked, so the PWA works offline; the red original's
+  `<use>` references are inlined because `flutter_svg` support for them is the part least
+  worth betting on. At 38 px the "JOKER" index is unreadable, as the faces' indices are, but
+  the red jester silhouette tells a joker from any face.
 - **History and statistics (2026-09-22, `feat/flutter-history`).** One `AsyncSection` per
   read rather than one loading state per screen: the statistics screen asks three
   independent endpoints and React hides all three behind three flags anyway. The bot
