@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/l10n/app_localizations.dart';
@@ -60,6 +61,56 @@ void main() {
       expect(find.byType(PlayingCard), findsNWidgets(54));
       expect(find.byType(SvgPicture), findsNWidgets(54));
     });
+  });
+
+  group('jokers', () {
+    const jokers = [52, 53];
+
+    test('share the faces\' 360 × 540 frame, with nothing flutter_svg '
+        'might not draw', () async {
+      for (final id in jokers) {
+        final path = GameCard(id).assetPath;
+        final svg = await rootBundle.loadString(path);
+        expect(svg, contains('viewBox="0 0 360 540"'), reason: path);
+        expect(
+          svg,
+          contains('<rect width="359" height="539" x=".5" y=".5" '),
+          reason: '$path: the faces\' card outline',
+        );
+        for (final unsupported in ['<use', '<text', '<style', '<filter']) {
+          expect(svg, isNot(contains(unsupported)), reason: path);
+        }
+      }
+    });
+
+    for (final width in [38.0, 80.0]) {
+      testWidgets('red and black render beside a face at $width px', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _app(
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final id in [12, ...jokers])
+                  PlayingCard(cardId: id, width: width),
+              ],
+            ),
+          ),
+        );
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        final sizes = tester
+            .widgetList<SvgPicture>(find.byType(SvgPicture))
+            .map((svg) => Size(svg.width!, svg.height!))
+            .toSet();
+        expect(sizes, {Size(width, PlayingCard.heightFor(width))});
+      });
+    }
   });
 
   group('PlayingCard', () {

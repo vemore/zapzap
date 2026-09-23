@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/party.dart';
 import '../providers/party_provider.dart';
+import '../providers/sse_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../widgets/error_banner.dart';
@@ -13,7 +14,8 @@ import '../widgets/zapzap_app_bar.dart';
 
 /// The public parties (`PartyList.jsx`): one card each, a Joined badge on
 /// the ones the user is in, and the single thing to do with each — join it,
-/// go back to its lobby, or continue its game. Pull down to refresh.
+/// go back to its lobby, or continue its game. The event stream keeps it
+/// current; pull down to refresh by hand.
 class PartiesScreen extends StatefulWidget {
   const PartiesScreen({super.key});
 
@@ -27,7 +29,10 @@ class _PartiesScreenState extends State<PartiesScreen> {
   @override
   void initState() {
     super.initState();
-    _parties = PartyListProvider(context.read<PartyRepository>())..load();
+    _parties = PartyListProvider(
+      context.read<PartyRepository>(),
+      events: context.read<SseProvider>().events,
+    )..load();
   }
 
   @override

@@ -614,10 +614,6 @@
   "@historyTabPublic": {
     "description": "History tab listing everyone's public finished games"
   },
-  "historyEmptyMine": "Aucune partie terminée. Jouez pour remplir votre historique !",
-  "@historyEmptyMine": {
-    "description": "Empty My games tab"
-  },
   "historyEmptyPublic": "Aucune partie publique terminée pour le moment.",
   "@historyEmptyPublic": {
     "description": "Empty Public games tab"
@@ -637,6 +633,66 @@
         "type": "int"
       }
     }
+  },
+  "historyPlacement": "{kind, select, first{{place}er} other{{place}e}}",
+  "@historyPlacement": {
+    "description": "My finishing place in a finished game, as an ordinal (history list badge). kind is first, second, third or other, from place (the ARB plural has no =3)",
+    "placeholders": {
+      "place": {
+        "type": "int"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "historyYourPlacement": "Votre place : {place}",
+  "@historyYourPlacement": {
+    "description": "Accessibility label of the finishing-place badge; place is historyPlacement",
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "historyYourScore": "vous : {score} pts",
+  "@historyYourScore": {
+    "description": "My final score in a finished game, next to the winner's, in the history list",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryGames": "{count, plural, one{partie} other{parties}}",
+  "@historySummaryGames": {
+    "description": "Caption under the number of games played, in the history summary",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryWins": "{count, plural, one{victoire} other{victoires}}",
+  "@historySummaryWins": {
+    "description": "Caption under the number of games won, in the history summary",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryBestPlace": "meilleur rang",
+  "@historySummaryBestPlace": {
+    "description": "Caption under my best finishing place, in the history summary"
+  },
+  "historyInviteText": "Vos prochaines parties terminées apparaîtront ici.",
+  "@historyInviteText": {
+    "description": "Under a short or empty My games list"
+  },
+  "historyInvitePlay": "Lancer une partie contre des bots",
+  "@historyInvitePlay": {
+    "description": "Link under a short or empty My games list: opens the create-party form"
   },
   "playerCount": "{count, plural, one{{count} joueur} other{{count} joueurs}}",
   "@playerCount": {
@@ -804,10 +860,6 @@
   "@statsGamesPlayed": {
     "description": "Number of games played"
   },
-  "statsWins": "Victoires",
-  "@statsWins": {
-    "description": "Number of games won"
-  },
   "statsWinRate": "Taux de victoire",
   "@statsWinRate": {
     "description": "Share of games won, as a percentage"
@@ -828,21 +880,49 @@
   "@statsZapzapTitle": {
     "description": "Title of the ZapZap block of the personal statistics"
   },
-  "statsZapzapTotal": "Appels",
-  "@statsZapzapTotal": {
-    "description": "Number of ZapZap calls"
-  },
-  "statsZapzapSuccessful": "Réussis",
-  "@statsZapzapSuccessful": {
-    "description": "Number of successful ZapZap calls"
-  },
-  "statsZapzapFailed": "Ratés",
-  "@statsZapzapFailed": {
-    "description": "Number of failed ZapZap calls"
-  },
   "statsZapzapSuccessRate": "Taux de réussite",
   "@statsZapzapSuccessRate": {
     "description": "Share of successful ZapZap calls"
+  },
+  "statsHeroWinsValue": "{wins} / {games}",
+  "@statsHeroWinsValue": {
+    "description": "Big figure of the personal statistics: games won over games played",
+    "placeholders": {
+      "wins": {
+        "type": "int"
+      },
+      "games": {
+        "type": "int"
+      }
+    }
+  },
+  "statsHeroWinsLabel": "{wins, plural, one{Victoire} other{Victoires}} / {games, plural, one{partie} other{parties}}",
+  "@statsHeroWinsLabel": {
+    "description": "Caption of statsHeroWinsValue",
+    "placeholders": {
+      "wins": {
+        "type": "int"
+      },
+      "games": {
+        "type": "int"
+      }
+    }
+  },
+  "statsZapzapBar": "{successful, plural, one{{successful} réussi} other{{successful} réussis}} / {total, plural, one{{total} appel} other{{total} appels}}",
+  "@statsZapzapBar": {
+    "description": "Caption of the successful-over-called ZapZap bar",
+    "placeholders": {
+      "successful": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "statsZapzapNone": "Pas encore de ZapZap appelé. Il faut une main de 5 points ou moins (joker = 0).",
+  "@statsZapzapNone": {
+    "description": "Personal ZapZap block when no ZapZap was ever called: when one may call it (GAME_RULES.md, ZapZap Eligibility)"
   },
   "leaderboardTitle": "Classement général",
   "@leaderboardTitle": {

@@ -55,6 +55,15 @@ void main() {
     });
   });
 
+  test('number drops a decimal that is zero', () {
+    expect(Formats.number(134), '134');
+    expect(Formats.number(134.0), '134');
+    expect(Formats.number(12.5), '12.5');
+    expect(Formats.number(12.96), '13');
+    expect(Formats.number(12.04), '12');
+    expect(Formats.number(null), '0');
+  });
+
   test('decimal keeps one digit', () {
     expect(Formats.decimal(122), '122.0');
     expect(Formats.decimal(null), '0.0');
