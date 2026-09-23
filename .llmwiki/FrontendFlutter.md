@@ -271,8 +271,15 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   the widgets below take plain data. Only `ConnectedPlayersProvider` is app-wide.
 - **`PartyListProvider`** (`providers/party_provider.dart`): `GET /party`, pull-to-refresh
   (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
-  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). The list is
-  **not** refreshed by the event stream, as in React. A card shows the seats taken, the
+  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). **The event
+  stream keeps the list current** (React waits for a reload): `playerJoined`, `playerLeft`,
+  `partyStarted`, `partyDeleted` and `gameFinished` (`refreshingActions`), about any party,
+  reload it without a spinner `refreshDelay` (1 s) after the last one, so a burst of bot
+  joins is one `GET /party`; a game move reloads nothing. Only the newest load's answer is
+  kept (`_loadGeneration`, as in the lobby), so a pull and an event answering out of order
+  never show the older list. Dispose cancels the pending reload and the subscription. No
+  event announces a party being created: a new one appears with the next event about any
+  party, or on pull-to-refresh. A card shows the seats taken, the
   status and the one action: Join (disabled when full, playing or finished), Return to
   lobby, or Continue game for a party the caller is in (`isMember`). A row without
   `maxPlayers` (or with 0) falls back to `settings.playerCount`, then to 5

@@ -37,17 +37,47 @@ const int partyNameMaxLength = 50;
 
 /// The public party list (`GET /party`), what the parties screen shows.
 ///
-/// The list is not refreshed by the event stream — as in React, joining or
-/// leaving elsewhere shows up on the next pull-to-refresh.
+/// The event stream keeps it current: a party filled, emptied, started,
+/// finished or deleted by someone else reloads the list without a spinner,
+/// [refreshDelay] after the last such event, so a burst of bot joins is one
+/// `GET /party`. React has no stream there and waits for a reload.
+///
+/// No event announces a party being created, so a new one shows up with the
+/// next event about any party, or on pull-to-refresh.
 class PartyListProvider extends ChangeNotifier {
-  PartyListProvider(this._repository);
+  PartyListProvider(
+    this._repository, {
+    Stream<SseEvent>? events,
+    this.refreshDelay = const Duration(seconds: 1),
+  }) {
+    _subscription = events?.listen(_onEvent);
+  }
 
   final PartyRepository _repository;
+
+  /// How long the list waits after an event, for the next one of a burst.
+  final Duration refreshDelay;
+
+  /// The actions that change a row: its seats, its status, or its being
+  /// there at all.
+  static const refreshingActions = {
+    'playerJoined',
+    'playerLeft',
+    'partyStarted',
+    'partyDeleted',
+    'gameFinished',
+  };
+
+  StreamSubscription<SseEvent>? _subscription;
+  Timer? _refresh;
 
   List<PartySummary> _parties = const [];
   bool _loading = true;
   Object? _error;
   bool _disposed = false;
+
+  /// The newest [load]; an answer to an older one is dropped.
+  int _loadGeneration = 0;
 
   List<PartySummary> get parties => _parties;
 
@@ -59,21 +89,35 @@ class PartyListProvider extends ChangeNotifier {
   /// load or an action succeeded.
   Object? get error => _error;
 
-  /// Reloads the list. [showSpinner] false is the pull-to-refresh, which
-  /// draws its own indicator and keeps the current rows meanwhile.
+  /// Reloads the list. [showSpinner] false is the pull-to-refresh or an
+  /// event, which keeps the current rows meanwhile.
+  ///
+  /// A pull and an event, or two events a debounce apart, can answer out of
+  /// order: only the newest load is kept ([_loadGeneration], as in
+  /// [PartyLobbyProvider.load]); an older answer, good or bad, is dropped.
   Future<void> load({bool showSpinner = true}) async {
     if (showSpinner && !_loading) {
       _loading = true;
       _notify();
     }
+    final generation = ++_loadGeneration;
     try {
-      _parties = (await _repository.list()).items;
+      final parties = (await _repository.list()).items;
+      if (generation != _loadGeneration) return;
+      _parties = parties;
       _error = null;
     } catch (error) {
+      if (generation != _loadGeneration) return;
       _error = error;
     }
     _loading = false;
     _notify();
+  }
+
+  void _onEvent(SseEvent event) {
+    if (_disposed || !refreshingActions.contains(event.action)) return;
+    _refresh?.cancel();
+    _refresh = Timer(refreshDelay, () => load(showSpinner: false));
   }
 
   /// Joins [partyId]. `true` when its lobby may be opened — a seat was
@@ -105,6 +149,8 @@ class PartyListProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _refresh?.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }
