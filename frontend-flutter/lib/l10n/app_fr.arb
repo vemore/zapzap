@@ -1361,15 +1361,6 @@
   "@gameOverTitle": {
     "description": "Title of the end-of-game state"
   },
-  "gameRoundOverCaller": "ZapZap appelé par {player}",
-  "@gameRoundOverCaller": {
-    "description": "Who called ZapZap this round",
-    "placeholders": {
-      "player": {
-        "type": "String"
-      }
-    }
-  },
   "gameRoundOverCounteracted": "Contré par {player}",
   "@gameRoundOverCounteracted": {
     "description": "Who counteracted the ZapZap caller",
@@ -1385,24 +1376,6 @@
     "placeholders": {
       "player": {
         "type": "String"
-      }
-    }
-  },
-  "gameRoundScoreLabel": "Manche {score}",
-  "@gameRoundScoreLabel": {
-    "description": "A player's points for the round that just ended",
-    "placeholders": {
-      "score": {
-        "type": "int"
-      }
-    }
-  },
-  "gameTotalScoreLabel": "Total {score}",
-  "@gameTotalScoreLabel": {
-    "description": "A player's total score",
-    "placeholders": {
-      "score": {
-        "type": "int"
       }
     }
   },
@@ -1453,5 +1426,76 @@
   "errorNotInParty": "Vous n'avez pas de place à cette table.",
   "@errorNotInParty": {
     "description": "Refused move: NOT_IN_PARTY"
+  },
+  "gameRoundOverZapZapSuccess": "{player} a réussi son ZapZap !",
+  "@gameRoundOverZapZapSuccess": {
+    "description": "The ZapZap call held: nobody had a hand as low",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameRoundOverCounteractedCall": "{player} a appelé ZapZap mais a été contré !",
+  "@gameRoundOverCounteractedCall": {
+    "description": "The ZapZap call was counteracted",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameRoundOverPenalty": "Pénalité : {hand} + ({players} − 1) × 5 = {score} points",
+  "@gameRoundOverPenalty": {
+    "description": "How the counteracted caller's score is made up (GAME_RULES.md)",
+    "placeholders": {
+      "hand": {
+        "type": "int"
+      },
+      "players": {
+        "type": "int"
+      },
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "gameRoundOverHandLabel": "Main",
+  "@gameRoundOverHandLabel": {
+    "description": "Label above a player's revealed hand"
+  },
+  "gameRoundEndThisRound": "Cette manche",
+  "@gameRoundEndThisRound": {
+    "description": "Label of a player's points for the round that just ended"
+  },
+  "gameRoundEndTotalScore": "Score total",
+  "@gameRoundEndTotalScore": {
+    "description": "Label of a player's total score"
+  },
+  "gameRoundEndPoints": "{score} pts",
+  "@gameRoundEndPoints": {
+    "description": "A number of points",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "gameRankBadge": "#{rank}",
+  "@gameRankBadge": {
+    "description": "Badge of the player with the lowest round score",
+    "placeholders": {
+      "rank": {
+        "type": "int"
+      }
+    }
+  },
+  "gameLowestHandBadge": "Main la plus basse",
+  "@gameLowestHandBadge": {
+    "description": "Badge of the player who held the lowest hand"
+  },
+  "gameZapZapBadge": "ZapZap",
+  "@gameZapZapBadge": {
+    "description": "Badge of the player who called ZapZap"
   }
 }

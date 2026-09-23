@@ -10,7 +10,9 @@ import 'package:zapzap/widgets/card_fan.dart';
 import 'package:zapzap/widgets/game_hand.dart';
 import 'package:zapzap/widgets/game_hand_size_selector.dart';
 import 'package:zapzap/widgets/game_player_table.dart';
+import 'package:zapzap/widgets/game_round_end.dart';
 import 'package:zapzap/widgets/game_table_area.dart';
+import 'package:zapzap/widgets/playing_card.dart';
 
 import 'auth_helpers.dart';
 import 'game_helpers.dart';
@@ -486,32 +488,118 @@ void main() {
   });
 
   group('the end of a round', () {
-    testWidgets('shows the scores and the way on', (tester) async {
-      final backend = FakeGameBackend(
-        state: gameSnapshotJson(
-          roundStatus: 'finished',
-          gameState: gameStateJson(
-            currentTurn: 2,
-            currentAction: 'finished',
-            zapZapCaller: 2,
-            lowestHandPlayerIndex: 2,
-            roundScores: {'0': 28, '1': 49, '2': 0},
-            scores: {'0': 28, '1': 49, '2': 0},
-            handPoints: {'0': 28, '1': 49, '2': 2},
-          ),
+    /// The round MediumBot1 (seat 2) closed with the lowest hand: the call
+    /// held, so it scores 0 and everybody else their hand's points.
+    FakeGameBackend zapZapHeld() => FakeGameBackend(
+      state: gameSnapshotJson(
+        roundStatus: 'finished',
+        gameState: gameStateJson(
+          currentTurn: 2,
+          currentAction: 'finished',
+          zapZapCaller: 2,
+          lowestHandPlayerIndex: 2,
+          allHands: {
+            '0': [0, 1, 2],
+            '1': [10, 11],
+            '2': [3],
+          },
+          roundScores: {'0': 28, '1': 49, '2': 0},
+          scores: {'0': 28, '1': 49, '2': 0},
+          handPoints: {'0': 28, '1': 49, '2': 2},
         ),
-      );
+      ),
+    );
+
+    /// Vincent (seat 0) called on 4 points, EasyBot1 held 1: counteracted,
+    /// so the caller takes `4 + (3 − 1) × 5 = 14` (`GAME_RULES.md`).
+    FakeGameBackend zapZapCounteracted() => FakeGameBackend(
+      state: gameSnapshotJson(
+        roundStatus: 'finished',
+        roundNumber: 4,
+        gameState: gameStateJson(
+          currentTurn: 0,
+          currentAction: 'finished',
+          zapZapCaller: 0,
+          lowestHandPlayerIndex: 1,
+          wasCounterActed: true,
+          counterActedByPlayerIndex: 1,
+          allHands: {
+            '0': [0, 3],
+            '1': [13],
+            '2': [22, 9],
+          },
+          handPoints: {'0': 4, '1': 1, '2': 10},
+          roundScores: {'0': 14, '1': 0, '2': 10},
+          scores: {'0': 14, '1': 0, '2': 10},
+        ),
+      ),
+    );
+
+    double topOf(WidgetTester tester, int playerIndex) =>
+        tester.getTopLeft(find.byKey(GameRoundEnd.playerKey(playerIndex))).dy;
+
+    testWidgets('a ZapZap that held: the standings and the way on', (
+      tester,
+    ) async {
+      final backend = zapZapHeld();
       await pumpGame(tester, backend);
 
       expect(find.byKey(const Key('roundOver')), findsOneWidget);
       expect(find.text('Manche terminée'), findsOneWidget);
-      expect(find.text('ZapZap appelé par MediumBot1'), findsOneWidget);
-      expect(find.text('Manche 49'), findsOneWidget);
+      expect(find.text('Manche 1'), findsOneWidget);
       expect(find.byType(GameHand), findsNothing);
+
+      // The call held: the green banner, no penalty.
+      expect(
+        find.text('MediumBot1 a réussi son ZapZap !'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('contré'), findsNothing);
+
+      // Lowest round score first, and the badges of the player who closed.
+      expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
+      expect(topOf(tester, 0), lessThan(topOf(tester, 1)));
+      expect(find.text('#1'), findsOneWidget);
+      expect(find.text('Main la plus basse'), findsOneWidget);
+      expect(find.text('ZapZap'), findsOneWidget);
+      expect(find.text('Éliminé'), findsNothing);
+
+      // This round over the total, and every hand revealed.
+      expect(find.text('0 pts'), findsOneWidget);
+      expect(find.text('28 pts'), findsOneWidget);
+      expect(find.text('49 pts'), findsOneWidget);
+      expect(find.text('Cette manche'), findsNWidgets(3));
+      expect(find.text('Score total'), findsNWidgets(3));
+      expect(find.byType(PlayingCard), findsNWidgets(6));
 
       await tester.tap(find.byKey(const Key('next-round')));
       await tester.pumpAndSettle();
       expect(backend.paths, contains('/api/game/p1/nextRound'));
+    });
+
+    testWidgets('a counteracted ZapZap spells out the penalty', (
+      tester,
+    ) async {
+      await pumpGame(tester, zapZapCounteracted());
+
+      expect(find.text('Manche 4'), findsOneWidget);
+      expect(
+        find.text('Vincent a appelé ZapZap mais a été contré !'),
+        findsOneWidget,
+      );
+      expect(find.text('Contré par EasyBot1'), findsOneWidget);
+      expect(
+        find.text('Pénalité : 4 + (3 − 1) × 5 = 14 points'),
+        findsOneWidget,
+      );
+
+      // The counteracted caller pays and falls last; the lowest hand keeps
+      // its crown even though it never called.
+      expect(topOf(tester, 1), lessThan(topOf(tester, 2)));
+      expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
+      expect(find.text('14 pts'), findsOneWidget);
+      expect(find.text('Main la plus basse'), findsOneWidget);
+      expect(find.byKey(const Key('next-round')), findsOneWidget);
     });
 
     testWidgets('a finished game names the winner and leads out', (
@@ -527,15 +615,40 @@ void main() {
               currentAction: 'finished',
               gameFinished: true,
               winner: {'playerIndex': 0, 'username': 'Vincent', 'score': 12},
-              roundScores: {'0': 0},
+              eliminatedPlayers: [2],
+              // The backend points the lowest hand at the player it has
+              // just put out, hand empty (seen locally, 2026-09-23).
+              lowestHandPlayerIndex: 2,
+              allHands: {
+                '0': [5],
+                '1': [6],
+                '2': const <int>[],
+              },
+              handPoints: {'0': 0, '1': 30, '2': 40},
+              roundScores: {'0': 0, '1': 30, '2': 40},
+              scores: {'0': 12, '1': 60, '2': 110},
             ),
           ),
         ),
       );
 
       expect(find.text('Partie terminée'), findsOneWidget);
+      expect(find.byKey(const Key('winnerBanner')), findsOneWidget);
+      expect(find.text('VAINQUEUR'), findsOneWidget);
       expect(find.text('Vainqueur : Vincent'), findsOneWidget);
+      expect(find.text('Score final : 12 points'), findsOneWidget);
+      expect(find.text('Éliminé'), findsOneWidget);
+      expect(
+        find.text('Main la plus basse'),
+        findsNothing,
+        reason: 'a player who is out does not hold the lowest hand',
+      );
+      expect(find.text('Aucune carte en main'), findsOneWidget);
       expect(find.byKey(const Key('next-round')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('back-to-parties')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('roundOver')), findsNothing);
     });
   });
 
@@ -692,8 +805,15 @@ void main() {
                 currentTurn: 2,
                 currentAction: 'finished',
                 zapZapCaller: 2,
+                lowestHandPlayerIndex: 1,
                 wasCounterActed: true,
                 counterActedByPlayerIndex: 1,
+                allHands: {
+                  '0': [0, 1, 2, 3, 4, 5, 6],
+                  '1': [20],
+                  '2': [30, 31, 32],
+                },
+                handPoints: {'0': 28, '1': 1, '2': 20},
                 roundScores: {'0': 28, '1': 0, '2': 30},
               ),
             ),
@@ -703,6 +823,50 @@ void main() {
         );
 
         expect(find.byKey(const Key('roundOver')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('next-round')),
+          200,
+        );
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the end of a game fits at a text scale of $scale', (
+        tester,
+      ) async {
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              roundStatus: 'finished',
+              gameState: gameStateJson(
+                currentTurn: 0,
+                currentAction: 'finished',
+                gameFinished: true,
+                winner: {
+                  'playerIndex': 0,
+                  'username': 'Vincent',
+                  'score': 12,
+                },
+                eliminatedPlayers: [1, 2],
+                allHands: {
+                  '0': [5],
+                  '1': [6, 7],
+                  '2': [8],
+                },
+                roundScores: {'0': 0, '1': 30, '2': 40},
+                scores: {'0': 12, '1': 104, '2': 118},
+              ),
+            ),
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        expect(find.byKey(const Key('winnerBanner')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('back-to-parties')),
+          200,
+        );
         expect(tester.takeException(), isNull);
       });
 

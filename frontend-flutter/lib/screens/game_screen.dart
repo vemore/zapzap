@@ -15,6 +15,7 @@ import '../widgets/game_error_text.dart';
 import '../widgets/game_hand.dart';
 import '../widgets/game_hand_size_selector.dart';
 import '../widgets/game_player_table.dart';
+import '../widgets/game_round_end.dart';
 import '../widgets/game_table_area.dart';
 import '../widgets/zapzap_app_bar.dart';
 
@@ -363,132 +364,90 @@ class _GameScreenState extends State<GameScreen> {
   );
 
   // ---------------------------------------------------------------------
-  // The end of a round, deliberately minimal: the scores, who called and
-  // the way on. The round-end pull request replaces `_roundOver` with the
-  // real screen (every hand revealed, the animation, the end of the game);
-  // everything it needs is already in `GameState` — `allHands`,
-  // `handPoints`, `roundScores`, `zapZapCaller`, `lowestHandPlayerIndex`,
-  // `wasCounterActed`, `counterActedByPlayerIndex`, `winner` — and
-  // `GameProvider.nextRound` is the button it keeps.
+  // The end of a round, and the end of the game: everything comes from
+  // `GameState` — `allHands`, `handPoints`, `roundScores`, `zapZapCaller`,
+  // `lowestHandPlayerIndex`, `wasCounterActed`, `counterActedByPlayerIndex`,
+  // `gameFinished`, `winner` — never from the answer of a move, because the
+  // two backends disagree on what `zapzap` returns ([[FrontendFlutter]]).
   // ---------------------------------------------------------------------
+
+  /// What [playerIndex] scored this round, as `GameBoard.jsx:374-400`
+  /// reads it: the backend's own figure, else 0 for the lowest hand and the
+  /// hand's points for everybody else.
+  int _roundScoreOf(GameState state, int playerIndex) =>
+      state.roundScores?[playerIndex] ??
+      (playerIndex == state.lowestHandPlayerIndex
+          ? 0
+          : state.handPoints?[playerIndex] ?? 0);
+
+  /// The players in the order the round scored them, lowest first; ties keep
+  /// turn order, which `List.sort` alone does not promise.
+  List<RoundEndPlayer> _roundEndPlayers(GameState state) {
+    final ordered = _game.orderedPlayers;
+    final rows = [
+      for (var seat = 0; seat < ordered.length; seat++)
+        (
+          seat: seat,
+          player: () {
+            final index = ordered[seat].playerIndex;
+            final total = _game.scoreOf(index);
+            // Both sources: Node fills `eliminatedPlayers`, and
+            // `GAME_RULES.md` puts anybody above 100 points out.
+            final out = _game.isEliminated(index) || total > 100;
+            return RoundEndPlayer(
+              playerIndex: index,
+              name: ordered[seat].username,
+              hand: state.allHands?[index] ?? const [],
+              roundScore: _roundScoreOf(state, index),
+              totalScore: total,
+              isEliminated: out,
+              // A player who is out does not hold the lowest hand, whatever
+              // the backend says: it points at a seat with no cards left
+              // once the game is over (checked locally, 2026-09-23).
+              isLowestHand: !out && index == state.lowestHandPlayerIndex,
+              isZapZapCaller: index == state.zapZapCaller,
+            );
+          }(),
+        ),
+    ];
+    rows.sort((a, b) {
+      final byScore = a.player.roundScore.compareTo(b.player.roundScore);
+      return byScore != 0 ? byScore : a.seat.compareTo(b.seat);
+    });
+    return [for (final row in rows) row.player];
+  }
+
   Widget _roundOver(BuildContext context, AppLocalizations l10n) {
     final state = _game.game!;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Column(
-            key: const Key('roundOver'),
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                _game.isGameFinished
-                    ? l10n.gameOverTitle
-                    : l10n.gameRoundOverTitle,
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              if (state.zapZapCaller != null)
-                Text(
-                  l10n.gameRoundOverCaller(_nameOf(state.zapZapCaller!)),
-                  textAlign: TextAlign.center,
-                ),
-              if (state.wasCounterActed)
-                Text(
-                  l10n.gameRoundOverCounteracted(
-                    _nameOf(
-                      state.counterActedByPlayerIndex ??
-                          state.lowestHandPlayerIndex ??
-                          0,
-                    ),
-                  ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.error),
-                ),
-              if (_game.isGameFinished && state.winner != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    l10n.gameOverWinner(
-                      state.winner!.username ??
-                          _nameOf(state.winner!.playerIndex),
-                    ),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.amber400,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              for (final player in _game.orderedPlayers)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          player.username,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Scaled down rather than wrapped: the two scores stay
-                      // on the name's line at any text size.
-                      Expanded(
-                        flex: 4,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                l10n.gameRoundScoreLabel(
-                                  state.roundScores?[player.playerIndex] ?? 0,
-                                ),
-                                style: const TextStyle(
-                                  color: AppColors.slate400,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                l10n.gameTotalScoreLabel(
-                                  _game.scoreOf(player.playerIndex),
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 16),
-              if (_game.isGameFinished)
-                OutlinedButton(
-                  key: const Key('back-to-parties'),
-                  onPressed: () => context.go(AppRoutes.parties),
-                  child: Text(l10n.lobbyBack),
-                )
-              else
-                FilledButton(
-                  key: const Key('next-round'),
-                  onPressed: _game.busy ? null : _game.nextRound,
-                  child: Text(l10n.gameNextRoundButton),
-                ),
-            ],
-          ),
-        ),
-      ),
+    final players = _roundEndPlayers(state);
+    final caller = state.zapZapCaller;
+    final winner = state.winner;
+    // Who was still in the game when the round was played: their total
+    // before it was 100 or less. This is the `active_players` of the
+    // counteract penalty (`GAME_RULES.md`).
+    final active = players
+        .where((player) => player.totalScore - player.roundScore <= 100)
+        .length;
+
+    return GameRoundEnd(
+      roundNumber: _game.round?.roundNumber ?? 1,
+      players: players,
+      zapZapCallerName: caller == null ? null : _nameOf(caller),
+      wasCounterActed: state.wasCounterActed,
+      counterActedByName: state.counterActedByPlayerIndex == null
+          ? null
+          : _nameOf(state.counterActedByPlayerIndex!),
+      callerHandValue: caller == null ? null : state.handPoints?[caller],
+      callerRoundScore: caller == null ? null : _roundScoreOf(state, caller),
+      activePlayerCount: active,
+      gameFinished: _game.isGameFinished,
+      winnerName: winner == null
+          ? null
+          : winner.username ?? _nameOf(winner.playerIndex),
+      winnerScore: winner?.score,
+      busy: _game.busy,
+      onNextRound: _game.nextRound,
+      onBackToParties: () => context.go(AppRoutes.parties),
     );
   }
 }

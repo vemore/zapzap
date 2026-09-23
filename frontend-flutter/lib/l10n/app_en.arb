@@ -269,11 +269,8 @@
   "gameHandSizeWaitingBody": "{player} is choosing the hand size.",
   "gameRoundOverTitle": "Round over",
   "gameOverTitle": "Game over",
-  "gameRoundOverCaller": "ZapZap called by {player}",
   "gameRoundOverCounteracted": "Counteracted by {player}",
   "gameOverWinner": "Winner: {player}",
-  "gameRoundScoreLabel": "Round {score}",
-  "gameTotalScoreLabel": "Total {score}",
   "gameNextRoundButton": "Next round",
   "errorNotYourTurn": "It is not your turn.",
   "errorInvalidActionState": "That move is not possible right now.",
@@ -285,5 +282,15 @@
   "errorInvalidHandSize": "That hand size is not allowed.",
   "errorRoundNotFinished": "The round is not over.",
   "gameRefreshFailed": "The board may be out of date: the refresh failed",
-  "errorNotInParty": "You have no seat at this table."
+  "errorNotInParty": "You have no seat at this table.",
+  "gameRoundOverZapZapSuccess": "{player} successfully called ZapZap!",
+  "gameRoundOverCounteractedCall": "{player} called ZapZap but was counteracted!",
+  "gameRoundOverPenalty": "Penalty: {hand} + ({players} − 1) × 5 = {score} points",
+  "gameRoundOverHandLabel": "Hand",
+  "gameRoundEndThisRound": "This round",
+  "gameRoundEndTotalScore": "Total score",
+  "gameRoundEndPoints": "{score} pts",
+  "gameRankBadge": "#{rank}",
+  "gameLowestHandBadge": "Lowest hand",
+  "gameZapZapBadge": "ZapZap"
 }
