@@ -31,7 +31,7 @@ fn timestamp_to_rfc3339(ts: i64) -> String {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePartyRequest {
-    pub name: String,
+    pub name: Option<String>, // missing: 400 MISSING_PARTY_NAME as in Node, not axum's 422
     pub visibility: Option<String>,
     pub settings: Option<PartySettingsDto>,
     #[serde(rename = "botIds")]
@@ -249,16 +249,16 @@ pub async fn create_party(
     Extension(claims): Extension<Claims>,
     Json(body): Json<CreatePartyRequest>,
 ) -> Result<(StatusCode, Json<CreatePartyResponse>), (StatusCode, Json<ErrorResponse>)> {
-    if body.name.is_empty() {
-        return Err((
+    let name = body.name.filter(|s| !s.is_empty()).ok_or_else(|| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "Party name is required".to_string(),
                 code: "MISSING_PARTY_NAME".to_string(),
                 details: None,
             }),
-        ));
-    }
+        )
+    })?;
 
     let settings = body
         .settings
@@ -274,7 +274,7 @@ pub async fn create_party(
     let result = use_case
         .execute(CreatePartyInput {
             owner_id: claims.user_id.clone(),
-            name: body.name,
+            name,
             visibility: body.visibility.unwrap_or_else(|| "public".to_string()),
             settings,
             bot_ids: body.bot_ids.unwrap_or_default(),
