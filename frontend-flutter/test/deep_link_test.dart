@@ -1,17 +1,20 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/screens/game_details_screen.dart';
 import 'package:zapzap/screens/login_screen.dart';
 import 'package:zapzap/screens/parties_screen.dart';
+import 'package:zapzap/screens/party_lobby_screen.dart';
 import 'package:zapzap/services/token_storage.dart';
 
 import 'auth_helpers.dart';
 import 'fixtures.dart';
 import 'history_helpers.dart';
+import 'party_helpers.dart';
 import 'sse_fakes.dart';
 
 /// A cold load of a path URL: the browser's path, less the `/app/` base href,
@@ -67,6 +70,106 @@ void main() {
 
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byType(GameDetailsScreen), findsNothing);
+  });
+
+  testWidgets('/parties/<id> opens that lobby', (tester) async {
+    openedAt(tester, '/parties/$partyId');
+    await pumpScreen(
+      tester,
+      initialLocation: AppRoutes.home,
+      api: FakeLobbyBackend(details: partyDetailsJson(id: partyId)).client(),
+    );
+
+    final lobby = tester.widget<PartyLobbyScreen>(
+      find.byType(PartyLobbyScreen),
+    );
+    expect(lobby.partyId, partyId);
+  });
+
+  // A pushed screen reports its own path to the browser, so the address bar,
+  // a reload and a shared link follow it — go_router's default keeps the path
+  // of the screen below (`GoRouter.optionURLReflectsImperativeAPIs`).
+  group('the URL of a pushed screen', () {
+    /// The paths reported to the engine (the browser's address bar), in order;
+    /// one that replaces the current history entry rather than adding one
+    /// ends in ` (replace)`.
+    List<String> reportedPaths(WidgetTester tester) {
+      final paths = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.navigation,
+        (call) async {
+          if (call.method == 'routeInformationUpdated') {
+            final arguments = call.arguments as Map;
+            final path = Uri.parse(arguments['uri'] as String).path;
+            paths.add(arguments['replace'] == true ? '$path (replace)' : path);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.navigation,
+          null,
+        ),
+      );
+      return paths;
+    }
+
+    FakeLobbyBackend backend() => FakeLobbyBackend(
+      parties: [partySummaryJson(id: 'p1', name: 'Open party')],
+      details: partyDetailsJson(id: 'p1', name: 'Open party'),
+      createdPartyId: 'p1',
+    );
+
+    Future<void> tapKey(WidgetTester tester, String key) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the create form and a lobby show their own path, and '
+        'Back shows the list again', (tester) async {
+      final paths = reportedPaths(tester);
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.parties,
+        api: backend().client(),
+      );
+      expect(paths.last, AppRoutes.parties);
+
+      await tapKey(tester, 'create-party');
+      expect(paths.last, AppRoutes.createParty);
+
+      await tapKey(tester, 'back-to-parties');
+      expect(paths.last, AppRoutes.parties);
+
+      await tapKey(tester, 'join-p1');
+      expect(paths.last, AppRoutes.partyPath('p1'));
+
+      // Android's system Back, as `test/party_screens_test.dart` drives it.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      expect(paths.last, AppRoutes.parties);
+    });
+
+    // The browser's Back then skips the form, as Android's Back does.
+    testWidgets('the lobby a new party opens replaces the form in the '
+        "browser's history", (tester) async {
+      final paths = reportedPaths(tester);
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.parties,
+        api: backend().client(),
+      );
+
+      await tapKey(tester, 'create-party');
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      await tapKey(tester, 'create-submit');
+
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+      expect(paths.last, '${AppRoutes.partyPath('p1')} (replace)');
+    });
   });
 
   test('main uses path URLs on the web, before runApp', () {

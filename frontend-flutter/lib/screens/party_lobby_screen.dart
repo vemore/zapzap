@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -69,7 +68,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
         // The game takes the lobby's place, so Back from it returns to the
         // list below, as the game's own back button does.
         case LobbyOutcome.started:
-          context.pushReplacement(AppRoutes.gamePath(widget.partyId));
+          context.replaceWith(AppRoutes.gamePath(widget.partyId));
         case LobbyOutcome.closed:
           context.popOrGo(AppRoutes.parties);
       }

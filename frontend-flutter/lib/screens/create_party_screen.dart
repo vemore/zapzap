@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -47,7 +46,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
     // The lobby takes the form's place: Back from it returns to the list,
     // not to a form whose party already exists.
     if (partyId != null && mounted) {
-      context.pushReplacement(AppRoutes.partyPath(partyId));
+      context.replaceWith(AppRoutes.partyPath(partyId));
     }
   }
 
