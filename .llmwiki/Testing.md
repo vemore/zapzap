@@ -60,6 +60,15 @@
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
 
+- **A job's `name:` is its check context, and five of them are pinned by branch
+  protection**: `Rust backend — fmt, clippy, test`, `Native engine — fmt, build, test`,
+  `Frontend — build`, `Images — backend and frontend build`, `Hooks — self-test`
+  ([[ParallelDelivery]]). Renaming one is not cosmetic: the required context stops
+  reporting, and every pull request is `BLOCKED` for ever with no failing check to show
+  why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
+  #36, whose `image` job had been renamed to mention the Flutter PWA. Changing a pinned name
+  on purpose means changing branch protection in the same breath, which is the user's
+  setting to change.
 - Every downstream `if:` starts with `!cancelled()` and tests `!= 'false'` so that a failed or output-less `scope` runs everything, and a job skipped by `if:` still reports Success for branch protection; no workflow-level `paths:` filter, because a filtered required check never reports (the comment above the `rust` job).
 - Rust caching via `Swatinem/rust-cache@v2` per crate (`rust` and `native` jobs).
 

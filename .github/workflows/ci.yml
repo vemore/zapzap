@@ -151,7 +151,12 @@ jobs:
       - run: npm run build
 
   image:
-    name: Images — backend, frontend and Flutter PWA build
+    # This `name:` is the check context `master`'s branch protection requires, character
+    # for character. Rename it and the required context never reports: every pull request
+    # is then blocked from merging for ever, with no failing check to point at. The job
+    # builds the Flutter PWA image and validates the proxy configuration too — say that in
+    # a step name, never here. Same warning in .llmwiki/Testing.md.
+    name: Images — backend and frontend build
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.image != 'false' }}
     runs-on: ubuntu-latest
