@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zapzap/l10n/app_localizations.dart';
+import 'package:zapzap/models/stats.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/widgets/stats_bots.dart';
 import 'package:zapzap/widgets/stats_leaderboard.dart';
 import 'package:zapzap/widgets/stats_personal.dart';
 
@@ -120,6 +123,46 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('bot-card-medium')), findsOneWidget);
       expect(find.text('Bot par bot'), findsNothing);
+    });
+
+    testWidgets('a reload without the picked difficulty falls back to all', (
+      tester,
+    ) async {
+      final full = BotStats.fromJson(fixture('stats_bots'));
+      final withoutEasy = fixture('stats_bots');
+      withoutEasy['byDifficulty'] = [
+        for (final line in withoutEasy['byDifficulty'] as List)
+          if ((line as Map)['difficulty'] != 'easy') line,
+      ];
+      Future<void> show(BotStats stats) => tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('fr'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SingleChildScrollView(child: StatsBots(stats: stats)),
+          ),
+        ),
+      );
+      tester.view.physicalSize = const Size(1100, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await show(full);
+      await tester.tap(find.byKey(const Key('bot-difficulty-easy')));
+      await tester.pumpAndSettle();
+      expect(find.text('Bot par bot'), findsOneWidget);
+
+      // The same widget, new stats: no easy bot any more.
+      await show(BotStats.fromJson(withoutEasy));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('bot-card-medium')), findsOneWidget);
+      expect(find.text('Bot par bot'), findsNothing);
+      final all = tester.widget<ChoiceChip>(
+        find.byKey(const Key('bot-difficulty-all')),
+      );
+      expect(all.selected, isTrue);
     });
   });
 

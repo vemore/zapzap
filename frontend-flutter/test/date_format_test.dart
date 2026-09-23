@@ -30,6 +30,13 @@ void main() {
       );
     });
 
+    test('the clock is the locale\'s: 24-hour in French, 12-hour in '
+        'English', () {
+      final afternoon = DateTime(2026, 9, 22, 14, 26).toUtc();
+      expect(Formats.dateTime(afternoon, 'fr'), endsWith('14:26'));
+      expect(Formats.dateTime(afternoon, 'en'), endsWith('2:26\u202fPM'));
+    });
+
     test('a missing date is a dash', () {
       expect(Formats.dateTime(null, 'fr'), Formats.missing);
     });

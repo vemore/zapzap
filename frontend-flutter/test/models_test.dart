@@ -62,6 +62,27 @@ void main() {
       expect(party.createdAt, utc(1790094174));
     });
 
+    test(
+      'a party row without maxPlayers falls back to its settings, then 5',
+      () {
+        final row = fixture('party_list')['parties'][0] as JsonMap;
+        expect(
+          PartySummary.fromJson({...row}..remove('maxPlayers')).maxPlayers,
+          5,
+        );
+        expect(PartySummary.fromJson({...row, 'maxPlayers': 0}).maxPlayers, 5);
+        expect(
+          PartySummary.fromJson(
+            {
+              ...row,
+              'settings': {'playerCount': 4},
+            }..remove('maxPlayers'),
+          ).maxPlayers,
+          4,
+        );
+      },
+    );
+
     test('create', () {
       final result = CreatePartyResult.fromJson(fixture('party_create'));
       expect(result.botsJoined, 2);

@@ -93,6 +93,18 @@ class _StatsBotsState extends State<StatsBots> {
   /// `null` shows every difficulty and no per-bot breakdown.
   String? _difficulty;
 
+  /// A reload that no longer carries the picked difficulty falls back to
+  /// all of them, rather than a heading over no row.
+  @override
+  void didUpdateWidget(StatsBots oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selected = _difficulty;
+    if (selected != null &&
+        !widget.stats.byDifficulty.any((line) => line.difficulty == selected)) {
+      _difficulty = null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);

@@ -10,6 +10,7 @@ import '../providers/sse_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/navigation.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/party_card.dart';
 import '../widgets/player_seat_tile.dart';
@@ -61,12 +62,17 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
   void _followOutcome() {
     if (_left || _lobby.outcome == null || !mounted) return;
     _left = true;
-    final route = switch (_lobby.outcome!) {
-      LobbyOutcome.started => AppRoutes.gamePath(widget.partyId),
-      LobbyOutcome.closed => AppRoutes.parties,
-    };
+    final outcome = _lobby.outcome!;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.go(route);
+      if (!mounted) return;
+      switch (outcome) {
+        // The game takes the lobby's place, so Back from it returns to the
+        // list below, as the game's own back button does.
+        case LobbyOutcome.started:
+          context.pushReplacement(AppRoutes.gamePath(widget.partyId));
+        case LobbyOutcome.closed:
+          context.popOrGo(AppRoutes.parties);
+      }
     });
   }
 
@@ -106,7 +112,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
             key: const Key('back-to-parties'),
             tooltip: l10n.lobbyBack,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go(AppRoutes.parties),
+            onPressed: () => context.popOrGo(AppRoutes.parties),
           ),
         ),
         body: Builder(
@@ -197,7 +203,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
             Text(l10n.lobbyNotFoundBody, textAlign: TextAlign.center),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: () => context.go(AppRoutes.parties),
+              onPressed: () => context.popOrGo(AppRoutes.parties),
               child: Text(l10n.lobbyBack),
             ),
           ],

@@ -14,7 +14,8 @@ class ConnectedPlayers extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final players = context.watch<ConnectedPlayersProvider>().players;
+    final online = context.watch<ConnectedPlayersProvider>();
+    final players = online.players;
     return PopupMenuButton<void>(
       key: const Key('connected-players'),
       tooltip: l10n.connectedPlayersTitle,
@@ -46,7 +47,13 @@ class ConnectedPlayers extends StatelessWidget {
           children: [
             const Icon(Icons.group, size: 18),
             const SizedBox(width: 4),
-            Text('${players.length}'),
+            // No count before the first answer, nor after a failed one:
+            // "0" would claim nobody is online (React renders nothing while
+            // loading, `ConnectedPlayers.jsx`).
+            Text(
+              online.loaded ? '${players.length}' : '–',
+              key: const Key('connected-players-count'),
+            ),
           ],
         ),
       ),
