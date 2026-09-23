@@ -80,18 +80,36 @@ void main() {
       expect(find.byType(HistoryGameTile), findsOneWidget);
     });
 
-    testWidgets('no game shows the empty message of the tab', (tester) async {
+    testWidgets('no game of mine shows the way to a game', (tester) async {
       await pumpScreen(
         tester,
         initialLocation: AppRoutes.history,
         api: routedApi({'/api/history': '{"success":true,"games":[]}'}),
       );
 
+      // My games has its own empty state (test/history_ux_test.dart).
+      expect(find.byKey(const Key('history-invite')), findsOneWidget);
+      expect(find.byType(HistoryGameTile), findsNothing);
+    });
+
+    testWidgets('no public game shows the empty message of the tab', (
+      tester,
+    ) async {
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.history,
+        api: routedApi({
+          '/api/history': fixtureText('history_list'),
+          '/api/history/public': '{"success":true,"games":[]}',
+        }),
+      );
+
+      await tester.tap(find.text('Parties publiques'));
+      await tester.pumpAndSettle();
+
       expect(find.byKey(const Key('async-empty')), findsOneWidget);
       expect(
-        find.text(
-          'Aucune partie terminée. Jouez pour remplir votre historique !',
-        ),
+        find.text('Aucune partie publique terminée pour le moment.'),
         findsOneWidget,
       );
       expect(find.byType(HistoryGameTile), findsNothing);

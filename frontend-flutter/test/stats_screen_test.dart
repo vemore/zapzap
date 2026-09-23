@@ -36,9 +36,9 @@ void main() {
 
     expect(find.text('Mes statistiques'), findsOneWidget);
     expect(find.text('Parties jouées'), findsWidgets);
-    // 1 game, 0 win, a 0 win rate, an average of 122.
+    // 1 game, 0 win, a 0 win rate, an average of 122 — without its `.0`.
     expect(find.text('0.0%'), findsWidgets);
-    expect(find.text('122.0'), findsOneWidget);
+    expect(find.text('122.0'), findsNothing);
     expect(find.text('Performance ZapZap'), findsOneWidget);
     // No ZapZap called, so no success rate line in the ZapZap block (the
     // bots' cards further down have one of their own).
@@ -50,7 +50,8 @@ void main() {
       findsNothing,
     );
     expect(find.text('Meilleur score'), findsOneWidget);
-    expect(find.text('122'), findsOneWidget);
+    // The average and the best score.
+    expect(find.text('122'), findsNWidgets(2));
   });
 
   testWidgets('my own leaderboard row is highlighted and marked', (

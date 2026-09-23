@@ -121,6 +121,101 @@ class StatTile extends StatelessWidget {
   }
 }
 
+/// One of the few figures a card puts first, in large.
+class HeroStat extends StatelessWidget {
+  const HeroStat({super.key, required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.slate700,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // FittedBox: "12 / 134" at a large system font shrinks rather
+          // than running off a half-width box.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.slate400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A secondary figure as a list line: its label, then its value on the
+/// right, over a thin rule.
+class StatLine extends StatelessWidget {
+  const StatLine({
+    super.key,
+    required this.label,
+    required this.value,
+    this.divider = true,
+  });
+
+  final String label;
+  final String value;
+
+  /// The rule above the line.
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: divider
+          ? const BoxDecoration(
+              border: Border(top: BorderSide(color: AppColors.slate700)),
+            )
+          : null,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.slate400,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Not flexible, so it sits at the right edge: a value is a short
+          // figure ("100.0%"), and the label gives way instead.
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A grid of [StatTile] that keeps two columns on a phone and stays readable
 /// on a wide window.
 class StatTileGrid extends StatelessWidget {

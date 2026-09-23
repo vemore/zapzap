@@ -24,4 +24,14 @@ abstract final class Formats {
 
   /// A score or average with one decimal.
   static String decimal(double? value) => (value ?? 0).toStringAsFixed(1);
+
+  /// A score or average as a player reads it: `134`, not `134.0`; one
+  /// decimal only when there is one (`12.5`).
+  static String number(double? value) {
+    // Rounded to one decimal first, so 12.96 is `13`, not `13.0`.
+    final tenths = ((value ?? 0) * 10).round();
+    return tenths % 10 == 0
+        ? '${tenths ~/ 10}'
+        : (tenths / 10).toStringAsFixed(1);
+  }
 }
