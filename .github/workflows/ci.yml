@@ -84,6 +84,7 @@ jobs:
   # leaves a pull request waiting forever.
 
   rust:
+    # Branch protection requires this exact check name: rename it there first.
     name: Rust backend — fmt, clippy, test
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.rust != 'false' }}
@@ -131,6 +132,7 @@ jobs:
       - run: cargo test
 
   frontend:
+    # Branch protection requires this exact check name: rename it there first.
     name: Frontend — build
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.frontend != 'false' }}
@@ -194,6 +196,7 @@ jobs:
         run: scripts/pwa_image_smoke.sh zapzap-frontend-flutter:ci
 
   hooks:
+    # Branch protection requires this exact check name: rename it there first.
     name: Hooks — self-test
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.hooks != 'false' }}

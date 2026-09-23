@@ -71,26 +71,54 @@ Rules:
 2. Read CLAUDE.md, .llmwiki/INDEX.md and the pages the change touches.
 3. Implement, with tests. Update the wiki pages and README.md the change falsifies, in the
    same pull request.
-4. wip/ is local to the main checkout (<MAIN>/wip) and never committed. Do NOT move or
-   close your entries — the orchestrator does after the merge. A problem you find but were
-   not asked to fix becomes a new entry in <MAIN>/wip/todo_nr/ (format: <MAIN>/wip/README.md);
-   never fix it inline, never edit another entry.
-5. Commit (the hook runs the gates in this worktree), `git push -u origin <type>/<topic>`,
+4. wip/ is local to the main checkout (<MAIN>/wip) and never committed; you read it, you
+   never write it. Do NOT move or close your entries — the orchestrator does after the
+   merge. A problem you find but were not asked to fix goes, complete, under a
+   `## New wip entries` heading of your final report, one block per entry in this format
+   (<MAIN>/wip/README.md); the orchestrator writes it. Never fix it inline.
+     ### todo_nr/YYYY-MM-DD-<slug>.md      (todo/ only if it blocks a release)
+     # <What is wrong, as a statement>
+     - **Noted:** YYYY-MM-DD — <while doing what>
+     - **Theme:** <an existing tag: scripts/wip.sh themes all>
+     - **Area:** backend | native | frontend | tooling | docs | ops
+     - **Blocks release:** yes — <why> | no
+     <The problem, with file paths and evidence.>
+     **Fix:** <the proposed change.>
+     **Acceptance:** <2 to 5 statements a test or a command can check.>
+5. Working in parallel with other agents:
+   - A browser check (Playwright MCP) happens in a tab you open (`browser_tabs` new) and
+     only in it; close it when done. Never navigate, reload or read another tab: it is
+     another agent's, with its tokens. Screenshots land in `.playwright-mcp/` (gitignored):
+     never commit them, never delete that directory.
+   - Never rename a CI job's `name:` in `.github/workflows/ci.yml`: branch protection
+     requires those names verbatim, and a renamed required job blocks every merge with all
+     checks green. Say what a job grew to do in a step name or a comment.
+   - A compound command (heredoc, `$(…)`, `cd … && …`) refused as "too complex to verify
+     that it stays inside the worktree" is the harness's check, not a repository hook: write
+     the script to your scratchpad and run it by path (`bash <scratchpad>/x.sh`).
+6. Commit (the hook runs the gates in this worktree), `git push -u origin <type>/<topic>`,
    `gh pr create --base master` with a body saying what changed and why.
-6. `gh pr checks <n> --watch` until every check is green or skipped (a job the scope job
+7. `gh pr checks <n> --watch` until every check is green or skipped (a job the scope job
    ruled out reports `skipping`, which counts as passing).
    Circuit breaker: after three fix attempts on the same failing check or test, stop — no
    fourth attempt, no loosened assertion, no skipped test. Report it as TEST_ISSUE,
    IMPL_ISSUE, DOC_ISSUE or UNCLEAR, with the check, the last error and the three attempts.
-7. Never merge, never deploy, never force-push, never push to master.
-8. Report briefly: PR URL and number, check state, files touched, schema changes, env vars
-   or manual steps the deploy needs, entries you created, the circuit-breaker class if any.
+8. Never merge, never deploy, never force-push, never push to master.
+9. Report briefly: PR URL and number, check state, files touched, schema changes, env vars
+   or manual steps the deploy needs, the circuit-breaker class if any, then the
+   `## New wip entries` heading ("none" when there are none).
    Lanes B and C: map each acceptance criterion to the test that covers it, by name.
 ```
 
-`<MAIN>` is the main checkout's absolute path (`scripts/wip.sh path` minus `/wip`). A
-`SubagentStop` hook refuses to let an agent finish while its commits have no pull request or
-its checks are red. On a circuit-breaker class: `TEST_ISSUE` → read the test against the
+`<MAIN>` is the main checkout's absolute path (`scripts/wip.sh path` minus `/wip`).
+
+**After each hand-back**, before anything else with that pull request: write every block
+under the agent's `## New wip entries` into `<MAIN>/wip/todo_nr/` (or `todo/`) as its own
+file, as reported — the agent could not (`wip/` is outside its worktree). Then `scripts/wip.sh
+check`. A reported entry is never dropped: it is the only copy.
+
+A `SubagentStop` hook refuses to let an agent finish while its commits have no pull request
+or its checks are red. On a circuit-breaker class: `TEST_ISSUE` → read the test against the
 entry, correct the agent or treat as `IMPL_ISSUE`; `IMPL_ISSUE` → diagnose yourself, relaunch
 with the diagnosis or narrow the PR; `DOC_ISSUE` → decide which side is true (ask the user if
 it changes the entry); `UNCLEAR` → ask the user. Never relaunch the same prompt unchanged.
