@@ -571,10 +571,14 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   100 px high, lift 15; else 70 px, ≤ 75°, 12°/card, 150 px, lift 25; selected cards on top;
   `CardFan.itemKey(i)`).
 - Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
-  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
-  copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
-  `frontend-flutter/THIRD_PARTY.md`. The 54 files weigh 1.26 MB after `svgo` (2.3 MB as
-  published); the twelve court cards are 1.15 MB of it.
+  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`, David
+  Bellot's LGPL SVG-cards jokers reframed into the faces' `0 0 360 540` frame (same outline,
+  same scale for both, no `<use>`, `<text>` or `<style>`); rendered with `flutter_svg`,
+  stretched into the width × 1.4 box (`BoxFit.fill`). `frontend/public/joker-*.svg` are the
+  same bytes. Licence and the changes made: `frontend-flutter/THIRD_PARTY.md`. The 54 files
+  weigh 1.32 MB after `svgo` (the jokers 31.6 and 24.5 KB); the twelve court cards are
+  1.15 MB of it. `test/card_widgets_test.dart` pins the jokers' frame and pumps them beside a
+  face at 38 and 80 px.
 
 ### Localisation
 
@@ -694,6 +698,12 @@ project `.gitignore`.
   component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
   faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
   UI localises them.
+- **Bellot jokers (2026-09-23, `feat/joker-artwork`).** The home-made 80 × 112 clown
+  jokers clashed with the English-pattern faces; the user picked David Bellot's Wikimedia
+  jokers. They are bundled, never hot-linked, so the PWA works offline; the red original's
+  `<use>` references are inlined because `flutter_svg` support for them is the part least
+  worth betting on. At 38 px the "JOKER" index is unreadable, as the faces' indices are, but
+  the red jester silhouette tells a joker from any face.
 - **History and statistics (2026-09-22, `feat/flutter-history`).** One `AsyncSection` per
   read rather than one loading state per screen: the statistics screen asks three
   independent endpoints and React hides all three behind three flags anyway. The bot
