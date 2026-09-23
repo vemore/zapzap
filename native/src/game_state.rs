@@ -10,19 +10,14 @@ pub const MAX_PLAYERS: usize = 8;
 pub const MAX_HAND_SIZE: usize = 10;
 
 /// Current game action
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GameAction {
+    #[default]
     SelectHandSize,
     Draw,
     Play,
     ZapZap,
     Finished,
-}
-
-impl Default for GameAction {
-    fn default() -> Self {
-        GameAction::SelectHandSize
-    }
 }
 
 /// Last action information

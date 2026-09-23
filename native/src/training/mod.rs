@@ -42,7 +42,6 @@ pub const FEATURE_DIM: usize = 45;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::prelude::*;
     use burn::tensor::TensorData;
 
     #[test]
@@ -411,7 +410,7 @@ mod tests {
         // Compute dot product for neuron 0 using burn weights
         let mut burn_sum: f64 = burn_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = 0 * 45 + i; // burn format: o * in + i
+            let w_idx = i; // burn format: o * in + i, with o = 0
             burn_sum += burn_w[w_idx] as f64 * 0.5;
         }
         let burn_relu = (burn_sum as f32).max(0.0);
@@ -419,7 +418,7 @@ mod tests {
         // Compute dot product for neuron 0 using fast weights
         let mut fast_sum: f64 = fast_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = 0 * 45 + i; // fast format: o * in + i
+            let w_idx = i; // fast format: o * in + i, with o = 0
             fast_sum += fast_w[w_idx] as f64 * 0.5;
         }
         let fast_relu = (fast_sum as f32).max(0.0);
@@ -441,7 +440,7 @@ mod tests {
         println!("\n=== TESTING BURN INDEXING HYPOTHESIS ===");
         let mut alt_sum: f64 = burn_s1_bias[0] as f64;
         for i in 0..FEATURE_DIM {
-            let w_idx = i * 128 + 0; // [in, out] indexing for output 0
+            let w_idx = i * 128; // [in, out] indexing: i * out + o, with o = 0
             if w_idx < burn_w.len() {
                 alt_sum += burn_w[w_idx] as f64 * 0.5;
             }

@@ -221,7 +221,7 @@ mod tests {
 
         let play = play.unwrap();
         // Should prefer to play a pair (removes more points)
-        assert!(play.len() >= 1);
+        assert!(!play.is_empty());
     }
 
     #[test]

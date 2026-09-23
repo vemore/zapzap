@@ -328,7 +328,7 @@ impl<B: Backend> DuelingDQN<B> {
         // Shared layers: (45*128 + 128) + (128*64 + 64)
         let shared = 45 * 128 + 128 + 128 * 64 + 64;
         // Value stream: (64*32 + 32) + (32*1 + 1)
-        let value = 64 * 32 + 32 + 32 * 1 + 1;
+        let value = 64 * 32 + 32 + 32 + 1;
         // Advantage heads: 4 * ((64*32 + 32) + (32*action_dim + action_dim))
         // For simplicity, using max action_dim = 7
         let advantage_per_head = 64 * 32 + 32 + 32 * 7 + 7;

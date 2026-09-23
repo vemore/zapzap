@@ -66,11 +66,17 @@ const W2_SIZE: usize = HIDDEN1 * HIDDEN2; // 128 * 64 = 8192
 
 // Value stream weights
 const V1_SIZE: usize = HIDDEN2 * ADV_HIDDEN; // 64 * 32 = 2048
-const V2_SIZE: usize = ADV_HIDDEN * 1; // 32 * 1 = 32
+const V2_SIZE: usize = ADV_HIDDEN; // 32 * 1 = 32
 
 // Advantage head weights (per head)
 const A1_SIZE: usize = HIDDEN2 * ADV_HIDDEN; // 64 * 32 = 2048
 const A2_MAX_SIZE: usize = ADV_HIDDEN * MAX_ACTIONS; // 32 * 7 = 224
+
+/// Debug dump of layer weights: (shared2, value1, value2, adv_hand_size_l1, adv_hand_size_l2)
+pub type LayerWeights = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
+
+/// Debug dump of biases: (s1, s2, v1, v2, adv_hand_size_l1, adv_hand_size_l2)
+pub type LayerBiases = (Vec<f32>, Vec<f32>, Vec<f32>, f32, Vec<f32>, Vec<f32>);
 
 /// Shared layer 1: 45 -> 128
 #[derive(Clone)]
@@ -101,13 +107,13 @@ impl SharedLayer1 {
 
     #[inline(always)]
     fn forward_relu(&self, input: &[f32; FEATURE_DIM], output: &mut [f32; HIDDEN1]) {
-        for o in 0..HIDDEN1 {
-            let mut sum = self.bias[o];
-            let base = o * FEATURE_DIM;
-            for i in 0..FEATURE_DIM {
-                sum += self.weights[base + i] * input[i];
-            }
-            output[o] = sum.max(0.0);
+        for (o, out) in output.iter_mut().enumerate() {
+            let row = &self.weights[o * FEATURE_DIM..(o + 1) * FEATURE_DIM];
+            let sum = row
+                .iter()
+                .zip(input.iter())
+                .fold(self.bias[o], |acc, (w, x)| acc + w * x);
+            *out = sum.max(0.0);
         }
     }
 
@@ -155,13 +161,13 @@ impl SharedLayer2 {
 
     #[inline(always)]
     fn forward_relu(&self, input: &[f32; HIDDEN1], output: &mut [f32; HIDDEN2]) {
-        for o in 0..HIDDEN2 {
-            let mut sum = self.bias[o];
-            let base = o * HIDDEN1;
-            for i in 0..HIDDEN1 {
-                sum += self.weights[base + i] * input[i];
-            }
-            output[o] = sum.max(0.0);
+        for (o, out) in output.iter_mut().enumerate() {
+            let row = &self.weights[o * HIDDEN1..(o + 1) * HIDDEN1];
+            let sum = row
+                .iter()
+                .zip(input.iter())
+                .fold(self.bias[o], |acc, (w, x)| acc + w * x);
+            *out = sum.max(0.0);
         }
     }
 
@@ -227,13 +233,13 @@ impl ValueStream {
     #[inline(always)]
     fn forward(&mut self, input: &[f32; HIDDEN2]) -> f32 {
         // Layer 1: 64 -> 32 with ReLU
-        for o in 0..ADV_HIDDEN {
-            let mut sum = self.bias1[o];
-            let base = o * HIDDEN2;
-            for i in 0..HIDDEN2 {
-                sum += self.weights1[base + i] * input[i];
-            }
-            self.h[o] = sum.max(0.0);
+        for (o, h) in self.h.iter_mut().enumerate() {
+            let row = &self.weights1[o * HIDDEN2..(o + 1) * HIDDEN2];
+            let sum = row
+                .iter()
+                .zip(input.iter())
+                .fold(self.bias1[o], |acc, (w, x)| acc + w * x);
+            *h = sum.max(0.0);
         }
 
         // Layer 2: 32 -> 1 (linear)
@@ -314,23 +320,22 @@ impl AdvantageHead {
     #[inline(always)]
     fn forward(&mut self, input: &[f32; HIDDEN2], output: &mut [f32]) {
         // Layer 1: 64 -> 32 with ReLU
-        for o in 0..ADV_HIDDEN {
-            let mut sum = self.bias1[o];
-            let base = o * HIDDEN2;
-            for i in 0..HIDDEN2 {
-                sum += self.weights1[base + i] * input[i];
-            }
-            self.h[o] = sum.max(0.0);
+        for (o, h) in self.h.iter_mut().enumerate() {
+            let row = &self.weights1[o * HIDDEN2..(o + 1) * HIDDEN2];
+            let sum = row
+                .iter()
+                .zip(input.iter())
+                .fold(self.bias1[o], |acc, (w, x)| acc + w * x);
+            *h = sum.max(0.0);
         }
 
         // Layer 2: 32 -> action_dim (linear)
-        for a in 0..self.action_dim {
-            let mut sum = self.bias2[a];
-            let base = a * ADV_HIDDEN;
-            for i in 0..ADV_HIDDEN {
-                sum += self.weights2[base + i] * self.h[i];
-            }
-            output[a] = sum;
+        for (a, out) in output.iter_mut().enumerate().take(self.action_dim) {
+            let row = &self.weights2[a * ADV_HIDDEN..(a + 1) * ADV_HIDDEN];
+            *out = row
+                .iter()
+                .zip(self.h.iter())
+                .fold(self.bias2[a], |acc, (w, h)| acc + w * h);
         }
     }
 
@@ -523,7 +528,7 @@ impl FastDQN {
 
     /// Get all layer weights for debugging (all in internal [out, in] format)
     /// Returns: (shared2, value1, value2, adv_hand_size_l1, adv_hand_size_l2)
-    pub fn get_all_layer_weights(&self) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    pub fn get_all_layer_weights(&self) -> LayerWeights {
         let s2 = self.shared2.weights.to_vec();
         let v1 = self.value.weights1.to_vec();
         let v2 = self.value.weights2.to_vec();
@@ -535,7 +540,7 @@ impl FastDQN {
 
     /// Get all biases for debugging
     /// Returns: (s1_bias, s2_bias, v1_bias, v2_bias, ahs1_bias, ahs2_bias)
-    pub fn get_all_biases(&self) -> (Vec<f32>, Vec<f32>, Vec<f32>, f32, Vec<f32>, Vec<f32>) {
+    pub fn get_all_biases(&self) -> LayerBiases {
         let s1_bias = self.shared1.bias.to_vec();
         let s2_bias = self.shared2.bias.to_vec();
         let v1_bias = self.value.bias1.to_vec();

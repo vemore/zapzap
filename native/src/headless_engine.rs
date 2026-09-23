@@ -472,7 +472,7 @@ impl HeadlessGameEngine {
                     state.cards_played.clear();
                     return state;
                 }
-                state.deck.extend(state.discard_pile.drain(..));
+                state.deck.append(&mut state.discard_pile);
                 state.deck.shuffle(&mut self.rng);
             }
             drawn_card = state.deck.pop().unwrap();
