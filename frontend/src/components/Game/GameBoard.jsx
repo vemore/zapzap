@@ -27,8 +27,6 @@ function GameBoard() {
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [roundEndData, setRoundEndData] = useState(null);
-  const [showRoundEnd, setShowRoundEnd] = useState(false);
 
   // Fetch game state function wrapped in useCallback for SSE handler
   const fetchGameState = useCallback(async () => {
@@ -124,8 +122,6 @@ function GameBoard() {
         break;
       case 'roundStarted':
         // New round started, refresh and hide round end screen
-        setShowRoundEnd(false);
-        setRoundEndData(null);
         fetchGameState();
         break;
       case 'gameFinished':
@@ -290,8 +286,6 @@ function GameBoard() {
   const handleContinueRound = async () => {
     try {
       await apiClient.post(`/game/${partyId}/nextRound`);
-      setShowRoundEnd(false);
-      setRoundEndData(null);
       await fetchGameState();
     } catch (err) {
       console.error('Failed to start next round:', err);

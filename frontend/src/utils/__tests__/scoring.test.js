@@ -96,15 +96,15 @@ describe('Phase 4: Scoring System Tests (README compliance)', () => {
     });
   });
 
-  describe('Counteract Penalty (README line 388)', () => {
-    it('should calculate penalty as hand + (players × 5)', () => {
-      // Player has 4 points, 5 players total
-      // Penalty = 4 + (5 × 5) = 29
-      expect(calculateCounteractPenalty(4, 5)).toBe(29);
+  describe('Counteract Penalty (GAME_RULES.md, Final Scoring)', () => {
+    it('should calculate penalty as hand + ((active players − 1) × 5)', () => {
+      // Player has 4 points, 5 active players
+      // Penalty = 4 + ((5 − 1) × 5) = 24
+      expect(calculateCounteractPenalty(4, 5)).toBe(24);
 
-      // Player has 5 points, 5 players total
-      // Penalty = 5 + (5 × 5) = 30
-      expect(calculateCounteractPenalty(5, 5)).toBe(30);
+      // Player has 5 points, 5 active players
+      // Penalty = 5 + ((5 − 1) × 5) = 25
+      expect(calculateCounteractPenalty(5, 5)).toBe(25);
     });
 
     it('should apply penalty when ZapZap caller is counteracted', () => {
@@ -115,11 +115,10 @@ describe('Phase 4: Scoring System Tests (README compliance)', () => {
       ];
 
       const scores = calculateFinalScore(hands, '2'); // Player 2 called ZapZap
-      const numPlayers = 3;
 
       // Player 1 has lower hand (1 < 2), so Player 2 is counteracted
-      // Player 2 penalty: 2 + (3 × 5) = 17
-      expect(scores['2']).toBe(17);
+      // Player 2 penalty: 2 + ((3 − 1) × 5) = 12
+      expect(scores['2']).toBe(12);
       expect(scores['1']).toBe(0); // Lowest hand
       expect(scores['3']).toBe(5); // Normal score
     });
@@ -149,7 +148,7 @@ describe('Phase 4: Scoring System Tests (README compliance)', () => {
       };
 
       const eliminated = Object.entries(totalScores)
-        .filter(([_, score]) => score > 100)
+        .filter(([, score]) => score > 100)
         .map(([userId]) => userId);
 
       expect(eliminated).toContain('2');

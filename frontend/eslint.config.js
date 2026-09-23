@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // public/elements.cardmeister.full.js is a vendored, minified third-party bundle.
+  globalIgnores(['dist', 'public/elements.cardmeister.full.js']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -23,7 +24,21 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Core no-unused-vars cannot see JSX: `<Foo>` is covered by the capitalised
+      // pattern (for a destructured `{ icon: Icon }` argument too), and `motion`
+      // (framer-motion's `<motion.div>`) is the one lowercase namespace the
+      // components use.
+      'no-unused-vars': ['error', {
+        varsIgnorePattern: '^([A-Z_]|motion$)',
+        argsIgnorePattern: '^[A-Z_]',
+      }],
+    },
+  },
+  {
+    // vitest runs in Node: its setup and tests may touch Node globals.
+    files: ['src/test/**', '**/__tests__/**'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
     },
   },
 ])

@@ -60,7 +60,7 @@ function useSSE(url, options = {}) {
       };
 
       // Error occurred
-      eventSource.onerror = (event) => {
+      eventSource.onerror = () => {
         if (!mountedRef.current) return;
 
         setConnected(false);

@@ -140,7 +140,7 @@ export function isEliminated(totalScore) {
  */
 export function getRemainingPlayers(playerScores) {
   return Object.entries(playerScores)
-    .filter(([_, score]) => score <= 100)
+    .filter(([, score]) => score <= 100)
     .map(([userId]) => userId);
 }
 

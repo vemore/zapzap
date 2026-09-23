@@ -21,7 +21,7 @@ function PartyList() {
       const response = await apiClient.get('/party');
       setParties(response.data.parties || []);
       setError('');
-    } catch (err) {
+    } catch {
       setError('Failed to fetch parties');
     } finally {
       setLoading(false);

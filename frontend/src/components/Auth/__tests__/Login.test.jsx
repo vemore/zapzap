@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Login from '../Login';
+import { AuthProvider } from '../../../contexts/AuthContext';
 import * as auth from '../../../services/auth';
 
-// Mock the auth service
+// Mock the auth service (the AuthProvider reads it too)
 vi.mock('../../../services/auth');
 
 // Mock useNavigate
@@ -17,68 +18,67 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+// The form is in French: "Pseudo", "Mot de passe", "Se connecter".
+function renderLogin() {
+  return render(
+    <BrowserRouter>
+      <AuthProvider>
+        <Login />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+function fillAndSubmit({ username, password }) {
+  if (username !== undefined) {
+    fireEvent.change(screen.getByLabelText(/pseudo/i), { target: { value: username } });
+  }
+  if (password !== undefined) {
+    fireEvent.change(screen.getByLabelText(/mot de passe/i), { target: { value: password } });
+  }
+  const submitButton = screen.getByRole('button', { name: /se connecter/i });
+  fireEvent.click(submitButton);
+  return submitButton;
+}
+
 describe('Phase 2: Login Component Tests', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockNavigate.mockClear();
+    vi.resetAllMocks();
   });
 
   describe('Form Rendering', () => {
     it('should render login form with username and password fields', () => {
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
+      renderLogin();
 
-      expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/pseudo/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/mot de passe/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /se connecter/i })).toBeInTheDocument();
     });
 
     it('should render link to register page', () => {
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
+      renderLogin();
 
-      const registerLink = screen.getByText(/register/i);
-      expect(registerLink).toBeInTheDocument();
+      const registerLink = screen.getByRole('link', { name: /s'inscrire/i });
+      expect(registerLink).toHaveAttribute('href', '/register');
     });
 
     it('should have password field with type password', () => {
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
+      renderLogin();
 
-      const passwordField = screen.getByLabelText(/password/i);
+      const passwordField = screen.getByLabelText(/mot de passe/i);
       expect(passwordField).toHaveAttribute('type', 'password');
     });
   });
 
   describe('Form Submission', () => {
     it('should call login API with username and password on submit', async () => {
-      auth.login = vi.fn().mockResolvedValue({
+      vi.mocked(auth.login).mockResolvedValue({
         success: true,
         user: { id: '1', username: 'testuser' },
       });
 
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
-
-      const usernameInput = screen.getByLabelText(/username/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(usernameInput, { target: { value: 'testuser' } });
-      fireEvent.change(passwordInput, { target: { value: 'password123' } });
-      fireEvent.click(submitButton);
+      renderLogin();
+      fillAndSubmit({ username: 'testuser', password: 'password123' });
 
       await waitFor(() => {
         expect(auth.login).toHaveBeenCalledWith('testuser', 'password123');
@@ -86,24 +86,13 @@ describe('Phase 2: Login Component Tests', () => {
     });
 
     it('should redirect to party list on successful login', async () => {
-      auth.login = vi.fn().mockResolvedValue({
+      vi.mocked(auth.login).mockResolvedValue({
         success: true,
         user: { id: '1', username: 'testuser' },
       });
 
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
-
-      const usernameInput = screen.getByLabelText(/username/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(usernameInput, { target: { value: 'testuser' } });
-      fireEvent.change(passwordInput, { target: { value: 'password123' } });
-      fireEvent.click(submitButton);
+      renderLogin();
+      fillAndSubmit({ username: 'testuser', password: 'password123' });
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/parties');
@@ -111,63 +100,33 @@ describe('Phase 2: Login Component Tests', () => {
     });
 
     it('should display error message on failed login', async () => {
-      auth.login = vi.fn().mockRejectedValue(new Error('Invalid credentials'));
+      vi.mocked(auth.login).mockRejectedValue(new Error('Invalid credentials'));
 
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
-
-      const usernameInput = screen.getByLabelText(/username/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(usernameInput, { target: { value: 'testuser' } });
-      fireEvent.change(passwordInput, { target: { value: 'wrongpass' } });
-      fireEvent.click(submitButton);
+      renderLogin();
+      fillAndSubmit({ username: 'testuser', password: 'wrongpass' });
 
       await waitFor(() => {
-        expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/invalid credentials/i);
       });
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
 
     it('should disable submit button while logging in', async () => {
-      auth.login = vi.fn(() => new Promise(resolve => setTimeout(() => resolve({ success: true }), 100)));
+      vi.mocked(auth.login).mockImplementation(() => new Promise(() => {}));
 
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
+      renderLogin();
+      const submitButton = fillAndSubmit({ username: 'testuser', password: 'password123' });
 
-      const usernameInput = screen.getByLabelText(/username/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(usernameInput, { target: { value: 'testuser' } });
-      fireEvent.change(passwordInput, { target: { value: 'password123' } });
-      fireEvent.click(submitButton);
-
-      expect(submitButton).toBeDisabled();
+      await waitFor(() => {
+        expect(submitButton).toBeDisabled();
+      });
     });
   });
 
   describe('Form Validation', () => {
     it('should prevent submission with empty username', async () => {
-      auth.login = vi.fn();
-
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
-
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(passwordInput, { target: { value: 'password123' } });
-      fireEvent.click(submitButton);
+      renderLogin();
+      fillAndSubmit({ password: 'password123' });
 
       await waitFor(() => {
         expect(auth.login).not.toHaveBeenCalled();
@@ -175,19 +134,8 @@ describe('Phase 2: Login Component Tests', () => {
     });
 
     it('should prevent submission with empty password', async () => {
-      auth.login = vi.fn();
-
-      render(
-        <BrowserRouter>
-          <Login />
-        </BrowserRouter>
-      );
-
-      const usernameInput = screen.getByLabelText(/username/i);
-      const submitButton = screen.getByRole('button', { name: /login/i });
-
-      fireEvent.change(usernameInput, { target: { value: 'testuser' } });
-      fireEvent.click(submitButton);
+      renderLogin();
+      fillAndSubmit({ username: 'testuser' });
 
       await waitFor(() => {
         expect(auth.login).not.toHaveBeenCalled();

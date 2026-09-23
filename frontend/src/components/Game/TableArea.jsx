@@ -10,7 +10,6 @@ import PlayingCard from './PlayingCard';
  * @param {number[]} lastCardsPlayed - Cards from previous turn (discard pile)
  * @param {Object} lastAction - Last action { type, playerIndex, source?, cardId?, cardIds? }
  * @param {Object[]} players - Players array with username by playerIndex
- * @param {number} currentTurn - Current turn player index
  * @param {Function} onDiscardSelect - Handler when a discard card is selected
  * @param {number} selectedDiscardCard - Currently selected discard card
  */
@@ -19,7 +18,6 @@ function TableArea({
   lastCardsPlayed = [],
   lastAction = null,
   players = [],
-  currentTurn,
   onDiscardSelect,
   selectedDiscardCard
 }) {

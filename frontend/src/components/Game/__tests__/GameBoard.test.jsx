@@ -1,304 +1,318 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import GameBoard from '../GameBoard';
+import { apiClient } from '../../../services/api';
+import { gameStateResponse, userIdOfSeat } from '../../../test/gameState';
+
+// GameBoard is the /game/:partyId route: it loads its state from the API, acts
+// through the API and refreshes on SSE events. The API, the signed-in user and
+// the SSE hook are mocked; the child components are the real ones.
+vi.mock('../../../services/api');
+
+const authState = vi.hoisted(() => ({ user: null }));
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: authState.user }),
+}));
+
+vi.mock('../../../hooks/useSSE', () => ({ default: () => ({ connected: true }) }));
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
+function serveState(options) {
+  apiClient.get = vi.fn().mockResolvedValue({ data: gameStateResponse(options) });
+}
+
+function renderBoard() {
+  return render(
+    <MemoryRouter initialEntries={['/game/party1']}>
+      <Routes>
+        <Route path="/game/:partyId" element={<GameBoard />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+// The action buttons show their label from the `sm` breakpoint; the accessible
+// name is the label text, present in the DOM at every width.
+const playButton = () => screen.getByRole('button', { name: /^play/i });
+const drawButton = () => screen.getByRole('button', { name: /^(draw|take)/i });
+const zapZapButton = () => screen.getByRole('button', { name: /zapzap/i });
+const handCards = () => document.querySelectorAll('.card-fan [role="button"]');
 
 describe('Phase 5: GameBoard Component Tests', () => {
-  const mockGameState = {
-    partyId: 'party1',
-    players: [
-      { id: '1', username: 'Alice', cardCount: 5, score: 0 },
-      { id: '2', username: 'Bob', cardCount: 7, score: 10 },
-    ],
-    currentTurnId: '1',
-    currentAction: 'play',
-    myHand: [0, 14, 28], // A♠ 2♥ 3♣
-    myUserId: '1',
-  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authState.user = { id: userIdOfSeat(0), username: 'Alice' };
+    apiClient.post = vi.fn().mockResolvedValue({ data: { success: true } });
+  });
 
   describe('Component Integration', () => {
-    it('should render all sub-components', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should render all sub-components', async () => {
+      serveState({ myHand: [0, 14, 28] }); // A♠ 2♥ 3♣
 
-      // Should render PlayerTable
-      expect(screen.getByText('Alice')).toBeInTheDocument();
+      renderBoard();
+
+      // PlayerTable
+      expect(await screen.findByText('Alice')).toBeInTheDocument();
       expect(screen.getByText('Bob')).toBeInTheDocument();
 
-      // Should render PlayerHand
-      expect(screen.getByText(/3 cards/i)).toBeInTheDocument();
+      // PlayerHand
+      expect(handCards()).toHaveLength(3);
 
-      // Should render ActionButtons
-      expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /draw/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /zapzap/i })).toBeInTheDocument();
+      // ActionButtons
+      expect(playButton()).toBeInTheDocument();
+      expect(drawButton()).toBeInTheDocument();
+      expect(zapZapButton()).toBeInTheDocument();
     });
 
-    it('should pass correct props to PlayerTable', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should load the state of the party in the URL', async () => {
+      serveState();
 
-      // Check that current turn player is highlighted
-      const aliceCard = screen.getByText('Alice').closest('.player-card');
-      expect(aliceCard.className).toMatch(/current-turn/i);
+      renderBoard();
+
+      await screen.findByText('Alice');
+      expect(apiClient.get).toHaveBeenCalledWith('/game/party1/state');
     });
 
-    it('should pass correct props to PlayerHand', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should pass correct props to PlayerTable', async () => {
+      serveState({ currentTurn: 1, handSizes: [3, 7] });
 
-      // Hand should display correct card count
-      const handInfo = screen.getByText(/3 cards/i);
-      expect(handInfo).toBeInTheDocument();
+      renderBoard();
+
+      // Bob (seat 1) has the turn; his hand size comes from otherPlayersHandSizes
+      const bobRow = (await screen.findByText('Bob')).closest('.border-l-4');
+      expect(bobRow.className).toMatch(/border-green-400/);
+      expect(bobRow).toHaveTextContent('(7)');
     });
 
-    it('should pass correct props to ActionButtons', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should pass correct props to PlayerHand', async () => {
+      serveState({ myHand: [0, 14, 28] });
 
-      // Should show "Your Turn" since currentTurnId === myUserId
-      expect(screen.getByText(/your turn/i)).toBeInTheDocument();
+      renderBoard();
+
+      await screen.findByText('Alice');
+      expect(screen.getByRole('button', { name: 'Card As' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Card 2h' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Card 3c' })).toBeInTheDocument();
+    });
+
+    it('should pass correct props to ActionButtons', async () => {
+      serveState({ currentTurn: 0, currentAction: 'play' });
+
+      renderBoard();
+
+      expect(await screen.findByText(/your turn - play cards/i)).toBeInTheDocument();
     });
   });
 
   describe('Card Selection Flow', () => {
-    it('should update selected cards when cards are clicked', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should update selected cards when cards are clicked', async () => {
+      serveState({ myHand: [0, 13, 28] }); // A♠ A♥ 3♣
 
-      const cards = screen.getAllByRole('button').filter((btn) =>
-        btn.className.includes('card')
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      fireEvent.click(cards[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Card Ah' }));
 
-      // Play button should now show (1) selected card
-      const playButton = screen.getByRole('button', { name: /play.*1/i });
-      expect(playButton).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Card As' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('button', { name: 'Card Ah' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('button', { name: 'Card 3c' })).toHaveAttribute('aria-selected', 'false');
+      expect(playButton()).toHaveTextContent('2');
     });
 
-    it('should validate selected cards before enabling play', () => {
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should validate selected cards before enabling play', async () => {
+      serveState({ myHand: [0, 14, 28] }); // A♠ 2♥ 3♣
 
-      const cards = screen.getAllByRole('button').filter((btn) =>
-        btn.className.includes('card')
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      // Select a single card (always valid)
-      fireEvent.click(cards[0]);
+      // A♠ + 2♥: neither a pair nor a same-suit sequence
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Card 2h' }));
 
-      const playButton = screen.getByRole('button', { name: /play/i });
-      expect(playButton).not.toBeDisabled();
+      expect(playButton()).toBeDisabled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
   });
 
   describe('Action Handlers', () => {
-    it('should call onPlay with selected cards', () => {
-      const onPlay = vi.fn();
-      render(
-        <GameBoard
-          gameState={mockGameState}
-          onPlay={onPlay}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+    it('should call onPlay with selected cards', async () => {
+      serveState({ myHand: [0, 13, 28] }); // A♠ A♥ 3♣
 
-      const cards = screen.getAllByRole('button').filter((btn) =>
-        btn.className.includes('card')
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      fireEvent.click(cards[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Card Ah' }));
+      fireEvent.click(playButton());
 
-      const playButton = screen.getByRole('button', { name: /play/i });
-      fireEvent.click(playButton);
-
-      expect(onPlay).toHaveBeenCalledWith([0]);
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/game/party1/play', { cardIds: [0, 13] });
+      });
     });
 
-    it('should call onDraw when draw button clicked', () => {
-      const onDraw = vi.fn();
-      const drawState = { ...mockGameState, currentAction: 'draw' };
+    it('should call onDraw when draw button clicked', async () => {
+      serveState({ currentAction: 'draw' });
 
-      render(
-        <GameBoard
-          gameState={drawState}
-          onPlay={vi.fn()}
-          onDraw={onDraw}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      const drawButton = screen.getByRole('button', { name: /draw/i });
-      fireEvent.click(drawButton);
+      fireEvent.click(drawButton());
 
-      expect(onDraw).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/game/party1/draw', { source: 'deck' });
+      });
     });
 
-    it('should call onZapZap when zapzap button clicked', () => {
-      const onZapZap = vi.fn();
-      const zapEligibleState = {
-        ...mockGameState,
-        myHand: [0, 14], // A♠ 2♥ = 3 points (eligible)
-      };
+    it('should call onZapZap when zapzap button clicked', async () => {
+      serveState({ myHand: [0, 13, 26, 39] }); // four aces = 4 points
 
-      render(
-        <GameBoard
-          gameState={zapEligibleState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={onZapZap}
-        />
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      const zapButton = screen.getByRole('button', { name: /zapzap/i });
-      fireEvent.click(zapButton);
+      fireEvent.click(zapZapButton());
 
-      expect(onZapZap).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/game/party1/zapzap');
+      });
+    });
+
+    it('should show the error the API returns for a refused action', async () => {
+      serveState({ currentAction: 'draw' });
+      apiClient.post = vi.fn().mockRejectedValue({ response: { data: { error: 'Not your turn' } } });
+
+      renderBoard();
+      await screen.findByText('Alice');
+
+      fireEvent.click(drawButton());
+
+      expect(await screen.findByText('Not your turn')).toBeInTheDocument();
     });
   });
 
   describe('Turn State Management', () => {
-    it('should disable actions when not my turn', () => {
-      const notMyTurnState = { ...mockGameState, currentTurnId: '2' };
+    it('should disable actions when not my turn', async () => {
+      serveState({ currentTurn: 1, myHand: [0, 13, 26, 39] });
 
-      render(
-        <GameBoard
-          gameState={notMyTurnState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      const playButton = screen.getByRole('button', { name: /play/i });
-      const drawButton = screen.getByRole('button', { name: /draw/i });
-      const zapButton = screen.getByRole('button', { name: /zapzap/i });
+      expect(playButton()).toBeDisabled();
+      expect(drawButton()).toBeDisabled();
+      expect(zapZapButton()).toBeDisabled();
 
-      expect(playButton).toBeDisabled();
-      expect(drawButton).toBeDisabled();
-      expect(zapButton).toBeDisabled();
+      // Cards cannot be selected either
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      expect(screen.getByRole('button', { name: 'Card As' })).toHaveAttribute('aria-selected', 'false');
     });
 
-    it('should show waiting message when not my turn', () => {
-      const notMyTurnState = { ...mockGameState, currentTurnId: '2' };
+    it('should show waiting message when not my turn', async () => {
+      serveState({ currentTurn: 1 });
 
-      render(
-        <GameBoard
-          gameState={notMyTurnState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
 
-      expect(screen.getByText(/waiting/i)).toBeInTheDocument();
+      expect(await screen.findByText(/waiting for other players/i)).toBeInTheDocument();
     });
   });
 
   describe('ZapZap Eligibility', () => {
-    it('should enable zapzap when hand ≤5 points', () => {
-      const zapEligibleState = {
-        ...mockGameState,
-        myHand: [0, 13, 26, 39], // Four Aces = 4 points
-      };
+    it('should enable zapzap when hand ≤5 points', async () => {
+      serveState({ myHand: [0, 13, 26, 39] }); // 4 points
 
-      render(
-        <GameBoard
-          gameState={zapEligibleState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      const zapButton = screen.getByRole('button', { name: /zapzap/i });
-      expect(zapButton).not.toBeDisabled();
+      expect(zapZapButton()).not.toBeDisabled();
     });
 
-    it('should disable zapzap when hand >5 points', () => {
-      const notEligibleState = {
-        ...mockGameState,
-        myHand: [2, 15], // 3♠ 3♥ = 6 points
-      };
+    it('should disable zapzap when hand >5 points', async () => {
+      serveState({ myHand: [0, 14, 28] }); // 1 + 2 + 3 = 6 points
 
-      render(
-        <GameBoard
-          gameState={notEligibleState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
+      await screen.findByText('Alice');
 
-      const zapButton = screen.getByRole('button', { name: /zapzap/i });
-      expect(zapButton).toBeDisabled();
+      expect(zapZapButton()).toBeDisabled();
     });
   });
 
-  describe('Loading and Error States', () => {
+  describe('Edge Cases', () => {
     it('should show loading when no game state', () => {
-      render(
-        <GameBoard
-          gameState={null}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      apiClient.get = vi.fn(() => new Promise(() => {})); // never answers
 
-      expect(screen.getByText(/loading/i)).toBeInTheDocument();
+      renderBoard();
+
+      expect(screen.getByText(/loading game/i)).toBeInTheDocument();
     });
 
-    it('should handle missing hand gracefully', () => {
-      const noHandState = { ...mockGameState, myHand: [] };
+    it('should report a game that has not started', async () => {
+      apiClient.get = vi.fn().mockResolvedValue({
+        data: { ...gameStateResponse(), gameState: null },
+      });
 
-      render(
-        <GameBoard
-          gameState={noHandState}
-          onPlay={vi.fn()}
-          onDraw={vi.fn()}
-          onZapZap={vi.fn()}
-        />
-      );
+      renderBoard();
 
-      expect(screen.getByText(/no cards/i)).toBeInTheDocument();
+      expect(await screen.findByText(/game has not started yet/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /back to lobby/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/party/party1');
+    });
+
+    it('should report a failed load', async () => {
+      apiClient.get = vi.fn().mockRejectedValue(new Error('network'));
+
+      renderBoard();
+
+      expect(await screen.findByText(/failed to load game state/i)).toBeInTheDocument();
+    });
+
+    it('should handle missing hand gracefully', async () => {
+      serveState({ myHand: [] });
+
+      renderBoard();
+
+      expect(await screen.findByText(/no cards in hand/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Round Phases', () => {
+    it('should ask the starting player for the hand size', async () => {
+      serveState({ currentAction: 'selectHandSize', myHand: [] });
+
+      renderBoard();
+
+      fireEvent.click(await screen.findByRole('button', { name: '6' }));
+      fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/game/party1/selectHandSize', { handSize: 6 });
+      });
+    });
+
+    it('should show the round end once the round is finished', async () => {
+      serveState({
+        currentAction: 'finished',
+        roundNumber: 2,
+        extra: {
+          allHands: { 0: [0], 1: [2, 15] },
+          handPoints: { 0: 1, 1: 6 },
+          lowestHandPlayerIndex: 0,
+          roundScores: { 0: 0, 1: 6 },
+        },
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText(/round 2 complete/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /continue to next round/i }));
+
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/game/party1/nextRound');
+      });
     });
   });
 });
