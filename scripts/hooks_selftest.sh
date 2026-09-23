@@ -182,6 +182,42 @@ said "same-line W=<tree>; git -C \$W commit -F - heredoc" pass \
     "$(printf 'W=%s; git -C $W commit -F - <<%sEOF%s\ndocs: x\nEOF' "$TREE" "'" "'")"
 said "export W=\"<tree>\" then git -C \"\${W}\" push" pass   "export W=\"$TREE\"; git -C \"\${W}\" push -q"
 
+# Sandbox repositories: an agent testing a script builds throwaway ones, and their master
+# is nobody's. The two master rules lift there -- CLAUDE_PROJECT_DIR is this project here
+# -- and nowhere else: a clone of this project, its remote under another URL form, a path
+# to its own checkout, or a remote or directory the guard cannot tell stay refused.
+SBARE="$SANDBOX/scratch-remote.git"
+SCLONE="$SANDBOX/scratch-clone"
+git init -q --bare "$SBARE"
+git clone -q "$SBARE" "$SCLONE" 2>/dev/null
+git -C "$SCLONE" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+git -C "$SCLONE" branch -M master
+git -C "$SCLONE" push -q -u origin master 2>/dev/null
+guard "sandbox: push HEAD:refs/heads/master into a bare repo" 0 "git push -q origin HEAD:refs/heads/master" "$SCLONE"
+guard "sandbox: the same through cd && git -C"           0 "cd $SCLONE && git -C $SCLONE push -q origin HEAD:master"
+guard "sandbox: pushing master to the bare repo by path" 0 "git push $SBARE master" "$SCLONE"
+guard "sandbox: a bare push from its master"             0 "git push" "$SCLONE"
+guard "sandbox: committing on its master"                0 "git commit -m x" "$SCLONE"
+guard "sandbox: cd, then git -C commit on its master"    0 "cd $SCLONE && git -C $SCLONE commit -q -m x"
+guard "project: push HEAD:refs/heads/master"             2 "git push origin HEAD:refs/heads/master"
+guard "project: a sandbox pushing into its checkout"     2 "git push $ROOT HEAD:master" "$SCLONE"
+guard "project: a remote the guard cannot resolve"       2 'git push $R HEAD:master' "$SCLONE"
+guard "project: a directory the guard cannot tell"       2 'cd $D && git push origin HEAD:master' "$SCLONE"
+if project_url=$(git -C "$ROOT" remote get-url origin 2>/dev/null); then
+    PCLONE="$SANDBOX/project-clone"
+    git init -q "$PCLONE"
+    git -C "$PCLONE" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    git -C "$PCLONE" branch -M master
+    git -C "$PCLONE" remote add origin "$project_url"
+    git -C "$PCLONE" update-ref refs/remotes/origin/master HEAD
+    guard "project: committing on master in another clone" 2 "git commit -m x" "$PCLONE"
+    guard "project: a bare push from that clone's master"  2 "git push" "$PCLONE"
+    # github.com/owner/repo, whichever form origin is written in
+    key=$(printf '%s' "$project_url" | sed -E 's#^[a-z+]+://##; s#^[^@/]*@##; s#^([^/:]+):#\1/#; s#\.git$##')
+    guard "project: its remote as an https URL"  2 "git push https://${key}.git HEAD:master" "$SCLONE"
+    guard "project: its remote as an ssh URL"    2 "git push git@${key/\//:}.git HEAD:master" "$SCLONE"
+fi
+
 # Work tracking: wip/ is local and gitignored; only `git add -f` stages it.
 mkdir -p "$TREE/wip/todo" && echo "# entry" > "$TREE/wip/todo/2026-09-22-x.md"
 git -C "$TREE" add -f wip
@@ -227,7 +263,7 @@ stub_tool() {  # name, exit code
 }
 tree_commit() {  # description, expected exit, [text the refusal must contain]
     local err rc
-    err=$(payload "git commit -m x" "$TREE" | PATH="$TOOLS:$PATH" CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)
+    err=$(payload "${GATE_COMMAND:-git commit -m x}" "$TREE" | PATH="${GATE_PATH:-$TOOLS:$PATH}" CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)
     rc=$?
     [ -n "${3:-}" ] && [[ "$err" != *"$3"* ]] && rc="$rc without '$3'"
     report "$1" "$2" "$rc"
@@ -270,12 +306,25 @@ stub_tool npm 1
 git -C "$TREE" rm -q --cached frontend/src/App.jsx && rm -rf "$TREE/frontend"
 # The Flutter client. npm and cargo stay red from here on: a frontend-flutter/ change must
 # not select the frontend/ gate (`^frontend/` needs the slash) nor a cargo one.
-stub_flutter() {  # pub get exit code, analyze exit code
-    printf '#!/bin/sh\necho "stub flutter $*"\ncase "$1" in\n    pub) exit %s ;;\n    analyze) echo "error - invalid_assignment - lib/main.dart:9:9"; exit %s ;;\nesac\nexit 0\n' "$1" "$2" > "$TOOLS/flutter"
+stub_flutter() {  # pub get exit code, analyze exit code, [gen-l10n exit code], [1: pub get rewrites the lock]
+    printf '#!/bin/sh\necho "stub flutter $*"\ncase "$1" in\n    pub) [ "%s" = 1 ] && echo "changed" >> pubspec.lock; exit %s ;;\n    analyze) echo "error - invalid_assignment - lib/main.dart:9:9"; exit %s ;;\n    gen-l10n) exit %s ;;\nesac\nexit 0\n' "${4:-0}" "$1" "$2" "${3:-0}" > "$TOOLS/flutter"
     chmod +x "$TOOLS/flutter"
 }
-stub_flutter 0 0
+# No flutter anywhere on PATH, the machine's own included: the stub is removed and every
+# directory holding one is dropped.
+NOFLUTTER_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | while read -r d; do [ -x "$d/flutter" ] || echo "$d"; done | paste -sd:)
+# A README edit or a deletion cannot break the analyzer, so neither needs flutter.
+stage "frontend-flutter/README.md"
+GATE_PATH="$NOFLUTTER_PATH" tree_commit "a Flutter README-only commit, no flutter, tree never set up" 0
+unstage "frontend-flutter/README.md"
+stage "frontend-flutter/lib/old.dart"
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "old.dart" >/dev/null 2>&1
+git -C "$TREE" rm -rq frontend-flutter
+GATE_PATH="$NOFLUTTER_PATH" tree_commit "a Flutter deletion-only commit, no flutter, tree never set up" 0
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
 stage "frontend-flutter/lib/main.dart"
+GATE_PATH="$NOFLUTTER_PATH" tree_commit "a Flutter code change with no flutter on PATH" 2 "flutter is not on PATH"
+stub_flutter 0 0
 tree_commit "a Flutter change in a tree never set up" 2 "cd $TREE/frontend-flutter && flutter pub get"
 mkdir -p "$TREE/frontend-flutter/.dart_tool" && touch "$TREE/frontend-flutter/l10n.yaml"
 tree_commit "a Flutter change whose analyzer is clean" 0
@@ -283,6 +332,20 @@ stub_flutter 0 1
 tree_commit "a Flutter change with an analyzer error" 2 "flutter analyze (frontend-flutter)"
 stub_flutter 1 0
 tree_commit "a Flutter change whose offline pub get fails" 2 "cd $TREE/frontend-flutter && flutter pub get"
+stub_flutter 0 0 1
+tree_commit "a Flutter change whose gen-l10n fails" 2 "flutter gen-l10n (frontend-flutter)"
+# A pubspec change whose lock pub get rewrites: the lock left unstaged is refused; under -a
+# it is staged with the rest.
+stage "frontend-flutter/pubspec.yaml"
+stage "frontend-flutter/pubspec.lock"
+stub_flutter 0 0 0 1
+tree_commit "a pubspec change whose lock pub get rewrites" 2 "changed frontend-flutter/pubspec.lock"
+git -C "$TREE" add frontend-flutter/pubspec.lock
+GATE_COMMAND="git commit -am x" tree_commit "the same under -a, which stages the lock" 0
+stub_flutter 0 0
+git -C "$TREE" add frontend-flutter/pubspec.lock
+tree_commit "a pubspec change whose lock pub get leaves alone" 0
+git -C "$TREE" rm -q --cached frontend-flutter/pubspec.yaml frontend-flutter/pubspec.lock
 unstage "frontend-flutter/lib/main.dart"
 stub_tool cargo 1
 stage "README.md"
@@ -785,6 +848,15 @@ report "worktree_setup.sh runs flutter pub get"  "pub get" "$(cat "$SANDBOX/flut
 rm -f "$SANDBOX/flutter.log"
 (cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust --no-flutter >/dev/null 2>&1)
 report "worktree_setup.sh --no-flutter skips it" "none" "$(cat "$SANDBOX/flutter.log" 2>/dev/null || echo none)"
+# A failed flutter step (no network, a package missing from the cache) must not leave the
+# setup marker behind, or cleanup_local.sh keeps the worktree forever.
+printf '#!/bin/sh\nexit 1\n' > "$TOOLS/flutter"
+err=$(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust 2>&1 >/dev/null)
+report "worktree_setup.sh: a failed flutter step exits non-zero" 1 "$?"
+report "worktree_setup.sh: and clears its setup marker" gone \
+    "$([ -e "$WIPREPO/.zapzap-setup-in-progress" ] && echo kept || echo gone)"
+case "$err" in *"Rerun: cd $WIPREPO/frontend-flutter && flutter pub get"*) got=named ;; *) got="$err" ;; esac
+report "worktree_setup.sh: and names the command to rerun" named "$got"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

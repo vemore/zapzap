@@ -31,7 +31,62 @@ command_cwd=$(printf '%s' "$verdict" | jq -r '.commit.cwd // .push.cwd // empty'
 [ -z "$command_cwd" ] && command_cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$(repo_of "$command_cwd")
 
+# The master rules protect this project's master: the branch of any checkout of it, and
+# the master of its remote. A throwaway repository an agent builds under the scratchpad to
+# test a script has a master nobody deploys; refusing to touch it only sent the same
+# commands into a script file, which the hook does not read. Whatever cannot be told --
+# no repository, a remote that does not resolve -- counts as the project.
+common_dir() {  # directory -> its absolute git common dir, or nothing
+    git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null
+}
+normalize_url() {  # git@github.com:o/r.git and https://github.com/o/r -> github.com/o/r
+    printf '%s\n' "$1" | sed -E 's#^[a-z+]+://##; s#^[^@/]*@##; s#^([^/:]+):#\1/#; s#\.git/?$##; s#/+$##' \
+        | tr '[:upper:]' '[:lower:]'
+}
+remote_key() {  # directory a URL is relative to, URL or path -> what identifies it
+    local target="${2#file://}"
+    [ "${target#/}" = "$target" ] && [ -d "$1/$target" ] && target="$1/$target"
+    if [ -d "$target" ] && common_dir "$target"; then return; fi
+    normalize_url "$2"
+}
+PROJECT_COMMON=$(common_dir "$PROJECT")
+PROJECT_KEYS="$PROJECT_COMMON"$'\n'$(git -C "$PROJECT" remote 2>/dev/null | while read -r r; do
+    remote_key "$PROJECT" "$(git -C "$PROJECT" remote get-url "$r" 2>/dev/null)"; done)
+url_is_project() {  # directory the URL is relative to, URL or path
+    printf '%s\n' "$PROJECT_KEYS" | grep -qxF -- "$(remote_key "$1" "$2")"
+}
+is_project_repo() {  # directory
+    local common remote
+    [ -z "$PROJECT_COMMON" ] && return 0
+    common=$(common_dir "$1")
+    [ -z "$common" ] || [ "$common" = "$PROJECT_COMMON" ] && return 0
+    for remote in $(git -C "$1" remote 2>/dev/null); do
+        url_is_project "$1" "$(git -C "$1" remote get-url "$remote" 2>/dev/null)" && return 0
+    done
+    return 1
+}
+is_project_remote() {  # directory the push runs in, remote (a name, a URL or a path)
+    local url
+    [ -z "$PROJECT_COMMON" ] || [ -z "$2" ] || [ "$2" = "null" ] && return 0
+    url=$(git -C "$1" remote get-url "$2" 2>/dev/null) || url="$2"
+    [ -z "$url" ] && return 0
+    url_is_project "$1" "$url"
+}
+
 # --------------------------------------------------------------- outright refusals
+
+# A push to master whose remote is a sandbox, from a directory the parser could tell.
+drop=()
+while IFS=$'\t' read -r index known cwd remote; do
+    [ "$known" = "true" ] || continue
+    is_project_remote "$(repo_of "$cwd")" "$remote" || drop+=("$index")
+done < <(printf '%s' "$verdict" | jq -r '.blocks | to_entries[]
+          | select(.value.rule == "push-main")
+          | [.key, (.value.known // false), (.value.cwd // ""), (.value.remote // "")] | @tsv' 2>/dev/null)
+if [ ${#drop[@]} -gt 0 ]; then
+    verdict=$(printf '%s' "$verdict" | jq --argjson drop "[$(IFS=,; echo "${drop[*]}")]" \
+        '.blocks |= [to_entries[] | select(.key as $k | $drop | index($k) | not) | .value]' 2>/dev/null)
+fi
 
 # Stacking is refused by default but stays possible, deliberately and per repository.
 allow_stacked=$(cd "$ROOT" 2>/dev/null && git config --get --bool zapzap.allowStackedPr 2>/dev/null)
@@ -48,7 +103,13 @@ fi
 # A bare `git push` publishes the current branch to its upstream: refuse it on master,
 # which the parser cannot see from the command line alone.
 if printf '%s' "$verdict" | jq -e '.push != null and (.push.refspecs | length) == 0' >/dev/null 2>&1; then
-    if [ "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" = "master" ]; then
+    push_remote=$(printf '%s' "$verdict" | jq -r '.push.remote // empty' 2>/dev/null)
+    [ -z "$push_remote" ] && push_remote=$(git -C "$ROOT" config --get branch.master.pushRemote 2>/dev/null \
+        || git -C "$ROOT" config --get remote.pushDefault 2>/dev/null \
+        || git -C "$ROOT" config --get branch.master.remote 2>/dev/null \
+        || echo origin)
+    if [ "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" = "master" ] \
+        && is_project_remote "$ROOT" "$push_remote"; then
         printf '%s\n' "Refused: \`git push\` from master would update master directly.
 
 master only moves through a squash-merged pull request with green checks, and the branch
@@ -130,7 +191,7 @@ commits that are genuinely new, and those are the ones to cherry-pick."
     [ "$branch" = "HEAD" ] && refuse "Refused: committing on a detached HEAD.
 
 $recipe"
-    [ "$branch" = "master" ] && refuse "Refused: committing directly on master.
+    [ "$branch" = "master" ] && is_project_repo "$ROOT" && refuse "Refused: committing directly on master.
 
 Work goes on a branch off origin/master, in its own worktree, and reaches master through
 a pull request.
@@ -218,11 +279,28 @@ fi
 # pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
 # stale with every ARB change; neither `flutter analyze` nor a pub get that finds nothing
 # to resolve regenerates them, so `flutter gen-l10n` does, before the analyzer runs.
-if printf '%s\n' "$paths" | grep -qE '^frontend-flutter/'; then
+# Only a file the commit leaves in the tree, and not a `.md`, can break the analyzer: a
+# README edit or a deletion (`git rm -r frontend-flutter` included) runs no gate.
+flutter_paths=$(printf '%s\n' "$paths" | grep -E '^frontend-flutter/' | grep -vE '\.md$' \
+    | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done)
+if [ -n "$flutter_paths" ]; then
     command -v flutter >/dev/null 2>&1 || needs_setup "flutter is not on PATH" "install Flutter 3.47.2 (.llmwiki/FrontendFlutter.md), then: cd $ROOT/frontend-flutter && flutter pub get"
     [ -d "$ROOT/frontend-flutter/.dart_tool" ] || needs_setup "frontend-flutter/.dart_tool is missing (flutter pub get never ran in this tree)" "cd $ROOT/frontend-flutter && flutter pub get"
     run_gate "flutter pub get --offline (frontend-flutter; if a package is missing from the cache: cd $ROOT/frontend-flutter && flutter pub get)" \
         bash -c "cd '$ROOT/frontend-flutter' && flutter pub get --offline"
+    # A pubspec change whose lock pub get rewrites would commit a lock that does not match
+    # it; CI's `--enforce-lockfile` would catch it, a push later. Under -a the rewritten
+    # lock is staged with the rest, so only a lock left unstaged is refused.
+    lock="frontend-flutter/pubspec.lock"
+    if [ "$commit_all" != "true" ] && git ls-files --error-unmatch "$lock" >/dev/null 2>&1 \
+        && ! git diff --quiet -- "$lock" 2>/dev/null; then
+        refuse "Refused: \`flutter pub get\` changed $lock, and the change is not staged.
+
+The lock this commit carries would not match its pubspec.yaml, and CI's
+\`flutter pub get --enforce-lockfile\` fails on it. Review the change, then:
+    git -C $ROOT add $lock
+and commit again."
+    fi
     if [ -f "$ROOT/frontend-flutter/l10n.yaml" ]; then
         run_gate "flutter gen-l10n (frontend-flutter)" bash -c "cd '$ROOT/frontend-flutter' && flutter gen-l10n"
     fi

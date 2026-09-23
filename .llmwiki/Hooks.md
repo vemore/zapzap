@@ -30,9 +30,18 @@ commit message or a heredoc that *mentions* a forbidden command passes. When it 
 where a `git commit` or a bare `git push` runs (a `cd $VAR` it cannot resolve, `$(...)`), it
 refuses with `unknown-repo` and asks for `git -C <literal path>`.
 
-`scripts/hooks_selftest.sh` exercises all of it — 171 cases in sandbox repositories, with a
+**This project, or a sandbox.** The two master rules — push to master, commit on master —
+protect *this project's* master: the branch of any checkout of it (same git common dir as
+`CLAUDE_PROJECT_DIR`, or a remote pointing at the project's remote) and the master of its
+remote (compared by URL, `git@github.com:o/r.git` and `https://github.com/o/r` alike, or by
+the repository a path remote leads to). A throwaway repository an agent builds under the
+scratchpad to test a script is not that, and pushing to or committing on its master passes.
+A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
+
+`scripts/hooks_selftest.sh` exercises all of it — 195 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter`, `docker-compose`, `docker` and `curl` — plus
-`scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh`, and
+`scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh` (and that
+a failed one clears its setup marker), and
 `deploy.sh` (42 cases: the step order that makes a failed deploy a no-op rather than an
 outage, the health wait that stops it reporting success over a dead site, and every refusal
 — [[Deployment]]); it is the `hooks` CI job. `deploy.sh` is not classified by
@@ -44,10 +53,10 @@ outage, the health wait that stops it reporting success over a dead site, and ev
 |---|---|
 | `pkill` / `killall` whose target matches `node` (kills the VS Code server under WSL) | tokenised command; `pkill -f nodemon` and `lsof -ti:9999 \| xargs kill` pass |
 | `git push --force`, `-f`, `--force-with-lease`, `--mirror`, a `+refspec` | parsed flags and refspecs; `--dry-run` passes |
-| `git push` to master: a refspec whose destination is `master`, `--all`, a bare push while on master | parsed refspecs; current branch of the repository the push runs in |
+| `git push` to master: a refspec whose destination is `master`, `--all`, a bare push while on master — to this project's remote, not a sandbox's | parsed refspecs and remote; current branch of the repository the push runs in, and its push remote |
 | `gh pr create --base <anything but master>` | parsed `--base`; unlocked per repository by `git config zapzap.allowStackedPr true` — the user's decision |
 | `gh pr merge` with `--admin`, or without `--squash`, or with `--merge`/`--rebase` | parsed flags, bundled short flags included |
-| Committing on master, on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
+| Committing on master (of a checkout of this project), on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
 | Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
 | Committing anything under `wip/`, or a root `TODO.md` / `DONE.md` | same path list |
 | Committing with a red gate, or with the gate's setup missing | see below |
@@ -61,7 +70,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
 | `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
 | `frontend/` | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
-| `frontend-flutter/` (any file, `.md` included) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get` |
+| `frontend-flutter/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get`; a `pubspec.lock` the pub get rewrote and that is left unstaged (not under `-a`) → refusal naming `git add` |
 | anything else (docs, legacy `src/`) | none |
 
 The test suites run in CI, not here. A setup refusal says to run the install as **its own**
@@ -104,3 +113,12 @@ are not inspected. The ship-parallel agent prompt says so.
 - **Secrets are judged on additions only.** #21 untracked `data/zapzap.db` with
   `git rm --cached`; judging deletions too would refuse exactly the commit that removes a
   database from git.
+- **Sandbox repositories are exempt from the master rules (2026-09-23).** Reviewing a script
+  that drives `git` needs throwaway repositories, and the guard refused to push to or commit
+  on their master; the same commands moved into a script file passed, since the hook does
+  not read scripts — friction without safety. The rules now judge the target repository.
+- **Queued branches are not a hook case (2026-09-23).** A branch built on another open pull
+  request's branch was once a planned state, and the stop hook counted the base's commits as
+  its own. Stacked pull requests are refused and a dependent group waits for a later wave,
+  branched from `master` once its base merged, so the hook keeps counting from
+  `origin/master` and no flag was added.

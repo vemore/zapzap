@@ -8,7 +8,12 @@ stdout:
      "blocks":   [{"rule": str, "message": str}, ...],
      "commit":   null | {"all": bool, "amend": bool, "pathspecs": [str, ...],
                          "cwd": str},
-     "push":     null | {"refspecs": [str, ...], "cwd": str}}
+     "push":     null | {"refspecs": [str, ...], "remote": str | null, "cwd": str,
+                         "known": bool}}
+
+A `push-main` block also carries the push's `remote`, `cwd` and `known` (whether
+that cwd could be told): the caller lifts the refusal when the remote is not this
+project's -- a sandbox repository an agent built to test something.
 
 `cwd` is the directory the git command actually runs in -- the hook payload's
 cwd, followed through `cd` and `git -C`. The caller resolves the repository from
@@ -339,6 +344,7 @@ def parse_push(tokens):
         elif token.startswith("-") and not token.startswith("--") and "f" in token[1:]:
             force = token
     positional = [t for t in rest if not is_option(t)]
+    remote = positional[0] if positional else None
     refspecs = positional[1:]  # the first operand is the remote
     for spec in refspecs:
         if spec.startswith("+"):
@@ -357,17 +363,18 @@ def parse_push(tokens):
         }
 
     if "--all" in rest or "--branches" in rest:
-        return None, push_to_main("--all")
+        return None, push_to_main("--all", remote)
     for spec in refspecs:
         destination = spec.split(":", 1)[-1]
         if destination in {PROTECTED_BRANCH, "refs/heads/" + PROTECTED_BRANCH}:
-            return None, push_to_main(spec)
-    return {"refspecs": refspecs}, None
+            return None, push_to_main(spec, remote)
+    return {"refspecs": refspecs, "remote": remote}, None
 
 
-def push_to_main(spec):
+def push_to_main(spec, remote):
     return {
         "rule": "push-main",
+        "remote": remote,
         "message": (
             "Refused: `git push ... {spec}` would update master directly.\n"
             "master only moves through a squash-merged pull request with green checks. "
@@ -578,9 +585,13 @@ def main():
             segment_known = resolved and (cwd_known or absolute)
         push, finding = parse_push(tokens_of_segment)
         if finding:
+            if finding["rule"] == "push-main":
+                finding["cwd"], finding["known"] = segment_cwd, segment_known
+                if finding["remote"] is not None:
+                    finding["remote"] = resolve_path(finding["remote"], variables)
             verdict["blocks"].append(finding)
         if push:
-            push["cwd"] = segment_cwd
+            push["cwd"], push["known"] = segment_cwd, segment_known
             verdict["push"] = push
             # Only a bare push depends on the branch the repository is on.
             if not segment_known and not push["refspecs"]:
