@@ -20,8 +20,9 @@
 # commit hook does, so a worktree does not rebuild every dependency.
 #
 # While it runs, the worktree carries a `.zapzap-setup-in-progress` marker and
-# `scripts/cleanup_local.sh` refuses to remove a worktree that has one. A failed setup
-# leaves the marker on purpose; rerun this script, or remove it once judged stale.
+# `scripts/cleanup_local.sh` refuses to remove a worktree that has one. A failed npm or
+# cargo step leaves the marker on purpose; rerun this script, or remove it once judged
+# stale. A failed flutter step clears it and names the command to rerun.
 
 set -euo pipefail
 
@@ -36,7 +37,7 @@ for arg in "$@"; do
         --no-rust) rust=0 ;;
         --no-flutter) flutter=0 ;;
         --deploy) LOCAL_ONLY+=(.env) ;;
-        -h|--help) sed -n '3,24p' "$0"; exit 0 ;;
+        -h|--help) sed -n '3,25p' "$0"; exit 0 ;;
         -*) echo "worktree_setup.sh: unknown option $arg (see --help)" >&2; exit 2 ;;
         *) dir="$arg" ;;
     esac
@@ -73,15 +74,25 @@ if [ "$rust" = 1 ] && command -v cargo >/dev/null 2>&1; then
 fi
 
 # gen-l10n writes the l10n Dart files, which are not committed. Without flutter the tree
-# stays usable; only a commit touching frontend-flutter/ will be refused.
+# stays usable; only a commit touching frontend-flutter/ will be refused. The same holds
+# when the step fails (no network, a package missing from the cache), so the setup goes
+# on to clear its marker -- or cleanup_local.sh would keep the worktree forever -- and
+# exits non-zero with the command to rerun.
+flutter_failed=""
 if [ "$flutter" = 1 ] && [ -f frontend-flutter/pubspec.yaml ]; then
     if command -v flutter >/dev/null 2>&1; then
-        (cd frontend-flutter && flutter pub get)
-        if [ -f frontend-flutter/l10n.yaml ]; then (cd frontend-flutter && flutter gen-l10n); fi
+        if ! (cd frontend-flutter && flutter pub get \
+              && { [ ! -f l10n.yaml ] || flutter gen-l10n; }); then
+            flutter_failed="cd $TREE/frontend-flutter && flutter pub get && flutter gen-l10n"
+        fi
     else
         echo "not set up frontend-flutter/: flutter is not on PATH (.llmwiki/FrontendFlutter.md)" >&2
     fi
 fi
 
 rm -f "$MARKER"
+if [ -n "$flutter_failed" ]; then
+    echo "not set up frontend-flutter/: the flutter step failed; the rest is ready. Rerun: $flutter_failed" >&2
+    exit 1
+fi
 echo "ready: $TREE ($(git rev-parse --abbrev-ref HEAD))"

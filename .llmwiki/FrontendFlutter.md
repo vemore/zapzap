@@ -33,9 +33,11 @@
   **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
   nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
 - Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `flutter analyze` when the
-  commit touches `frontend-flutter/`; no `.dart_tool` → a refusal naming `flutter pub get`
-  ([[Hooks]]). `scripts/worktree_setup.sh` runs the pub get and gen-l10n (`--no-flutter`
-  skips them).
+  commit leaves a non-`.md` file under `frontend-flutter/` (a README edit or a deletion runs
+  none); no `.dart_tool` → a refusal naming `flutter pub get`; a `pubspec.lock` the pub get
+  rewrites and that is left unstaged → a refusal ([[Hooks]]). `scripts/worktree_setup.sh`
+  runs the pub get and gen-l10n (`--no-flutter` skips them); when they fail it still clears
+  its setup marker, and exits 1 naming the command to rerun.
 
 ### Stack
 
