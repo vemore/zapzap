@@ -597,14 +597,6 @@
   "@playerStatusGame": {
     "description": "Connected player status: playing"
   },
-  "gamePlaceholderTitle": "Partie en cours",
-  "@gamePlaceholderTitle": {
-    "description": "Title of the temporary screen standing in for the game board"
-  },
-  "gamePlaceholderBody": "Le plateau de jeu arrive bientôt.",
-  "@gamePlaceholderBody": {
-    "description": "Body of the temporary screen standing in for the game board"
-  },
   "loading": "Chargement…",
   "@loading": {
     "description": "Accessibility label of a spinner while a section loads"
@@ -1089,5 +1081,377 @@
   "appBarMenu": "Plus",
   "@appBarMenu": {
     "description": "Tooltip of the app-bar menu leading to the history and the statistics"
+  },
+  "gameTitle": "Partie",
+  "@gameTitle": {
+    "description": "Fallback app-bar title of the game board, before the party name is known"
+  },
+  "gameLoading": "Chargement de la partie…",
+  "@gameLoading": {
+    "description": "Spinner label while the table is loaded"
+  },
+  "gameLoadFailedTitle": "Partie indisponible",
+  "@gameLoadFailedTitle": {
+    "description": "Title shown when the table could not be loaded"
+  },
+  "gameNotStartedTitle": "Partie pas encore commencée",
+  "@gameNotStartedTitle": {
+    "description": "Title shown when the party carries no round yet"
+  },
+  "gameNotStartedBody": "Le plateau s'affichera dès que la partie démarrera.",
+  "@gameNotStartedBody": {
+    "description": "Body shown when the party carries no round yet"
+  },
+  "gameRoundLabel": "Manche {number}",
+  "@gameRoundLabel": {
+    "description": "The round number, above the hand-size selector",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "gamePlayerFallback": "Joueur {number}",
+  "@gamePlayerFallback": {
+    "description": "Name of a seat whose username is unknown",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "gamePlayersWaiting": "En attente des joueurs…",
+  "@gamePlayersWaiting": {
+    "description": "Shown when the table carries no seat"
+  },
+  "gameYouBadge": "Vous",
+  "@gameYouBadge": {
+    "description": "Badge marking the caller's own row in the player table"
+  },
+  "gameSeatCards": "({count})",
+  "@gameSeatCards": {
+    "description": "How many cards a seat holds, after its card backs",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameEliminatedMark": "Éliminé",
+  "@gameEliminatedMark": {
+    "description": "Shown instead of the card backs of an eliminated player"
+  },
+  "gameTablePlayedLabel": "Posées",
+  "@gameTablePlayedLabel": {
+    "description": "Label of the cards laid down this turn"
+  },
+  "gameTableDiscardLabel": "Défausse ({count})",
+  "@gameTableDiscardLabel": {
+    "description": "Label of the discard pile and its size",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameTableEmpty": "Vide",
+  "@gameTableEmpty": {
+    "description": "Shown when the discard pile is empty"
+  },
+  "gameReshuffled": "Pioche remélangée !",
+  "@gameReshuffled": {
+    "description": "Banner shown for 2.5 s when the deck was reshuffled"
+  },
+  "gameActionPlayed": "{player} a posé {count, plural, =1{1 carte} other{{count} cartes}}",
+  "@gameActionPlayed": {
+    "description": "Table message: a player laid cards down",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameActionDrewDeck": "{player} a pioché",
+  "@gameActionDrewDeck": {
+    "description": "Table message: a player drew from the deck",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameActionDrewReshuffled": "{player} a pioché (pioche remélangée !)",
+  "@gameActionDrewReshuffled": {
+    "description": "Table message: a player drew and the deck was reshuffled",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameActionTookDiscard": "{player} a pris une carte de la défausse",
+  "@gameActionTookDiscard": {
+    "description": "Table message: a player took a card from the discard pile",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameActionSelectedHandSize": "{player} distribue {count} cartes",
+  "@gameActionSelectedHandSize": {
+    "description": "Table message: the starting player picked the hand size",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameActionCalledZapZap": "{player} a appelé ZapZap !",
+  "@gameActionCalledZapZap": {
+    "description": "Table message: a player called ZapZap",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameHandCards": "{count, plural, =1{1 carte} other{{count} cartes}}",
+  "@gameHandCards": {
+    "description": "How many cards the caller holds",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameHandValues": "ZapZap {eligibility} · Pénalité {penalty}",
+  "@gameHandValues": {
+    "description": "The hand value with jokers at 0, then at 25",
+    "placeholders": {
+      "eligibility": {
+        "type": "int"
+      },
+      "penalty": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapEligible": "ZapZap possible",
+  "@gameZapZapEligible": {
+    "description": "Badge shown when the hand is worth 5 points or less"
+  },
+  "gameDeckLabel": "Pioche {count}",
+  "@gameDeckLabel": {
+    "description": "The deck button and how many cards are left in it",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameClearSelection": "Effacer",
+  "@gameClearSelection": {
+    "description": "Button clearing the card selection"
+  },
+  "gameSelectedCards": "{count, plural, =1{1 sélectionnée} other{{count} sélectionnées}}",
+  "@gameSelectedCards": {
+    "description": "How many cards are selected",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameHandEmpty": "Aucune carte en main",
+  "@gameHandEmpty": {
+    "description": "Shown when the caller holds no card"
+  },
+  "gameTurnPlay": "À vous — posez des cartes",
+  "@gameTurnPlay": {
+    "description": "Turn banner: the caller must play"
+  },
+  "gameTurnDraw": "À vous — piochez une carte",
+  "@gameTurnDraw": {
+    "description": "Turn banner: the caller must draw"
+  },
+  "gameTurnWaiting": "En attente de {player}",
+  "@gameTurnWaiting": {
+    "description": "Turn banner: another player is to move",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gamePlayButton": "Poser",
+  "@gamePlayButton": {
+    "description": "Button playing the selected cards"
+  },
+  "gamePlayButtonCount": "Poser {count}",
+  "@gamePlayButtonCount": {
+    "description": "Button playing the selected cards, with how many",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameDrawButton": "Piocher",
+  "@gameDrawButton": {
+    "description": "Button drawing from the deck"
+  },
+  "gameTakeButton": "Prendre",
+  "@gameTakeButton": {
+    "description": "Button taking the selected card from the discard pile"
+  },
+  "gameZapZapButton": "ZapZap !",
+  "@gameZapZapButton": {
+    "description": "Button calling ZapZap"
+  },
+  "gameHandSizeTitle": "Nombre de cartes",
+  "@gameHandSizeTitle": {
+    "description": "Title of the hand-size selector"
+  },
+  "gameHandSizeBody": "Choisissez combien de cartes chaque joueur reçoit.",
+  "@gameHandSizeBody": {
+    "description": "Body of the hand-size selector"
+  },
+  "gameHandSizeGoldenHint": "Score en or : jusqu'à 10 cartes.",
+  "@gameHandSizeGoldenHint": {
+    "description": "Extra hint of the hand-size selector in Golden Score"
+  },
+  "gameHandSizeSelected": "{count} cartes par joueur",
+  "@gameHandSizeSelected": {
+    "description": "The hand size currently picked",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameHandSizeConfirm": "Distribuer",
+  "@gameHandSizeConfirm": {
+    "description": "Button confirming the hand size"
+  },
+  "gameHandSizeWaitingTitle": "En attente",
+  "@gameHandSizeWaitingTitle": {
+    "description": "Title shown while another player picks the hand size"
+  },
+  "gameHandSizeWaitingBody": "{player} choisit le nombre de cartes.",
+  "@gameHandSizeWaitingBody": {
+    "description": "Body shown while another player picks the hand size",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameRoundOverTitle": "Manche terminée",
+  "@gameRoundOverTitle": {
+    "description": "Title of the end-of-round state"
+  },
+  "gameOverTitle": "Partie terminée",
+  "@gameOverTitle": {
+    "description": "Title of the end-of-game state"
+  },
+  "gameRoundOverCaller": "ZapZap appelé par {player}",
+  "@gameRoundOverCaller": {
+    "description": "Who called ZapZap this round",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameRoundOverCounteracted": "Contré par {player}",
+  "@gameRoundOverCounteracted": {
+    "description": "Who counteracted the ZapZap caller",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameOverWinner": "Vainqueur : {player}",
+  "@gameOverWinner": {
+    "description": "Who won the game",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameRoundScoreLabel": "Manche {score}",
+  "@gameRoundScoreLabel": {
+    "description": "A player's points for the round that just ended",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "gameTotalScoreLabel": "Total {score}",
+  "@gameTotalScoreLabel": {
+    "description": "A player's total score",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "gameNextRoundButton": "Manche suivante",
+  "@gameNextRoundButton": {
+    "description": "Button starting the next round"
+  },
+  "errorNotYourTurn": "Ce n'est pas votre tour.",
+  "@errorNotYourTurn": {
+    "description": "Refused move: NOT_YOUR_TURN"
+  },
+  "errorInvalidActionState": "Cette action n'est pas possible maintenant.",
+  "@errorInvalidActionState": {
+    "description": "Refused move: INVALID_ACTION_STATE"
+  },
+  "errorInvalidPlay": "Cette combinaison n'est pas valide.",
+  "@errorInvalidPlay": {
+    "description": "Refused move: INVALID_PLAY"
+  },
+  "errorInvalidCards": "Ces cartes ne sont pas dans votre main.",
+  "@errorInvalidCards": {
+    "description": "Refused move: INVALID_CARDS"
+  },
+  "errorHandTooHigh": "Votre main dépasse 5 points.",
+  "@errorHandTooHigh": {
+    "description": "Refused move: HAND_TOO_HIGH"
+  },
+  "errorCardNotAvailable": "Cette carte n'est plus disponible.",
+  "@errorCardNotAvailable": {
+    "description": "Refused move: CARD_NOT_AVAILABLE"
+  },
+  "errorDeckEmpty": "La pioche est vide.",
+  "@errorDeckEmpty": {
+    "description": "Refused move: DECK_EMPTY"
+  },
+  "errorInvalidHandSize": "Ce nombre de cartes n'est pas autorisé.",
+  "@errorInvalidHandSize": {
+    "description": "Refused move: INVALID_HAND_SIZE"
+  },
+  "errorRoundNotFinished": "La manche n'est pas terminée.",
+  "@errorRoundNotFinished": {
+    "description": "Refused move: ROUND_NOT_FINISHED"
+  },
+  "gameRefreshFailed": "Table peut-être obsolète : l'actualisation a échoué.",
+  "@gameRefreshFailed": {
+    "description": "Banner over a table whose refresh failed; the table stays on screen"
+  },
+  "errorNotInParty": "Vous n'avez pas de place à cette table.",
+  "@errorNotInParty": {
+    "description": "Refused move: NOT_IN_PARTY"
   }
 }
