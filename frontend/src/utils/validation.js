@@ -42,7 +42,6 @@ export function isValidPair(cards) {
   if (cards.length < 2) return false;
 
   // Separate jokers from regular cards
-  const jokers = cards.filter(isJoker);
   const regulars = cards.filter(c => !isJoker(c));
 
   // All jokers is valid
@@ -163,7 +162,6 @@ export function analyzePlay(cards) {
   }
 
   // Try to diagnose why it's invalid
-  const jokers = cards.filter(isJoker);
   const regulars = cards.filter(c => !isJoker(c));
 
   if (regulars.length >= 2) {

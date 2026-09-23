@@ -2,6 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import PlayerHand from '../PlayerHand';
 
+// The hand info line is split across spans ("5" + "cards", "5" | "30"): match an
+// element on its whole text content.
+const byWholeText = (pattern) => (_, element) =>
+  element.tagName === 'SPAN' && pattern.test(element.textContent.trim());
+
 describe('Phase 5: PlayerHand Component Tests', () => {
   describe('Card Display', () => {
     it('should render all cards in hand', () => {
@@ -22,7 +27,7 @@ describe('Phase 5: PlayerHand Component Tests', () => {
       const hand = [0, 14, 28, 42, 52];
       render(<PlayerHand hand={hand} onCardsSelected={vi.fn()} />);
 
-      expect(screen.getByText(/5 cards?/i)).toBeInTheDocument();
+      expect(screen.getByText(byWholeText(/^5 cards$/))).toBeInTheDocument();
     });
   });
 
@@ -78,18 +83,19 @@ describe('Phase 5: PlayerHand Component Tests', () => {
   });
 
   describe('Hand Value Display', () => {
+    // Displayed as "<eligibility> | <penalty>"
     it('should show eligibility value (Joker=0)', () => {
       const hand = [52, 41, 1]; // Joker 3♦ 2♠ = 0+3+2 = 5
       render(<PlayerHand hand={hand} onCardsSelected={vi.fn()} />);
 
-      expect(screen.getByText(/eligibility.*5/i)).toBeInTheDocument();
+      expect(screen.getByText(byWholeText(/^5\s*\|/))).toBeInTheDocument();
     });
 
     it('should show penalty value (Joker=25)', () => {
       const hand = [52, 41, 1]; // Joker 3♦ 2♠ = 25+3+2 = 30
       render(<PlayerHand hand={hand} onCardsSelected={vi.fn()} />);
 
-      expect(screen.getByText(/penalty.*30/i)).toBeInTheDocument();
+      expect(screen.getByText(byWholeText(/\|\s*30$/))).toBeInTheDocument();
     });
 
     it('should highlight ZapZap eligibility when ≤5', () => {
@@ -131,7 +137,7 @@ describe('Phase 5: PlayerHand Component Tests', () => {
   describe('Selected Cards Highlight', () => {
     it('should visually highlight selected cards', () => {
       const hand = [0, 14, 28];
-      const { container } = render(<PlayerHand hand={hand} onCardsSelected={vi.fn()} />);
+      render(<PlayerHand hand={hand} onCardsSelected={vi.fn()} />);
 
       const cards = screen.getAllByRole('button');
       fireEvent.click(cards[0]);

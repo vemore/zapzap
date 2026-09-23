@@ -9,7 +9,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -24,7 +24,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -40,7 +40,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[0, 14, 28]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -57,7 +57,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[0, 14, 28]}
           onPlay={onPlay}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -75,7 +75,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[0, 14, 28]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={false}
@@ -91,7 +91,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[0, 25]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -99,7 +99,8 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         />
       );
 
-      expect(screen.getByText(/invalid.*mixed ranks/i)).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent(/mixed ranks/i);
+      expect(screen.getByRole('button', { name: /play/i })).toBeDisabled();
     });
   });
 
@@ -109,7 +110,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="draw"
           isMyTurn={true}
@@ -124,7 +125,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="draw"
           isMyTurn={true}
@@ -140,7 +141,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -151,13 +152,15 @@ describe('Phase 5: ActionButtons Component Tests', () => {
       expect(drawButton).toBeDisabled();
     });
 
-    it('should call onDraw when clicked', () => {
-      const onDraw = vi.fn();
+    it('should call onDrawFromDeck when clicked', () => {
+      const onDrawFromDeck = vi.fn();
+      const onDrawFromDiscard = vi.fn();
       render(
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={onDraw}
+          onDrawFromDeck={onDrawFromDeck}
+          onDrawFromDiscard={onDrawFromDiscard}
           onZapZap={vi.fn()}
           currentAction="draw"
           isMyTurn={true}
@@ -167,7 +170,31 @@ describe('Phase 5: ActionButtons Component Tests', () => {
       const drawButton = screen.getByRole('button', { name: /draw/i });
       fireEvent.click(drawButton);
 
-      expect(onDraw).toHaveBeenCalled();
+      expect(onDrawFromDeck).toHaveBeenCalled();
+      expect(onDrawFromDiscard).not.toHaveBeenCalled();
+    });
+
+    it('should take the selected discard card instead of drawing from the deck', () => {
+      const onDrawFromDeck = vi.fn();
+      const onDrawFromDiscard = vi.fn();
+      render(
+        <ActionButtons
+          selectedCards={[]}
+          onPlay={vi.fn()}
+          onDrawFromDeck={onDrawFromDeck}
+          onDrawFromDiscard={onDrawFromDiscard}
+          onZapZap={vi.fn()}
+          currentAction="draw"
+          isMyTurn={true}
+          hasDiscardSelection={true}
+          hasDiscardCards={true}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /take/i }));
+
+      expect(onDrawFromDiscard).toHaveBeenCalled();
+      expect(onDrawFromDeck).not.toHaveBeenCalled();
     });
   });
 
@@ -177,7 +204,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -193,7 +220,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -210,7 +237,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -228,7 +255,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={onZapZap}
           currentAction="play"
           isMyTurn={true}
@@ -247,7 +274,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -255,8 +282,27 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         />
       );
 
+      // Eligible: the button pulses in amber; not eligible: plain slate
       const zapButton = screen.getByRole('button', { name: /zapzap/i });
-      expect(zapButton.className).toMatch(/highlight|eligible|primary/i);
+      expect(zapButton.className).toMatch(/animate-pulse/);
+      expect(zapButton.className).toMatch(/bg-amber-400/);
+    });
+
+    it('should not highlight zapzap button when not eligible', () => {
+      render(
+        <ActionButtons
+          selectedCards={[]}
+          onPlay={vi.fn()}
+          onDrawFromDeck={vi.fn()}
+          onZapZap={vi.fn()}
+          currentAction="play"
+          isMyTurn={true}
+          zapZapEligible={false}
+        />
+      );
+
+      const zapButton = screen.getByRole('button', { name: /zapzap/i });
+      expect(zapButton.className).not.toMatch(/animate-pulse/);
     });
   });
 
@@ -266,7 +312,7 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={true}
@@ -281,30 +327,30 @@ describe('Phase 5: ActionButtons Component Tests', () => {
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="play"
           isMyTurn={false}
         />
       );
 
-      expect(screen.getByText(/waiting/i)).toBeInTheDocument();
+      expect(screen.getByText(/waiting for other players/i)).toBeInTheDocument();
+      expect(screen.queryByText(/your turn/i)).not.toBeInTheDocument();
     });
 
     it('should show current action', () => {
-      const { container } = render(
+      render(
         <ActionButtons
           selectedCards={[]}
           onPlay={vi.fn()}
-          onDraw={vi.fn()}
+          onDrawFromDeck={vi.fn()}
           onZapZap={vi.fn()}
           currentAction="draw"
           isMyTurn={true}
         />
       );
 
-      const turnIndicator = container.querySelector('.turn-indicator');
-      expect(turnIndicator.textContent).toMatch(/draw/i);
+      expect(screen.getByText(/your turn - draw a card/i)).toBeInTheDocument();
     });
   });
 });

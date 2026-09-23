@@ -2,10 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { History, Globe, User, Trophy, Calendar, Users, Loader, ChevronRight } from 'lucide-react';
 import { apiClient } from '../../services/api';
-import { useAuth } from '../../contexts/AuthContext';
 
 function GameHistory() {
-  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('personal');
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);

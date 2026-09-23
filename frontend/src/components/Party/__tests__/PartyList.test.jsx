@@ -6,6 +6,14 @@ import { apiClient } from '../../../services/api';
 
 vi.mock('../../../services/api');
 
+// PartyList reads the signed-in user from the auth context
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'user-1', username: 'TestUser' }, logout: vi.fn() }),
+}));
+
+// The header widget polls its own endpoint; it is not what these tests are about
+vi.mock('../ConnectedPlayers', () => ({ default: () => null }));
+
 describe('Phase 3: PartyList Component Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();

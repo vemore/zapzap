@@ -13,8 +13,8 @@
 | Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | 7/10 fail (500 instead of 201) | no |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | 97 pass, 1 fail | yes, failing test skipped |
 | Native clippy | `cargo clippy --all-targets` | deny-level errors | no |
-| Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | 122/279 fail (13 files) | no |
-| Frontend lint | `npm run lint` | 59 errors, 9 warnings | no |
+| Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |
+| Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug` |
 | Legacy Node jest (`tests/unit`, `tests/integration`) | `npm test` (root) | not tracked | no |
@@ -37,9 +37,9 @@
 
 ### Frontend (`frontend/`)
 - vitest config inside `frontend/vite.config.js:19-30` (`happy-dom`, globals, setup `src/test/setup.js` mocking `EventSource` and `localStorage`). Details in [[Frontend]].
-- Failures likely come from tests written against an older UI/API shape (e.g. `src/__tests__/compliance/README.compliance.test.js` checks rules "specified in README.md (lines 315-428)").
-- Lint errors are mostly `no-unused-vars` (e.g. `frontend/src/utils/validation.js:45`, `:166`), rule set at `frontend/eslint.config.js:26`.
-- CI gate (`frontend` job): Node 24, `npm ci`, `npm run build` only; comment above the build step: lint and `vitest run` "are red on master today ... they join this job once green".
+- Component and flow tests render the real components against a mocked `services/api` (`apiClient.get`/`post`), a mocked `useAuth` or a real `AuthProvider` over a mocked `services/auth`, and a mocked `useSSE`; `src/test/gameState.js` builds the `GET /game/:partyId/state` body the `GameBoard` and `GameFlow` tests serve.
+- Lint: `npm run lint` exits 0; the 9 remaining findings are `react-hooks/exhaustive-deps` warnings, which do not fail it. Rule set and its JSX exceptions at `frontend/eslint.config.js`.
+- CI gate (`frontend` job): Node 24, `npm ci`, `npm run lint`, `npx vitest run`, `npm run build`. The job keeps its `name:` "Frontend — build", which branch protection pins.
 
 ### Legacy Node backend (root)
 - `npm test` → `jest` (`package.json:10`); `jest.config.js:18,21,27,35` sets `clearMocks`, `collectCoverage: true` (writes `coverage/` at the root on every run), `coverageProvider: "v8"`. Tests: `tests/unit/**` (entities, use cases, JwtService, DB connection) and `tests/integration/**` (repositories, migrations) — all against `src/` (legacy).
@@ -55,7 +55,7 @@
 | `scope` | always | self-test, then flags | 5 min |
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit tests | 30 min |
 | `native` | `native != 'false'` | fmt, tests (1 skipped) | 30 min |
-| `frontend` | `frontend != 'false'` | npm ci, build | 15 min |
+| `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
@@ -96,14 +96,14 @@
 - Rust API tests have no schema: give the backend a self-created schema (sqlx migrations or the Node DDL from `src/infrastructure/database/`), then re-add `--tests` to the `rust` job.
 - Native thibot ZapZap-decision test red: decide which side is wrong, remove the `--skip`.
 - Native clippy errors: fix (start with the two `erasing_op`), then gate clippy in CI.
-- Frontend vitest red (122/279) and frontend lint red (59 errors): triage/clean, then add to the `frontend` job.
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
 ### Pre-commit gate
-- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, `npm run lint` and `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."
 - Rust 1.92 pinned because the latest stable clippy added a lint 1.92 lacks (`sort_by_key`) and the image's former `rust:1.83` could not parse `base64ct` 1.8.1 (edition 2024) — commit message of the toolchain pin, folded into 1e063d6; comment `zapzap-rust/rust-toolchain.toml:1-2`.
 - The scope classifier fails open by design: "Being wrong must cost a slow run, never an untested merge" (`scripts/ci_scope.sh:10-12`).
 - The legacy Node suites are excluded from CI (`scripts/ci_scope.sh`) on the premise that the Rust backend is the target. Production still runs Node, so its changes reach production ungated until the switch — a known gap ([[KnownLimits]]).
+- **Frontend lint and vitest made green and gated (2026-09-23).** The 122 red tests were written against an older UI: English labels (the auth forms are French now), class-name hooks (`.player-card`, `.player-row`) that no longer exist, a prop-driven `GameBoard` that became the `/game/:partyId` route loading its own state, `ActionButtons`' `onDraw` split into `onDrawFromDeck`/`onDrawFromDiscard`, and a hand size that moved from party creation to `HandSizeSelector`. They were rewritten against the current components with their intent kept; the five counteract assertions were aligned on `GAME_RULES.md`'s `hand + (active players − 1) × 5`, which the code already applied. Only the three `CreateParty` hand-size tests were dropped (the field is gone), replaced by `HandSizeSelector.test.jsx`.

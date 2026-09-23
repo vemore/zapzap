@@ -29,7 +29,6 @@ function RoundEnd({ roundData, onContinue, disabled = false }) {
     gameFinished = false,
     winner = null,
     wasCounterActed = false,
-    counterActedByPlayerIndex = null
   } = roundData;
 
   if (players.length === 0) {

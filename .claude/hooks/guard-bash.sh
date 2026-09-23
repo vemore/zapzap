@@ -207,6 +207,7 @@ fi
 
 if printf '%s\n' "$paths" | grep -qE '^frontend/'; then
     [ -d "$ROOT/frontend/node_modules" ] || needs_setup "frontend/node_modules is missing (this tree was never set up)" "npm ci --prefix $ROOT/frontend"
+    run_gate "npm run lint (frontend)" bash -c "cd '$ROOT/frontend' && npm run lint --silent"
     run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
 fi
 

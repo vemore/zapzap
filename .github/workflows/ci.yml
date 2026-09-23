@@ -146,8 +146,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      # `npm run lint` and `vitest run` are red on master today: wip entries, and
-      # they join this job once green.
+      # The job's `name:` stays "Frontend — build": branch protection pins it (see `image`).
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests (vitest)
+        run: npx vitest run
       - run: npm run build
 
   image:

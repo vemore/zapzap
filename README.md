@@ -338,7 +338,7 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 
 `.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
-unit tests), native engine (fmt, tests), frontend (build), images (docker build of the
+unit tests), native engine (fmt, tests), frontend (lint, vitest, build), images (docker build of the
 backend and the frontend), hooks (the Claude Code hooks self-test), Flutter client (analyze,
 tests, web and debug apk builds). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:

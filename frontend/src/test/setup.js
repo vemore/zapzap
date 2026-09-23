@@ -1,4 +1,4 @@
-import { expect, afterEach } from 'vitest';
+import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 // Mock EventSource for SSE testing
-global.EventSource = class EventSource {
+globalThis.EventSource = class EventSource {
   constructor(url) {
     this.url = url;
     this.readyState = 1;
@@ -33,7 +33,7 @@ class LocalStorageMock {
   }
 
   getItem(key) {
-    return this.store.hasOwnProperty(key) ? this.store[key] : null;
+    return Object.hasOwn(this.store, key) ? this.store[key] : null;
   }
 
   setItem(key, value) {
@@ -54,4 +54,4 @@ class LocalStorageMock {
   }
 }
 
-global.localStorage = new LocalStorageMock();
+globalThis.localStorage = new LocalStorageMock();

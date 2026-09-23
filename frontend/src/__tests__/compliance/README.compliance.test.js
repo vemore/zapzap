@@ -208,6 +208,7 @@ describe('README Compliance: ZapZap Rules (README lines 370-396)', () => {
     });
   });
 
+  // The penalty is hand + ((active players − 1) × 5): GAME_RULES.md, Final Scoring.
   describe('ZapZap Counteract (README lines 387-396)', () => {
     it('should apply counteract penalty when another player has lower hand', () => {
       const hands = [
@@ -218,13 +219,13 @@ describe('README Compliance: ZapZap Rules (README lines 370-396)', () => {
       const scores = calculateFinalScore(hands, '2');
 
       // Bob called ZapZap but Alice has lower hand (3 < 4)
-      // Bob gets: hand + (players × 5) = 4 + (2 × 5) = 14
-      expect(scores['2']).toBe(14);
+      // Bob gets: hand + ((players − 1) × 5) = 4 + (1 × 5) = 9
+      expect(scores['2']).toBe(9);
       // Alice gets 0 (lowest hand)
       expect(scores['1']).toBe(0);
     });
 
-    it('should apply correct penalty formula: hand + (players × 5)', () => {
+    it('should apply correct penalty formula: hand + ((players − 1) × 5)', () => {
       // Test with different player counts
       const hands = [
         { userId: '1', hand: [0, 14] },          // Alice: 3 points
@@ -234,8 +235,9 @@ describe('README Compliance: ZapZap Rules (README lines 370-396)', () => {
 
       const scores = calculateFinalScore(hands, '2');
 
-      // Bob: 4 + (3 × 5) = 19
-      expect(scores['2']).toBe(19);
+      // Bob: 4 + ((3 − 1) × 5) = 14
+      expect(scores['2']).toBe(14);
+      expect(calculateCounteractPenalty(4, 3)).toBe(14);
     });
 
     it('should include Joker penalty (25) in counteract calculation', () => {
@@ -247,8 +249,8 @@ describe('README Compliance: ZapZap Rules (README lines 370-396)', () => {
       const scores = calculateFinalScore(hands, '2');
 
       // Bob called with Joker, but Alice has lower non-joker hand
-      // Bob gets: 25 (joker penalty) + (2 × 5) = 35
-      expect(scores['2']).toBe(35);
+      // Bob gets: 25 (joker penalty) + ((2 − 1) × 5) = 30
+      expect(scores['2']).toBe(30);
     });
   });
 });

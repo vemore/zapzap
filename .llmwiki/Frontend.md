@@ -2,7 +2,7 @@
 
 > Scope: the React + Vite single-page client in `frontend/` — structure, routing, API and SSE clients, Google sign-in, build, tests, image.
 > Related: [[Architecture]] · [[Api]] · [[Backend]] · [[Testing]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -78,13 +78,13 @@
 
 ### Dev server and build
 - Vite dev proxy forwards `/api` and `/suscribeupdate` to `http://localhost:9999` — `vite.config.js:7-18`. Run the Rust backend (or legacy Node) on 9999, then `npm run dev`.
-- ESLint flat config: recommended + react-hooks + react-refresh, `no-unused-vars` error except `^[A-Z_]` — `frontend/eslint.config.js:7-28`.
+- ESLint flat config: recommended + react-hooks + react-refresh; `no-unused-vars` errors except variables matching `^([A-Z_]|motion$)` and arguments matching `^[A-Z_]` (core ESLint cannot see a JSX use: `<Icon>`, `<motion.div>`); Node globals allowed in `src/test/` and `__tests__/`; the vendored `public/elements.cardmeister.full.js` is ignored — `frontend/eslint.config.js`.
 
 ### Tests (vitest)
 - Config lives in `vite.config.js:19-30`: `globals: true`, `environment: 'happy-dom'`, setup `./src/test/setup.js`.
 - `src/test/setup.js` mocks `EventSource` (`setup.js:11-23`) and `localStorage` (`setup.js:26+`), and calls `cleanup()` after each test.
-- Test files: component tests under `components/*/__tests__/`, `hooks/__tests__/useSSE.test.js`, `services/__tests__/`, `utils/__tests__/`, `__tests__/integration/GameFlow.test.jsx`, and `__tests__/compliance/README.compliance.test.js` (asserts rules "specified in README.md (lines 315-428)").
-- State (2026-09-22): `npx vitest run` → 13 files failed, 122 of 279 tests failed, 157 passed; `npm run lint` → 59 errors, 9 warnings (mostly `no-unused-vars`, e.g. `src/utils/validation.js:45`, `:166`). Neither runs in CI; see [[Testing]].
+- Test files: component tests under `components/*/__tests__/`, `hooks/__tests__/useSSE.test.js`, `services/__tests__/`, `utils/__tests__/`, `__tests__/integration/GameFlow.test.jsx` (the real `GameBoard` driven through a scripted sequence of API states), and `__tests__/compliance/README.compliance.test.js` (asserts rules "specified in README.md (lines 315-428)"). `src/test/gameState.js` builds the game-state body those tests serve.
+- State (2026-09-23): `npx vitest run` → 21 files, 294 tests, all green; `npm run lint` → 0 errors, 9 `react-hooks/exhaustive-deps` warnings. Both run in the `frontend` CI job, lint in the commit hook too; see [[Testing]].
 
 ### Docker image and nginx
 - `frontend/Dockerfile`: stage 1 `node:20-alpine`, `npm ci`, `npm run build` (`Dockerfile:4-26`); stage 2 `nginx:alpine` serving `/usr/share/nginx/html` on port 80 with a `wget` healthcheck (`Dockerfile:29-45`).
@@ -96,4 +96,5 @@
 - The frontend was rewritten from vanilla JS/EJS (`views/`, `public/` at the root, legacy) to React + Vite; the root docs were never updated.
 - Google OAuth was added in commit 6cca2b1 ("add Google OAuth authentication support") against the Node backend; the Rust rewrite (e4f83da) did not port the route. A local wip entry about Google sign-up asks to check what works end to end.
 - `VITE_API_URL` is optional by design: "In production (no VITE_API_URL), the app will use window.location.origin" (`frontend/Dockerfile:8-9,25`).
-- Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red; each has a wip entry and "joins this job once green" (comment in the `frontend` job of `.github/workflows/ci.yml`).
+- Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red. They joined the `frontend` job, and lint the commit hook, on 2026-09-23 once green ([[Testing]], Decisions).
+- `PlayingCard` called `useEffect` after its joker early return (`react-hooks/rules-of-hooks`): a card switching between joker and standard would have broken React's hook order. The effect now runs before the branch (2026-09-23).

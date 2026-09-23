@@ -16,9 +16,20 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
   const height = Math.round(width * 1.4); // Standard playing card ratio
   // Calculate border radius based on card width (~5% of width, minimum 2px)
   const borderRadius = Math.max(2, Math.round(width * 0.05));
+  const joker = isJoker(cardId);
+  const cid = joker ? null : cardIdToCid(cardId);
+
+  // Update cardmeister attributes via ref (web components in React).
+  // Called before the joker branch: a hook must run on every render, or a card
+  // switching between joker and standard breaks React's hook order.
+  useEffect(() => {
+    if (cardRef.current && cid) {
+      cardRef.current.setAttribute('cid', cid);
+    }
+  }, [cid]);
 
   // Handle Joker cards with custom SVG
-  if (isJoker(cardId)) {
+  if (joker) {
     const jokerType = getJokerType(cardId);
     const jokerSrc = jokerType === 'red' ? '/joker-red.svg' : '/joker-black.svg';
 
@@ -43,15 +54,6 @@ function PlayingCard({ cardId, selected = false, onClick, disabled = false, widt
   }
 
   // Handle standard cards with cardmeister web component
-  const cid = cardIdToCid(cardId);
-
-  // Update cardmeister attributes via ref (web components in React)
-  useEffect(() => {
-    if (cardRef.current) {
-      cardRef.current.setAttribute('cid', cid);
-    }
-  }, [cid]);
-
   return (
     <div
       className={`playing-card-wrapper ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}

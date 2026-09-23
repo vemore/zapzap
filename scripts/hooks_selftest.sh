@@ -250,10 +250,17 @@ unstage "src/api/app.js"
 stage "frontend/src/App.jsx"
 tree_commit "a frontend change in a tree never set up" 2 "npm ci --prefix"
 mkdir -p "$TREE/frontend/node_modules"
-stub_tool npm 0
-tree_commit "a frontend change whose build passes" 0
-stub_tool npm 1
+stub_npm() {  # lint exit code, build exit code
+    printf '#!/bin/sh\necho "stub npm $*"\ncase "$2" in\n    lint) exit %s ;;\n    build) exit %s ;;\nesac\nexit 0\n' "$1" "$2" > "$TOOLS/npm"
+    chmod +x "$TOOLS/npm"
+}
+stub_npm 0 0
+tree_commit "a frontend change whose lint and build pass" 0
+stub_npm 1 0
+tree_commit "a frontend change whose lint fails" 2 "npm run lint (frontend)"
+stub_npm 0 1
 tree_commit "a frontend change whose build fails" 2 "npm run build (frontend)"
+stub_tool npm 1
 git -C "$TREE" rm -q --cached frontend/src/App.jsx && rm -rf "$TREE/frontend"
 # The Flutter client. npm and cargo stay red from here on: a frontend-flutter/ change must
 # not select the frontend/ gate (`^frontend/` needs the slash) nor a cargo one.
