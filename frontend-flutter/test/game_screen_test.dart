@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
@@ -73,6 +74,18 @@ void main() {
   Future<void> tapLoneCard(WidgetTester tester) async {
     await tester.tap(find.byKey(CardFan.itemKey(0)));
     await tester.pumpAndSettle();
+  }
+
+  /// How many lines the turn banner is drawn on.
+  int bannerLines(WidgetTester tester) {
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const Key('turnBanner')),
+        matching: find.byType(RichText),
+      ),
+    );
+    final line = paragraph.getFullHeightForCaret(const TextPosition(offset: 0));
+    return (paragraph.size.height / line).round();
   }
 
   /// The board is still there: the players, the felt and the hand.
@@ -550,10 +563,7 @@ void main() {
       expect(find.byType(GameHand), findsNothing);
 
       // The call held: the green banner, no penalty.
-      expect(
-        find.text('MediumBot1 a réussi son ZapZap !'),
-        findsOneWidget,
-      );
+      expect(find.text('MediumBot1 a réussi son ZapZap !'), findsOneWidget);
       expect(find.textContaining('contré'), findsNothing);
 
       // Lowest round score first, and the badges of the player who closed.
@@ -577,9 +587,7 @@ void main() {
       expect(backend.paths, contains('/api/game/p1/nextRound'));
     });
 
-    testWidgets('a counteracted ZapZap spells out the penalty', (
-      tester,
-    ) async {
+    testWidgets('a counteracted ZapZap spells out the penalty', (tester) async {
       await pumpGame(tester, zapZapCounteracted());
 
       expect(find.text('Manche 4'), findsOneWidget);
@@ -720,6 +728,40 @@ void main() {
 
       expect(find.text('Partie pas encore commencée'), findsOneWidget);
     });
+
+    testWidgets('the owner starting the party brings the board, no reload', (
+      tester,
+    ) async {
+      final backend = FakeGameBackend(state: gameSnapshotJson(gameState: null));
+      final transport = await pumpGame(tester, backend);
+      expect(find.text('Partie pas encore commencée'), findsOneWidget);
+
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'partyStarted',
+        'type': 'partyUpdate',
+      });
+
+      expect(find.text('Partie pas encore commencée'), findsNothing);
+      expectBoardStanding(tester);
+    });
+
+    testWidgets('the "not started" page retries by hand', (tester) async {
+      // For a `partyStarted` this client missed while its channel was down.
+      final backend = FakeGameBackend(state: gameSnapshotJson(gameState: null));
+      await pumpGame(tester, backend);
+
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+      );
+      await tester.tap(find.byKey(const Key('retry-game')));
+      await tester.pumpAndSettle();
+
+      expectBoardStanding(tester);
+    });
   });
 
   // Two parallel pull requests shipped clipping bugs the suite's default
@@ -842,11 +884,7 @@ void main() {
                 currentTurn: 0,
                 currentAction: 'finished',
                 gameFinished: true,
-                winner: {
-                  'playerIndex': 0,
-                  'username': 'Vincent',
-                  'score': 12,
-                },
+                winner: {'playerIndex': 0, 'username': 'Vincent', 'score': 12},
                 eliminatedPlayers: [1, 2],
                 allHands: {
                   '0': [5],
@@ -883,20 +921,110 @@ void main() {
         expect(find.text('Éliminé'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
+
+      testWidgets('not my turn fits at a text scale of $scale', (tester) async {
+        // The longest waiting banner a username can make: two lines.
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              players: [
+                gamePlayersJson[0],
+                {
+                  'playerIndex': 1,
+                  'userId': 'b1',
+                  'username': 'AnExceptionallyLongUsernameForABot',
+                },
+                gamePlayersJson[2],
+              ],
+              gameState: gameStateJson(
+                currentTurn: 1,
+                currentAction: 'play',
+                playerHand: [0, 1, 2, 3, 4, 5, 6],
+                lastCardsPlayed: [7, 8, 9],
+              ),
+            ),
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        expectBoardStanding(tester);
+        expect(enabled(tester, 'play-cards'), isFalse);
+        expect(bannerLines(tester), 2);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the tallest action bar fits at a text scale of $scale', (
+        tester,
+      ) async {
+        // A two-line turn banner over the invalid-play reason box: the
+        // most the bar ever stacks above the buttons.
+        await pumpGame(
+          tester,
+          playing(playerHand: [0, 1, 2, 3, 4, 14, 30], lastCardsPlayed: [7]),
+          size: phone,
+          textScale: scale,
+        );
+        selectCard(tester, 0);
+        selectCard(tester, 14);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('invalidPlayReason')), findsOneWidget);
+        expect(bannerLines(tester), 2);
+        expectBoardStanding(tester);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a Golden Score hand of 10 fits at a text scale of $scale', (
+        tester,
+      ) async {
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              gameState: gameStateJson(
+                currentTurn: 0,
+                currentAction: 'play',
+                isGoldenScore: true,
+                eliminatedPlayers: [2],
+                playerHand: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                otherPlayersHandSizes: {'1': 10, '2': 0},
+              ),
+            ),
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        expectBoardStanding(tester);
+        expect(
+          tester.widget<CardFan>(find.byType(CardFan)).cards,
+          hasLength(10),
+        );
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 
-  testWidgets('a wide screen puts the players beside the felt', (tester) async {
-    await pumpGame(
-      tester,
-      playing(lastCardsPlayed: [7, 8]),
-      size: const Size(1280, 900),
-    );
+  for (final scale in [1.0, 1.5]) {
+    testWidgets(
+      'a wide screen puts the players beside the felt at a text scale of '
+      '$scale',
+      (tester) async {
+        await pumpGame(
+          tester,
+          playing(lastCardsPlayed: [7, 8]),
+          size: const Size(1280, 900),
+          textScale: scale,
+        );
 
-    expectBoardStanding(tester);
-    final table = tester.getTopLeft(find.byType(GamePlayerTable));
-    final felt = tester.getTopLeft(find.byType(GameTableArea));
-    expect(felt.dx, greaterThan(table.dx));
-    expect(tester.takeException(), isNull);
-  });
+        expectBoardStanding(tester);
+        final table = tester.getTopLeft(find.byType(GamePlayerTable));
+        final felt = tester.getTopLeft(find.byType(GameTableArea));
+        expect(felt.dx, greaterThan(table.dx));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
