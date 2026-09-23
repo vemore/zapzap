@@ -42,9 +42,9 @@ while IFS= read -r path; do
         # The React client, and its own image.
         frontend/*) frontend=true; image=true ;;
 
-        # The Flutter client (Android + PWA). No image: it is not deployed yet
-        # (.llmwiki/FrontendFlutter.md). `frontend/*` does not match it: the slash.
-        frontend-flutter/*) flutter=true ;;
+        # The Flutter client (Android + PWA), and the image the PWA is served from
+        # (.llmwiki/Deployment.md). `frontend/*` does not match it: the slash.
+        frontend-flutter/*) flutter=true; image=true ;;
 
         # The reverse proxy configuration, baked into no image but mounted by compose.
         nginx/*) image=true ;;
@@ -52,6 +52,9 @@ while IFS= read -r path; do
         # The Claude Code hooks and the scripts scripts/hooks_selftest.sh exercises.
         .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh)
             hooks=true ;;
+
+        # The smoke test the image job runs against the Flutter PWA image.
+        scripts/pwa_image_smoke.sh) image=true ;;
 
         # The legacy Node backend (src/ and its root files): no job tests it, it is
         # no longer deployed (.llmwiki/Architecture.md).

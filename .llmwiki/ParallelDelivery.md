@@ -3,7 +3,7 @@
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
 > risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -20,6 +20,10 @@
   hook refuses `--admin` instead. Read it with `gh api repos/vemore/zapzap/branches/master/protection`.
 - Merged branches are deleted on GitHub; the local copy then reads `[gone]` and the hook
   refuses commits on it.
+- The required contexts are the five job **names**, verbatim, so a workflow that renames a
+  job blocks every pull request until the name comes back ([[Testing]]).
+  `gh pr view <n> --json mergeStateStatus` reads `BLOCKED` while `gh pr checks` shows
+  everything green — that combination means a missing context, not a failing one.
 
 ### Worktrees
 

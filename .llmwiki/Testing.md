@@ -2,7 +2,7 @@
 
 > Scope: every test suite in the repo, how to run it, its current state, and what CI (`.github/workflows/ci.yml`) runs, skips and why — including the `scope` job.
 > Related: [[Backend]] · [[NativeEngine]] · [[Frontend]] · [[Architecture]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -19,7 +19,7 @@
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug` |
 | Legacy Node jest (`tests/unit`, `tests/integration`) | `npm test` (root) | not tracked | no |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
-| Docker images | `docker build zapzap-rust`, `docker build frontend` | green | yes |
+| Docker images and the proxy config | `docker build zapzap-rust`, `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
 
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
@@ -56,10 +56,19 @@
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit tests | 30 min |
 | `native` | `native != 'false'` | fmt, tests (1 skipped) | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, build | 15 min |
-| `image` | `image != 'false'` | `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-frontend:ci frontend` | 40 min |
+| `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
-| `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/`, `build apk --debug` (runner's Android SDK) | 30 min |
+| `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
 
+- **A job's `name:` is its check context, and five of them are pinned by branch
+  protection**: `Rust backend — fmt, clippy, test`, `Native engine — fmt, build, test`,
+  `Frontend — build`, `Images — backend and frontend build`, `Hooks — self-test`
+  ([[ParallelDelivery]]). Renaming one is not cosmetic: the required context stops
+  reporting, and every pull request is `BLOCKED` for ever with no failing check to show
+  why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
+  #36, whose `image` job had been renamed to mention the Flutter PWA. Changing a pinned name
+  on purpose means changing branch protection in the same breath, which is the user's
+  setting to change.
 - Every downstream `if:` starts with `!cancelled()` and tests `!= 'false'` so that a failed or output-less `scope` runs everything, and a job skipped by `if:` still reports Success for branch protection; no workflow-level `paths:` filter, because a filtered required check never reports (the comment above the `rust` job).
 - Rust caching via `Swatinem/rust-cache@v2` per crate (`rust` and `native` jobs).
 
@@ -74,8 +83,9 @@
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
 | `frontend/*` | frontend, image |
-| `frontend-flutter/*` | flutter (no image: the client is not deployed) |
+| `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]) |
 | `nginx/*` | image |
+| `scripts/pwa_image_smoke.sh` | image |
 | legacy: `src/*`, `tests/*`, `views/*`, `public/*`, `app.js`, `logger.js`, jest/playwright/eslint configs, root `package*.json` | none |
 | anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
 

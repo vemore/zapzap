@@ -1,0 +1,40 @@
+# Build context of frontend-flutter/Dockerfile: the sources the web build needs, and
+# nothing that a local `flutter build` or IDE leaves behind — those would invalidate the
+# image layers and, for build/, shadow the bundle built inside the image.
+
+# Flutter/Dart build output and caches
+.dart_tool
+build
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache
+.pub
+coverage
+.last_build_id
+.widget_preview
+
+# Android build output (the image builds the web bundle only)
+android/app/debug
+android/app/profile
+android/app/release
+android/.gradle
+android/local.properties
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation
+*.md
+
+# IDE / OS
+.idea
+.vscode
+*.iml
+.DS_Store
+*.swp
+*~

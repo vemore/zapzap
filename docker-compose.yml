@@ -51,6 +51,22 @@ services:
       retries: 3
       start_period: 5s
 
+  # Flutter PWA Service (served under /app/ by the proxy)
+  frontend-flutter:
+    build:
+      context: ./frontend-flutter
+      dockerfile: Dockerfile
+    container_name: zapzap-frontend-flutter
+    restart: unless-stopped
+    networks:
+      - zapzap-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
@@ -60,6 +76,10 @@ services:
       - "${PROXY_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # No condition on frontend-flutter, deliberately: a PWA that fails its health check
+    # would otherwise hold zapzap-proxy in Created and take the whole site down, since
+    # deploy.sh has already stopped the old containers. The /app/ location resolves the
+    # PWA per request instead (nginx/nginx.conf), so a broken PWA is a 502 on /app/ only.
     depends_on:
       backend:
         condition: service_healthy

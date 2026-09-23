@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built and started, where its data and secrets
 > live, and the gap between what is deployed and what the project targets.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -26,18 +26,62 @@ part of this deployment.
 |---|---|---|---|
 | `zapzap-backend` | `zapzap-backend`, built from the root `Dockerfile` | `node scripts/docker-entrypoint.js` | `data/ → /app/data`, `logs/ → /app/logs` |
 | `zapzap-frontend` | `zapzap-frontend`, built from `frontend/Dockerfile` | nginx serving the Vite build | — |
+| `zapzap-frontend-flutter` | `zapzap-frontend-flutter`, built from `frontend-flutter/Dockerfile` | nginx serving the Flutter web bundle under `/app/` | — |
 | `zapzap-proxy` | `nginx:alpine` | nginx | `nginx/nginx.conf → /etc/nginx/conf.d/default.conf` |
 
-All three come from the root `docker-compose.yml`; the backend and frontend containers were
-created 2026-04-23. **Production runs the legacy Node backend (`src/`), not `zapzap-rust/`**,
-which has its own `Dockerfile` and `docker-compose.yml` and has never been deployed.
+All four come from the root `docker-compose.yml`; the backend and frontend containers were
+created 2026-04-23, and `zapzap-frontend-flutter` was declared 2026-09-23 — it is **not on
+the NAS until that change is deployed**. **Production runs the legacy Node backend (`src/`),
+not `zapzap-rust/`**, which has its own `Dockerfile` and `docker-compose.yml` (the same four
+services) and has never been deployed.
+
+### The Flutter PWA under `/app/`
+
+- `nginx/nginx.conf` sends `/app` to a relative 301 to `/app/`, and proxies `/app/` to the
+  `frontend-flutter` container with the URI unchanged (`nginx/nginx.conf:12-14`, `:91-113`).
+  The React client keeps `/`, the API keeps `/api/`: one domain, so the PWA reaches the API
+  without CORS.
+- The image (`frontend-flutter/Dockerfile`) downloads the Flutter SDK **pinned to 3.47.2**
+  and checks its sha256 (the version `.github/workflows/ci.yml` pins), runs
+  `flutter build web --release --base-href /app/`, and copies the bundle into
+  `/usr/share/nginx/html/app` behind `frontend-flutter/nginx.conf`.
+- That conf: the SPA fallback `try_files $uri $uri/ /app/index.html` (a deep link such as
+  `/app/parties` is served the app, never a 404); `index.html`, `flutter_bootstrap.js` and
+  `flutter_service_worker.js` answer with `Cache-Control: no-cache, no-store,
+  must-revalidate` and the rest of the bundle with `no-cache`, because no Flutter web output
+  file is content-hashed and Flutter 3.47's service worker caches nothing (it unregisters
+  itself on activate); anything under `/app/` with a file extension, and anything under
+  `/app/assets/`, `/app/canvaskit/` or `/app/icons/`, 404s instead of falling back — a
+  missing manifest icon answered with HTML costs the install prompt silently;
+  `/healthz` answers the container health check.
+- The bundle carries CanvasKit itself (`--no-web-resources-cdn`): the engine is served from
+  `/app/canvaskit/`, not from `www.gstatic.com`, so a client that cannot reach Google still
+  gets an app rather than a blank page. The flag is in `frontend-flutter/Dockerfile` **and**
+  in the CI `flutter` job, which must build what the image builds.
+- **The PWA cannot take the site down.** `location /app/` resolves `frontend-flutter`
+  through Docker's DNS (`resolver 127.0.0.11`) with the host in a variable, so nginx starts
+  whether or not the container exists and answers 502 on `/app/` alone. An `upstream` block
+  would be resolved once at start-up and a missing container would stop nginx altogether
+  (`host not found in upstream`), and a `depends_on: frontend-flutter: service_healthy`
+  would hold `zapzap-proxy` in `Created` after `deploy.sh` has already stopped the old
+  containers — `/` and `/api/health` both unreachable, with `restart: unless-stopped`
+  powerless. Neither is used: there is deliberately **no** condition on `frontend-flutter`.
+  Should a proxy ever sit in `Created` after a failed dependency, `docker start
+  zapzap-proxy` restores `/` and `/api/` at once.
+- CI builds the image and runs `scripts/pwa_image_smoke.sh` against it (the `image` job):
+  `/app/`, the deep links, the manifest scope, the icons, the cache headers.
 
 ### How a deploy happens
 
 `deploy.sh` at the root, run in the NAS clone: `git pull`, `docker-compose down`,
 `docker-compose build`, `docker-compose up -d`, a 15 s wait, `docker-compose ps`, and
 `curl http://localhost:80/api/health`. `set -e`: it stops at the first failure. The site is
-down during the build.
+down during the build. It builds and starts whatever the compose file declares, so the
+`frontend-flutter` service needs no change to it — but its first build downloads the Flutter
+SDK and adds a few minutes and **~3.6 GB** of Docker storage to the host (measured
+2026-09-23: builder stage 3.47 GB — SDK 2.3 GB, pub cache 650 MB —, served image 107 MB, web
+bundle 42 MB). The `deploy` skill's preflight wants ≥ 6 GB free and ≥ 2 GB free RAM, since
+`dart2js` needs about 2 GB and would otherwise be killed mid-build.
 
 ### The production database
 
@@ -57,6 +101,12 @@ and leaves the file in place. Backups `data/*.db.bak-*` are gitignored and refus
   `docker restart`) patched the running container outside git: the next `deploy.sh` rebuild
   silently reverted it. It is not used any more; every change reaches production through
   `master` and `deploy.sh`.
+- **The PWA is served on the production domain, under `/app/` (2026-09-23).** A separate
+  host or port would have made the API cross-origin, and the Node backend answers only the
+  origins of `ALLOWED_ORIGINS` (`src/api/server.js:32-57`); under `/app/` the Flutter client
+  resolves its API base from `Uri.base.origin` and nothing about CORS changes
+  ([[FrontendFlutter]]). The bundle is built in an image of its own rather than copied into
+  the React one, so each client is built, deployed and rolled back on its own.
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
   Google login, bot creation, authorization) — tracked in `wip/`.

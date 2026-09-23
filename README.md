@@ -109,14 +109,16 @@ The application will be available at **http://localhost** (port 80).
 
 ### Docker Services
 
-The Docker setup includes three services:
+The Docker setup includes four services:
 
 - **nginx** (Reverse Proxy) - Routes requests to appropriate services
-  - Port 80 → Frontend and API
+  - Port 80 → Frontend, Flutter PWA and API
 - **backend** (Node.js API) - Express API server
   - Internal port 9999
 - **frontend** (React App) - Vite-built React application
-  - Internal port 80
+  - Internal port 80, served at `/`
+- **frontend-flutter** (Flutter PWA) - the Flutter web bundle, built with `--base-href /app/`
+  - Internal port 80, served at `/app/`
 
 ### Configuration
 
@@ -147,6 +149,7 @@ docker-compose logs -f
 # View logs (specific service)
 docker-compose logs -f backend
 docker-compose logs -f frontend
+docker-compose logs -f frontend-flutter
 docker-compose logs -f nginx
 
 # Restart services
@@ -305,7 +308,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics; no admin yet, not deployed; Android (debug) + PWA under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics; no admin yet; Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 | Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
 
@@ -316,6 +319,15 @@ flutter pub get && flutter analyze && flutter test
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999
 flutter build web --base-href /app/          # the PWA, served under /app/
 flutter build apk --debug                    # Android, needs the Android SDK
+```
+
+The PWA image (`frontend-flutter/Dockerfile`, service `frontend-flutter`) builds that
+bundle with a pinned Flutter SDK and serves it under `/app/`; the proxy routes `/app/` to
+it. Its own smoke test, against the built image:
+
+```bash
+docker build -t zapzap-frontend-flutter:ci frontend-flutter
+scripts/pwa_image_smoke.sh                   # /app/, deep links, manifest, cache headers
 ```
 
 The detail — module layout, routes, bots, SSE, deployment — lives in the project wiki,
