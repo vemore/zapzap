@@ -1,8 +1,8 @@
 # wip — work tracking (local, never committed)
 
 One file per piece of work. `wip/` is **gitignored** and lives only in the **main
-checkout** (`scripts/wip.sh path` prints it): an agent working in a worktree reads and
-writes entries there by that absolute path. This file is copied from
+checkout** (`scripts/wip.sh path` prints it): an agent working in a worktree reads entries
+there by that absolute path, but never writes them (below). This file is copied from
 `docs/wip-README.md` by `scripts/wip.sh init`; the committed copy is the reference.
 
 | Folder | Holds |
@@ -47,6 +47,11 @@ A problem a task surfaces but was not asked to fix is neither fixed inline nor d
 becomes an entry, and the task carries on. `todo_nr/` by default; `todo/` only when it
 blocks (above). A skill, hook or wiki procedure that had to be worked around is an entry
 too — and the fix may be a removal.
+
+An agent working in a worktree (`ship-parallel`) never writes under `wip/`: it lists each
+new entry, complete in the format above, under a `## New wip entries` heading of its final
+report, and the orchestrator writes it to `todo_nr/` (or `todo/`) in the main checkout after
+the hand-back.
 
 ## Lifecycle
 
