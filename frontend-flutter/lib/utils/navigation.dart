@@ -16,4 +16,12 @@ extension BackNavigation on BuildContext {
       go(fallback);
     }
   }
+
+  /// Replaces the screen on show with [location], in the browser's history
+  /// too: the address bar shows [location], and the browser's Back skips the
+  /// replaced screen as the system Back does. A plain `pushReplacement` would
+  /// add a history entry, and the browser's Back would return to it.
+  void replaceWith(String location) {
+    Router.neglect(this, () => pushReplacement(location));
+  }
 }

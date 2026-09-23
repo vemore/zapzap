@@ -66,7 +66,7 @@
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
-| `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen (Back navigation, below) |
+| `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen; `replaceWith(location)`: a screen taking another's place (Back navigation, below) |
 | `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
 | `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `not_found_screen.dart` |
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
@@ -199,7 +199,11 @@
   path under the base href (`/app/parties`): `lib/main.dart` calls `usePathUrlStrategy()`
   (`flutter_web_plugins`) before `runApp`, a no-op off the web; the browser path less
   `/app/` is go_router's initial route, which wins over `initialLocation`
-  (`test/deep_link_test.dart`).
+  (`test/deep_link_test.dart`). A `push`ed screen shows its own path in the address bar:
+  `createRouter` sets `GoRouter.optionURLReflectsImperativeAPIs = true` (go_router's
+  default keeps the path of the screen below), so a reload of `/app/parties/new`, a lobby
+  or a game stays on it and a lobby's URL can be shared (`test/deep_link_test.dart`, `the
+  URL of a pushed screen`).
 
 ### Real-time channel (SSE)
 
@@ -258,9 +262,10 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
 - **Back navigation**: a screen reached from another is `context.push`ed, never `go`ne
   to — `go` replaces the whole stack, and Android's system Back then leaves the app. The
   list pushes the form, the lobby and a game; the form's lobby and the lobby's game
-  **replace** the screen they came from (`pushReplacement`), so Back from either returns
-  to the list, not to a form whose party exists or a lobby that sends straight back to
-  the game. A screen's own back button, and the lobby closing, call `popOrGo`
+  **replace** the screen they came from (`replaceWith`, `utils/navigation.dart`: a
+  `pushReplacement` under `Router.neglect`, so the browser's history entry is replaced
+  too), so Back from either — Android's or the browser's — returns to the list, not to a
+  form whose party exists or a lobby that sends straight back to the game. A screen's own back button, and the lobby closing, call `popOrGo`
   (`utils/navigation.dart`): pop when something is below, else `go` to the list — a deep
   link or a reload of the PWA has nothing below. The history, the game details and the
   statistics follow the same rule (below). `test/party_screens_test.dart` (`back
@@ -758,6 +763,17 @@ project `.gitignore`.
   `authErrorNetwork`/`authErrorGeneric` duplicated `errorNetwork`/`errorGeneric` word for
   word, and `backToParties`/`backToHistory` lost their callers to `BackButton`: all four
   keys were dropped.
+- **Pushed screens own the URL (2026-09-23, `fix/flutter-pushed-route-urls`).** After
+  `push` replaced `go`, the address bar stayed on `/app/parties` under the form, a lobby
+  or a game, so a reload dropped the user on the list and a lobby could not be shared.
+  go_router advises against `optionURLReflectsImperativeAPIs` because a pushed route's
+  path is not always a deep link; here every route is top-level and loads itself from its
+  path parameters, so it is. `pushReplacement` alone still added a browser history entry,
+  and the browser's Back returned to the replaced form: `Router.neglect` makes it replace
+  the entry instead. Checked on a web build behind `frontend-flutter/nginx.conf` against a
+  local Node backend on a fresh database: list, form (`/app/parties/new`), lobby
+  (`/app/parties/<id>`, history length unchanged), reload on the lobby, Back to the list,
+  Back out of the app.
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
   generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed
   to reach a local backend from the emulator or the LAN, but a release build must never
