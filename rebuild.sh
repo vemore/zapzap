@@ -16,16 +16,18 @@ echo "🔧 ZapZap Quick Rebuild"
 echo "======================================"
 echo ""
 
+# Build first, stop second, in both branches: a failed build then leaves whatever is
+# running alone instead of leaving it stopped (same reason as deploy.sh).
 if [ -z "$SERVICE" ]; then
     echo "🔨 Rebuilding all services..."
-    docker-compose down
     docker-compose build
+    docker-compose down --remove-orphans
     docker-compose up -d
 else
     echo "🔨 Rebuilding $SERVICE..."
-    docker-compose stop $SERVICE
-    docker-compose build $SERVICE
-    docker-compose up -d $SERVICE
+    docker-compose build "$SERVICE"
+    docker-compose stop "$SERVICE"
+    docker-compose up -d "$SERVICE"
 fi
 
 echo ""
