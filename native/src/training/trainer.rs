@@ -323,7 +323,7 @@ impl Trainer {
             }
 
             // Soft update target network periodically
-            if games_completed % (self.config.target_update_freq as u64) == 0 {
+            if games_completed.is_multiple_of(self.config.target_update_freq as u64) {
                 // TODO: Implement soft update
                 // self.soft_update_target();
             }
@@ -546,8 +546,6 @@ mod tests {
 
     #[test]
     fn test_training_diagnostic() {
-        use super::DecisionType;
-
         eprintln!("\n=== DIAGNOSTIC TEST START ===\n");
 
         let config = TrainingConfig::fast();

@@ -879,13 +879,10 @@ impl BotStrategy for ThibotStrategy {
         }
     }
 
-    fn select_hand_size(&self, _active_player_count: u8, is_golden_score: bool) -> u8 {
-        // Thibot prefers smaller hands to reach 1 card faster
-        if is_golden_score {
-            4 // Minimum in golden score
-        } else {
-            4 // Small hand = faster to reduce
-        }
+    fn select_hand_size(&self, _active_player_count: u8, _is_golden_score: bool) -> u8 {
+        // Thibot prefers smaller hands to reach 1 card faster: the minimum,
+        // in golden score or not
+        4
     }
 }
 
@@ -918,7 +915,14 @@ mod tests {
     #[test]
     fn test_zapzap_decision() {
         let thibot = ThibotStrategy::new();
-        let state = GameState::new(4);
+        // Player 0 decides; the opponents hold five untracked cards each. A dealt
+        // round never leaves an opponent with an empty hand, and one that did
+        // would hold 0 points and counteract any call (GAME_RULES.md: lower or
+        // equal counteracts).
+        let mut state = GameState::new(4);
+        for p in 1..4 {
+            state.hands[p].extend_from_slice(&[26, 27, 28, 29, 30]);
+        }
 
         // Hand with value 0 - always zapzap
         assert!(thibot.should_zapzap(&[52, 53], &state));
@@ -928,6 +932,12 @@ mod tests {
 
         // Hand with value > 5 - can't zapzap
         assert!(!thibot.should_zapzap(&[10, 11], &state)); // J + Q = 23
+
+        // An opponent down to one unknown card may well hold 3 points or less:
+        // a 3-point call is too risky, a 1-point call still goes
+        state.hands[2].truncate(1);
+        assert!(!thibot.should_zapzap(&[0, 1], &state));
+        assert!(thibot.should_zapzap(&[0], &state));
     }
 
     #[test]

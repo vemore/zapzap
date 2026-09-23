@@ -59,7 +59,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 | Paths | Gate |
 |---|---|
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
-| `native/` | `cargo fmt --check` |
+| `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
 | `frontend/` | `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/` (any file, `.md` included) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get` |
 | anything else (docs, legacy `src/`) | none |

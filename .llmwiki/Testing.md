@@ -12,8 +12,8 @@
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
 | Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | green | yes |
 | Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 2 tests) | `cargo test --test schema_tests` | green | yes |
-| Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | 97 pass, 1 fail | yes, failing test skipped |
-| Native clippy | `cargo clippy --all-targets` | deny-level errors | no |
+| Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
+| Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | 122/279 fail (13 files) | no |
 | Frontend lint | `npm run lint` | 59 errors, 9 warnings | no |
 | Frontend build | `npm run build` | green | yes |
@@ -34,8 +34,8 @@
 - Toolchain pinned to `1.92` — `native/rust-toolchain.toml:3`.
 - Tests are inline, heaviest in `strategies/drl_strategy.rs` (10), `training/dueling_dqn.rs` (9), `training/collector.rs` (8), `fast_dqn.rs`, `lightweight_dqn.rs`, `training/replay_buffer.rs`, `training/sum_tree.rs` (7 each).
 - `native/package.json` `"test": "cargo test"`; `npm run build` = `napi build --platform --release` (needed only for the Node scripts, not for tests).
-- Known red: `strategies::thibot::tests::test_zapzap_decision` (`native/src/strategies/thibot.rs:919`). Open question whether the strategy or the test is wrong.
-- CI gate (`native` job): `cargo fmt --check`, then `cargo test -- --skip strategies::thibot::tests::test_zapzap_decision`. No clippy: `cargo clippy --all-targets` reports "this operation has no effect" (5), `erasing_op` "will always return zero" (2, possibly a real bug), needless range loops, identical `if` blocks, too many arguments.
+- `strategies::thibot::tests::test_zapzap_decision` was red until 2026-09-23: the test, not the strategy, was wrong. Its `GameState::new(4)` left every opponent with an empty hand, i.e. 0 points, which counteracts any call (GAME_RULES.md: lower *or equal*), so Thibot rightly refused a 3-point ZapZap. The fixture now deals the opponents five cards.
+- CI gate (`native` job): `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (no `--locked`: `native/Cargo.lock` is untracked). The two `erasing_op` findings were `0 * 45 + i` / `i * 128 + 0` in a diagnostic test that deliberately indexes neuron 0, not bugs.
 - Other ad-hoc Node checks in `native/`: `benchmark.js`, `test-comparison.js`, `test-ml-components.js` (not part of any suite).
 
 ### Frontend (`frontend/`)
@@ -59,7 +59,7 @@
 |---|---|---|---|
 | `scope` | always | self-test, then flags | 5 min |
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
-| `native` | `native != 'false'` | fmt, tests (1 skipped) | 30 min |
+| `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, build | 15 min |
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` production runs: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
@@ -106,13 +106,11 @@
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
-- Native thibot ZapZap-decision test red: decide which side is wrong, remove the `--skip`.
-- Native clippy errors: fix (start with the two `erasing_op`), then gate clippy in CI.
 - Frontend vitest red (122/279) and frontend lint red (59 errors): triage/clean, then add to the `frontend` job.
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
 ### Pre-commit gate
-- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."

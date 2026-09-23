@@ -196,6 +196,7 @@ impl ModelIO {
     }
 
     /// Save training checkpoint (weights + training state)
+    #[allow(clippy::too_many_arguments)] // one argument per checkpoint field; a struct would only move them
     pub fn save_checkpoint(
         path: &str,
         weights: &[f32],

@@ -108,6 +108,7 @@ jobs:
       - run: cargo test --locked --lib --bins --tests
 
   native:
+    # Branch protection requires this exact check name: rename it there first.
     name: Native engine — fmt, build, test
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.native != 'false' }}
@@ -121,13 +122,13 @@ jobs:
       # Pinned with rust-toolchain.toml in the crate: a newer clippy is a red build.
       - uses: dtolnay/rust-toolchain@1.92
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: native
       - run: cargo fmt --check
-      # No clippy gate yet, and one known-red test skipped: both are wip entries.
-      - run: cargo test -- --skip strategies::thibot::tests::test_zapzap_decision
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
 
   frontend:
     name: Frontend — build

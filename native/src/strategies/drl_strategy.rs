@@ -574,15 +574,9 @@ impl DRLStrategy {
         }
 
         // 100% success when opponent has 2+ cards
-        let confidence_threshold = if min_opponent_hand_size == 2 {
-            3
-        } else if min_opponent_hand_size == 3 {
-            4
-        } else {
-            4
-        };
+        let confidence_threshold = if min_opponent_hand_size == 2 { 3 } else { 4 };
 
-        if (hand_value as u16) <= confidence_threshold {
+        if hand_value <= confidence_threshold {
             return true; // High confidence ZapZap
         }
 
@@ -637,11 +631,11 @@ impl DRLStrategy {
         // CARD TRACKING: If we tracked opponent's cards, use that info
         if min_opponent_estimated_value != u16::MAX && min_opponent_estimated_value > 0 {
             // We know opponent has at least this many points
-            if min_opponent_estimated_value > hand_value as u16 {
+            if min_opponent_estimated_value > hand_value {
                 return true; // High confidence - we know they have more points
             }
             // If their estimated minimum is lower or equal, be more cautious
-            if min_opponent_estimated_value <= hand_value as u16 && min_opponent_hand_size <= 2 {
+            if min_opponent_estimated_value <= hand_value && min_opponent_hand_size <= 2 {
                 return false; // They likely have a winning hand
             }
         }
@@ -666,7 +660,7 @@ impl DRLStrategy {
             5 // Safe at 4+ cards
         };
 
-        (hand_value as u16) <= confidence_threshold
+        hand_value <= confidence_threshold
     }
 
     /// Select draw source with epsilon-greedy exploration
@@ -814,10 +808,10 @@ mod tests {
         let strategy = DRLStrategy::new(0);
 
         let size = strategy.select_hand_size(4, false);
-        assert!(size >= 4 && size <= 10);
+        assert!((4..=10).contains(&size));
 
         let gs_size = strategy.select_hand_size(2, true);
-        assert!(gs_size >= 4 && gs_size <= 10);
+        assert!((4..=10).contains(&gs_size));
     }
 
     #[test]
@@ -837,7 +831,7 @@ mod tests {
         let _ = strategy.select_draw_source_mut(hand, &[10], &state);
 
         let size = strategy.select_hand_size_mut(4, false, 50);
-        assert!(size >= 4 && size <= 10);
+        assert!((4..=10).contains(&size));
     }
 
     #[test]

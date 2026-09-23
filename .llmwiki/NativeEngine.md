@@ -2,7 +2,7 @@
 
 > Scope: `native/` — the Rust cdylib (napi) simulation engine used offline for DRL training and genetic tuning of bots, plus the Node scripts in `scripts/` that drive it. Not used by either backend at runtime except the legacy Node Thibot's optional load.
 > Related: [[Architecture]] · [[Bots]] · [[GameRules]] · [[Testing]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -18,7 +18,7 @@
 | Node build | `npm run build` = `napi build --platform --release` (needs `@napi-rs/cli` ^2.18.0); `npm test` = `cargo test` | `native/package.json:14-21` |
 | JS entry | `index.js` (napi loader, committed) + `index.d.ts` typings; built `*.node` is gitignored | `native/package.json:4-5`, `.gitignore:123` |
 | Lockfile | `native/Cargo.lock` is gitignored and untracked (unlike `zapzap-rust/Cargo.lock`) | `.gitignore:122` |
-| Lint | `#![deny(clippy::all)]` at crate root, but CI runs no clippy on native | `native/src/lib.rs:5`, `native` job of `.github/workflows/ci.yml` |
+| Lint | `#![deny(clippy::all)]` at crate root; CI and the commit hook run `cargo clippy --all-targets -- -D warnings` | `native/src/lib.rs:5`, `native` job of `.github/workflows/ci.yml`, `.claude/hooks/guard-bash.sh` |
 | Ad-hoc JS checks | `native/benchmark.js`, `native/test-comparison.js`, `native/test-ml-components.js` (not wired into npm/CI) | `native/` |
 
 Consumers: only `scripts/train-native.js` (`require('../native/index.js')`, `scripts/train-native.js:486`), `scripts/genetic-optimize-thibot.js:21`, and the legacy Node Thibot bot, which falls back to JS if the addon is missing (`src/infrastructure/bot/strategies/ThibotBotStrategy.js:20-23`). `zapzap-rust` does not depend on it.
@@ -92,10 +92,9 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 - `--load` cannot resume training: script calls `trainerSetWeights(trainerId, weights)` (first arg is the boolean from `trainerCreate`) while the export takes only `weights` (`scripts/train-native.js:260,277` vs `native/src/lib.rs:865`); and even when called correctly `DuelingDQN::set_weights_flat` is a documented no-op (`native/src/training/dueling_dqn.rs:318-324`).
 - Double DQN / target network not implemented: target network is `#[allow(dead_code)]`, TD target uses the online network, soft update is a TODO; `tau` and `target_update_freq` have no effect (`native/src/training/trainer.rs:49-51,177-190,326-329`).
 - `hard_vince` silently equals `hard` in the native engine (`native/src/lib.rs:155`), so any "vs hard_vince" native result is really vs hard.
-- `thibot` `test_zapzap_decision` is red and skipped in CI (`native/src/strategies/thibot.rs:919`, `native` job of `.github/workflows/ci.yml`).
 
 ### Tests
-98 `#[test]` functions across 19 modules (`grep -rn '#\[test\]' native/src`). Run `cd native && cargo test` (see [[Testing]]); CI runs `cargo fmt --check` and `cargo test -- --skip strategies::thibot::tests::test_zapzap_decision` without `--locked` (`native` job of `.github/workflows/ci.yml`).
+98 `#[test]` functions across 19 modules (`grep -rn '#\[test\]' native/src`). Run `cd native && cargo test` (see [[Testing]]); CI runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, all without `--locked` (`native` job of `.github/workflows/ci.yml`).
 
 ## Decisions & History
 - 2025-12-15: HardBotStrategy (`9a1d37f`), SumTree + DRL Trainer with parallel simulation (`5698009`), then switch to sparse terminal rewards "for improved learning efficiency" (`3ef3afd`) — explains the stale dense-reward doc in `collector.rs`.

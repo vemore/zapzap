@@ -35,7 +35,7 @@ impl DecisionType {
         ]
     }
 
-    pub fn from_str(s: &str) -> Option<DecisionType> {
+    pub fn from_name(s: &str) -> Option<DecisionType> {
         match s.to_lowercase().as_str() {
             "handsize" | "hand_size" => Some(DecisionType::HandSize),
             "zapzap" | "zap_zap" => Some(DecisionType::ZapZap),
@@ -131,18 +131,18 @@ pub struct DecisionNetwork {
 impl DecisionNetwork {
     /// Create network with random weights
     pub fn new_random(action_dim: usize) -> Self {
-        let mut layers = Vec::with_capacity(5);
-
-        // Layer 0: 45 -> 256
-        layers.push(DenseLayer::new_random(LAYER_SIZES[0], LAYER_SIZES[1]));
-        // Layer 1: 256 -> 128
-        layers.push(DenseLayer::new_random(LAYER_SIZES[1], LAYER_SIZES[2]));
-        // Layer 2: 128 -> 64
-        layers.push(DenseLayer::new_random(LAYER_SIZES[2], LAYER_SIZES[3]));
-        // Layer 3: 64 -> 32
-        layers.push(DenseLayer::new_random(LAYER_SIZES[3], LAYER_SIZES[4]));
-        // Layer 4: 32 -> action_dim
-        layers.push(DenseLayer::new_random(LAYER_SIZES[4], action_dim));
+        let layers = vec![
+            // Layer 0: 45 -> 256
+            DenseLayer::new_random(LAYER_SIZES[0], LAYER_SIZES[1]),
+            // Layer 1: 256 -> 128
+            DenseLayer::new_random(LAYER_SIZES[1], LAYER_SIZES[2]),
+            // Layer 2: 128 -> 64
+            DenseLayer::new_random(LAYER_SIZES[2], LAYER_SIZES[3]),
+            // Layer 3: 64 -> 32
+            DenseLayer::new_random(LAYER_SIZES[3], LAYER_SIZES[4]),
+            // Layer 4: 32 -> action_dim
+            DenseLayer::new_random(LAYER_SIZES[4], action_dim),
+        ];
 
         DecisionNetwork { layers }
     }

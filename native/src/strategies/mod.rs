@@ -53,11 +53,7 @@ impl BotStrategy for RandomBotStrategy {
         true // Always deck
     }
 
-    fn select_hand_size(&self, _active_player_count: u8, is_golden_score: bool) -> u8 {
-        if is_golden_score {
-            5
-        } else {
-            5
-        }
+    fn select_hand_size(&self, _active_player_count: u8, _is_golden_score: bool) -> u8 {
+        5
     }
 }
