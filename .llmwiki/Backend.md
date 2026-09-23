@@ -2,7 +2,7 @@
 
 > Scope: the Rust backend in `zapzap-rust/` (axum 0.7, sqlx 0.8 sqlite, tokio) — layout, state, config, auth, SSE, sessions, bot triggering, LLM service, DB schema situation. Routes are in [[Api]].
 > Related: [[Architecture]] · [[Api]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-22
+> Updated: 2026-09-23
 
 ## Facts
 
@@ -48,14 +48,16 @@
 
 ### AppState (`zapzap-rust/src/infrastructure/app_state.rs`)
 - Fields (`:17-42`): `db: SqlitePool`, `jwt_service`, `session_manager`, `user_repo`, `party_repo`, `event_sender`/`event_receiver` (async-broadcast), `llm_service: Option<Arc<dyn LlmService>>`, `llm_memories` (per-bot `LlmBotMemory` map).
-- DB: `SqlitePool::connect(&db_url)` (`:61`) — no `create_if_missing`, so the file must already exist.
+- DB: `SqlitePool::connect(&db_url)` (`:61`) — no `create_if_missing`, so the file must already exist (it may be empty: the tables are created, see below).
 - LLM priority Bedrock > Ollama > None; each is kept only if `health_check()` succeeds at startup (`:84-129`). With no LLM, LLM bots use a fallback strategy (see [[Bots]]).
 - `get_llm_memory` lazily creates and `load()`s a bot's memory (`:148-165`).
 
 ### Database schema situation
-- **The Rust backend creates no tables.** `sqlx::migrate!("./migrations")` is commented out (`app_state.rs:64`) and there is no `migrations/` directory; no `CREATE TABLE` exists anywhere under `zapzap-rust/`.
-- Tables are created by the legacy Node side: `src/infrastructure/database/sqlite/DatabaseConnection.js:71-212` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) and `src/infrastructure/database/schemas/schema.sql` (older subset + `schema_version`). `scripts/docker-entrypoint.js:120` holds a users-table migration.
-- Consequence: the Rust server only works against a DB file already initialised by the Node backend (the production file `data/zapzap.db` is one); `tests/api_tests.rs` sets `DATABASE_URL=sqlite::memory:` (`zapzap-rust/tests/api_tests.rs:21`) and 7/10 tests fail on missing tables (see [[Testing]]).
+- **The Rust backend creates its schema at startup**: `AppState::new()` calls `schema::ensure_schema(&db)` right after connecting (`zapzap-rust/src/infrastructure/app_state.rs:64`), which runs `zapzap-rust/src/infrastructure/database/schema.sql` through `sqlx::raw_sql` (`schema.rs`).
+- `schema.sql` is the Node DDL verbatim: the `createSchema()` string of `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions, 19 indexes) plus the two users indexes of its `runMigrations()` (`idx_users_google_id`, `idx_users_email`). Every statement is `IF NOT EXISTS`, so on a database the Node backend built it changes nothing.
+- No sqlx migrations and no `_sqlx_migrations` table: the production DB has none, and `sqlx::migrate!` would start managing it. The Node `ALTER TABLE ... ADD COLUMN` steps and the password_hash table rebuild are not ported — they upgrade databases created by older Node versions, and every database the current Node code has opened (production's included) already went through them.
+- `zapzap-rust/tests/schema_tests.rs` holds both halves: `rust_schema_matches_node_schema` builds a DB the way a fresh Node one is built — the `createSchema()` DDL, then `runMigrations()`'s `ALTER TABLE ... ADD COLUMN` statements (a duplicate column ignored, as Node does) and `CREATE INDEX` calls, all read from the `.js` file at compile time — and one from `schema.sql` and compares `sqlite_master` statement for statement; `schema_step_is_a_noop_on_a_node_built_database` fills a Node-built file DB (with the extra `idx_users_username`/`idx_users_user_type` of `scripts/docker-entrypoint.js`), runs `AppState::new()` and `ensure_schema` again, and checks that schema and rows are unchanged. A Node schema change without the same change in `schema.sql` turns it red.
+- The older `src/infrastructure/database/schemas/schema.sql` (subset + `schema_version`) is loaded only by the legacy `src/infrastructure/database/sqlite/connection.js:78`, not by `DatabaseConnection.js`.
 - Rust writes: parties/party_players/rounds/game_state/game_actions/round_scores/game_results/player_game_results in `zapzap-rust/src/infrastructure/database/repositories/party_repo.rs:253-730`; users upsert in `user_repo.rs:136` (includes `google_id`, `email` columns).
 
 ### Auth
@@ -87,5 +89,6 @@
 
 ## Decisions & History
 - Backend rewritten from Node/Express to Rust in `e4f83da` (2025-12-23), keeping the Node JSON shapes ("matching JS behavior" comments, `zapzap-rust/src/api/routes/auth.rs:83`) and the SQLite file, which explains the bcrypt fallback and the absence of Rust-side schema creation.
+- 2026-09-23 (fix/rust-api-schema): the backend got its own schema step so that `tests/api_tests.rs` could run on an in-memory DB and join CI. The Node DDL was copied rather than written as sqlx migrations, because a migration runner on the production file (no `_sqlx_migrations` table) would either refuse it or re-run `CREATE TABLE` on it; `IF NOT EXISTS` DDL is a no-op there. The same change made `POST /api/party` without `name` answer 400 `MISSING_PARTY_NAME` like Node (it answered axum's 422), which `test_create_party_missing_name` had caught.
 - `8a3509b` added the background bot triggers and the 50/500 iteration limit; `c9ac7a7` enabled broadcaster overflow after SSE sends blocked on a full channel (commit title).
 - `1e063d6` (2026-09-22, PR #21) added CI, committed `Cargo.lock` (was gitignored though the Dockerfile copies it), stopped tracking `data/zapzap.db`, ran `cargo fmt`, fixed clippy findings and pinned Rust 1.92 because newer clippy added lints and `rust:1.83` could not parse `base64ct` 1.8.1.

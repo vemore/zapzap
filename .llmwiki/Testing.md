@@ -10,7 +10,8 @@
 | Suite | Run | State 2026-09-22 | In CI |
 |---|---|---|---|
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
-| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | 7/10 fail (500 instead of 201) | no |
+| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | green | yes |
+| Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 2 tests) | `cargo test --test schema_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | 122/279 fail (13 files) | no |
@@ -24,8 +25,10 @@
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
 - Unit tests (34 `#[test]`/`#[tokio::test]`) live next to the code: `domain/services/game_service.rs` (6), `infrastructure/bot/card_analyzer.rs` (5), `strategies/thibot.rs` (4), `strategies/vince_bot.rs` (4), `domain/value_objects/game_state.rs` (3), `application/bot/reflect_on_round.rs` (3), `bot/llm_memory.rs` (3), `auth/password.rs` (2), `strategies/llm_bot.rs` (2), `services/llm_service.rs` (2).
-- Integration tests: `zapzap-rust/tests/api_tests.rs:19-31` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key`, then drives it with tower `oneshot` (register, login, create/list party — `api_tests.rs:111-348`). They fail because `AppState::new()` never creates tables: the migration call is commented out (`zapzap-rust/src/infrastructure/app_state.rs:64`) and there is no `migrations/` directory. See [[Backend]] for the schema situation.
-- CI gate (`rust` job): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --lib --bins` (the `--lib --bins` leaves `tests/` out; comment above the `cargo test` step).
+- Integration tests: `zapzap-rust/tests/api_tests.rs:19-31` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key`, then drives it with tower `oneshot` (register, login, create/list party — `api_tests.rs:111-348`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (`zapzap-rust/src/infrastructure/app_state.rs:64`).
+- Schema tests: `zapzap-rust/tests/schema_tests.rs` reads the Node DDL from `src/infrastructure/database/sqlite/DatabaseConnection.js` at compile time (`include_str!`) and checks that `schema.sql` creates the same objects (`rust_schema_matches_node_schema`) and that the startup step leaves a filled Node-built DB unchanged (`schema_step_is_a_noop_on_a_node_built_database`). See [[Backend]].
+- CI gate (`rust` job): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --lib --bins --tests` (unit and integration tests).
+- `scripts/ci_scope.sh` sends a change to `src/` to `node` and `image`, and a change to `src/infrastructure/database/sqlite/DatabaseConnection.js` (the Node DDL `schema_tests` reads) to `rust` as well, so a PR that edits only the Node schema still runs the parity test.
 
 ### Native engine (`native/`)
 - Toolchain pinned to `1.92` — `native/rust-toolchain.toml:3`.
@@ -55,7 +58,7 @@
 | Job | Condition | Steps | Timeout |
 |---|---|---|---|
 | `scope` | always | self-test, then flags | 5 min |
-| `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit tests | 30 min |
+| `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, build | 15 min |
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` production runs: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
@@ -92,6 +95,7 @@
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `deploy.sh`, `rebuild.sh` | hooks |
 | `scripts/pwa_image_smoke.sh` | image |
+| `src/infrastructure/database/sqlite/DatabaseConnection.js` | rust, node, image (`zapzap-rust/tests/schema_tests.rs` compares it with the Rust schema) |
 | Node backend: `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image (the root `Dockerfile` copies them) |
 | `views/*`, `public/*`, root `Dockerfile`, `.dockerignore` | image |
 | `tests/*`, `jest.config.js` | node |
@@ -102,12 +106,11 @@
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
-- Rust API tests have no schema: give the backend a self-created schema (sqlx migrations or the Node DDL from `src/infrastructure/database/`), then re-add `--tests` to the `rust` job.
 - Frontend vitest red (122/279) and frontend lint red (59 errors): triage/clean, then add to the `frontend` job.
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
 ### Pre-commit gate
-- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."
@@ -115,3 +118,4 @@
 - The scope classifier fails open by design: "Being wrong must cost a slow run, never an untested merge" (`scripts/ci_scope.sh:10-12`).
 - The legacy Node suites were excluded from CI (`scripts/ci_scope.sh`) on the premise that the Rust backend is the target. Production still runs Node, so its changes reached production ungated.
 - **2026-09-23: the Node backend is gated** (user decision). #39 went green and then failed to build on the NAS (npm 10 in `node:20-alpine` rejected a lockfile npm 11 accepted): the `image` job now builds the root `Dockerfile`. jest was 59/314 red on master, every failure test drift, none a bug in `src/`: messages translated to French, `handSize` moved out of `PartySettings` to a per-round choice, `JoinParty` no longer auto-starting a full party (commit 9712a26: the owner starts it), a single card being a legal play, mocks missing `updateLastLogin`/`recordGameAction`, and the repository suites opening the older `connection.js` whose schema lacks `users.user_type`. The tests were realigned with the code, none deleted or skipped, and the `node` job runs them. `deploy.sh` and `rebuild.sh` were classified as `hooks`, so a change to them no longer rebuilds every image.
+- 2026-09-23 (fix/rust-api-schema): `--tests` joined the `rust` job once the backend created its own schema; `api_tests` had also caught `POST /api/party` without `name` answering 422 instead of Node's 400 `MISSING_PARTY_NAME`, fixed in the handler rather than in the test.

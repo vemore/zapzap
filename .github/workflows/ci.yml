@@ -103,10 +103,9 @@ jobs:
           workspaces: zapzap-rust
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      # Unit tests only: tests/api_tests.rs opens an in-memory SQLite with no schema
-      # (the migration call in src/infrastructure/app_state.rs is commented out), so
-      # every request answers 500. Tracked as a wip entry; add `--tests` back with it.
-      - run: cargo test --locked --lib --bins
+      # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
+      # SQLite, tests/schema_tests.rs checks the schema against the Node DDL in ../src.
+      - run: cargo test --locked --lib --bins --tests
 
   native:
     # Branch protection requires this exact check name: rename it there first.
