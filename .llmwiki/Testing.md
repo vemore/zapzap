@@ -72,7 +72,9 @@
   ([[ParallelDelivery]]). Renaming one is not cosmetic: the required context stops
   reporting, and every pull request is `BLOCKED` for ever with no failing check to show
   why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
-  #36, whose `image` job had been renamed to mention the Flutter PWA. The `node` job's
+  #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
+  `native`. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
+  ship-parallel agent prompt forbids the rename. The `node` job's
   `Node backend — jest` and the `flutter` job's name are not pinned: adding them to branch
   protection is the user's call. Changing a pinned name
   on purpose means changing branch protection in the same breath, which is the user's

@@ -21,7 +21,10 @@
 - Merged branches are deleted on GitHub; the local copy then reads `[gone]` and the hook
   refuses commits on it.
 - The required contexts are the five job **names**, verbatim, so a workflow that renames a
-  job blocks every pull request until the name comes back ([[Testing]]).
+  job blocks every pull request until the name comes back ([[Testing]]). A pull request
+  therefore never renames a job's `name:`; renaming is a separate step the user takes in
+  the protection settings. A comment above each required job's `name:` in `ci.yml` says so,
+  and so does the ship-parallel agent prompt (#41 renamed `native` and blocked every merge).
   `gh pr view <n> --json mergeStateStatus` reads `BLOCKED` while `gh pr checks` shows
   everything green — that combination means a missing context, not a failing one.
 
@@ -39,6 +42,16 @@
   `origin/master` or whose merged PR head GitHub's compare proves identical, and clean
   worktrees whose branch goes. It keeps a worktree locked by a live session, a setup marker,
   or anything modified in the last 30 minutes (`CLEANUP_IDLE_MINUTES`).
+
+### The shared browser
+
+- The Playwright MCP server is **one browser for every agent of the session**: a parallel
+  agent's reload lands on whichever page is current, and every tab shares localStorage and
+  tokens. So each agent opens its own tab (`browser_tabs` new), works only in it and closes
+  it (ship-parallel agent prompt); a check that needs a clean origin is serialised.
+- The server writes screenshots, console logs and network dumps to `.playwright-mcp/` in the
+  checkout it runs from. The directory is gitignored and nothing in it is tracked; it is
+  debris, never committed, and not an agent's to delete while others run.
 
 ### Lanes — chosen at planning time, from what a change will touch
 
@@ -64,8 +77,10 @@ criteria, not coverage.
 
 `wip/` is gitignored and exists only in the main checkout; `scripts/wip.sh` finds it from
 any worktree (`wip.sh path`). Format and lifecycle: `docs/wip-README.md` (copied to
-`wip/README.md` by `wip.sh init`). Agents write new entries there by absolute path; the
-orchestrator closes entries after the merge (`ship-parallel` §5). `wip-refine` decides what
+`wip/README.md` by `wip.sh init`). An agent in a worktree reads entries by absolute path
+but never writes them: it lists each new entry, complete, under a `## New wip entries`
+heading of its final report, and the orchestrator writes them to `todo_nr/` after the
+hand-back (`ship-parallel` §2). The orchestrator closes entries after the merge (§5). `wip-refine` decides what
 moves from `todo_nr/` to `todo/` (at most 12).
 
 ## Decisions & History
@@ -78,5 +93,11 @@ moves from `todo_nr/` to `todo/` (at most 12).
   merge), and agents in worktrees reach them by absolute path.
 - **Bootstrapped in three pull requests** (#21 CI, #22 hooks, #23 wiki): hooks only take
   effect once on the main checkout, and required checks can only be named once they exist.
+- **New entries travel in the agent's report (2026-09-23, the user's decision).** An agent
+  with `isolation: "worktree"` is refused writes outside its worktree, so a found problem
+  either got lost or reached `wip/` through an ad-hoc request. No permission was opened for
+  `<MAIN>/wip/**`: the report heading is the one path, and the orchestrator writes.
+- **The 18 `.playwright-mcp/` screenshots were removed (2026-09-23).** Debugging captures
+  of the React UI from December 2025, referenced nowhere; git history keeps them.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.

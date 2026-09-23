@@ -35,7 +35,8 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
   `todo_nr/` backlog, `done/` closed. `wip/README.md`.
 - **A problem you find but were not asked to fix becomes a `wip/` entry** — not an inline
   fix, not dropped: `todo_nr/`, or `todo/` when it blocks (security, data loss, crash,
-  production down). Then carry on. From a worktree, write it by the main checkout's path.
+  production down). Then carry on. An agent in a worktree never writes `wip/`: it puts the
+  entry, complete, under `## New wip entries` in its final report; the orchestrator writes it.
 - **Tooling that fights you is a `wip/` entry too** — a skill, hook, wiki procedure or this
   file that forced a detour. The fix may be a removal; prefer replacing to adding.
 - **An entry is closed after its pull request merges**, by the orchestrator in the main
