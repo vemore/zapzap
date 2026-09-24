@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::domain::entities::{lowest_free_seat, Party, PartyStatus, User};
+use super::seat::{seat_player, Seating};
+use crate::domain::entities::{Party, PartyStatus, User};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Add bot input
@@ -59,24 +60,11 @@ impl<U: UserRepository, P: PartyRepository> AddBotToParty<U, P> {
             return Err(AddBotToPartyError::NotABot);
         }
 
-        let players = self.party_repo.get_party_players(&input.party_id).await?;
-        if players.iter().any(|p| p.user_id == input.bot_id) {
-            return Err(AddBotToPartyError::AlreadyInParty);
-        }
-        if party.is_full(players.len()) {
-            return Err(AddBotToPartyError::PartyFull);
-        }
-
-        let player_index = lowest_free_seat(&players);
-
-        // A concurrent add of the same bot loses on UNIQUE(party_id, user_id)
-        self.party_repo
-            .add_party_player(&input.party_id, &input.bot_id, player_index)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::AlreadyExists(_) => AddBotToPartyError::AlreadyInParty,
-                e => e.into(),
-            })?;
+        let player_index = match seat_player(&*self.party_repo, &party, &input.bot_id).await? {
+            Seating::Seated(seat) => seat,
+            Seating::Full => return Err(AddBotToPartyError::PartyFull),
+            Seating::AlreadyIn => return Err(AddBotToPartyError::AlreadyInParty),
+        };
 
         Ok(AddBotToPartyOutput {
             party,

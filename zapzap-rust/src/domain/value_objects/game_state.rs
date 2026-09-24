@@ -9,6 +9,9 @@ use smallvec::SmallVec;
 pub const MAX_PLAYERS: usize = 8;
 /// Maximum hand size
 pub const MAX_HAND_SIZE: usize = 10;
+/// Cards dealt when a round opens, before its starting player picks the hand size and
+/// `select_hand_size` re-deals them
+pub const PROVISIONAL_HAND_SIZE: u8 = 5;
 
 /// Current game action
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

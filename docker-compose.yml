@@ -56,6 +56,10 @@ services:
     build:
       context: ./frontend-flutter
       dockerfile: Dockerfile
+      args:
+        # The web OAuth client id, the React build's own (not a secret); empty → no
+        # Google button (frontend-flutter/Dockerfile, .llmwiki/FrontendFlutter.md).
+        - GOOGLE_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
     container_name: zapzap-frontend-flutter
     restart: unless-stopped
     networks:

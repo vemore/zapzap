@@ -75,6 +75,12 @@ class AuthProvider extends ChangeNotifier {
   Future<void> register(String username, String password) async =>
       _signIn(await _repository.register(username, password));
 
+  /// Signs in (or up) with a Google ID token, which the backend checks
+  /// against its web client id. Throws the [ApiException] of a refusal
+  /// (`GOOGLE_AUTH_FAILED`...).
+  Future<void> loginWithGoogle(String credential) async =>
+      _signIn(await _repository.loginWithGoogle(credential));
+
   /// Signs out. Idempotent: several 401s in flight each call it, and only
   /// the first does anything.
   Future<void> logout() async {

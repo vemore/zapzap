@@ -223,7 +223,7 @@ impl<P: PartyRepository> NextRound<P> {
         let new_round_number = game_state.round_number + 1;
         let new_game_state = initialize_round(
             players.len() as u8,
-            party.settings.hand_size,
+            crate::domain::value_objects::PROVISIONAL_HAND_SIZE,
             &scores,
             game_state.eliminated_mask,
             new_round_number,

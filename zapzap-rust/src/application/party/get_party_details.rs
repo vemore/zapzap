@@ -11,13 +11,15 @@ pub struct GetPartyDetailsInput {
 
 /// Player info with user details
 pub struct PlayerInfo {
-    pub id: String,
+    /// The `party_players` row id
+    pub id: i64,
     pub user_id: String,
     pub username: String,
     pub user_type: String,
     pub bot_difficulty: Option<String>,
     pub player_index: u8,
-    pub joined_at: String,
+    /// Unix seconds
+    pub joined_at: i64,
 }
 
 /// Get party details output
@@ -78,15 +80,13 @@ impl<U: UserRepository, P: PartyRepository> GetPartyDetails<U, P> {
         for pp in &party_players {
             if let Some(user) = users_map.get(&pp.user_id) {
                 players.push(PlayerInfo {
-                    id: pp.id.to_string(),
+                    id: pp.id,
                     user_id: user.id.clone(),
                     username: user.username.clone(),
                     user_type: user.user_type.as_str().to_string(),
                     bot_difficulty: user.bot_difficulty.map(|d| d.as_str().to_string()),
                     player_index: pp.player_index,
-                    joined_at: chrono::DateTime::from_timestamp(pp.joined_at, 0)
-                        .map(|dt| dt.to_rfc3339())
-                        .unwrap_or_default(),
+                    joined_at: pp.joined_at,
                 });
             }
         }

@@ -43,7 +43,8 @@ pub struct RegisterResponse {
 pub struct RegisterUserInfo {
     id: String,
     username: String,
-    created_at: String,
+    /// Unix seconds, as Node
+    created_at: i64,
 }
 
 #[derive(Serialize)]
@@ -91,13 +92,6 @@ pub struct ErrorResponse {
 
 // ========== Handlers ==========
 
-/// Convert timestamp to RFC3339 string
-fn timestamp_to_rfc3339(ts: i64) -> String {
-    chrono::DateTime::from_timestamp(ts, 0)
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-}
-
 async fn register_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
@@ -137,7 +131,7 @@ async fn register_handler(
                 user: RegisterUserInfo {
                     id: output.user.id.clone(),
                     username: output.user.username.clone(),
-                    created_at: timestamp_to_rfc3339(output.user.created_at),
+                    created_at: output.user.created_at,
                 },
                 token: output.token,
             }),

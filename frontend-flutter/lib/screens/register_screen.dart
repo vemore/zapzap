@@ -8,6 +8,7 @@ import '../router.dart';
 import '../utils/field_touch.dart';
 import '../utils/validators.dart';
 import '../widgets/auth_form.dart';
+import '../widgets/google_sign_in_section.dart';
 
 /// Create an account (`Register.jsx`), with the React rules
 /// (`utils/validators.dart`): a field shows its refusal once edited and
@@ -78,6 +79,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return AuthCard(
       title: l10n.registerTitle,
       error: _error,
+      alternative: GoogleSignInSection.isShown(context)
+          ? GoogleSignInSection(
+              enabled: !_busy,
+              onBusy: (busy) => setState(() => _busy = busy),
+              onError: (error) => setState(() => _error = error),
+            )
+          : null,
       footer: AuthSwitchLink(
         text: l10n.registerHaveAccount,
         link: l10n.registerLoginLink,

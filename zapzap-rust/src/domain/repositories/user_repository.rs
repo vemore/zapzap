@@ -18,6 +18,12 @@ impl RepositoryError {
     pub fn is_unique_violation(&self) -> bool {
         matches!(self, RepositoryError::Database(m) if m.contains("UNIQUE constraint failed"))
     }
+
+    /// UNIQUE(party_id, player_index) refused the write: another player took the seat
+    pub fn is_seat_conflict(&self) -> bool {
+        self.is_unique_violation()
+            && matches!(self, RepositoryError::Database(m) if m.contains(".player_index"))
+    }
 }
 
 /// User repository trait

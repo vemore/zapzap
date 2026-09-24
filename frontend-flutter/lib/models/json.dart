@@ -94,8 +94,8 @@ abstract final class Json {
   }
 
   /// A map keyed by player index. JSON object keys are strings (`{"0": 28}`);
-  /// a list of `{playerIndex, score}`, which the Rust `zapzap` and
-  /// `nextRound` sent before 2026-09-24, is accepted too.
+  /// a list of `{playerIndex, score}`, which the Rust `nextRound` sent before
+  /// 2026-09-24, is accepted too, for such older responses.
   static Map<int, int> intMap(Object? value) {
     final result = <int, int>{};
     if (value is Map) {
@@ -153,9 +153,10 @@ abstract final class Json {
   }
 }
 
-/// One page of a listing, with whatever paging data the backend sent:
-/// Node sends `pagination {limit, offset, hasMore}` or `{total, limit,
-/// offset}`, Rust sometimes only a top-level `total`.
+/// One page of a listing, with whatever paging data the route sends (both
+/// backends alike): `pagination {limit, offset, hasMore}` (history,
+/// leaderboard), `pagination {total, limit, offset}` (admin), or `total`,
+/// `limit`, `offset` at the top level (`GET /party`).
 class Page<T> {
   const Page({
     required this.items,
@@ -173,7 +174,7 @@ class Page<T> {
     final paging = Json.map(json, 'pagination') ?? json;
     return Page(
       items: Json.list(json, itemsKey, parse),
-      total: Json.intOrNull(paging['total'] ?? json['total']),
+      total: Json.intOrNull(paging['total']),
       limit: Json.intOrNull(paging['limit']),
       offset: Json.intOrNull(paging['offset']),
       hasMore: paging['hasMore'] is bool ? paging['hasMore'] as bool : null,

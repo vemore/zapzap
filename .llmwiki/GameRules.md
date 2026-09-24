@@ -28,17 +28,17 @@
 - Play enumeration for bots: `find_same_rank_plays` (`card_analyzer.rs:156`, jokers added up to 4-card sets), `find_sequence_plays` (`:203`), `find_all_valid_plays` (`:266`).
 
 ### Round start
-- Party start: 3-8 players (`zapzap-rust/src/domain/entities/party.rs:105-107`); round 1, player index 0 starts (`zapzap-rust/src/application/party/start_party.rs:66-74`).
-- `initialize_round` deals `party.settings.hand_size` (default 5, clamped 4-7, `zapzap-rust/src/domain/value_objects/party_settings.rs:20`, `:31`) and sets phase `SelectHandSize` (`game_service.rs:13-60`); this deal is thrown away by the next step.
+- Party start: 3-8 players (`zapzap-rust/src/domain/entities/party.rs:106-109`); round 1, player index 0 starts (`zapzap-rust/src/application/party/start_party.rs:66-74`).
+- `initialize_round` deals `PROVISIONAL_HAND_SIZE` (5, `zapzap-rust/src/domain/value_objects/game_state.rs:14`; the hand size is not a party setting) and sets phase `SelectHandSize` (`game_service.rs:13-60`); this deal is thrown away by the next step.
 - `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score, and never more than the deck can deal with one card left to flip: at most (54 − 1) / active players, so 6 with 8 players (`hand_size_bounds`, `game_service.rs`; 400 `INVALID_HAND_SIZE` otherwise, test `test_hand_size_fits_the_deck_with_eight_players`). Node does not check the deck and deals short hands; gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
 - Next round: starter = `next_starting_player` (`zapzap-rust/src/application/game/next_round.rs`), the seat after this round's starter, clockwise, skipping eliminated seats, as `GAME_RULES.md` "Subsequent Rounds" says; the starter picks the hand size and eliminated seats get no cards. Tests: unit tests in `next_round.rs`, `test_eliminated_player_never_starts_a_round` and `test_starter_rotation_wraps_to_seat_zero` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
 
 ### Turn flow
-- Phases `SelectHandSize → Play → Draw → Play…`, terminal `Finished` (`zapzap-rust/src/domain/value_objects/game_state.rs:17-24`).
+- Phases `SelectHandSize → Play → Draw → Play…`, terminal `Finished` (`zapzap-rust/src/domain/value_objects/game_state.rs:17-27`).
 - Play: must be current player and phase Play (`play_cards.rs` via `execute_play`, `game_service.rs:67-128`); non-empty (`play_cards.rs:71`). First play of a round keeps the flipped card drawable; later plays push the previous `last_cards_played` to `discard_pile` and make the previous player's cards drawable (`game_service.rs:105-115`). The player draws from the *previous* player's cards, never their own.
 - Draw: phase Draw only (`game_service.rs:136-138`); `source == "played"` means discard, anything else deck (`zapzap-rust/src/application/game/draw_card.rs:71`); taking from discard records it in `card_tracker` (`game_service.rs:151`).
 - Empty deck: `discard_pile` (not `last_cards_played`) is reshuffled into the deck; both empty → error "No cards to draw" (`game_service.rs:155-164`). Matches `GAME_RULES.md:99-113`.
-- Turn advance skips eliminated players (`game_state.rs:505-513`, called `game_service.rs:183`).
+- Turn advance skips eliminated players (`game_state.rs:508-516`, called `game_service.rs:183`).
 
 ### ZapZap
 - Allowed only in phase Play, on your turn, hand value ≤5 with Joker = 0 (`zapzap-rust/src/application/game/call_zapzap.rs:70-83`, `card_analyzer.rs:76-78`, re-checked `game_service.rs:215`).

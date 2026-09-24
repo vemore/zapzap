@@ -11,7 +11,7 @@
 - `BotDifficulty` string values: `easy`, `medium`, `hard`, `hard_vince`, `thibot`, `drl`, `llm`, `ml` (`zapzap-rust/src/domain/entities/user.rs:44-66`).
 - `GET /api/bots?difficulty=` accepts exactly those 8 values (lower-cased), else 400 "Invalid difficulty filter" (`zapzap-rust/src/api/routes/bots.rs:57-82`); lists via `user_repo.find_all_bots` (`bots.rs:89-91`). See [[Api]].
 - Admins create and delete bots with `POST /api/bots` and `DELETE /api/bots/:botId` (since 2026-09-24, [[Api]]); `thibot` cannot be created that way (Node's list, `zapzap-rust/src/application/bot/create_bot.rs`). Bot users are otherwise seeded by the legacy Node script `scripts/init-bots.js` (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2, `scripts/init-bots.js:24-31`); VinceBot and LlamaBot exist in the local DB but not in that script (created elsewhere in the Node era, commit 0185eb0 "create VinceBot").
-- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:40`, `:304`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:595`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; Rust only, see [[Api]]).
+- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:33`, `:291`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:572`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; Rust only, see [[Api]]).
 
 ### Strategy trait
 - `BotStrategy` (sync): `select_hand_size`, `decide_action`, `select_cards`, `decide_draw_source`, `should_call_zapzap` (`zapzap-rust/src/infrastructure/bot/strategies/mod.rs:25-40`). `DrawSource::{Deck, Discard(card)}` (`mod.rs:51-54`).
@@ -40,7 +40,7 @@ Mapping done once, in `BotBrain::for_difficulty` (`zapzap-rust/src/application/b
 - **Hard** (`hard_bot.rs`): hand size 4 in golden score else random 4-5 (`:28-38`); play maximising `points_removed*2 + cards_removed*3` (`:74-85`); discard if it completes a pair/sequence or is worth ≤2 (`:95-110`); ZapZap at ≤2, ≤4 in golden score, or one card (`:116-141`).
 
 ### Thibot (`strategies/thibot.rs`)
-- Probability-based, tracks played/taken cards via `GameState.card_tracker` (`thibot.rs:1-9`; tracker `zapzap-rust/src/domain/value_objects/game_state.rs:109`).
+- Probability-based, tracks played/taken cards via `GameState.card_tracker` (`thibot.rs:1-9`; tracker `zapzap-rust/src/domain/value_objects/game_state.rs:112`).
 - 33 tunable `ThibotParams` (`thibot.rs:23-68`); defaults hard-coded (`:70-115`), comment "44.25% winrate vs 40.55% baseline" (`:72`). Values equal the `optimized.params` block of `data/thibot_genetic_params.json` (e.g. jokerKeepScore 705, holdPairForThreeBonus 226, discardThreshold 8; file winRate 0.4425).
 - Defensive mode when an opponent has ≤ `defensive_threshold` (3) cards: play max points (`thibot.rs:621-627`).
 - ZapZap: always at 0 (`:719`), else `can_safely_zapzap` (`:159-204`).

@@ -59,56 +59,40 @@ class ZapZapResult {
     required this.zapzapSuccess,
     required this.counteracted,
     required this.callerPoints,
-    this.totalScores,
+    this.totalScores = const {},
     this.roundScores,
+    this.handPoints = const {},
     this.counteractedByPlayerIndex,
-    this.counteractedBy,
-    this.handPoints,
   });
 
-  factory ZapZapResult.fromJson(JsonMap json) {
-    final by = json['counteractedBy'];
-    // Both backends send the running totals as an object; a list of this
-    // round's points is what Rust sent before 2026-09-24, still read.
-    final scores = json['scores'];
-    return ZapZapResult(
-      zapzapSuccess: Json.boolean(json, 'zapzapSuccess'),
-      counteracted: Json.boolean(json, 'counteracted'),
-      counteractedByPlayerIndex: Json.intOrNull(by),
-      counteractedBy: by?.toString(),
-      totalScores: scores is Map ? Json.intMap(scores) : null,
-      roundScores: scores is List ? Json.intMap(scores) : null,
-      handPoints: json['handPoints'] is Map
-          ? Json.intMap(json['handPoints'])
-          : null,
-      callerPoints: Json.integer(json, 'callerPoints'),
-    );
-  }
+  factory ZapZapResult.fromJson(JsonMap json) => ZapZapResult(
+    zapzapSuccess: Json.boolean(json, 'zapzapSuccess'),
+    counteracted: Json.boolean(json, 'counteracted'),
+    counteractedByPlayerIndex: Json.intOrNull(json['counteractedBy']),
+    totalScores: Json.intMap(json['scores']),
+    roundScores: Json.intMapOrNull(json['roundScores']),
+    handPoints: Json.intMap(json['handPoints']),
+    callerPoints: Json.integer(json, 'callerPoints'),
+  );
 
   /// The caller had the lowest hand.
   final bool zapzapSuccess;
   final bool counteracted;
 
-  /// Who counteracted, when the backend sent a player index (Node does).
+  /// The player index of who counteracted, `null` when nobody did.
   final int? counteractedByPlayerIndex;
 
-  /// Who counteracted, as sent (older Rust responses sent a string).
-  final String? counteractedBy;
+  /// Each player's total score after this round (`scores`), by player index.
+  final Map<int, int> totalScores;
 
-  /// `scores` as an object (both backends): each player's total score
-  /// after this round.
-  final Map<int, int>? totalScores;
-
-  /// Older Rust responses only (`scores` as a list of `{playerIndex,
-  /// score}`, before 2026-09-24): the points each player scored this round.
-  ///
-  /// Exactly one of [totalScores] and [roundScores] is set. Either way the
-  /// finished round's `GET /game/:id/state` carries both (`scores` and
-  /// `roundScores`), so screens should read that rather than this.
+  /// The points each player scored this round, by player index. Rust sends
+  /// them; Node does not, so this is `null` there. The finished round's
+  /// `GET /game/:id/state` carries them on both (`roundScores`), so screens
+  /// read that rather than this.
   final Map<int, int>? roundScores;
 
-  /// Node only: hand points per player index.
-  final Map<int, int>? handPoints;
+  /// Hand points per player index.
+  final Map<int, int> handPoints;
 
   /// The caller's hand value (jokers at 0).
   final int callerPoints;
