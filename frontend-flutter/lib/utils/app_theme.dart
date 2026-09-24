@@ -18,6 +18,23 @@ abstract final class AppColors {
   static const table = Color(0xFF14532D);
   static const tableLight = Color(0xFF166534);
 
+  /// The casino felt of the game board: a radial green, lit at the centre
+  /// and dark at the edges, under a painted texture and a watermark.
+  static const feltCenter = Color(0xFF1C7A45);
+  static const feltEdge = Color(0xFF0B3B1F);
+
+  /// The texture's fibres, lighter and darker than the felt.
+  static const feltFleckLight = Color(0x14FFFFFF);
+  static const feltFleckDark = Color(0x1F000000);
+
+  /// The ZapZap mark printed faintly at the centre of the felt.
+  static const feltWatermark = Color(0x1AFFFFFF);
+
+  /// The dark wood rim around the felt, and the thin inlay between them.
+  static const rimLight = Color(0xFF5B3A22);
+  static const rimDark = Color(0xFF2B170B);
+  static const rimInlay = Color(0xFF8A6A3A);
+
   static const error = Color(0xFFEF4444);
 }
 
