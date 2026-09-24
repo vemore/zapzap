@@ -35,7 +35,8 @@ void main() {
     'userScore': ?score,
   };
 
-  /// A Node `GET /history` entry: a winner id and score, no place of mine.
+  /// An older Node `GET /history` entry (before 2026-09-24): a winner id and
+  /// score, no place of mine.
   Map<String, Object?> nodeGame(String id, {required String winnerId}) => {
     'id': 1,
     'partyId': id,

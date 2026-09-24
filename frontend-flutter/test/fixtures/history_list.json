@@ -12,7 +12,9 @@
       "wasGoldenScore": true,
       "playerCount": 3,
       "finishedAt": 1790094408,
-      "visibility": "public"
+      "visibility": "public",
+      "userPlacement": 3,
+      "userScore": 122
     }
   ],
   "pagination": {

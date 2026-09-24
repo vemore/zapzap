@@ -153,6 +153,9 @@
   so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
   `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
   the deck, deliberately not parsed.
+  > **Status: Outdated** (2026-09-24) — Node's `GET /history` now sends `userPlacement` and
+  > `userScore` too (`src/use-cases/history/GetGameHistory.js`, from
+  > `player_game_results`); `/history/public` carries neither, on both backends.
 - **Fixtures** (`test/fixtures/*.json`): answers captured from the local Node backend
   (`PORT=9911 node app.js` on a worktree database after `npm run init-demo && npm run
   init-bots`, one game against EasyBot1 and MediumBot1 played through the API to its end),
@@ -565,6 +568,10 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   shorter than `HistoryScreen.inviteBelow` (3); the public tab keeps `AsyncSection`'s
   empty message. Ordinals go through `placementLabel`: the ARB `plural` has no `=3`, so
   `historyPlacement` is a `select` on first/second/third/other.
+  > **Status: Outdated** (2026-09-24) — Node sends `userPlacement`/`userScore` on
+  > `GET /history` now, so production shows the place of a lost game too; the
+  > `winnerUserId` fallback only serves an older Node. `test/fixtures/history_list.json`
+  > carries both fields (Vincent, 3rd, 122).
 - **Game details** (`screens/game_details_screen.dart`): the summary (winner banner,
   players, rounds, end date, visibility), `HistoryStandings` (finishing order, `RankBadge`
   gold/silver/bronze, ZapZap record, final score) and `HistoryRoundsTable` — a `DataTable`
@@ -756,6 +763,12 @@ project `.gitignore`.
 
 ## Decisions & History
 
+- **Node's `GET /history` sends the caller's place and score (2026-09-24,
+  `fix/node-history-user-placement`).** The Rust parity fields were missing on the backend
+  production runs, so a lost game showed no place. `getFinishedGamesForUser` already joined
+  `player_game_results`; the use case now maps `user_position`/`user_final_score`. The
+  fixture was regenerated from a local Node (`PORT=9911`) on a database seeded with the
+  fixture game's ids and scores, not from a replayed game.
 - **Flutter client decided (2026-09-22).** The user wants an Android app and a PWA at parity
   with the React client. The PWA goes on the same domain under `/app/` (same origin as the
   API, no CORS change to the backend) while React stays on `/`; Android is debug-only for
