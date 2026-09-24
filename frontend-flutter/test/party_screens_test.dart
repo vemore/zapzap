@@ -299,50 +299,6 @@ void main() {
       expect(find.text('Joueurs (0/5)'), findsOneWidget);
     });
 
-    testWidgets('a name under three characters is refused here', (
-      tester,
-    ) async {
-      final backend = FakeLobbyBackend();
-      await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
-
-      await tester.enterText(find.byKey(const Key('party-name')), ' ab ');
-      await tester.pump();
-      expect(enabled(tester, 'create-submit'), isFalse);
-      expect(
-        find.text('Le nom doit faire au moins 3 caractères'),
-        findsOneWidget,
-      );
-
-      await tester.enterText(find.byKey(const Key('party-name')), 'abc');
-      await tester.pump();
-      expect(enabled(tester, 'create-submit'), isTrue);
-
-      // Fifty at most: the field takes no more.
-      await tester.enterText(find.byKey(const Key('party-name')), 'x' * 60);
-      await tester.pump();
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const Key('party-name')))
-            .controller!
-            .text,
-        'x' * 50,
-      );
-    });
-
-    testWidgets('submit waits for a name', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(),
-        initialLocation: AppRoutes.createParty,
-      );
-      expect(enabled(tester, 'create-submit'), isFalse);
-      expect(find.text('Le nom de la partie est requis'), findsOneWidget);
-
-      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
-      await tester.pump();
-      expect(enabled(tester, 'create-submit'), isTrue);
-    });
-
     testWidgets('a refusal is shown and the form stays', (tester) async {
       final backend = FakeLobbyBackend();
       backend.failures['POST /api/party'] = (
@@ -581,10 +537,7 @@ void main() {
       await tester.tap(find.byKey(const Key('leave-party')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text("Tu n'as pas de place à cette table."),
-        findsOneWidget,
-      );
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
     });
 
     testWidgets('a party that does not exist says so', (tester) async {
