@@ -79,6 +79,8 @@ Each player's turn consists of **two mandatory phases** in sequence:
 #### First Round
 - The **party owner** (first player to join) starts the game
 - The starting player chooses the **hand size** (4-7 cards, or 4-10 in Golden Score)
+  — never more than the deck can deal to every active player while leaving a card to
+  flip: at most (54 − 1) ÷ players, so **6 with 8 players**
 - Cards are dealt to all players
 - **One card is flipped** from the deck to the discard pile (visible for drawing)
 
@@ -138,6 +140,10 @@ if (zapzap_called && someone_has_lower_or_equal) {
   zapzap_caller_score = hand_points_with_joker + ((active_players - 1) × 5)
 }
 ```
+
+**Ties:** when several players share the lowest hand value, **every one of them** scores 0.
+A counteracted ZapZap caller still takes the penalty above, even when tied for the lowest.
+(Golden Score ties: see below.)
 
 **Example Scoring:**
 

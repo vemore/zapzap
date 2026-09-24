@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
+# Optional Cargo features, e.g. `--build-arg CARGO_FEATURES=bedrock` for the AWS Bedrock
+# LLM bots (the compose file passes CARGO_FEATURES through). Empty builds without.
+ARG CARGO_FEATURES=""
+
 # Copy Cargo files first for dependency caching
 COPY Cargo.toml Cargo.lock ./
 
@@ -23,14 +27,14 @@ RUN mkdir src && \
     echo "pub fn dummy() {}" > src/lib.rs
 
 # Build dependencies only (cached layer)
-RUN cargo build --release && \
+RUN cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} && \
     rm -rf src target/release/deps/zapzap*
 
 # Copy actual source code
 COPY src ./src
 
 # Build the application
-RUN cargo build --release
+RUN cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
