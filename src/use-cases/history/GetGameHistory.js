@@ -45,9 +45,11 @@ class GetGameHistory {
             }
 
             // Enrich games with winner username
+            // Personal history also carries the caller's own result (player_game_results),
+            // as Rust does; public history has no caller, so neither field.
             const enrichedGames = await Promise.all(games.map(async (game) => {
                 const winnerUser = await this.userRepository.findById(game.winner_user_id);
-                return {
+                const entry = {
                     id: game.id,
                     partyId: game.party_id,
                     partyName: game.party_name,
@@ -60,6 +62,11 @@ class GetGameHistory {
                     finishedAt: game.finished_at,
                     visibility: game.visibility
                 };
+                if (!publicOnly) {
+                    entry.userPlacement = game.user_position ?? null;
+                    entry.userScore = game.user_final_score ?? null;
+                }
+                return entry;
             }));
 
             logger.debug('Game history retrieved', {
