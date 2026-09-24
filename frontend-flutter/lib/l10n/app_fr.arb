@@ -1643,6 +1643,70 @@
       }
     }
   },
+  "gameSuggestions": "Combinaisons jouables",
+  "@gameSuggestions": {
+    "description": "Screen-reader label of the suggestion chips above the hand"
+  },
+  "gameSuggestion": "{move} · −{points}",
+  "@gameSuggestion": {
+    "description": "A suggestion chip above the hand: the move, then the points it takes off the hand (jokers 0)",
+    "placeholders": {
+      "move": {
+        "type": "String"
+      },
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameSuggestSingle": "{card} seule",
+  "@gameSuggestSingle": {
+    "description": "Suggestion: play one card, e.g. 'Q♠ seule'",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestPair": "Paire de {rank}",
+  "@gameSuggestPair": {
+    "description": "Suggestion: play two cards of one rank",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestGroup": "{count} × {rank}",
+  "@gameSuggestGroup": {
+    "description": "Suggestion: play three or four cards of one rank",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestSequence": "{jokers, plural, =0{Suite {low}–{high}{suit}} =1{Suite {low}–{high}{suit} avec joker} other{Suite {low}–{high}{suit} avec {jokers} jokers}}",
+  "@gameSuggestSequence": {
+    "description": "Suggestion: play a run of one suit from rank low to rank high, jokers filling its gaps",
+    "placeholders": {
+      "jokers": {
+        "type": "int"
+      },
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      },
+      "suit": {
+        "type": "String"
+      }
+    }
+  },
   "gameMoveTake": "Prendre {card}",
   "@gameMoveTake": {
     "description": "Primary button of the draw step: take the selected discard card",
