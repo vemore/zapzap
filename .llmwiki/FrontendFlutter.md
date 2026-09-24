@@ -137,7 +137,7 @@
   Card ids stay `int` (0-53); no model is named `Card`.
 - **Parsing rules** (`models/json.dart`), because the two backends disagree on types:
   maps keyed by player index arrive with string keys (`{"0": 28}`) and become `Map<int, …>`;
-  Rust sends some of them as `[{playerIndex, score}]` (zapzap `scores`, nextRound), read too.
+  Rust's `nextRound` sends them as `[{playerIndex, score}]`, read too.
   A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
   can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,
@@ -148,23 +148,20 @@
   settings are `{playerCount, allowSpectators, roundTimeLimit}` on Node — which **requires**
   `playerCount` 3-8 on create, else 500 `CREATE_PARTY_ERROR` — and `{handSize, maxScore,
   enableGoldenScore, goldenScoreThreshold}` on Rust, so `PartySettings` has both, all
-  optional; history entries carry Node's keys on both backends since 2026-09-24 (Rust
-  sent `roundsPlayed` and no `winnerFinalScore` before; the models still read both, as
-  they read Rust's former admin party subset); Node `join` has no `playerIndex`; Node
-  `zapzap` adds a `handPoints` map, Rust sends one number; zapzap `scores` are the running
-  **totals** after the round on Node (an object, `src/use-cases/game/CallZapZap.js:121-125`)
-  but the **round's own points** on Rust (a list, `zapzap-rust/src/domain/services/game_service.rs:228`),
-  so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
-  `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
-  the deck, deliberately not parsed.
-  > **Status: Outdated** (2026-09-24) — Rust's `zapzap` now answers Node's shape
-  > (`fix/rust-api-errors-contract`, [[Api]]): `scores` the running totals as an object,
-  > `handPoints` a map, `counteractedBy` an index or `null`, plus the round's points under
-  > `roundScores`. `ZapZapResult` so gets `totalScores` from both backends; it does not read
-  > `roundScores` yet.
-  > **Status: Outdated** (2026-09-24) — Node's `GET /history` now sends `userPlacement` and
-  > `userScore` too (`src/use-cases/history/GetGameHistory.js`, from
-  > `player_game_results`); `/history/public` carries neither, on both backends.
+  optional; Node `join` has no `playerIndex`; Node play/draw answers carry a raw
+  `gameState` with every hand and the deck, deliberately not parsed.
+- **Shapes both backends share** (Rust aligned on Node in #74 and #83; the models read only
+  these): `zapzap` answers `scores` (the running totals, an object → `totalScores`),
+  `handPoints` (a map), `counteractedBy` (an index or `null` →
+  `counteractedByPlayerIndex`) and, on Rust only, the round's own points under
+  `roundScores` (`ZapZapResult.roundScores`, `null` on Node; the finished round's `/state`
+  carries them on both). History entries (`GET /history`, `/history/public`) carry
+  `winnerUserId`, `winnerFinalScore`, `totalRounds`, `wasGoldenScore`, all non-null in
+  `GameHistoryEntry`; `userPlacement` and `userScore` on `GET /history` only (Node's since
+  2026-09-24), `visibility` too on Rust. Paging is `pagination {limit, offset, hasMore}`
+  (history, leaderboard), `pagination {total, limit, offset}` (admin) or top-level `total,
+  limit, offset` (`GET /party`), and `Page` reads each. The admin party list carries
+  Node's `ListAllParties` keys on both.
 - **Fixtures** (`test/fixtures/*.json`): answers captured from the local Node backend
   (`PORT=9911 node app.js` on a worktree database after `npm run init-demo && npm run
   init-bots`, one game against EasyBot1 and MediumBot1 played through the API to its end),
@@ -649,14 +646,13 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   to the list. The three screens carry `ZapZapAppBar` (presence, connection, the menu)
   with a back button that pops (`popOrGo`: to the list, or the history for the details,
   when opened by a link); the statistics are reached from the history through the menu,
-  and Back unwinds them one at a time. Node fills `winnerFinalScore`
-  and `totalRounds`, Rust neither, so the tile leaves out what is `null`.
+  and Back unwinds them one at a time. The tile shows the winner with their score and the
+  number of rounds, which both backends send.
 - **My result first (H1–H3 of the UX study, `feat/flutter-history-ux`).** On My games each
   `HistoryGameTile` opens on a `PlacementBadge` ("1er"/"4e", amber when I won) and shows
-  my score beside the winner's. Rust sends `userPlacement`/`userScore`; Node sends
-  neither, so `myPlacement` (`widgets/history_game_tile.dart`) falls back to 1 when
-  `winnerUserId` is mine and the badge is left out otherwise — on production (Node) only
-  wins get a badge. The public tab shows no place. The list opens on `HistorySummary`
+  my score beside the winner's. Both backends send `userPlacement`/`userScore`; a Node
+  older than 2026-09-24 sends neither, so `myPlacement` (`widgets/history_game_tile.dart`)
+  falls back to 1 when `winnerUserId` is mine and the badge is left out otherwise. The public tab shows no place. The list opens on `HistorySummary`
   (`widgets/history_summary.dart`): games and wins from `GET /stats/me` (the whole record,
   not the page of entries), the best place (1 as soon as the record holds a win, else the
   best `myPlacement` of the page), `—` for what is not known; tapping it `push`es
