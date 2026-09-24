@@ -103,7 +103,11 @@ async fn started_party(
         app,
         "POST",
         "/api/party",
-        json!({"name": format!("{prefix} party")}),
+        // As many seats as players (settings.playerCount, 3 at least)
+        json!({
+            "name": format!("{prefix} party"),
+            "settings": {"playerCount": (1 + humans + bots.len()).max(3)}
+        }),
         &owner,
     )
     .await;
