@@ -84,7 +84,7 @@ async function bootstrap(emitter = null) {
         const container = new DIContainer();
 
         // Initialize database
-        const db = new DatabaseConnection();
+        const db = new DatabaseConnection(process.env.DB_PATH || null);
         await db.initialize();
         container.register('database', db);
 

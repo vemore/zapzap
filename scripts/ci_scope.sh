@@ -22,8 +22,9 @@ image=false
 hooks=false
 flutter=false
 node=false
+parity=false
 
-everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; parity=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -31,8 +32,9 @@ while IFS= read -r path; do
         # Documentation. A case glob's `*` crosses `/`, so `*.md` is `**/*.md`.
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 
-        # The Rust backend -- the deployed server -- and the image built from it.
-        zapzap-rust/*) rust=true; image=true ;;
+        # The Rust backend -- the deployed server -- and the image built from it; the
+        # parity suite runs its release build against the Node backend.
+        zapzap-rust/*) rust=true; image=true; parity=true ;;
 
         # Bot parameters and models: zapzap-rust/data is a symlink to data/.
         data/*) rust=true ;;
@@ -60,14 +62,18 @@ while IFS= read -r path; do
 
         # The Node schema, which zapzap-rust/tests/schema_tests.rs reads and compares
         # with the Rust backend's copy: a change to it needs the rust job too.
-        src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true ;;
+        src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true; parity=true ;;
 
         # The Node backend, which production runs (.llmwiki/Deployment.md): its code and
-        # dependencies are tested by jest and baked into the root Dockerfile's image.
-        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true ;;
+        # dependencies are tested by jest, baked into the root Dockerfile's image, and
+        # compared with the Rust backend by the parity suite.
+        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true; parity=true ;;
 
         # What the Node image holds but jest does not load, and the image's own recipe.
         views/*|public/*|Dockerfile|.dockerignore) image=true ;;
+
+        # The parity suite (node --test, outside jest): Node against Rust.
+        tests/parity/*) parity=true ;;
 
         # The jest suites and their configuration.
         tests/*|jest.config.js) node=true ;;
@@ -81,4 +87,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\nparity=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node" "$parity"
