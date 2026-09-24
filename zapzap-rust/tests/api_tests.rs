@@ -3672,3 +3672,90 @@ async fn test_next_round_after_the_game_ending_zapzap_is_refused() {
     );
     assert_eq!(game_results_rows(&state, &party_id).await, 1);
 }
+
+// ============================================================================
+// The last parity items: Node's answers to a bad set-admin body, a join of a full
+// started party and a delete by a non-member (tests/parity/divergences.json)
+// ============================================================================
+
+#[tokio::test]
+async fn test_admin_set_admin_bad_body_answers_nodes_400() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "badbodyadmin").await;
+    let (_, user_id) = register(&mut app, "badbodytarget").await;
+    let path = format!("/api/admin/users/{user_id}/admin");
+    let want = json!({ "success": false, "error": "isAdmin must be a boolean" });
+
+    // A mistyped field, a missing one, and malformed JSON: Node's 400, not axum's 422
+    for body in [r#"{"isAdmin":"yes"}"#, "{}", "{not json"] {
+        let (status, got) = send_raw(
+            &mut app,
+            "POST",
+            &path,
+            body,
+            Some("application/json"),
+            Some(&admin),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {got}");
+        assert_eq!(got, want, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn test_join_full_started_party_answers_party_full() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "fullstart_a").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Full started", 3).await;
+    for name in ["fullstart_b", "fullstart_c"] {
+        let (token, _) = register(&mut app, name).await;
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/join"),
+            json!({}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "join: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+
+    // Node checks a full party before anything else (JoinParty.js)
+    let (late, _) = register(&mut app, "fullstart_d").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &late,
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_delete_party_by_a_non_member_answers_not_in_party() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "nonmember_owner").await;
+    let (outsider, _) = register(&mut app, "nonmember_out").await;
+    let waiting_id = create_party(&mut app, &owner, "Not yours").await;
+    let (playing_id, tokens) = started_party(&mut app, "nonmember_game").await;
+
+    // Node's order (DeleteParty.js): membership first, whatever the party's state
+    for party_id in [&waiting_id, &playing_id] {
+        let path = format!("/api/party/{party_id}");
+        let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&outsider)).await;
+        assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_IN_PARTY");
+    }
+
+    // Then the owner (or the only human): a member who is neither, even during a game
+    let path = format!("/api/party/{playing_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&tokens[1])).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
+}

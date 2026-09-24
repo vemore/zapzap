@@ -61,8 +61,14 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             }
         }
 
-        // Check party status
+        // Check party status. Node checks a full party first (JoinParty.js), so a full
+        // started party answers PARTY_FULL; Node lets anyone join a started party with
+        // a free seat, which Rust refuses.
         if party.status != PartyStatus::Waiting {
+            let players = self.party_repo.get_party_players(&party.id).await?;
+            if party.is_full(players.len()) {
+                return Err(JoinPartyError::PartyFull);
+            }
             return Err(JoinPartyError::PartyNotWaiting);
         }
 

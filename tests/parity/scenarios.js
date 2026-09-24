@@ -228,9 +228,16 @@ async function oneGame(rec, ctx, n) {
 
 async function game(rec, ctx) {
     const results = await Promise.all([...Array(GAMES).keys()].map((n) => oneGame(rec, ctx, n + 1)));
-    for (const r of results) rec.value('game.finished', r.finished ? 'finished' : `not finished: ${r.why}`);
+    for (const r of results) {
+        rec.value('game.finished', r.finished ? 'finished' : `not finished: ${r.why}`);
+        // Both backends agreeing is not enough: every game must reach its end.
+        rec.check('game.reached-end', r.finished, () => `game in party ${r.partyId}: ${r.why}`);
+    }
     ctx.gameParty = results[0].partyId;
     ctx.gameRounds = results.map((r) => r.rounds).join('+');
+    // How many times each game checked its winner: parity.test.js wants at least one each.
+    ctx.games = GAMES;
+    ctx.winnerChecks = results.map((r) => r.winnerChecks || 0);
     rec.value('game.hand-size', HAND_SIZE);
 }
 
