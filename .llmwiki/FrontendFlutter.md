@@ -68,7 +68,7 @@
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart`, `utils/field_touch.dart` | the React username/password rules; the JWT payload and `exp` reader; `FieldTouch`, when a form field may show its refusal |
-| `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen; `leaveFor(fallback)`: `popOrGo` that replaces the browser's entry (the game's exits); `replaceWith(location)`: a screen taking another's place (Back navigation, below) |
+| `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen, replacing the browser's entry; `replaceWith(location)`: a screen taking another's place (Back navigation, below) |
 | `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
 | `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `not_found_screen.dart` |
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
@@ -291,9 +291,14 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   form whose party exists or a lobby that sends straight back to the game. A screen's own back button, and the lobby closing, call `popOrGo`
   (`utils/navigation.dart`): pop when something is below, else `go` to the list — a deep
   link or a reload of the PWA has nothing below. The history, the game details and the
-  statistics follow the same rule (below). `test/party_screens_test.dart` (`back
-  navigation`) and `test/app_bar_test.dart` drive the system Back
-  (`handlePopRoute`).
+  statistics follow the same rule (below). go_router reports a pop, like a `go`, to the
+  browser as a *new* history entry (`replace: false`), so the browser's Back would reopen
+  the screen just left; `popOrGo` runs under `Router.neglect`, which replaces the entry
+  instead. `test/party_screens_test.dart` (`back navigation`) and `test/app_bar_test.dart`
+  drive the system Back (`handlePopRoute`); `test/deep_link_test.dart` (`a back button
+  replaces the screen it leaves`) reads what each back button reports on
+  `SystemChannels.navigation`: `/parties (replace)` from the form, the lobby, the history
+  and the statistics, `/history (replace)` from the details opened by a link.
 - **Screens own their provider**: each screen builds it in `initState` from the
   repositories it reads off the tree and disposes it, and draws with a `ListenableBuilder`;
   the widgets below take plain data. Only `ConnectedPlayersProvider` is app-wide.
@@ -439,10 +444,9 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   that is `playing` straight back to `/game/:id`, so a back button pointing at the lobby is
   a flash and a full remount of the board, and no way out of the game. Every exit of the
   game — its back button, the body's back button, "back to the parties" at the end, a
-  deleted party — calls `leaveFor(AppRoutes.parties)` (`utils/navigation.dart`): `popOrGo`
-  under `Router.neglect`. A pop, like a `go`, reaches the browser as a *new* history entry
-  (go_router reports it with `replace: false`), so the browser's Back from the list would
-  reopen the game; under `neglect` the game's entry is replaced by the list's.
+  deleted party — calls `popOrGo(AppRoutes.parties)` (`utils/navigation.dart`), which
+  replaces the game's browser entry by the list's (Back navigation, above), so the
+  browser's Back from the list never reopens the game.
   `test/game_screen_test.dart` (`leaving the board`) checks list → game → back: `/parties`,
   `canPop()` false, reported as `(replace)`.
 - **Layouts**: under 800 px one column that fills the height — each section over its own
@@ -981,8 +985,9 @@ project `.gitignore`.
   now fills the height between players and hand, so the ~100 px empty band under it went
   and its cards got the room; in the draw step the hand yields to it (3/20) and the
   duplicate "X a posé N cartes" line is dropped, which keeps the whole draw step in view
-  at 360x740 and 390x844 at 1.0. The game's exits call `leaveFor`: `popOrGo` alone would
-  still have pushed a browser entry — checked by the reported route information, which a
+  at 360x740 and 390x844 at 1.0. The game's exits called `leaveFor`, `popOrGo` under
+  `Router.neglect` (since folded into `popOrGo`): `popOrGo` alone would still have pushed a
+  browser entry — checked by the reported route information, which a
   pop sends with `replace: false`. Before/after renders at 360x740 are described in the
   pull request.
 - **Back navigation: `push`, and `popOrGo` (2026-09-23, `fix/flutter-back-navigation`).**
@@ -1008,6 +1013,15 @@ project `.gitignore`.
   local Node backend on a fresh database: list, form (`/app/parties/new`), lobby
   (`/app/parties/<id>`, history length unchanged), reload on the lobby, Back to the list,
   Back out of the app.
+- **Every back button replaces the browser's entry (2026-09-24,
+  `fix/flutter-back-replaces-history`).** Only the game's exits used `leaveFor`; the form,
+  the lobby, the history, the statistics and the details still popped with a plain
+  `popOrGo`, which go_router reports as a new browser entry, so after list → history →
+  back the browser's Back reopened the history. `leaveFor` was folded into `popOrGo`.
+  Absorbed in the same change: seven ARB keys without a caller since the compact party
+  card and the lobby's chips (`partyContinueButton`, `partyReturnToLobbyButton`,
+  `partyInProgressButton`, `lobbySettingsTitle`, `lobbyMaxPlayers`, `lobbyHandSize`,
+  `lobbyStartButton`) were dropped.
 - **The lobby shows its invite code and hides Delete (2026-09-24, `feat/flutter-lobby-ux`).**
   The UX study (S1–S4) found the invite code — the only way into a private party — never
   on screen, a 120 px settings card, seats that did not say who was there, and three

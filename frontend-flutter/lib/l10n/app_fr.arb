@@ -365,18 +365,6 @@
   "@partyFullButton": {
     "description": "Disabled join button when every seat is taken"
   },
-  "partyInProgressButton": "Partie en cours",
-  "@partyInProgressButton": {
-    "description": "Disabled join button when the game has started"
-  },
-  "partyContinueButton": "Reprendre la partie",
-  "@partyContinueButton": {
-    "description": "Button that opens the running game of a party the user is in"
-  },
-  "partyReturnToLobbyButton": "Retour au salon",
-  "@partyReturnToLobbyButton": {
-    "description": "Button that opens the lobby of a party the user is in"
-  },
   "partiesMine": "Mes parties",
   "@partiesMine": {
     "description": "Section heading: the parties the signed-in user is in"
@@ -557,18 +545,6 @@
   "@lobbyBack": {
     "description": "Tooltip of the back button of the lobby and create screens"
   },
-  "lobbySettingsTitle": "Paramètres",
-  "@lobbySettingsTitle": {
-    "description": "Title of the lobby settings block"
-  },
-  "lobbyMaxPlayers": "Joueurs max",
-  "@lobbyMaxPlayers": {
-    "description": "Label of the party's seat count in the lobby settings"
-  },
-  "lobbyHandSize": "Cartes en main",
-  "@lobbyHandSize": {
-    "description": "Label of the hand size in the lobby settings"
-  },
   "lobbyPlayersTitle": "Joueurs ({count}/{max})",
   "@lobbyPlayersTitle": {
     "description": "Title of the lobby player list",
@@ -593,10 +569,6 @@
   "lobbyEmptySlot": "En attente d'un joueur…",
   "@lobbyEmptySlot": {
     "description": "An empty seat in the lobby"
-  },
-  "lobbyStartButton": "Démarrer la partie",
-  "@lobbyStartButton": {
-    "description": "Owner-only button that starts the game"
   },
   "lobbyLeaveButton": "Quitter la partie",
   "@lobbyLeaveButton": {
