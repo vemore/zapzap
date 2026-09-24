@@ -25,7 +25,8 @@ pub struct SseParams {
 /// The party actions every stream receives when the party is public: what changes a row
 /// of the public party list (seats, status, the party being there at all), which the
 /// Flutter `PartyListProvider` reloads on. None carries more than names, indexes and ids.
-const PUBLIC_LIFECYCLE_ACTIONS: [&str; 5] = [
+const PUBLIC_LIFECYCLE_ACTIONS: [&str; 6] = [
+    "partyCreated",
     "playerJoined",
     "playerLeft",
     "partyStarted",

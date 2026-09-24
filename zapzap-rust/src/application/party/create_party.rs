@@ -86,13 +86,17 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
 
         let mut bots_joined = 0;
 
-        // Add bots if specified
-        for (index, bot_id) in input.bot_ids.iter().enumerate() {
+        // Add bots if specified: contiguous seats after the owner, whatever ids are skipped
+        let mut seated = std::collections::HashSet::new();
+        for bot_id in &input.bot_ids {
+            if !seated.insert(bot_id) {
+                continue; // a repeated id would break UNIQUE(party_id, user_id)
+            }
             // Verify bot exists
             if let Some(bot) = self.user_repo.find_by_id(bot_id).await? {
                 if bot.is_bot() {
                     self.party_repo
-                        .add_party_player(&party_id, bot_id, (index + 1) as u8)
+                        .add_party_player(&party_id, bot_id, (bots_joined + 1) as u8)
                         .await?;
                     bots_joined += 1;
                 }

@@ -46,6 +46,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### SQLite database
 
 - Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:47-56`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
+- Node backend file: `DB_PATH`, else `data/zapzap.db` of the checkout (`src/api/bootstrap.js:87`, `src/infrastructure/database/sqlite/DatabaseConnection.js:13`); `scripts/init-bots.js` reads `DB_PATH` too. The root image sets `DB_PATH=/app/data/zapzap.db` (`Dockerfile:27`), the path the default already resolved to. A local server on a throwaway database: `DB_PATH=/tmp/x.db PORT=9941 node app.js`.
 - **Both backends create the same schema**: the Node code in `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) plus its `runMigrations()`, the Rust backend at startup from a verbatim copy, `zapzap-rust/src/infrastructure/database/schema.sql` (`zapzap-rust/src/infrastructure/app_state.rs:64`). All `IF NOT EXISTS`, so the Rust step is a no-op on a Node-built DB; `zapzap-rust/tests/schema_tests.rs` keeps the two identical ([[Backend]]). Older Node databases are upgraded by the Node side only (`runMigrations()`, `scripts/docker-entrypoint.js`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
 
