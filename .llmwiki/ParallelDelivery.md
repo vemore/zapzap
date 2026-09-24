@@ -3,7 +3,7 @@
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
 > risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -63,10 +63,10 @@
 | **D** | an experiment | a `noPullRequest` branch, never merged; what it taught becomes an entry |
 
 A change confined to `frontend-flutter/` is lane **A** unless it meets a B criterion (its
-size, most often): the client is not deployed ([[FrontendFlutter]]), so a merge reaches no
-user and there is nothing to deploy after it. It becomes B or C by the same rules as the
-rest once it ships, and a change that also touches the backend, `nginx/` or the compose files
-is judged on those.
+size, most often). The PWA ships under `/app/` since #36 ([[Deployment]]), so its merge is
+deployed like any other (`ship-parallel` §4); the proxy does not depend on it, so a broken
+bundle takes down `/app/` and not the site. A change that also touches the backend, `nginx/`
+or the compose files is judged on those.
 
 The reviewing agent gets these rules: verify each finding against the PR head; a wiki page
 or README the change makes false is at least Medium; read a page's `Decisions & History`
@@ -99,5 +99,8 @@ moves from `todo_nr/` to `todo/` (at most 12).
   `<MAIN>/wip/**`: the report heading is the one path, and the orchestrator writes.
 - **The 18 `.playwright-mcp/` screenshots were removed (2026-09-23).** Debugging captures
   of the React UI from December 2025, referenced nowhere; git history keeps them.
+- **A Flutter merge is deployed (2026-09-24).** The lane rule said the client was not
+  deployed, so a merge reached no user; that stopped being true with #36, and #62–#64 were
+  deployed through the `deploy` skill while the rule still said otherwise.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
