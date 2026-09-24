@@ -120,6 +120,14 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 - Undocumented in the old doc: `selectHandSize`, `nextRound`, `trigger-bot`, `/stats/*`, `/history/*`, `/admin/*`, `/bots`, `/players/connected`.
 - `AUDIT_REPORT.md` (2025-11-06) audits the pre-clean-architecture `app.js`/jQuery app (e.g. "No Turn Validation in API Endpoints"); obsolete for Rust, which checks turn and phase in every game use case.
 
+### Node vs Rust: the parity suite
+- Every difference between the two backends' answers that the parity suite finds is listed,
+  with its class and wip entry, in `tests/parity/divergences.json`: `node-bug` (Node is
+  wrong and Rust rightly differs) or `pending` (Rust must still change). The CI job
+  `parity` fails on an unlisted difference and on a listed one that no longer occurs, so
+  that file is the up-to-date list; the prose below is a code read and may lag it.
+  Suite and rules: [[Testing]].
+
 ### Missing vs legacy Node / frontend
 - `POST /api/auth/google` exists in Node (`src/api/routes/authRoutes.js:123`) and is called by the frontend (`frontend/src/services/auth.js:180`) but has **no Rust route** → Google sign-in 404s on the Rust backend.
 - Node `POST /api/bots` and `DELETE /api/bots/:botId` (`src/api/routes/botRoutes.js`) have no Rust equivalent.
