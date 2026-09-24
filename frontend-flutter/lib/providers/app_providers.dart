@@ -9,6 +9,7 @@ import '../repositories/party_repository.dart';
 import '../repositories/stats_repository.dart';
 import '../services/api_client.dart';
 import '../services/api_config.dart';
+import '../services/google_sign_in_service.dart';
 import '../services/sse_transport.dart';
 import '../services/token_storage.dart';
 import 'auth_provider.dart';
@@ -21,12 +22,14 @@ import 'sse_provider.dart';
 /// [apiClient] replaces the real client, for tests; otherwise one is built
 /// from [apiConfig] and closed with the tree. [tokenStorage] replaces the
 /// platform's session storage, [sseTransport] the platform's real-time
-/// transport, for tests.
+/// transport, [googleSignIn] Google (built from `--dart-define=
+/// GOOGLE_CLIENT_ID` otherwise), for tests.
 List<SingleChildWidget> appProviders({
   required ApiConfig apiConfig,
   ApiClient? apiClient,
   TokenStorage? tokenStorage,
   SseTransport? sseTransport,
+  GoogleSignInService? googleSignIn,
 }) => [
   Provider<ApiConfig>.value(value: apiConfig),
   if (apiClient != null)
@@ -47,6 +50,10 @@ List<SingleChildWidget> appProviders({
       apiClient: context.read<ApiClient>(),
       storage: tokenStorage ?? TokenStorage.platform(),
     )..restore(),
+  ),
+  // Created once: the plugin may be initialised only once.
+  Provider<GoogleSignInService>(
+    create: (_) => googleSignIn ?? _platformGoogleSignIn(),
   ),
   Provider<PartyRepository>(
     create: (context) => PartyRepository(context.read<ApiClient>()),
@@ -88,3 +95,10 @@ List<SingleChildWidget> appProviders({
         players!..follow(auth.isAuthenticated, streamConnected: sse.connected),
   ),
 ];
+
+GoogleSignInService _platformGoogleSignIn() {
+  final config = GoogleSignInConfig.fromEnvironment();
+  return config.enabled
+      ? PluginGoogleSignInService(config)
+      : const DisabledGoogleSignIn();
+}

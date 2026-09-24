@@ -9,7 +9,8 @@ import 'error_banner.dart';
 
 /// The frame shared by the login and register screens (`Login.jsx`,
 /// `Register.jsx`): the logo with its one-line pitch, a title, the fields in
-/// one [AutofillGroup] (the password manager fills and saves them together),
+/// one [AutofillGroup] (the password manager fills and saves them together)
+/// under the [alternative] sign-in if any (Google, as React puts it),
 /// the server's refusal if any just above the submit button, where the eye
 /// already is, and the link to the other screen.
 class AuthCard extends StatelessWidget {
@@ -20,6 +21,7 @@ class AuthCard extends StatelessWidget {
     required this.fields,
     required this.submit,
     required this.footer,
+    this.alternative,
   });
 
   final String title;
@@ -29,6 +31,10 @@ class AuthCard extends StatelessWidget {
   final List<Widget> fields;
   final Widget submit;
   final Widget footer;
+
+  /// Another way in, above the fields (`GoogleSignInSection`); `null` for
+  /// none.
+  final Widget? alternative;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +60,10 @@ class AuthCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
+                    if (alternative != null) ...[
+                      alternative!,
+                      const SizedBox(height: 16),
+                    ],
                     AutofillGroup(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,

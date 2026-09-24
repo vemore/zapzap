@@ -48,8 +48,15 @@ COPY --chown=builder:builder . .
 # directory copied into the image would be dead weight. With it, the engine is served from
 # /app/canvaskit/ like the rest of the bundle. Keep it in step with the CI build
 # (.github/workflows/ci.yml).
+#
+# GOOGLE_CLIENT_ID: the web OAuth client id (docker-compose.yml passes the .env's
+# VITE_GOOGLE_OAUTH_CLIENT_ID, as for the React image). A client id is not a secret; empty
+# builds a bundle without the Google button (lib/services/google_sign_in_service.dart).
+# Declared here, after the SDK and pub layers, so a new id only rebuilds the bundle.
+ARG GOOGLE_CLIENT_ID=
 RUN flutter gen-l10n \
-    && flutter build web --release --base-href /app/ --no-web-resources-cdn
+    && flutter build web --release --base-href /app/ --no-web-resources-cdn \
+        --dart-define=GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID}"
 
 # Stage 2: serve it
 FROM nginx:alpine

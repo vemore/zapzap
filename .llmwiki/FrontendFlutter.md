@@ -2,7 +2,7 @@
 
 > Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its layout, API
 > configuration and API layer (client, errors, models, repositories), authentication and
-> routing guard, real-time channel (SSE), the parties, create-party and lobby screens, the
+> routing guard, Google sign-in, real-time channel (SSE), the parties, create-party and lobby screens, the
 > game board, the history and statistics screens, the admin screen, theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-24
@@ -16,8 +16,9 @@
   (`/history/:partyId`), the statistics (`/stats`), the admin screen (`/admin`, admins only),
   a start-up splash and a not-found screen
   (`frontend-flutter/lib/router.dart`), over the API layer, the session and the real-time
-  channel (below), up to the end of the round and the end of the game (below). Still
-  missing against the React client ([[Frontend]]): Google sign-in.
+  channel (below), up to the end of the round and the end of the game (below). Nothing of
+  the React client ([[Frontend]]) is missing any more: Google sign-in is below, after
+  Authentication.
 - **History and statistics are reached from the app-bar menu** of every signed-in screen
   (`ZapZapAppBar`, below) — the history, the game details and the statistics carry that
   bar too, with a back button; the deep links (`/app/history`, `/app/stats`) still work. An
@@ -50,7 +51,8 @@
   com.zapzap`). Android: the section below.
 - Dependencies (`frontend-flutter/pubspec.yaml`): provider, http, go_router,
   shared_preferences, flutter_secure_storage, intl, flutter_localizations, flutter_svg,
-  web (the `EventSource` of the SSE web transport); dev: fake_async (timer tests); lints `flutter_lints` + `prefer_single_quotes` (`frontend-flutter/analysis_options.yaml`).
+  web (the `EventSource` of the SSE web transport), google_sign_in + google_sign_in_web
+  (Google sign-in, below); dev: fake_async (timer tests); lints `flutter_lints` + `prefer_single_quotes` (`frontend-flutter/analysis_options.yaml`).
 - Conventions follow `~/workspace/countscore`: Provider for state, `http` for the API, ARB +
   gen-l10n.
 
@@ -66,6 +68,7 @@
 | `providers/sse_provider.dart`, `services/sse_*.dart`, `models/sse_event.dart` | the real-time channel (below) |
 | `services/token_storage*.dart` | `TokenStorage` and its platform implementations (Authentication, below) |
 | `services/api_config.dart` | `ApiConfig` (below) |
+| `services/google_sign_in_service.dart`, `services/google_sign_in_button_*.dart` | `GoogleSignInConfig`, `GoogleSignInService` and its plugin implementation, Google's web button (Google sign-in, below) |
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart`, `utils/field_touch.dart` | the React username/password rules; the JWT payload and `exp` reader; `FieldTouch`, when a form field may show its refusal |
@@ -75,7 +78,7 @@
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
 | `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `zapZapProgress`, `hasJoker`, `counteractPenalty`, `sortCards`, `suggestPlays` / `PlaySuggestion` (below) |
 | `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `cardShort` ("7♥"), `playMoveLabel`, `playErrorMessage(PlayError)` |
-| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `hand_suggestions.dart`, `game_action_buttons.dart`, `game_zapzap_sheet.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below); `admin_common.dart`, `admin_users.dart`, `admin_parties.dart`, `admin_stats.dart` (Admin, below) |
+| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `google_sign_in_section.dart` (Google sign-in, below); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `hand_suggestions.dart`, `game_action_buttons.dart`, `game_zapzap_sheet.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below); `admin_common.dart`, `admin_users.dart`, `admin_parties.dart`, `admin_stats.dart` (Admin, below) |
 | `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
 | `providers/game_provider.dart` | one party's board (below) |
 | `models/` | `card.dart` (above) and the typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
@@ -122,8 +125,8 @@
   (state, selectHandSize, play, drawFromDeck, drawFromPlayed, zapZap, nextRound),
   `HistoryRepository` (mine = `GET /history`, public, details), `StatsRepository` (mine,
   user, leaderboard, bots), `AdminRepository` (users, deleteUser, setAdmin, parties,
-  stopParty, deleteParty, statistics). Only routes both backends serve, plus
-  `/auth/google`. A move's answer is not the new table: refetch `GameRepository.state`.
+  stopParty, deleteParty, statistics). Only routes both backends serve (`/auth/google`
+  too: Rust serves it since #71). A move's answer is not the new table: refetch `GameRepository.state`.
 - **Models** (`models/`): `User`, `AuthSession` (`user.dart`); `Party`, `PartySettings`,
   `PartySummary`, `PartyPlayer`, `PartyDetails`, `CreatePartyResult`, `JoinPartyResult`,
   `RoundInfo`, `StartPartyResult`, `ConnectedPlayer` (`party.dart`); `Bot`; `GameSnapshot`
@@ -222,6 +225,45 @@
   default keeps the path of the screen below), so a reload of `/app/parties/new`, a lobby
   or a game stays on it and a lobby's URL can be shared (`test/deep_link_test.dart`, `the
   URL of a pushed screen`).
+
+### Google sign-in (`services/google_sign_in_service.dart`, `widgets/google_sign_in_section.dart`)
+
+- **Off unless the build names a client id**: `--dart-define=GOOGLE_CLIENT_ID=<web client
+  id>`. Without it `GoogleSignInConfig` is disabled, `appProviders()` provides
+  `DisabledGoogleSignIn`, and login and register show no Google button and no "ou" rule —
+  as React hides its button without `VITE_GOOGLE_OAUTH_CLIENT_ID`.
+- **Both platforms ask for the web client id's token**: the backend (Node
+  `src/infrastructure/services/GoogleOAuthService.js:23-27`, Rust since #71) checks the ID
+  token's audience against its `GOOGLE_OAUTH_CLIENT_ID`, the web client. On the web it is
+  GIS's `clientId`; on Android it is `serverClientId` (`GoogleSignInConfig.resolve`), the
+  Android OAuth client only identifying the app (below). Other platforms: disabled.
+- **The flow** (`google_sign_in` 7): every token arrives on `GoogleSignInService.idTokens`.
+  On the web the token only comes out of Google's own button (`authenticate()` is not
+  supported there): `platformButton` is the GIS `renderButton` (filled black, large,
+  "continue with", rectangular — React's), imported only on the web
+  (`google_sign_in_button_web.dart` / `_stub.dart`, conditional on `dart.library.js_interop`).
+  On Android the app draws an outlined "Continuer avec Google" button (`Key('google-sign-in')`)
+  that calls `signIn()` → `authenticate()` (Credential Manager). A closed dialog
+  (`canceled`, `interrupted`) says nothing; any other failure is a `GoogleSignInFailure` —
+  on `idTokens` for the plugin's own `GoogleSignInException`s, thrown by `signIn()` for
+  the rest (a failed initialisation, a platform error), and shown by the section either way.
+- **Google's web button is built once** (per locale), in the section's
+  `didChangeDependencies`: the GIS plugin keys its `FutureBuilder` on
+  `GSIButtonConfiguration.hashCode`, which the class does not override, so a button built
+  in `build` re-rendered Google's iframe at every keystroke in the fields.
+- **A token that arrives while the password form is being sent is dropped**
+  (`GoogleSignInSection.enabled` false): Google's web button cannot be disabled.
+- `GoogleSignInSection` (above the fields of login **and** register, as React) posts each
+  token as `credential` to `POST /auth/google` through `AuthProvider.loginWithGoogle`; the
+  router then leaves the screen as after a password login. A refusal — Google's side, or
+  the backend's `GOOGLE_AUTH_FAILED`/`GOOGLE_AUTH_ERROR` — shows `authErrorGoogle` in the
+  screen's red banner; no response shows the network text. `isNewUser` is not read.
+- The plugin is initialised once, on first use (web: `initialize()` twice throws). The web
+  plugin loads Google's GIS script (`accounts.google.com/gsi/client`) at start-up even in a
+  build without a client id; nothing is drawn and nothing is sent then.
+- **Tests** fake Google (`FakeGoogleSignIn` in `test/google_sign_in_test.dart`, passed as
+  `ZapZapApp(googleSignIn:)`); the real flow needs an authorised origin or a registered
+  signing key, so it is checked by hand (below).
 
 ### Real-time channel (SSE)
 
@@ -801,6 +843,27 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   the `mipmap-*`, `drawable-*` and `values/colors.xml` resources.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
   debug-only cleartext.
+- **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
+  id (`zapzap-481109`), an OAuth client of type **Android**
+  for the package `com.zapzap.app` and the SHA-1 of the key that signs the APK. Nothing of
+  it is in the repository: no `google-services.json`, no client secret — the app sends the
+  web client id as `serverClientId`, and Google matches the running app by package and
+  signature. Registered 2026-09-24: "ZapZap Android debug", the SHA-1 of the local debug
+  keystore `~/.android/debug.keystore` (`98:33:9F:AE:5E:05:7E:18:34:DE:01:C2:7E:51:DF:B1:AE:15:C4:E1`).
+  Every other signing key (another machine's debug keystore, a release key, Play app
+  signing) needs its own Android client — or its SHA-1 added — or `authenticate()` fails
+  with a configuration error. To register one:
+  1. `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey
+     -storepass android -keypass android` (the keystore appears with the first
+     `flutter build apk --debug`), and copy the `SHA1:` line;
+  2. console.cloud.google.com → project `zapzap-481109` → Google Auth Platform → Clients →
+     Create client → type Android, package `com.zapzap.app`, that SHA-1 → Create (it can
+     take minutes to hours to apply);
+  3. build with the web client id: `flutter build apk --debug
+     --dart-define=GOOGLE_CLIENT_ID=<web client id>` (the NAS `.env`'s
+     `VITE_GOOGLE_OAUTH_CLIENT_ID`).
+  The Android flow has not been run on a device yet (2026-09-24: no AVD, and `/dev/kvm`
+  is not usable by the user — below).
 - Emulator: `~/sdk/android` has an `android-31` `google_apis` x86_64 image but no AVD, and
   the emulator needs KVM (`/dev/kvm`, group `kvm`); without it, check the APK instead:
   `~/sdk/android/build-tools/36.0.0/aapt2 dump badging <apk>` (package, label,
@@ -885,7 +948,13 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   with its sha256 (`ARG FLUTTER_VERSION`, `ARG FLUTTER_SHA256`) — the version
   `.github/workflows/ci.yml` pins; bump the two together. It builds as a non-root user
   (`flutter` and `pub` refuse to run as root), runs `pub get --enforce-lockfile`, `gen-l10n`
-  and `flutter build web --release --base-href /app/ --no-web-resources-cdn`.
+  and `flutter build web --release --base-href /app/ --no-web-resources-cdn
+  --dart-define=GOOGLE_CLIENT_ID=…`.
+- **`ARG GOOGLE_CLIENT_ID`**, empty by default: both compose files pass the `.env`'s
+  `VITE_GOOGLE_OAUTH_CLIENT_ID` (the React image's own build argument), so production shows
+  the Google button on the same, already authorised origin; a build without it (CI's
+  `image` job) has no button. `test/pwa_build_config_test.dart` pins the ARG and the two
+  compose files.
 - **`--no-web-resources-cdn` is load-bearing**: without it the bundle fetches CanvasKit from
   `www.gstatic.com` at runtime, so a client with no route to Google shows a blank page while
   the 36 MB `canvaskit/` in the image goes unused. The CI `flutter` job passes the same flag,
@@ -922,8 +991,8 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 |---|---|
 | `dart format lib test` | the formatter; `--output=none --set-exit-if-changed` is the gate (hook and CI) |
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets — C1–C4: the pitch, validate on submit with an active button, the eye, Next/Done and the `AutofillGroup`, the spinner and the banner above the button, at 360×740 at text scales 1.0 and 1.5 —, the guard: expired JWT, admin, `from`), `test/create_party_form_test.dart` (the name's refusal: none on opening, on Create, on leaving the field); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend (its `partiesGate` holds `GET /party` back): cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at text scales 1.5 and 2.0), `test/parties_ux_test.dart` (P1–P4 in Roboto at 360×740, text scales 1.0 and 1.5: my games first and the running one on top with its badge and amber border, no "your turn" badge, two-line cards with one button — Resume filled, Lobby and Join outlined —, the amber Create button clear of the last card, the skeletons, the invitation and its push to the form, pull-to-refresh, a failed refresh keeping the list), `test/lobby_ux_test.dart` (S1–S4 in Roboto at 360×740, text scales 1.0 and 1.5: the invite code and Copy to the clipboard, the settings chips on one line, the online dots, the bot level chip, the free seat's hint and no add-a-bot button, the reason line, Start above Leave on screen, Delete only in the ⋮ menu and still confirmed), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported; `suggestPlays` — the run a joker completes, the mockup hand, 500 random hands whose suggestions are all legal plays), `test/hand_suggestions_test.dart` (J8: the chips above the cards, a chip selecting its cards and a card tap deselecting one, the fr/en labels, no chip on a disabled or compact hand, 360×740 at text scale 1.5), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card — its amber edge, a screen reader's tap, none when disabled —, back, fan — widths, balanced rows, 48 px visible for 1 to 13 cards at 300 to 600 px, a tap at the centre of each visible part, the lift that keeps its place), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, the players and their scores above the hand-size selector (T3), Back leading to the parties — from the list, popped and replacing the game's browser entry —, the cards (seven in hand at 360×740: 76 px or more, a tap at the centre of each visible part selects that card; the felt's cards 70 px on a phone and 84 wide, the played ones 49 on a phone in the draw step; a screen reader's tap on `7 de Cœur` in the hand and in the pile, no tap on a disabled hand; at 1.5, no overflow and under 24 px between felt and hand), a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0, 1.5 and 2.0, the wide layout at each scale), `test/game_turn_ux_test.dart` (J1–J6, T1, T2: the step chips, the named button, the hand value and its gauge, the ZapZap sheet — cancel and confirm —, the felt in each step and the deck as a target, the hand-size hint and 48 dp targets, the compact opponents at 390×844 and 1280×800 at text scales 1.0, 1.5 and 2.0, and the new pieces at 360×740), `test/game_felt_test.dart` (the casino felt: the radial gradient, the 6 px rim, the painted texture and watermark and no image, the amber draw edge on the rim with a contrast over 4.5 against both ends of the wood, no overflow at 360×740 at 1.5), `test/game_felt_layout_test.dart` (the phone felt in the draw step at 360×740 and 390×844, text scales 1.0 and 1.5, in Roboto: never cut, the deck and the take hint in view; in the draw step, 7 and 10 cards in hand each show their rank-and-suit corner and 60 % of their height; the amber draw button), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/history_ux_test.dart` (H1–H3, St1, St2: the place badge on Rust and Node entries, my score, no place on the public tab, the fr/en ordinals, the summary and its push to the statistics, the invitation and its push to the create-party form, the hero figures, `134` without `.0`, the ZapZap bar with and without calls, all at 360×740 at text scales 1.0, 1.5 and 2.0), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for a player, an admin's leading to `/admin` and Back), `test/admin_screen_test.dart` (a non-admin on `/admin` or `/admin/users` lands on `/parties` with no admin call, the three tabs, `/admin/statistics` and an unknown tab, a tab loading on its first show only; over `test/admin_helpers.dart`'s paging fake backend: `limit=50&offset=0`, 50 rows a page of 120 and Next/Previous, the search filtering the page, no actions on one's own row and `admin`'s, grant then revoke with the body sent, cancel sends nothing, delete, a 400 refusal in a snack bar, a failed load and Retry; the users tab at 360×740 at text scales 1.0, 1.5 and 2.0), `test/admin_parties_test.dart` (the rows and the seats from the `settings` JSON string, the status filter sent as `status=` and narrowing the list, no stop on a finished party, cancel and a tap outside sending nothing, stop then the status reading finished, delete, a 400 in a snack bar, a failed load and Retry; at 360×740 at 1.0, 1.5 and 2.0), `test/admin_stats_test.dart` (the 30 UTC days and the painter drawing 30 bars on a recording canvas; the cards, the breakdown, the chart and its semantics label, the most active; a Rust-precision rate, an empty `daily` and no active player, a failed load and Retry; at 360×740 at 1.0, 1.5 and 2.0), and a `phone width` group in each at 360×740, text scale 1, 1.5 and 2.0; `test/text_scale_test.dart` (home, splash, login, register, not-found and the game screen's three message states at 360×740, text scale 1.5 and 2.0); `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
-| `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/google_sign_in_test.dart` (`GoogleSignInConfig`: none without the define, `clientId` on the web, `serverClientId` = the web id on Android; the login screen with no button by default, the button above the fields, a token posted as `credential` to `/api/auth/google` landing on the parties, a backend refusal and a Google failure staying on login with the banner, a closed dialog silent, a failure `signIn` throws, a token dropped while a password login is in flight, the web button built once across keystrokes, no network, English, register, 360×740 at 1.0/1.5/2.0), `test/google_sign_in_plugin_test.dart` (`PluginGoogleSignInService` over a fake `GoogleSignInPlatform`: `serverClientId`, a token, a closed dialog, a Google failure once on the stream, a platform or initialisation failure thrown by `signIn`), `test/pwa_build_config_test.dart` (the image's `GOOGLE_CLIENT_ID` argument), `test/auth_screens_test.dart` (login/register widgets — C1–C4: the pitch, validate on submit with an active button, the eye, Next/Done and the `AutofillGroup`, the spinner and the banner above the button, at 360×740 at text scales 1.0 and 1.5 —, the guard: expired JWT, admin, `from`), `test/create_party_form_test.dart` (the name's refusal: none on opening, on Create, on leaving the field); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend (its `partiesGate` holds `GET /party` back): cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at text scales 1.5 and 2.0), `test/parties_ux_test.dart` (P1–P4 in Roboto at 360×740, text scales 1.0 and 1.5: my games first and the running one on top with its badge and amber border, no "your turn" badge, two-line cards with one button — Resume filled, Lobby and Join outlined —, the amber Create button clear of the last card, the skeletons, the invitation and its push to the form, pull-to-refresh, a failed refresh keeping the list), `test/lobby_ux_test.dart` (S1–S4 in Roboto at 360×740, text scales 1.0 and 1.5: the invite code and Copy to the clipboard, the settings chips on one line, the online dots, the bot level chip, the free seat's hint and no add-a-bot button, the reason line, Start above Leave on screen, Delete only in the ⋮ menu and still confirmed), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported; `suggestPlays` — the run a joker completes, the mockup hand, 500 random hands whose suggestions are all legal plays), `test/hand_suggestions_test.dart` (J8: the chips above the cards, a chip selecting its cards and a card tap deselecting one, the fr/en labels, no chip on a disabled or compact hand, 360×740 at text scale 1.5), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card — its amber edge, a screen reader's tap, none when disabled —, back, fan — widths, balanced rows, 48 px visible for 1 to 13 cards at 300 to 600 px, a tap at the centre of each visible part, the lift that keeps its place), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, the players and their scores above the hand-size selector (T3), Back leading to the parties — from the list, popped and replacing the game's browser entry —, the cards (seven in hand at 360×740: 76 px or more, a tap at the centre of each visible part selects that card; the felt's cards 70 px on a phone and 84 wide, the played ones 49 on a phone in the draw step; a screen reader's tap on `7 de Cœur` in the hand and in the pile, no tap on a disabled hand; at 1.5, no overflow and under 24 px between felt and hand), a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0, 1.5 and 2.0, the wide layout at each scale), `test/game_turn_ux_test.dart` (J1–J6, T1, T2: the step chips, the named button, the hand value and its gauge, the ZapZap sheet — cancel and confirm —, the felt in each step and the deck as a target, the hand-size hint and 48 dp targets, the compact opponents at 390×844 and 1280×800 at text scales 1.0, 1.5 and 2.0, and the new pieces at 360×740), `test/game_felt_test.dart` (the casino felt: the radial gradient, the 6 px rim, the painted texture and watermark and no image, the amber draw edge on the rim with a contrast over 4.5 against both ends of the wood, no overflow at 360×740 at 1.5), `test/game_felt_layout_test.dart` (the phone felt in the draw step at 360×740 and 390×844, text scales 1.0 and 1.5, in Roboto: never cut, the deck and the take hint in view; in the draw step, 7 and 10 cards in hand each show their rank-and-suit corner and 60 % of their height; the amber draw button), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/history_ux_test.dart` (H1–H3, St1, St2: the place badge on Rust and Node entries, my score, no place on the public tab, the fr/en ordinals, the summary and its push to the statistics, the invitation and its push to the create-party form, the hero figures, `134` without `.0`, the ZapZap bar with and without calls, all at 360×740 at text scales 1.0, 1.5 and 2.0), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for a player, an admin's leading to `/admin` and Back), `test/admin_screen_test.dart` (a non-admin on `/admin` or `/admin/users` lands on `/parties` with no admin call, the three tabs, `/admin/statistics` and an unknown tab, a tab loading on its first show only; over `test/admin_helpers.dart`'s paging fake backend: `limit=50&offset=0`, 50 rows a page of 120 and Next/Previous, the search filtering the page, no actions on one's own row and `admin`'s, grant then revoke with the body sent, cancel sends nothing, delete, a 400 refusal in a snack bar, a failed load and Retry; the users tab at 360×740 at text scales 1.0, 1.5 and 2.0), `test/admin_parties_test.dart` (the rows and the seats from the `settings` JSON string, the status filter sent as `status=` and narrowing the list, no stop on a finished party, cancel and a tap outside sending nothing, stop then the status reading finished, delete, a 400 in a snack bar, a failed load and Retry; at 360×740 at 1.0, 1.5 and 2.0), `test/admin_stats_test.dart` (the 30 UTC days and the painter drawing 30 bars on a recording canvas; the cards, the breakdown, the chart and its semantics label, the most active; a Rust-precision rate, an empty `daily` and no active player, a failed load and Retry; at 360×740 at 1.0, 1.5 and 2.0), and a `phone width` group in each at 360×740, text scale 1, 1.5 and 2.0; `test/text_scale_test.dart` (home, splash, login, register, not-found and the game screen's three message states at 360×740, text scale 1.5 and 2.0); `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
+| `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend; add `--dart-define=GOOGLE_CLIENT_ID=<web client id>` for the Google button (the popup then refuses any origin the web client does not list: `localhost` ports are not listed) |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
 | `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`). Add `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a device on the LAN; without it the APK talks to production over HTTPS |
@@ -934,6 +1003,20 @@ Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root
 project `.gitignore`.
 
 ## Decisions & History
+
+- **Google sign-in with the web client id on both platforms (2026-09-24,
+  `feat/flutter-google-signin`).** The backend accepts one audience, the web client; asking
+  Android for a token issued to `serverClientId` keeps both backends unchanged, and the
+  Android OAuth client carries no secret — only the package and the signing key's SHA-1 —
+  so nothing enters the repository. The client id is a build argument rather than a
+  runtime setting: the web plugin needs it before the first frame, and the React image
+  already receives it that way. The section sits on register as well as login because
+  React has it on both, and a Google sign-in is a sign-up for a new account. Checked by
+  hand: the PWA image built with the id draws Google's button at `/app/login` (GIS answers
+  "origin not allowed" on `localhost:9531`, as expected: only the production origin is
+  authorised); the image without it draws none; the debug APK builds with the id. Not
+  checked: a real sign-in on the web (needs the production origin) and on Android (no
+  emulator usable here).
 
 - **The game felt is a casino table (2026-09-24, `feat/flutter-casino-felt`).** Next to
   the enlarged cards the plain green gradient looked dull. Painted rather than an image:

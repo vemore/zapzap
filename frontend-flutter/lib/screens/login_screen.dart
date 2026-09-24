@@ -8,6 +8,7 @@ import '../router.dart';
 import '../utils/field_touch.dart';
 import '../utils/validators.dart';
 import '../widgets/auth_form.dart';
+import '../widgets/google_sign_in_section.dart';
 
 /// Sign in with a username and a password (`Login.jsx`). Only "both are
 /// filled in" is checked here, as in React: an account created before the
@@ -75,6 +76,13 @@ class _LoginScreenState extends State<LoginScreen> {
     return AuthCard(
       title: l10n.loginTitle,
       error: _error,
+      alternative: GoogleSignInSection.isShown(context)
+          ? GoogleSignInSection(
+              enabled: !_busy,
+              onBusy: (busy) => setState(() => _busy = busy),
+              onError: (error) => setState(() => _error = error),
+            )
+          : null,
       footer: AuthSwitchLink(
         text: l10n.loginNoAccount,
         link: l10n.loginRegisterLink,
