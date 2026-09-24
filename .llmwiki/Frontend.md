@@ -64,7 +64,7 @@
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
 - GameBoard and PartyLobby connect to `${VITE_API_URL without /api || window.location.origin}/suscribeupdate` with no token (`GameBoard.jsx:146-150`, `PartyLobby.jsx:42-46`); ConnectedPlayers connects to `/suscribeupdate?token=...` so the backend can register the session (`ConnectedPlayers.jsx:80-82`; backend side `zapzap-rust/src/api/sse.rs:15-24`).
 - GameBoard reacts to `action` values `play`, `draw`, `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished`, `partyDeleted` by refetching state or navigating (`GameBoard.jsx:113-135`).
-- The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/main.rs:41`) and the proxy — do not "fix" the spelling on one side only.
+- The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/api/mod.rs:24`) and the proxy — do not "fix" the spelling on one side only.
 
 ### Google OAuth
 - Client id from `import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID` (build-time) — `App.jsx:22`, `components/Auth/Login.jsx:9`, `Register.jsx:9`. When empty, `GoogleOAuthProvider` is not mounted (`App.jsx:121-129`) and the button is hidden (`Login.jsx:56`).

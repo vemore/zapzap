@@ -11,8 +11,7 @@ import 'stats_common.dart';
 /// Both backends send `userPlacement`; a Node older than 2026-09-24 does
 /// not, but its `winnerUserId` still tells a win apart.
 int? myPlacement(GameHistoryEntry game, String? userId) =>
-    game.userPlacement ??
-    (userId != null && game.winnerUserId == userId ? 1 : null);
+    game.userPlacement ?? (game.winnerUserId == userId ? 1 : null);
 
 /// [place] as an ordinal in the app's language: `1er`, `4e`; `1st`, `4th`.
 String placementLabel(AppLocalizations l10n, int place) =>
@@ -26,10 +25,6 @@ String placementLabel(AppLocalizations l10n, int place) =>
 /// One finished game in the history list: where I finished, its name, who
 /// won and my own score, how many players, when it ended and over how many
 /// rounds.
-///
-/// Node fills `winnerFinalScore` and `totalRounds`; Rust sends `roundsPlayed`,
-/// `userPlacement` and `userScore` but no winner score ([GameHistoryEntry]),
-/// so each is optional here.
 class HistoryGameTile extends StatelessWidget {
   const HistoryGameTile({
     super.key,
@@ -50,8 +45,6 @@ class HistoryGameTile extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
-    final score = game.winnerFinalScore;
-    final rounds = game.totalRounds;
     final mine = currentUserId != null;
     final place = mine ? myPlacement(game, currentUserId) : null;
     final myScore = mine ? game.userScore : null;
@@ -81,8 +74,7 @@ class HistoryGameTile extends StatelessWidget {
                           game.partyName,
                           style: theme.textTheme.titleMedium,
                         ),
-                        if (game.wasGoldenScore ?? false)
-                          const GoldenScoreChip(),
+                        if (game.wasGoldenScore) const GoldenScoreChip(),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -93,12 +85,10 @@ class HistoryGameTile extends StatelessWidget {
                         _Fact(
                           icon: Icons.emoji_events,
                           iconColor: AppColors.amber400,
-                          text: score == null
-                              ? game.winnerUsername
-                              : l10n.historyWinnerWithScore(
-                                  game.winnerUsername,
-                                  score,
-                                ),
+                          text: l10n.historyWinnerWithScore(
+                            game.winnerUsername,
+                            game.winnerFinalScore,
+                          ),
                         ),
                         if (myScore != null)
                           _Fact(
@@ -115,11 +105,10 @@ class HistoryGameTile extends StatelessWidget {
                           icon: Icons.event,
                           text: Formats.dateTime(game.finishedAt, locale),
                         ),
-                        if (rounds != null)
-                          _Fact(
-                            icon: Icons.flag,
-                            text: l10n.roundCount(rounds),
-                          ),
+                        _Fact(
+                          icon: Icons.flag,
+                          text: l10n.roundCount(game.totalRounds),
+                        ),
                       ],
                     ),
                   ],

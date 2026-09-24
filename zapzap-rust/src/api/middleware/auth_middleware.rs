@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
+    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
@@ -24,58 +24,89 @@ pub async fn user_exists(state: &AppState, user_id: &str) -> bool {
     }
 }
 
-/// Extract authenticated user from request
+/// Why a request carries no usable bearer token.
+enum BearerError {
+    /// No `Authorization` header, or an empty one (Express reads it as absent)
+    Missing,
+    /// A header that is not exactly `Bearer <token>`
+    Malformed,
+}
+
+/// The token of an `Authorization: Bearer <token>` header, read as Node's middlewares do
+/// (`authMiddleware.js`): split on single spaces, exactly two parts, the first `Bearer`.
+fn bearer_token(headers: &HeaderMap) -> Result<&str, BearerError> {
+    let header = match headers.get(AUTHORIZATION) {
+        Some(h) if !h.is_empty() => h,
+        _ => return Err(BearerError::Missing),
+    };
+    let text = header.to_str().map_err(|_| BearerError::Malformed)?;
+    match text.split(' ').collect::<Vec<_>>().as_slice() {
+        ["Bearer", token] => Ok(token),
+        _ => Err(BearerError::Malformed),
+    }
+}
+
+/// A 401 in Node's shape (`authMiddleware.js`): `{error, code, details?}`.
+fn unauthorized(error: &str, code: &str, details: Option<serde_json::Value>) -> Response {
+    let mut body = serde_json::json!({ "error": error, "code": code });
+    if let Some(details) = details {
+        body["details"] = details;
+    }
+    (StatusCode::UNAUTHORIZED, Json(body)).into_response()
+}
+
+/// Extract authenticated user from request. Refusals match Node's `authMiddleware.js`:
+/// no header is `MISSING_AUTH_HEADER`, a header that is not exactly `Bearer <token>` is
+/// `INVALID_AUTH_FORMAT`, and a bad or expired token, or one whose user no longer exists
+/// (Node: `ValidateToken.js` throws, the middleware answers the same), is `INVALID_TOKEN`.
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
-    // Get authorization header
-    let auth_header = request
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok());
+) -> Response {
+    let invalid_token = || unauthorized("Invalid or expired token", "INVALID_TOKEN", None);
 
-    let token = match auth_header {
-        Some(h) if h.starts_with("Bearer ") => &h[7..],
-        _ => return Err(StatusCode::UNAUTHORIZED),
+    let claims = match bearer_token(request.headers()) {
+        Ok(token) => match state.jwt_service.verify(token) {
+            Ok(claims) => claims,
+            Err(_) => return invalid_token(),
+        },
+        Err(BearerError::Missing) => {
+            return unauthorized("Missing authorization header", "MISSING_AUTH_HEADER", None)
+        }
+        Err(BearerError::Malformed) => {
+            return unauthorized(
+                "Invalid authorization header format",
+                "INVALID_AUTH_FORMAT",
+                Some(serde_json::json!({ "expected": "Bearer <token>" })),
+            )
+        }
     };
-
-    // Verify token
-    let claims = state
-        .jwt_service
-        .verify(token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // The user must still exist (Node: ValidateToken.js), one primary-key lookup
     if !user_exists(&state, &claims.user_id).await {
-        return Err(StatusCode::UNAUTHORIZED);
+        return invalid_token();
     }
 
     // Add claims to request extensions
     request.extensions_mut().insert(claims);
 
-    Ok(next.run(request).await)
+    next.run(request).await
 }
 
-/// Optional auth middleware - doesn't fail if no token
+/// Optional auth middleware - doesn't fail if no token: a well-formed header with a valid
+/// token of an existing user attaches the claims, anything else goes on without them
 pub async fn optional_auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request,
     next: Next,
 ) -> Response {
-    // Try to get authorization header
-    if let Some(auth_header) = request
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-    {
-        if let Some(token) = auth_header.strip_prefix("Bearer ") {
-            if let Ok(claims) = state.jwt_service.verify(token) {
-                if user_exists(&state, &claims.user_id).await {
-                    request.extensions_mut().insert(claims);
-                }
-            }
+    let claims = bearer_token(request.headers())
+        .ok()
+        .and_then(|token| state.jwt_service.verify(token).ok());
+    if let Some(claims) = claims {
+        if user_exists(&state, &claims.user_id).await {
+            request.extensions_mut().insert(claims);
         }
     }
 

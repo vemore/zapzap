@@ -19,7 +19,7 @@
 | Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
-| Flutter end to end (`frontend-flutter/integration_test/`) | `flutter drive` against a live Node backend, below | green (2026-09-24) | no — local only; CI is its own wip entry (`2026-09-23-flutter-e2e-in-ci`) |
+| Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand against either backend, below | green (2026-09-24) | yes (`flutter-e2e` job) |
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
 | Backend parity, Node vs Rust (`tests/parity`, `node --test`, outside jest) | `cd zapzap-rust && cargo build --release`, then `npm run test:parity` (root), about 30 s | green with the differences `tests/parity/divergences.json` lists (2026-09-24) | yes (`parity` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
@@ -28,7 +28,7 @@
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
 - Unit tests (54 `#[test]`/`#[tokio::test]`) live next to the code: `domain/services/game_service.rs` (6), `application/auth/login_with_google.rs` (6), `services/google_oauth.rs` (6, the key cache with an injected fetcher), `infrastructure/bot/card_analyzer.rs` (5), `infrastructure/app_state.rs` (4, the JWT secret), `strategies/thibot.rs` (4), `strategies/vince_bot.rs` (4), `domain/value_objects/game_state.rs` (3), `application/bot/reflect_on_round.rs` (3), `bot/llm_memory.rs` (3), `auth/password.rs` (2), `strategies/llm_bot.rs` (2), `services/llm_service.rs` (2), `application/bot/delete_bot.rs` (2), `application/bot/create_bot.rs` (1), `domain/entities/player.rs` (1). The Google and bot-admin races run on `RacingUserRepo` (`infrastructure/database/repositories/racing_user_repo.rs`, test-only), whose lookups can be made stale; tokens are signed with the test-only key `zapzap-rust/tests/fixtures/google_oauth_test_rsa.pem`, never checked against Google.
-- Integration tests: `zapzap-rust/tests/api_tests.rs:19-36` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key` (`create_test_app_with_state` also hands back the `AppState`, to set a game state or read SSE events), then drives it with tower `oneshot`: auth and party basics, then the error contract — tests per party and game route family asserting Node's status and `code` (`assert_error`, `api_tests.rs:539`), unreadable bodies answering 400, `partyCreated`, `isMyTurn`, adding a bot and the zapzap scores, on a started three-human party (`started_party`, `api_tests.rs:462`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (its `ensure_schema` call, `zapzap-rust/src/infrastructure/app_state.rs`). The security tests at the end (the router of `create_test_app_with_state` also serves `/suscribeupdate`): private join/details, game state, `nextRound`, `trigger-bot`, private history, admin 401/403, SSE per-user filtering and public-party lifecycle events (read the streamed body until a sentinel event), `/history/public` without private games, a deleted user's token refused, and `test_server_refuses_to_start_without_jwt_secret`, which runs the `zapzap-backend` binary (`CARGO_BIN_EXE_zapzap-backend`) in an empty directory without `JWT_SECRET`. Last, module `google_and_bot_admin`: `POST /api/auth/google` (missing credential, forged token, not configured, a full login with an injected key set) and the admin bot routes.
+- Integration tests: `create_test_app_with_state` (`zapzap-rust/tests/api_tests.rs`) builds the application `main.rs` serves (`api::build_app`) with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key` (`create_test_app_with_state` also hands back the `AppState`, to set a game state or read SSE events), then drives it with tower `oneshot`: auth and party basics, then the error contract — tests per party and game route family asserting Node's status and `code` (`assert_error`, `api_tests.rs:539`), unreadable bodies answering 400, `partyCreated`, `isMyTurn`, adding a bot and the zapzap scores, on a started three-human party (`started_party`, `api_tests.rs:462`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (its `ensure_schema` call, `zapzap-rust/src/infrastructure/app_state.rs`). The security tests at the end (the router of `create_test_app_with_state` also serves `/suscribeupdate`): private join/details, game state, `nextRound`, `trigger-bot`, private history, admin 401/403, SSE per-user filtering and public-party lifecycle events (read the streamed body until a sentinel event), `/history/public` without private games, a deleted user's token refused, and `test_server_refuses_to_start_without_jwt_secret`, which runs the `zapzap-backend` binary (`CARGO_BIN_EXE_zapzap-backend`) in an empty directory without `JWT_SECRET`. Last, module `google_and_bot_admin`: `POST /api/auth/google` (missing credential, forged token, not configured, a full login with an injected key set) and the admin bot routes. Then Node's bodies for the three auth 401 codes, the `ROUTE_NOT_FOUND` 404 of an unknown path and of an unserved method (`test_unserved_method_answers_route_not_found`), the unknown `/api/admin` paths behind the auth and admin checks, and both health checks.
 - Schema tests: `zapzap-rust/tests/schema_tests.rs` reads the Node DDL from `src/infrastructure/database/sqlite/DatabaseConnection.js` at compile time (`include_str!`) and checks that `schema.sql` creates the same objects (`rust_schema_matches_node_schema`) and that the startup step leaves a filled Node-built DB unchanged (`schema_step_is_a_noop_on_a_node_built_database`), and that a failing step (an entrypoint-rebuilt `users` table without `google_id`) leaves the DB unchanged (`schema_step_failure_leaves_the_database_unchanged`). See [[Backend]].
 - CI gate (`rust` job): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --lib --bins --tests` (unit and integration tests).
 - `scripts/ci_scope.sh` sends a change to `src/` to `node` and `image`, and a change to `src/infrastructure/database/sqlite/DatabaseConnection.js` (the Node DDL `schema_tests` reads) to `rust` as well, so a PR that edits only the Node schema still runs the parity test.
@@ -74,8 +74,10 @@
   out of turn, by a non-member; a card not in hand, an invalid combination, a card twice,
   out of turn, draw before play, zapzap with a high hand, nextRound too early); 16 games
   of three human players to their end, played side by side; history, stats (leaderboard
-  `minGames=0`), `/api/bots`, health, an unknown route; admin (users, parties,
-  statistics, set/revoke admin, delete a user, stop and delete a party). No bots: both
+  `minGames=0`), `/api/bots`, health, an unknown route (under `/api` and at the root) and a served path
+  asked with an unserved method; admin (users, parties,
+  statistics, set/revoke admin, delete a user, stop and delete a party, an unknown admin
+  path and an unserved method without a token, as a non-admin and as the admin). No bots: both
   backends play them on their own with no off switch, and they add randomness. Each step
   leaves both backends in the same state whatever they answered, so one difference does
   not cascade. Node cannot create a private party (its owner fails its own invite-code
@@ -123,9 +125,23 @@
   the text on screen.
 - `test_driver/integration_test.dart` is the host side (`integrationDriver()`); the steps
   land in `frontend-flutter/build/integration_response_data.json`. `flutter test` runs
-  `test/` only, so CI does not run it; `flutter analyze` covers it (dev dependencies
+  `test/` only, so the `flutter` job does not run it (the `flutter-e2e` job does); `flutter analyze` covers it (dev dependencies
   `integration_test` and `flutter_driver`, from the SDK).
-- **Procedure** (checked 2026-09-24, Chrome 153, Node backend):
+- **`scripts/flutter_e2e.sh`** runs it end to end, as CI does: in a `mktemp -d` directory
+  it seeds the bot accounts (`DB_PATH=<dir>/e2e.db node scripts/init-bots.js`, the Node
+  DDL, which the Rust backend takes as is), starts the Rust backend's debug build from
+  `zapzap-rust/` with a generated `JWT_SECRET` (`openssl rand -hex 32`), waits for
+  `/api/health` (60 s), starts chromedriver and waits for its `/status` (30 s), then runs
+  the `flutter drive` of step 3 below, headless. It exits with `flutter drive`'s status,
+  stops what it started by process id, prints the backend log's last 80 lines on a
+  failure, and removes the directory. Environment: `E2E_BACKEND_BIN` (default
+  `${CARGO_TARGET_DIR:-zapzap-rust/target}/debug/zapzap-backend`), `E2E_API_PORT` (9921),
+  `E2E_DRIVER_PORT` (4461), `CHROMEDRIVER` (default `$CHROMEWEBDRIVER/chromedriver`, which
+  a GitHub runner sets, else `chromedriver` on the PATH). Needs `cargo build --locked` in
+  `zapzap-rust/`, `npm ci` at the root and `flutter pub get`. Locally (2026-09-24, Chrome
+  153): `CHROMEDRIVER=<cft>/chromedriver E2E_API_PORT=9551 E2E_DRIVER_PORT=9552
+  scripts/flutter_e2e.sh`, about 3.5 min, one minute of it the web compile.
+- **Procedure by hand** (checked 2026-09-24, Chrome 153, Node backend):
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
      (`DB_PATH`, [[Architecture]]): `npm ci && DB_PATH=/tmp/e2e.db npm run init-bots &&
      DB_PATH=/tmp/e2e.db PORT=9921 NODE_ENV=development node app.js` (development allows
@@ -157,6 +173,7 @@
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` production runs: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
+| `flutter-e2e` | `flutter != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `npm ci`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 | `node` | `node != 'false'` | Node 20 (`actions/setup-node`, npm cache), `npm ci`, `npm test` | 15 min |
 | `parity` | `parity != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, `cargo build --release --locked` in `zapzap-rust`, `npm ci`, `npm run test:parity` | 30 min |
 
@@ -169,8 +186,9 @@
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
   `native`. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The `node` job's
-  `Node backend — jest`, the `parity` job's `Backend parity — Node vs Rust` and the
-  `flutter` job's name are not pinned: adding them to branch protection is the user's
+  `Node backend — jest`, the `parity` job's `Backend parity — Node vs Rust`, the
+  `flutter` job's name and the `flutter-e2e` job's `Flutter end to end — a round against
+  the Rust backend` are not pinned: adding them to branch protection is the user's
   call. Changing a pinned name
   on purpose means changing branch protection in the same breath, which is the user's
   setting to change.
@@ -233,3 +251,13 @@
   ignores `tests/parity/`). The Node backend now reads `DB_PATH`, which the scratch
   databases needed.
 - **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production runs; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.
+- **2026-09-24 (chore/flutter-e2e-ci): the Flutter end-to-end test runs in CI**, job
+  `flutter-e2e`, against the Rust backend (the target) rather than the Node one the local
+  procedure used: since #42 it builds its own schema and since #73 it only needs a
+  `JWT_SECRET`, so the job needs no database file. The bots are still seeded by the Node
+  script, which is what the local procedure and production use. A debug build: it compiles
+  faster than the parity job's release build and plays a round of easy bots just as well.
+  The job runs on the `flutter` flag only (a pull request touching `frontend-flutter/`,
+  and master): a backend change that breaks the client shows on master, and the parity
+  suite covers the HTTP contract on every backend change. A deliberately failing assertion
+  turned the job red before merge (the pull request cites the run).

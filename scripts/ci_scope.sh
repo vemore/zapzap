@@ -57,6 +57,9 @@ while IFS= read -r path; do
         .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|deploy.sh|rebuild.sh)
             hooks=true ;;
 
+        # The Flutter end-to-end run, which the flutter-e2e job (on the flutter flag) runs.
+        scripts/flutter_e2e.sh) flutter=true ;;
+
         # The smoke test the image job runs against the Flutter PWA image.
         scripts/pwa_image_smoke.sh) image=true ;;
 

@@ -323,7 +323,8 @@ flutter build apk --debug                    # Android, needs the Android SDK
 ```
 
 An end-to-end test plays a round through the client against a live backend and a
-chromedriver (`integration_test/`, `flutter drive`); the procedure is in
+chromedriver (`integration_test/`, `flutter drive`). `scripts/flutter_e2e.sh` starts the
+Rust backend on a fresh database and runs it, as CI does; the procedure is in
 `.llmwiki/Testing.md`.
 
 The PWA image (`frontend-flutter/Dockerfile`, service `frontend-flutter`) builds that
