@@ -618,6 +618,19 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   and the total; the player to move on an amber edge. Every line has the same height
   (`GamePlayerTable.rowHeight`, from the text scale), whatever it holds — a "Toi" badge,
   a card back or "Éliminé".
+- **The folded table** (`GamePlayerTable.onToggle`): on the phone board the table shows
+  one line, the player to move's (the first in turn order when nobody is,
+  `GamePlayerTable.foldedSeat`), and a chevron at its end (`toggleKey`, labelled "Voir tous
+  les joueurs" / "Ne montrer que le joueur qui joue") unfolds every line and folds them
+  back. The folded line follows the turn. `GameScreen` holds the choice
+  (`_playersExpanded`, folded at the start) for as long as the game is open. The height
+  the other lines free goes to the felt: `PhoneBoardLayout` gives the felt whatever the
+  players leave, so it needed no change. At 5–8 players a line each took the phone's
+  felt height (2026-09-24). The wide board, where the players sit beside the felt, and the
+  hand-size choice, made on the scores (T3), keep every line.
+  `test/game_player_table_test.dart` checks the fold, the turn, the labels in fr and en,
+  and at 390x844 a folded table one line tall with the felt right under it, two lines
+  taller than unfolded.
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 

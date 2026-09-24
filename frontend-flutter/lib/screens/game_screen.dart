@@ -47,6 +47,11 @@ class _GameScreenState extends State<GameScreen> {
   late final GameProvider _game;
   bool _left = false;
 
+  /// Whether the phone board's player table shows every line, or only the
+  /// player to move's (`GamePlayerTable.onToggle`). Folded at the start;
+  /// kept for as long as the game is open.
+  bool _playersExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -287,7 +292,16 @@ class _GameScreenState extends State<GameScreen> {
       ),
   ];
 
+  /// Every line: beside the felt on a wide screen, where there is height to
+  /// spare, and over the hand-size choice, which is made on the scores.
   Widget _playerTable() => GamePlayerTable(seats: _seats());
+
+  /// Folded on the player to move, so the felt gets the height of the others.
+  Widget _foldingPlayerTable() => GamePlayerTable(
+    seats: _seats(),
+    expanded: _playersExpanded,
+    onToggle: () => setState(() => _playersExpanded = !_playersExpanded),
+  );
 
   /// Where this player's turn stands, for the felt.
   TableStep get _tableStep {
@@ -365,7 +379,10 @@ class _GameScreenState extends State<GameScreen> {
       child: CustomMultiChildLayout(
         delegate: PhoneBoardLayout(feltFirst: drawing),
         children: [
-          LayoutId(id: PhoneBoardSlot.players, child: _scroll(_playerTable())),
+          LayoutId(
+            id: PhoneBoardSlot.players,
+            child: _scroll(_foldingPlayerTable()),
+          ),
           LayoutId(
             id: PhoneBoardSlot.felt,
             child: _tableArea(drawPlayedWidth: CardSizes.tablePlayedDraw),

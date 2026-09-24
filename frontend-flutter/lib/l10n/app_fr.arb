@@ -1591,6 +1591,14 @@
   "@gamePlayersWaiting": {
     "description": "Shown when the table carries no seat"
   },
+  "gamePlayersExpand": "Voir tous les joueurs",
+  "@gamePlayersExpand": {
+    "description": "Accessibility label of the chevron that unfolds the player table, folded on the player to move"
+  },
+  "gamePlayersCollapse": "Ne montrer que le joueur qui joue",
+  "@gamePlayersCollapse": {
+    "description": "Accessibility label of the chevron that folds the player table back to the player to move"
+  },
   "gameYouBadge": "Toi",
   "@gameYouBadge": {
     "description": "Badge marking the caller's own row in the player table"
