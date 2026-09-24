@@ -94,11 +94,12 @@ void main() {
       );
 
       expect(find.text('Open party'), findsOneWidget);
-      expect(find.text('2 / 5'), findsOneWidget);
-      expect(find.text('Rejointe'), findsNWidgets(2));
+      expect(find.textContaining('2 / 5 · En attente'), findsOneWidget);
+      expect(find.text('Rejointe'), findsOneWidget);
+      expect(find.text('En cours'), findsOneWidget);
       expect(enabled(tester, 'join-p1'), isTrue);
-      expect(find.text('Retour au salon'), findsOneWidget);
-      expect(find.text('Reprendre la partie'), findsOneWidget);
+      expect(find.text('Salon'), findsOneWidget);
+      expect(find.text('Reprendre'), findsOneWidget);
       expect(enabled(tester, 'join-p4'), isFalse);
       expect(find.text('Complète'), findsOneWidget);
     });
@@ -111,7 +112,7 @@ void main() {
         ],
       );
       final transport = await pumpApp(tester, backend);
-      expect(find.text('2 / 5'), findsOneWidget);
+      expect(find.textContaining('2 / 5'), findsOneWidget);
 
       backend.parties = [
         partySummaryJson(id: 'p1', name: 'Open party', playerCount: 3),
@@ -123,12 +124,12 @@ void main() {
         'playerIndex': 2,
       });
       // Debounced: nothing yet, in case more seats follow.
-      expect(find.text('2 / 5'), findsOneWidget);
+      expect(find.textContaining('2 / 5'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
-      expect(find.text('3 / 5'), findsOneWidget);
-      expect(find.text('2 / 5'), findsNothing);
+      expect(find.textContaining('3 / 5'), findsOneWidget);
+      expect(find.textContaining('2 / 5'), findsNothing);
     });
 
     testWidgets('a party deleted elsewhere leaves the list', (tester) async {
@@ -180,7 +181,7 @@ void main() {
         ),
       );
 
-      expect(find.text('2 / 5'), findsOneWidget);
+      expect(find.textContaining('2 / 5'), findsOneWidget);
       expect(find.text('Complète'), findsNothing);
       expect(enabled(tester, 'join-p1'), isTrue);
     });
@@ -581,10 +582,7 @@ void main() {
       await tester.tap(find.byKey(const Key('leave-party')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text("Tu n'as pas de place à cette table."),
-        findsOneWidget,
-      );
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
     });
 
     testWidgets('a party that does not exist says so', (tester) async {
