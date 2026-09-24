@@ -531,6 +531,44 @@ void main() {
       players.dispose();
     });
 
+    test('each (re)connection of the stream loads the list again', () async {
+      // The sign-in load can answer before the backend registers our own
+      // stream (a lone player then saw 0): the connection reloads it.
+      final backend = FakeLobbyBackend();
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final players = ConnectedPlayersProvider(
+        repositoryOf(backend),
+        events: events.stream,
+      );
+      players.follow(true);
+      await pumpEventQueue();
+      expect(players.players, isEmpty);
+
+      backend.connected = [connectedPlayerJson('u1', 'Vincent')];
+      players.follow(true, streamConnected: true);
+      await pumpEventQueue();
+      expect(players.players.map((player) => player.username), ['Vincent']);
+
+      // Still connected: no reload. Dropped and back: reload.
+      backend.connected = [
+        connectedPlayerJson('u2', 'Alice'),
+        connectedPlayerJson('u1', 'Vincent'),
+      ];
+      players.follow(true, streamConnected: true);
+      await pumpEventQueue();
+      expect(players.players, hasLength(1));
+
+      players.follow(true);
+      players.follow(true, streamConnected: true);
+      await pumpEventQueue();
+      expect(players.players.map((player) => player.username), [
+        'Alice',
+        'Vincent',
+      ]);
+      players.dispose();
+    });
+
     test('a failed first load leaves it not loaded', () async {
       final backend = FakeLobbyBackend();
       backend.failures['GET /api/players/connected'] = (

@@ -263,8 +263,12 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
   `AuthProvider` change — connected on sign-in or a restored session, closed on logout (a
   401 included), reopened when the token changes (`test/sse_session_test.dart`).
   `ZapZapApp(sseTransport:)` swaps the transport for tests.
-- Node emits `userConnected` before subscribing the new stream, so a client never sees its
-  own arrival (`src/api/server.js:101-106`, `:131`).
+- Node subscribes a new stream before it broadcasts `userConnected`, so a client hears its
+  own arrival; a user is online while at least one of their streams is open (a second tab,
+  or a reconnection whose new stream opens before the old one closes), and only the first
+  stream's opening and the last one's closing are broadcast (`SessionManager` counts streams
+  per user, `src/infrastructure/services/SessionManager.js`; `tests/unit/api/presence.test.js`).
+  Rust still has the old behaviour (`zapzap-rust/src/api/sse.rs`).
 - Checked against the local Node backend (2026-09-22): a `play` sent by curl as another user
   reached `HttpSseTransport` (a `dart run` script) and `EventSourceSseTransport` (the web build
   in Chromium); the token's user appeared in `GET /api/players/connected`; after the backend
@@ -367,14 +371,15 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   then Leave. **Delete is in the ⋮ menu** (`AppBarMenuAction`, key `delete-party`), no
   longer a red button next to Leave; it still confirms.
 - **`ConnectedPlayersProvider`** (`providers/connected_players_provider.dart`), app-wide
-  and lazy: `GET /players/connected` on sign-in (kept to five, as the events are), then
-  `userConnected` (prepended, five at most), `userDisconnected` and `userStatusChanged`.
-  Until the first answer or event (`loaded`), and after a failed one, the app bar shows
-  `–` rather than a count: "0" would claim nobody is online. A client never sees the *broadcast*
-  of its own arrival — Node emits `userConnected` before subscribing the new stream
-  (`src/api/server.js:101-106` after `:99`) — but the session is registered first, so the
-  `GET /players/connected` the client makes afterwards may already list it; which of the
-  two wins the race decides whether a lone user sees 0 or 1. React behaves the same way. The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
+  and lazy: `GET /players/connected` on sign-in (kept to five, as the events are), **again
+  on every (re)connection of the event stream** (it follows `SseProvider.connected` through
+  a `ChangeNotifierProxyProvider2` in `appProviders`), then `userConnected` (prepended, five
+  at most), `userDisconnected` and `userStatusChanged`. The sign-in fetch usually answers
+  before the backend has registered our stream — a lone player then saw 0 —, and what
+  happened while the stream was down never arrives; the reload on connection covers both.
+  An answer overtaken by a later load is dropped (`_loadGeneration`). Until the first
+  answer or event (`loaded`), and after a failed one, the app bar shows `–` rather than a
+  count: "0" would claim nobody is online (`test/party_provider_test.dart`). The app bar (`widgets/zapzap_app_bar.dart`) holds it, the connection
   indicator, sign-out and the navigation menu — icons only, so it fits a phone, which the
   React header does not.
 - **The app-bar menu** (`widgets/zapzap_app_bar.dart`, key `app-bar-menu`) leads to the
@@ -830,6 +835,15 @@ Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root
 project `.gitignore`.
 
 ## Decisions & History
+
+- **Presence count (2026-09-24, `fix/flutter-connected-count`).** The app bar read 0 for a
+  lone signed-in player on Node: the sign-in `GET /players/connected` answered before the
+  stream was registered, and Node broadcast `userConnected` before subscribing the new
+  stream, so the client never learnt of itself; any stream of a user closing (a second tab,
+  the PWA's first-load reconnection) also removed a user who was still connected. Fixed on
+  both sides — Node counts streams per user and subscribes before broadcasting, the client
+  reloads the list on each connection — so the client is right against the Rust backend
+  too, which keeps the old server behaviour for now.
 
 - **Node's `GET /history` sends the caller's place and score (2026-09-24,
   `fix/node-history-user-placement`).** The Rust parity fields were missing on the backend
