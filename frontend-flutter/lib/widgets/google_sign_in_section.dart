@@ -45,11 +45,27 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
   StreamSubscription<String>? _tokens;
   bool _busy = false;
 
+  // Google's web button, built once per locale: the GIS plugin keys its
+  // widget on a configuration without a hashCode, so a new one on every
+  // build (each keystroke in the fields) re-renders Google's iframe.
+  Widget? _platformButton;
+  Locale? _buttonLocale;
+
   @override
   void initState() {
     super.initState();
     _google = context.read<GoogleSignInService>();
     _tokens = _google.idTokens.listen(_signIn, onError: _failed);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = Localizations.localeOf(context);
+    if (locale != _buttonLocale) {
+      _buttonLocale = locale;
+      _platformButton = _google.platformButton(context);
+    }
   }
 
   @override
@@ -59,7 +75,9 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
   }
 
   Future<void> _signIn(String idToken) async {
-    if (_busy) return;
+    // Google's web button ignores [enabled]: drop a sign-in that would race
+    // the password submit in flight.
+    if (_busy || !widget.enabled) return;
     final l10n = AppLocalizations.of(context);
     final auth = context.read<AuthProvider>();
     _setBusy(true);
@@ -70,6 +88,14 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
       if (mounted) widget.onError(googleAuthErrorText(l10n, error));
     } finally {
       if (mounted) _setBusy(false);
+    }
+  }
+
+  Future<void> _startSignIn() async {
+    try {
+      await _google.signIn();
+    } catch (error) {
+      _failed(error);
     }
   }
 
@@ -89,10 +115,10 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final button =
-        _google.platformButton(context) ??
+        _platformButton ??
         OutlinedButton.icon(
           key: const Key('google-sign-in'),
-          onPressed: widget.enabled && !_busy ? _google.signIn : null,
+          onPressed: widget.enabled && !_busy ? _startSignIn : null,
           icon: const Text(
             'G',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),

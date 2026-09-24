@@ -102,3 +102,108 @@ int counteractPenalty(int activePlayers) =>
 
 /// [cards] by suit then rank, jokers last (`sortCards` in `cards.js`).
 List<int> sortCards(Iterable<int> cards) => cards.toList()..sort();
+
+/// A play [suggestPlays] offers: its [cards] (ids, in the order they are
+/// played) and the points they take off the hand, jokers at 0 — the value
+/// ZapZap is decided on.
+class PlaySuggestion {
+  PlaySuggestion(List<int> cards)
+    : cards = List.unmodifiable(cards),
+      type = playType(cards),
+      points = handValue(cards);
+
+  final List<int> cards;
+  final PlayType type;
+  final int points;
+
+  /// Whether [selection] holds exactly these cards, in any order.
+  bool matches(Iterable<int> selection) {
+    final selected = selection.toSet();
+    return selected.length == cards.length && selected.containsAll(cards);
+  }
+}
+
+/// How many suggestions [suggestPlays] returns at most.
+const maxSuggestions = 3;
+
+/// The plays of [hand] worth pointing out (J8 of the UX study), the most
+/// points first, at most [limit]: each rank held twice or more, the best
+/// sequence of each suit — jokers filling its gaps, the run a beginner
+/// misses — and the single cards in neither. A joker alone, or with one
+/// card, takes no point off and is not offered. Every suggestion is a legal
+/// play by [analyzePlay], the function that judges the selection.
+List<PlaySuggestion> suggestPlays(
+  Iterable<int> hand, {
+  int limit = maxSuggestions,
+}) {
+  final cards = hand.where(GameCard.isValidId).toSet().map(GameCard.new);
+  final regulars = cards.where((c) => !c.isJoker).toList();
+  final jokers = [
+    for (final c in cards)
+      if (c.isJoker) c.id,
+  ];
+
+  final groups = <PlaySuggestion>[];
+  final byRank = <int, List<int>>{};
+  for (final card in regulars) {
+    byRank.putIfAbsent(card.rank, () => []).add(card.id);
+  }
+  for (final ids in byRank.values) {
+    if (ids.length >= 2) groups.add(PlaySuggestion(ids..sort()));
+  }
+  for (final suit in Suit.values) {
+    final run = _bestSequence(
+      regulars.where((c) => c.suit == suit).toList(),
+      jokers,
+    );
+    if (run != null) groups.add(run);
+  }
+
+  // A single card already in a group is played better with it.
+  final grouped = {for (final g in groups) ...g.cards};
+  final singles = [
+    for (final card in regulars)
+      if (!grouped.contains(card.id)) PlaySuggestion([card.id]),
+  ];
+
+  final all =
+      [...groups, ...singles].where((s) => isValidPlay(s.cards)).toList()
+        ..sort((a, b) {
+          final byPoints = b.points.compareTo(a.points);
+          if (byPoints != 0) return byPoints;
+          final bySize = b.cards.length.compareTo(a.cards.length);
+          if (bySize != 0) return bySize;
+          return a.cards.first.compareTo(b.cards.first);
+        });
+  return all.take(limit).toList();
+}
+
+/// The sequence of [suited] (cards of one suit) worth the most points, with
+/// as few of [jokers] as it takes, or `null` when none holds two regular
+/// cards. Its cards run from the lowest rank to the highest, a joker in each
+/// gap — or at an end, to reach three cards.
+PlaySuggestion? _bestSequence(List<GameCard> suited, List<int> jokers) {
+  if (suited.length < 2) return null;
+  final idOfRank = {for (final c in suited) c.rank: c.id};
+  List<int>? best;
+  var bestPoints = -1;
+  var bestJokers = 0;
+  for (var low = 1; low <= 13; low++) {
+    for (var high = low + minSequenceLength - 1; high <= 13; high++) {
+      final ranks = [for (var r = low; r <= high; r++) r];
+      final held = ranks.where(idOfRank.containsKey).toList();
+      final gaps = ranks.length - held.length;
+      if (held.length < 2 || gaps > jokers.length) continue;
+      final points = held.fold(0, (sum, r) => sum + r);
+      // Ties go to fewer jokers, then to the higher run: 5♠ 6♠ and a joker
+      // read "5–7♠", the joker standing for the card above.
+      if (points > bestPoints || (points == bestPoints && gaps <= bestJokers)) {
+        var joker = 0;
+        best = [for (final r in ranks) idOfRank[r] ?? jokers[joker++]];
+        bestPoints = points;
+        bestJokers = gaps;
+      }
+    }
+  }
+  return best == null ? null : PlaySuggestion(best);
+}

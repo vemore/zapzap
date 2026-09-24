@@ -44,6 +44,37 @@ extension CardL10n on AppLocalizations {
     }
   }
 
+  /// The chip of a [suggestion] above the hand: "Paire de 7 · −14",
+  /// "Q♠ seule · −12", "Suite 5–7♠ avec joker · −11".
+  String suggestionLabel(PlaySuggestion suggestion) {
+    final cards = suggestion.cards.map(GameCard.new).toList();
+    final regular = cards.where((c) => !c.isJoker).toList();
+    final move = switch (suggestion.type) {
+      PlayType.single => gameSuggestSingle(cardShort(cards.single)),
+      PlayType.sameRank when cards.length == 2 => gameSuggestPair(
+        regular.first.rankSymbol,
+      ),
+      PlayType.sameRank => gameSuggestGroup(
+        cards.length,
+        regular.first.rankSymbol,
+      ),
+      // The run's ends are its first and last ranks, a joker at an end
+      // standing for the rank next to its neighbour.
+      PlayType.sequence => gameSuggestSequence(
+        cards.length - regular.length,
+        _rankSymbol(regular.first.rank - cards.indexOf(regular.first)),
+        _rankSymbol(
+          regular.last.rank + cards.length - 1 - cards.indexOf(regular.last),
+        ),
+        regular.first.suit!.symbol,
+      ),
+      PlayType.invalid => gameMovePlay,
+    };
+    return gameSuggestion(move, suggestion.points);
+  }
+
+  String _rankSymbol(int rank) => GameCard(rank - 1).rankSymbol;
+
   String playErrorMessage(PlayError error) => switch (error) {
     PlayError.empty => playErrorEmpty,
     PlayError.unknownCard => playErrorUnknownCard,

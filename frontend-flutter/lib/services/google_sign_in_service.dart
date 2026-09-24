@@ -88,10 +88,13 @@ abstract class GoogleSignInService {
   Stream<String> get idTokens;
 
   /// Google's own button when the platform requires it (the web), else
-  /// `null` and the app draws one that calls [signIn].
+  /// `null` and the app draws one that calls [signIn]. Build it once and keep
+  /// the instance: the web button re-renders Google's iframe whenever a new
+  /// one replaces it.
   Widget? platformButton(BuildContext context);
 
   /// Starts a sign-in; completes when it is over, its token on [idTokens].
+  /// Throws a [GoogleSignInFailure] for a failure [idTokens] does not carry.
   Future<void> signIn();
 }
 
@@ -152,20 +155,21 @@ class PluginGoogleSignInService implements GoogleSignInService {
   );
 
   @override
-  Widget? platformButton(BuildContext context) {
-    if (_google.supportsAuthenticate()) return null;
-    unawaited(_initialize());
-    return platform.googleButton(context);
-  }
+  Widget? platformButton(BuildContext context) =>
+      _google.supportsAuthenticate() ? null : platform.googleButton(context);
 
   @override
   Future<void> signIn() async {
-    await _initialize();
     try {
+      await _initialize();
       await _google.authenticate();
-    } catch (error) {
-      // Already on idTokens (the plugin reports it there too).
+    } on GoogleSignInException catch (error) {
+      // Already on idTokens: the plugin reports it there too.
       debugPrint('Google sign-in: $error');
+    } catch (error) {
+      // Not on idTokens (an initialisation or platform failure): the caller
+      // shows it.
+      throw _failure(error);
     }
   }
 

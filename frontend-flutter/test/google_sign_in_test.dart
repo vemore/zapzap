@@ -20,7 +20,17 @@ class FakeGoogleSignIn implements GoogleSignInService {
   final _tokens = StreamController<String>.broadcast();
   String? nextToken = 'google-id-token';
   Object? nextFailure;
+
+  /// Thrown by [signIn] itself (a failure the token stream does not carry).
+  Object? signInThrows;
   int signIns = 0;
+
+  /// Google's own button, as on the web; `null`: the app draws one.
+  Widget Function()? webButton;
+  int platformButtonCalls = 0;
+
+  /// A token handed over by Google's own button, bypassing [signIn].
+  void emit(String token) => _tokens.add(token);
 
   @override
   bool get enabled => true;
@@ -29,11 +39,15 @@ class FakeGoogleSignIn implements GoogleSignInService {
   Stream<String> get idTokens => _tokens.stream;
 
   @override
-  Widget? platformButton(BuildContext context) => null;
+  Widget? platformButton(BuildContext context) {
+    platformButtonCalls++;
+    return webButton?.call();
+  }
 
   @override
   Future<void> signIn() async {
     signIns++;
+    if (signInThrows != null) throw signInThrows!;
     if (nextFailure != null) {
       _tokens.addError(nextFailure!);
     } else if (nextToken != null) {
@@ -238,6 +252,79 @@ void main() {
       expect(find.text('Connexion'), findsOneWidget);
     });
 
+    testWidgets('a failure signIn throws itself shows the error', (
+      tester,
+    ) async {
+      final google = FakeGoogleSignIn()
+        ..signInThrows = const GoogleSignInFailure('init failed');
+      await pumpApp(tester, google: google);
+      await tester.tap(googleButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('La connexion Google a échoué. Réessaie.'),
+        findsOneWidget,
+      );
+      expect(find.text('Connexion'), findsOneWidget);
+    });
+
+    testWidgets('a token arriving while a password login is in flight is '
+        'dropped', (tester) async {
+      final requests = <http.Request>[];
+      final login = Completer<http.Response>();
+      final google = FakeGoogleSignIn()
+        ..webButton = () => const SizedBox(key: Key('gsi'), height: 44);
+      await pumpApp(
+        tester,
+        google: google,
+        api: fakeApi((_) => login.future, requests: requests),
+      );
+      await tester.enterText(
+        find.byKey(const Key('login-username')),
+        'Vincent',
+      );
+      await tester.enterText(find.byKey(const Key('login-password')), 'x');
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pump();
+
+      // Google's web button still works while the form is busy.
+      google.emit('google-id-token');
+      await tester.pump();
+      expect(requests.map((r) => r.url.path), ['/api/auth/login']);
+
+      login.complete(http.Response(authFixtureWithJwt('auth_login'), 200));
+      await tester.pumpAndSettle();
+      expect(
+        requests.map((r) => r.url.path),
+        isNot(contains('/api/auth/google')),
+      );
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('Google\'s web button is built once: typing in the fields '
+        'keeps the same instance', (tester) async {
+      var created = 0;
+      final google = FakeGoogleSignIn()
+        ..webButton = () => _CountingButton(onCreate: () => created++);
+      await pumpApp(tester, google: google);
+      expect(find.byType(_CountingButton), findsOneWidget);
+      expect(googleButton, findsNothing);
+      final first = tester.widget(find.byType(_CountingButton));
+
+      for (final text in ['V', 'Vi', 'Vin']) {
+        await tester.enterText(find.byKey(const Key('login-username')), text);
+        await tester.pump();
+      }
+      await tester.enterText(find.byKey(const Key('login-password')), 'x');
+      await tester.pump();
+
+      expect(google.platformButtonCalls, 1);
+      expect(created, 1);
+      expect(
+        identical(tester.widget(find.byType(_CountingButton)), first),
+        isTrue,
+      );
+    });
+
     testWidgets('no network: the network message', (tester) async {
       await pumpApp(
         tester,
@@ -296,4 +383,26 @@ void main() {
       });
     }
   });
+}
+
+/// Stands for Google's web button: counts the states created, i.e. how many
+/// times the iframe would be rendered.
+class _CountingButton extends StatefulWidget {
+  const _CountingButton({required this.onCreate});
+
+  final VoidCallback onCreate;
+
+  @override
+  State<_CountingButton> createState() => _CountingButtonState();
+}
+
+class _CountingButtonState extends State<_CountingButton> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onCreate();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(height: 44);
 }
