@@ -112,15 +112,18 @@ void main() {
     return (box.decoration! as BoxDecoration).color;
   }
 
-  /// The opacity a card of the discard pile is drawn at.
-  double discardOpacity(WidgetTester tester, int cardId) => tester
-      .widget<Opacity>(
-        find.descendant(
-          of: find.byKey(GameTableArea.discardKey(cardId)),
-          matching: find.byType(Opacity),
-        ),
-      )
-      .opacity;
+  /// Whether [key] is drawn greyed — opaquely, through a `ColorFiltered`,
+  /// never half transparent.
+  bool greyed(WidgetTester tester, Key key) {
+    final opacities = tester.widgetList<Opacity>(
+      find.descendant(of: find.byKey(key), matching: find.byType(Opacity)),
+    );
+    expect(opacities.where((o) => o.opacity < 1), isEmpty);
+    return find
+        .descendant(of: find.byKey(key), matching: find.byType(ColorFiltered))
+        .evaluate()
+        .isNotEmpty;
+  }
 
   Border feltBorder(WidgetTester tester) =>
       (tester.widget<Container>(find.byKey(const Key('gameTable'))).decoration!
@@ -425,19 +428,20 @@ void main() {
   });
 
   group('J5 — the discard pile: what can be taken, and when', () {
-    testWidgets('during Jouer the pile is "À prendre ensuite", dimmed', (
+    testWidgets('during Jouer the pile is "À prendre ensuite", greyed', (
       tester,
     ) async {
       await pumpGame(tester, table(lastCardsPlayed: [17, 18, 19]));
 
       expect(find.text('À prendre ensuite'), findsOneWidget);
-      expect(discardOpacity(tester, 19), 0.5);
+      expect(greyed(tester, GameTableArea.discardKey(19)), isTrue);
       expect(find.byKey(const Key('drawInstruction')), findsNothing);
       expect(feltBorder(tester).top.color, isNot(GameTableArea.drawEdgeColor));
       expect(enabled(tester, const Key('draw-deck')), isFalse);
+      expect(greyed(tester, const Key('draw-deck')), isTrue);
     });
 
-    testWidgets('during Piocher: amber edge, the instruction, full opacity, '
+    testWidgets('during Piocher: amber edge, the instruction, full colour, '
         'and the deck is a target', (tester) async {
       final backend = table(
         currentAction: 'draw',
@@ -452,7 +456,8 @@ void main() {
         find.text('Touche une carte pour la prendre, ou la pioche'),
         findsOneWidget,
       );
-      expect(discardOpacity(tester, 19), 1);
+      expect(greyed(tester, GameTableArea.discardKey(19)), isFalse);
+      expect(greyed(tester, const Key('draw-deck')), isFalse);
       expect(find.text('À prendre ensuite'), findsOneWidget);
 
       // Picking a card says what it costs.
