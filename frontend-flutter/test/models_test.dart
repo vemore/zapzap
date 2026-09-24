@@ -62,6 +62,24 @@ void main() {
       expect(party.createdAt, utc(1790094174));
     });
 
+    test('list paging sits at the top level (both backends)', () {
+      final page = Page.fromJson(
+        {
+          'success': true,
+          'parties': <Object>[],
+          'total': 12,
+          'limit': 50,
+          'offset': 0,
+        },
+        'parties',
+        PartySummary.fromJson,
+      );
+      expect(page.total, 12);
+      expect(page.limit, 50);
+      expect(page.offset, 0);
+      expect(page.hasMore, isNull);
+    });
+
     test(
       'a party row without maxPlayers falls back to its settings, then 5',
       () {
@@ -308,7 +326,7 @@ void main() {
       expect(select.handSize, 5);
     });
 
-    test('zapzap (Node: scores are running totals, as an object)', () {
+    test('zapzap (Node: running totals, no roundScores)', () {
       final result = ZapZapResult.fromJson(fixture('game_zapzap'));
       expect(result.zapzapSuccess, isTrue);
       expect(result.counteracted, isFalse);
@@ -324,25 +342,24 @@ void main() {
       expect(after.roundScores, {0: 0, 1: 23, 2: 9});
     });
 
-    test('zapzap (Rust: scores are the round\'s points, as a list)', () {
+    test("zapzap (Rust: Node's keys, plus roundScores)", () {
+      // Round 2, counteracted: totals were {0: 28, 1: 49, 2: 0}.
       final result = ZapZapResult.fromJson({
         'success': true,
         'zapzapSuccess': false,
         'counteracted': true,
-        'counteractedBy': '2',
-        'scores': [
-          {'playerIndex': 0, 'score': 30},
-          {'playerIndex': 2, 'score': 0},
-        ],
-        'handPoints': 4,
+        'counteractedBy': 2,
+        'scores': {'0': 58, '1': 61, '2': 0},
+        'roundScores': {'0': 30, '1': 12, '2': 0},
+        'handPoints': {'0': 4, '1': 12, '2': 2},
         'callerPoints': 4,
       });
       expect(result.counteracted, isTrue);
-      expect(result.counteractedBy, '2');
       expect(result.counteractedByPlayerIndex, 2);
-      expect(result.roundScores, {0: 30, 2: 0});
-      expect(result.totalScores, isNull);
-      expect(result.handPoints, isNull);
+      expect(result.totalScores, {0: 58, 1: 61, 2: 0});
+      expect(result.roundScores, {0: 30, 1: 12, 2: 0});
+      expect(result.handPoints, {0: 4, 1: 12, 2: 2});
+      expect(result.callerPoints, 4);
     });
 
     test('zapzap after round 1: Node totals are not round points', () {
@@ -434,33 +451,43 @@ void main() {
       expect(public.userScore, isNull);
     });
 
-    test('an entry (Rust: roundsPlayed, userPlacement)', () {
+    test("an entry (Rust: Node's keys and pagination)", () {
       final page = Page.fromJson(
         {
           'success': true,
           'games': [
             {
+              'id': 7,
               'partyId': 'p1',
               'partyName': 'Rust',
-              'finishedAt': 1790094408,
-              'playerCount': 4,
-              'roundsPlayed': 6,
+              'winnerUserId': 'u1',
               'winnerUsername': 'Ana',
+              'winnerFinalScore': 41,
+              'totalRounds': 6,
+              'wasGoldenScore': false,
+              'playerCount': 4,
+              'finishedAt': 1790094408,
+              'visibility': 'public',
               'userPlacement': 2,
               'userScore': 40,
             },
           ],
-          'total': 1,
+          'pagination': {'limit': 20, 'offset': 0, 'hasMore': false},
         },
         'games',
         GameHistoryEntry.fromJson,
       );
-      expect(page.total, 1);
+      expect(page.limit, 20);
+      expect(page.hasMore, isFalse);
+      expect(page.total, isNull);
       final game = page.items.single;
+      expect(game.winnerUserId, 'u1');
+      expect(game.winnerFinalScore, 41);
       expect(game.totalRounds, 6);
+      expect(game.wasGoldenScore, isFalse);
+      expect(game.visibility, 'public');
       expect(game.userPlacement, 2);
       expect(game.userScore, 40);
-      expect(game.wasGoldenScore, isNull);
     });
 
     test('details: players and rounds, hand cards from a JSON string', () {
