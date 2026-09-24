@@ -23,6 +23,7 @@ class GameHand extends StatelessWidget {
     this.onCardTap,
     this.onClearSelection,
     this.disabled = false,
+    this.compact = false,
   });
 
   final List<int> cards;
@@ -46,6 +47,12 @@ class GameHand extends StatelessWidget {
   /// The cards cannot be selected (not this player's turn, or a draw is
   /// owed).
   final bool disabled;
+
+  /// The hand in the draw step on a phone, read, not played: the cards on
+  /// one row of small ones ([CardFan.compact]) under the value alone. The
+  /// gauge and Clear go — the ZapZap button says the same, and a discard
+  /// card picked by mistake is dropped by tapping it again.
+  final bool compact;
 
   bool get _holdsJoker => hasJoker(cards);
 
@@ -81,30 +88,31 @@ class GameHand extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      l10n.gameZapZapThreshold(zapZapThreshold),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.slate400,
+                if (!compact)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        l10n.gameZapZapThreshold(zapZapThreshold),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.slate400,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      width: 60,
-                      child: LinearProgressIndicator(
-                        key: const Key('zapzapGauge'),
-                        value: zapZapProgress(eligibilityValue),
-                        minHeight: 6,
-                        borderRadius: BorderRadius.circular(3),
-                        color: GameHand.gaugeColor,
-                        backgroundColor: AppColors.slate700,
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        width: 60,
+                        child: LinearProgressIndicator(
+                          key: const Key('zapzapGauge'),
+                          value: zapZapProgress(eligibilityValue),
+                          minHeight: 6,
+                          borderRadius: BorderRadius.circular(3),
+                          color: GameHand.gaugeColor,
+                          backgroundColor: AppColors.slate700,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
             if (_holdsJoker)
@@ -119,7 +127,7 @@ class GameHand extends StatelessWidget {
                   ),
                 ),
               ),
-            const SizedBox(height: 4),
+            SizedBox(height: compact ? 2 : 4),
             if (cards.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -135,37 +143,40 @@ class GameHand extends StatelessWidget {
                 selectedCards: selectedCards.toSet(),
                 onCardTap: disabled ? null : onCardTap,
                 disabled: disabled,
+                compact: compact,
               ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                TextButton.icon(
-                  key: const Key('clear-selection'),
-                  onPressed: onClearSelection,
-                  style: TextButton.styleFrom(
-                    minimumSize: Size.zero,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+            if (!compact) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  TextButton.icon(
+                    key: const Key('clear-selection'),
+                    onPressed: onClearSelection,
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    icon: const Icon(Icons.close, size: 16),
+                    label: Text(l10n.gameClearSelection),
                   ),
-                  icon: const Icon(Icons.close, size: 16),
-                  label: Text(l10n.gameClearSelection),
-                ),
-                if (selectedCards.isNotEmpty)
-                  Text(
-                    l10n.gameSelectedCards(selectedCards.length),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.amber400,
+                  if (selectedCards.isNotEmpty)
+                    Text(
+                      l10n.gameSelectedCards(selectedCards.length),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.amber400,
+                      ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
