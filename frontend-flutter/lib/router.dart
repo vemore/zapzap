@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/admin_screen.dart';
 import 'screens/create_party_screen.dart';
 import 'screens/game_details_screen.dart';
 import 'screens/game_screen.dart';
@@ -32,7 +33,16 @@ abstract final class AppRoutes {
 
   static const history = '/history';
   static const stats = '/stats';
+
+  /// The admin screen, on its users tab; [adminTab] opens another tab.
   static const admin = '/admin';
+
+  /// One tab of the admin screen: `/admin/users`, `/admin/parties`,
+  /// `/admin/statistics`.
+  static String adminTab(AdminTab tab) => '$admin/${tab.segment}';
+
+  /// The path parameter of [adminTab].
+  static const adminTabParam = 'tab';
 
   static String partyPath(String partyId) => '/parties/$partyId';
 
@@ -124,6 +134,21 @@ GoRouter _router({
     GoRoute(
       path: AppRoutes.stats,
       builder: (context, state) => const StatsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.admin,
+      builder: (context, state) => const AdminScreen(),
+    ),
+    GoRoute(
+      path: '${AppRoutes.admin}/:${AppRoutes.adminTabParam}',
+      builder: (context, state) {
+        final tab = AdminTab.fromSegment(
+          state.pathParameters[AppRoutes.adminTabParam]!,
+        );
+        return tab == null
+            ? const NotFoundScreen()
+            : AdminScreen(initialTab: tab);
+      },
     ),
   ],
   errorBuilder: (context, state) => const NotFoundScreen(),

@@ -16,7 +16,7 @@ use axum::{
     Router,
 };
 
-use crate::api::middleware::{auth_middleware, optional_auth_middleware};
+use crate::api::middleware::{admin_middleware, auth_middleware, optional_auth_middleware};
 use crate::api::AppState;
 
 /// Create the main API router
@@ -29,6 +29,31 @@ pub fn create_api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .nest("/history", create_history_router(state.clone()))
         .nest("/admin", create_admin_router(state.clone()))
         .route("/bots", get(bots::list_bots))
+        // Bot creation and deletion are admin only (Node left them open)
+        .route(
+            "/bots",
+            post(bots::create_bot)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    admin_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth_middleware,
+                )),
+        )
+        .route(
+            "/bots/:botId",
+            delete(bots::delete_bot)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    admin_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth_middleware,
+                )),
+        )
         .route("/players/connected", get(players::get_connected_players))
         .route("/health", get(health::health_handler))
         .with_state(state)
@@ -84,6 +109,13 @@ fn create_party_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route(
             "/:partyId/start",
             post(party::start_party).layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            )),
+        )
+        .route(
+            "/:partyId/bots",
+            post(party::add_bot).layer(middleware::from_fn_with_state(
                 state.clone(),
                 auth_middleware,
             )),
@@ -190,57 +222,25 @@ fn create_history_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .with_state(state)
 }
 
-/// Create admin router
+/// Create admin router: every route behind `auth_middleware` (401), then
+/// `admin_middleware` (403 for a non-admin)
 fn create_admin_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
-        .route(
-            "/users",
-            get(admin::list_users).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/users/:userId",
-            delete(admin::delete_user).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/users/:userId/admin",
-            post(admin::set_user_admin).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/parties",
-            get(admin::list_parties).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/parties/:partyId/stop",
-            post(admin::stop_party).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/parties/:partyId",
-            delete(admin::admin_delete_party).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
-        .route(
-            "/statistics",
-            get(admin::get_statistics).layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            )),
-        )
+        .route("/users", get(admin::list_users))
+        .route("/users/:userId", delete(admin::delete_user))
+        .route("/users/:userId/admin", post(admin::set_user_admin))
+        .route("/parties", get(admin::list_parties))
+        .route("/parties/:partyId/stop", post(admin::stop_party))
+        .route("/parties/:partyId", delete(admin::admin_delete_party))
+        .route("/statistics", get(admin::get_statistics))
+        // The last layer runs first: auth sets the claims admin_middleware reads
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            admin_middleware,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .with_state(state)
 }

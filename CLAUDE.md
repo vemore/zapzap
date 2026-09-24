@@ -62,7 +62,7 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
 
 ```bash
 # Rust backend (toolchain pinned: rust-toolchain.toml)
-cd zapzap-rust && cargo run                      # :9999, needs the DB file; creates missing tables
+cd zapzap-rust && JWT_SECRET=<openssl rand -hex 32> cargo run   # :9999, JWT_SECRET required; needs the DB file
 cargo fmt && cargo clippy --all-targets -- -D warnings
 cargo test                                       # unit + API integration tests: .llmwiki/Testing.md
 

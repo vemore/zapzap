@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     extract::{Path, State},
@@ -8,9 +9,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::error::{ApiBody, ApiError, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
-use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
+use crate::application::bot::{run_bot_turns_now, spawn_bot_turns, trigger_llm_reflection};
 use crate::application::game::{
     CallZapZap, CallZapZapInput, DrawCard, DrawCardInput, GetGameState, GetGameStateInput,
     NextRound, NextRoundInput, PlayCards, PlayCardsInput, SelectHandSize, SelectHandSizeInput,
@@ -23,8 +25,9 @@ use crate::infrastructure::app_state::GameEvent;
 
 #[derive(Debug, Deserialize)]
 pub struct PlayCardsRequest {
+    /// Raw values: an id out of the card range is INVALID_CARDS, not an unreadable body
     #[serde(rename = "cardIds")]
-    pub card_ids: Vec<u8>,
+    pub card_ids: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +41,21 @@ pub struct DrawCardRequest {
 pub struct SelectHandSizeRequest {
     #[serde(rename = "handSize")]
     pub hand_size: u8,
+}
+
+impl ApiBody for PlayCardsRequest {
+    const INVALID_CODE: &'static str = "MISSING_CARDS";
+    const INVALID_MESSAGE: &'static str = "Card IDs are required";
+}
+
+impl ApiBody for DrawCardRequest {
+    const INVALID_CODE: &'static str = "INVALID_SOURCE";
+    const INVALID_MESSAGE: &'static str = "Source must be \"deck\" or \"played\"";
+}
+
+impl ApiBody for SelectHandSizeRequest {
+    const INVALID_CODE: &'static str = "INVALID_HAND_SIZE";
+    const INVALID_MESSAGE: &'static str = "Hand size must be an integer";
 }
 
 // Response types
@@ -181,21 +199,43 @@ pub struct SelectHandSizeResponse {
     pub game_state: Option<GameStateInfo>,
 }
 
+/// Node's zapzap contract: `scores` are the running totals after the round, keyed by
+/// player index; this round's points go under `roundScores`, the key `/state` uses.
 #[derive(Debug, Serialize)]
 pub struct ZapZapResponse {
     pub success: bool,
     #[serde(rename = "zapzapSuccess")]
     pub zapzap_success: bool,
     pub counteracted: bool,
+    /// Player index of the counteracting player, `null` when none
     #[serde(rename = "counteractedBy")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub counteracted_by: Option<String>,
-    pub scores: Vec<ScoreEntry>,
+    pub counteracted_by: Option<u8>,
+    pub scores: std::collections::BTreeMap<String, u16>,
+    #[serde(rename = "roundScores")]
+    pub round_scores: std::collections::BTreeMap<String, u16>,
     #[serde(rename = "handPoints")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hand_points: Option<u16>,
+    pub hand_points: std::collections::BTreeMap<String, u16>,
     #[serde(rename = "callerPoints")]
     pub caller_points: u16,
+    #[serde(rename = "gameFinished")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_finished: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub winner: Option<ZapZapWinner>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ZapZapWinner {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    #[serde(rename = "playerIndex")]
+    pub player_index: u8,
+    pub score: u16,
+}
+
+/// `[(index, value)]` as a JSON object keyed by the index, like Node's maps
+fn index_map(entries: &[(u8, u16)]) -> std::collections::BTreeMap<String, u16> {
+    entries.iter().map(|(i, v)| (i.to_string(), *v)).collect()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -256,30 +296,14 @@ pub async fn get_game_state(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<GameStateResponse>, ApiError> {
     let use_case = GetGameState::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
         .execute(GetGameStateInput {
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = match err_msg.as_str() {
-                "Party not found" => (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND"),
-                "User is not in this party" => (StatusCode::FORBIDDEN, "NOT_IN_PARTY"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "GET_STATE_ERROR"),
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Get current player's index
     let my_player_index = result.player_index.unwrap_or(0);
@@ -339,16 +363,8 @@ pub async fn get_game_state(
         }
     });
 
-    // Trigger bot actions in background if it's a bot's turn
-    let party_id_for_bot = result.party.id.clone();
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        // Small delay to let the response be sent first
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
-            tracing::error!("Auto bot trigger after get_game_state failed: {}", e);
-        }
-    });
+    // Let the bots play if one is to move (one loop per party)
+    spawn_bot_turns(&state, result.party.id.clone(), Duration::from_millis(100));
 
     Ok(Json(GameStateResponse {
         success: true,
@@ -382,8 +398,8 @@ pub async fn select_hand_size(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<SelectHandSizeRequest>,
-) -> Result<Json<SelectHandSizeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    ApiJson(body): ApiJson<SelectHandSizeRequest>,
+) -> Result<Json<SelectHandSizeResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let party_id_for_bot = party_id.clone();
     let use_case = SelectHandSize::new(state.party_repo.clone());
@@ -393,31 +409,7 @@ pub async fn select_hand_size(
             user_id: claims.user_id.clone(),
             hand_size: body.hand_size,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("selection phase") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("must be") || err_msg.contains("Invalid") {
-                (StatusCode::BAD_REQUEST, "INVALID_HAND_SIZE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "SELECT_HAND_SIZE_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -431,15 +423,8 @@ pub async fn select_hand_size(
     }));
     state.broadcast_event(event);
 
-    // Spawn background task to trigger bot if it's a bot's turn
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        // Small delay to let the state settle
-        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-        if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
-            tracing::error!("Auto bot trigger after select_hand_size failed: {}", e);
-        }
-    });
+    // Let the bots play if one is to move (one loop per party)
+    spawn_bot_turns(&state, party_id_for_bot, Duration::from_millis(300));
 
     Ok(Json(SelectHandSizeResponse {
         success: true,
@@ -453,17 +438,27 @@ pub async fn play_cards(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<PlayCardsRequest>,
-) -> Result<Json<PlayCardsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if body.card_ids.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Card IDs are required".to_string(),
-                code: "MISSING_CARDS".to_string(),
-                details: None,
-            }),
+    ApiJson(body): ApiJson<PlayCardsRequest>,
+) -> Result<Json<PlayCardsResponse>, ApiError> {
+    let raw_ids = body.card_ids.unwrap_or_default();
+    if raw_ids.is_empty() {
+        return Err(ApiError::bad_request(
+            "MISSING_CARDS",
+            "Card IDs are required",
         ));
+    }
+    // An id that is no card id (300, -1, "a") is in no hand: Node's INVALID_CARDS
+    let mut card_ids = Vec::with_capacity(raw_ids.len());
+    for raw in &raw_ids {
+        match raw.as_u64().and_then(|id| u8::try_from(id).ok()) {
+            Some(id) => card_ids.push(id),
+            None => {
+                return Err(ApiError::bad_request(
+                    "INVALID_CARDS",
+                    format!("Card {raw} not in hand"),
+                ))
+            }
+        }
     }
 
     let party_id_for_bot = party_id.clone();
@@ -472,39 +467,9 @@ pub async fn play_cards(
         .execute(PlayCardsInput {
             party_id,
             user_id: claims.user_id.clone(),
-            card_ids: body.card_ids.clone(),
+            card_ids: card_ids.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("not PLAY") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("not in hand") {
-                (StatusCode::BAD_REQUEST, "INVALID_CARDS")
-            } else if err_msg.contains("at least 2")
-                || err_msg.contains("No cards")
-                || err_msg.contains("Invalid")
-                || err_msg.contains("combination")
-            {
-                (StatusCode::BAD_REQUEST, "INVALID_PLAY")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "PLAY_CARDS_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -514,19 +479,12 @@ pub async fn play_cards(
     )
     .with_action("play")
     .with_data(serde_json::json!({
-        "cardIds": body.card_ids
+        "cardIds": card_ids
     }));
     state.broadcast_event(event);
 
-    // Spawn background task to trigger bot if it's a bot's turn
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        // Small delay to let the state settle
-        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-        if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
-            tracing::error!("Auto bot trigger failed: {}", e);
-        }
-    });
+    // Let the bots play if one is to move (one loop per party)
+    spawn_bot_turns(&state, party_id_for_bot, Duration::from_millis(300));
 
     Ok(Json(PlayCardsResponse {
         success: true,
@@ -541,16 +499,12 @@ pub async fn draw_card(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<DrawCardRequest>,
-) -> Result<Json<DrawCardResponse>, (StatusCode, Json<ErrorResponse>)> {
+    ApiJson(body): ApiJson<DrawCardRequest>,
+) -> Result<Json<DrawCardResponse>, ApiError> {
     if body.source != "deck" && body.source != "played" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Source must be \"deck\" or \"played\"".to_string(),
-                code: "INVALID_SOURCE".to_string(),
-                details: None,
-            }),
+        return Err(ApiError::bad_request(
+            DrawCardRequest::INVALID_CODE,
+            DrawCardRequest::INVALID_MESSAGE,
         ));
     }
 
@@ -563,35 +517,7 @@ pub async fn draw_card(
             source: body.source.clone(),
             card_id: body.card_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("not DRAW") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("empty") {
-                (StatusCode::BAD_REQUEST, "DECK_EMPTY")
-            } else if err_msg.contains("No cards available") {
-                (StatusCode::BAD_REQUEST, "NO_CARDS_AVAILABLE")
-            } else if err_msg.contains("not available") {
-                (StatusCode::BAD_REQUEST, "CARD_NOT_AVAILABLE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "DRAW_CARD_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -605,15 +531,8 @@ pub async fn draw_card(
     }));
     state.broadcast_event(event);
 
-    // Spawn background task to trigger bot if it's a bot's turn
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        // Small delay to let the state settle
-        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-        if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
-            tracing::error!("Auto bot trigger failed: {}", e);
-        }
-    });
+    // Let the bots play if one is to move (one loop per party)
+    spawn_bot_turns(&state, party_id_for_bot, Duration::from_millis(300));
 
     Ok(Json(DrawCardResponse {
         success: true,
@@ -629,7 +548,7 @@ pub async fn call_zapzap(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<ZapZapResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ZapZapResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let use_case = CallZapZap::new(state.party_repo.clone());
     let result = use_case
@@ -637,31 +556,7 @@ pub async fn call_zapzap(
             party_id,
             user_id: claims.user_id.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("too high") || err_msg.contains("Hand value") {
-                (StatusCode::BAD_REQUEST, "HAND_TOO_HIGH")
-            } else if err_msg.contains("Cannot call") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "ZAPZAP_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -721,21 +616,31 @@ pub async fn call_zapzap(
         });
     }
 
+    let winner = match (result.winner, result.winner_user_id) {
+        (Some(player_index), Some(user_id)) => Some(ZapZapWinner {
+            user_id,
+            player_index,
+            score: result
+                .total_scores
+                .iter()
+                .find(|(i, _)| *i == player_index)
+                .map(|(_, s)| *s)
+                .unwrap_or(0),
+        }),
+        _ => None,
+    };
+
     Ok(Json(ZapZapResponse {
         success: true,
         zapzap_success: result.success,
         counteracted: result.counteracted,
         counteracted_by: result.counteracted_by,
-        scores: result
-            .scores
-            .into_iter()
-            .map(|(idx, score)| ScoreEntry {
-                player_index: idx,
-                score,
-            })
-            .collect(),
-        hand_points: None,
+        scores: index_map(&result.total_scores),
+        round_scores: index_map(&result.round_scores),
+        hand_points: index_map(&result.hand_points),
         caller_points: result.caller_hand_points,
+        game_finished: result.game_finished.then_some(true),
+        winner,
     }))
 }
 
@@ -744,7 +649,8 @@ pub async fn next_round(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<NextRoundResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<NextRoundResponse>, ApiError> {
+    crate::api::access::require_party_member(&state, &party_id, &claims.user_id).await?;
     let party_id_for_event = party_id.clone();
     let party_id_for_bot = party_id.clone();
     let use_case = NextRound::new(state.party_repo.clone());
@@ -753,29 +659,7 @@ pub async fn next_round(
             party_id,
             user_id: claims.user_id.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("not in playing") || err_msg.contains("not playing") {
-                (StatusCode::BAD_REQUEST, "INVALID_PARTY_STATE")
-            } else if err_msg.contains("not finished") {
-                (StatusCode::BAD_REQUEST, "ROUND_NOT_FINISHED")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "NEXT_ROUND_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let action = if result.game_finished {
@@ -799,14 +683,7 @@ pub async fn next_round(
 
     // Spawn background task to trigger bot if starting player is a bot
     if !result.game_finished {
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            // Small delay to let the state settle
-            tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-            if let Err(e) = trigger_bot_internal(&state_clone, &party_id_for_bot).await {
-                tracing::error!("Auto bot trigger after next_round failed: {}", e);
-            }
-        });
+        spawn_bot_turns(&state, party_id_for_bot, Duration::from_millis(300));
     }
 
     // Convert scores to ScoreEntry format
@@ -845,920 +722,32 @@ pub async fn next_round(
 /// POST /api/game/:partyId/trigger-bot - Manually trigger bot turn
 pub async fn trigger_bot(
     State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<TriggerBotResponse>, (StatusCode, Json<ErrorResponse>)> {
-    use crate::domain::repositories::{PartyRepository, UserRepository};
-    use crate::infrastructure::bot::strategies::{
-        BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, LlmBotStrategy,
-        MediumBotStrategy, ThibotStrategy, VinceBotStrategy,
-    };
-
-    let max_iterations = 50; // Safety limit
-    let mut iterations = 0;
-    let mut actions_taken = 0;
-
-    loop {
-        iterations += 1;
-        if iterations > max_iterations {
-            tracing::warn!("Bot trigger hit max iterations for party {}", party_id);
-            break;
-        }
-
-        // Get game state
-        let game_state = match state.party_repo.get_game_state(&party_id).await {
-            Ok(Some(gs)) => gs,
-            Ok(None) => {
-                return Ok(Json(TriggerBotResponse {
-                    success: true,
-                    message: format!("No game state found. Actions taken: {}", actions_taken),
-                }));
-            }
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: e.to_string(),
-                        code: "GAME_STATE_ERROR".to_string(),
-                        details: None,
-                    }),
-                ));
-            }
+    if let Err(e) =
+        crate::api::access::require_party_member(&state, &party_id, &claims.user_id).await
+    {
+        let (code, details) = (e.code.to_string(), None);
+        let body = ErrorResponse {
+            error: e.message,
+            code,
+            details,
         };
-
-        // Check if round is finished
-        if game_state.current_action == crate::domain::value_objects::GameAction::Finished {
-            return Ok(Json(TriggerBotResponse {
-                success: true,
-                message: format!("Round finished. Actions taken: {}", actions_taken),
-            }));
-        }
-
-        // Get current player
-        let players = match state.party_repo.get_party_players(&party_id).await {
-            Ok(p) => p,
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: e.to_string(),
-                        code: "PLAYERS_ERROR".to_string(),
-                        details: None,
-                    }),
-                ));
-            }
-        };
-
-        let current_player = players
-            .iter()
-            .find(|p| p.player_index == game_state.current_turn);
-        let current_player = match current_player {
-            Some(p) => p,
-            None => {
-                return Ok(Json(TriggerBotResponse {
-                    success: true,
-                    message: format!("No current player found. Actions taken: {}", actions_taken),
-                }));
-            }
-        };
-
-        // Get user info
-        let user = match state.user_repo.find_by_id(&current_player.user_id).await {
-            Ok(Some(u)) => u,
-            Ok(None) => {
-                return Ok(Json(TriggerBotResponse {
-                    success: true,
-                    message: format!("User not found. Actions taken: {}", actions_taken),
-                }));
-            }
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: e.to_string(),
-                        code: "USER_ERROR".to_string(),
-                        details: None,
-                    }),
-                ));
-            }
-        };
-
-        // Check if user is a bot
-        if user.user_type.as_str() != "bot" {
-            // Human's turn - stop triggering
-            return Ok(Json(TriggerBotResponse {
-                success: true,
-                message: format!("Human player's turn. Actions taken: {}", actions_taken),
-            }));
-        }
-
-        // Check if bot is eliminated - skip to next player
-        if game_state.is_eliminated(current_player.player_index) {
-            tracing::info!(
-                "Bot {} is eliminated, advancing to next player",
-                user.username
-            );
-            // Advance to next non-eliminated player
-            let mut next_turn = (game_state.current_turn + 1) % game_state.player_count;
-            let mut attempts = 0;
-            while game_state.is_eliminated(next_turn) && attempts < game_state.player_count {
-                next_turn = (next_turn + 1) % game_state.player_count;
-                attempts += 1;
-            }
-
-            // Update game state with new current turn
-            let mut updated_state = game_state.clone();
-            updated_state.current_turn = next_turn;
-            if let Err(e) = state
-                .party_repo
-                .save_game_state(&party_id, &updated_state)
-                .await
-            {
-                tracing::error!("Failed to update game state: {}", e);
-            }
-            continue; // Continue loop to process next player
-        }
-
-        let player_index = current_player.player_index;
-        let user_id = user.id.clone();
-
-        // Check if this is an LLM bot
-        let is_llm_bot = matches!(
-            user.bot_difficulty,
-            Some(crate::domain::entities::BotDifficulty::Llm)
-        );
-
-        // Execute bot action based on current action state
-        match game_state.current_action {
-            crate::domain::value_objects::GameAction::SelectHandSize => {
-                // Hand size selection uses fallback strategy for all bots
-                let strategy = HardBotStrategy::new();
-                let hand_size = strategy.select_hand_size(&game_state, player_index);
-                tracing::info!("Bot {} selecting hand size: {}", user.username, hand_size);
-
-                let use_case = SelectHandSize::new(state.party_repo.clone());
-                match use_case
-                    .execute(SelectHandSizeInput {
-                        party_id: party_id.clone(),
-                        user_id: user_id.clone(),
-                        hand_size,
-                    })
-                    .await
-                {
-                    Ok(_) => {
-                        actions_taken += 1;
-                        tracing::info!("Bot {} selected hand size {}", user.username, hand_size);
-                    }
-                    Err(e) => {
-                        tracing::error!("Bot select hand size error: {}", e);
-                        return Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(ErrorResponse {
-                                error: format!("Bot select hand size failed: {}", e),
-                                code: "BOT_ACTION_ERROR".to_string(),
-                                details: None,
-                            }),
-                        ));
-                    }
-                }
-            }
-            crate::domain::value_objects::GameAction::Play => {
-                // Handle LLM bots with async strategy
-                if is_llm_bot {
-                    let memory = state.get_llm_memory(&user_id).await;
-                    let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-
-                    // Check if should call ZapZap (async)
-                    if llm_strategy
-                        .should_call_zapzap_async(&game_state, player_index)
-                        .await
-                    {
-                        tracing::info!("LLM Bot {} calling ZapZap", user.username);
-
-                        let use_case = CallZapZap::new(state.party_repo.clone());
-                        match use_case
-                            .execute(CallZapZapInput {
-                                party_id: party_id.clone(),
-                                user_id: user_id.clone(),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                actions_taken += 1;
-                                tracing::info!("LLM Bot {} called ZapZap", user.username);
-                            }
-                            Err(e) => {
-                                tracing::error!("LLM Bot ZapZap error: {}", e);
-                            }
-                        }
-                    } else {
-                        // Play cards (async)
-                        let cards_to_play = llm_strategy
-                            .select_cards_async(&game_state, player_index)
-                            .await;
-                        if cards_to_play.is_empty() {
-                            tracing::warn!("LLM Bot {} has no valid plays", user.username);
-                            return Err((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse {
-                                    error: "Bot has no valid plays".to_string(),
-                                    code: "BOT_NO_PLAYS".to_string(),
-                                    details: None,
-                                }),
-                            ));
-                        }
-
-                        tracing::info!(
-                            "LLM Bot {} playing cards: {:?}",
-                            user.username,
-                            cards_to_play
-                        );
-
-                        let use_case = PlayCards::new(state.party_repo.clone());
-                        match use_case
-                            .execute(PlayCardsInput {
-                                party_id: party_id.clone(),
-                                user_id: user_id.clone(),
-                                card_ids: cards_to_play.clone(),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                actions_taken += 1;
-                                tracing::info!(
-                                    "LLM Bot {} played {:?}",
-                                    user.username,
-                                    cards_to_play
-                                );
-                            }
-                            Err(e) => {
-                                tracing::error!("LLM Bot play cards error: {}", e);
-                                return Err((
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    Json(ErrorResponse {
-                                        error: format!("Bot play cards failed: {}", e),
-                                        code: "BOT_ACTION_ERROR".to_string(),
-                                        details: None,
-                                    }),
-                                ));
-                            }
-                        }
-                    }
-                } else {
-                    // Non-LLM bots use sync strategy
-                    let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => {
-                            Box::new(EasyBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Medium) => {
-                            Box::new(MediumBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
-                            Box::new(ThibotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
-                            Box::new(VinceBotStrategy::new())
-                        }
-                        _ => Box::new(HardBotStrategy::new()),
-                    };
-
-                    // Check if should call ZapZap
-                    if strategy.should_call_zapzap(&game_state, player_index) {
-                        tracing::info!("Bot {} calling ZapZap", user.username);
-
-                        let use_case = CallZapZap::new(state.party_repo.clone());
-                        match use_case
-                            .execute(CallZapZapInput {
-                                party_id: party_id.clone(),
-                                user_id: user_id.clone(),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                actions_taken += 1;
-                                tracing::info!("Bot {} called ZapZap", user.username);
-                            }
-                            Err(e) => {
-                                tracing::error!("Bot ZapZap error: {}", e);
-                            }
-                        }
-                    } else {
-                        // Play cards
-                        let cards_to_play = strategy.select_cards(&game_state, player_index);
-                        if cards_to_play.is_empty() {
-                            tracing::warn!("Bot {} has no valid plays", user.username);
-                            return Err((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse {
-                                    error: "Bot has no valid plays".to_string(),
-                                    code: "BOT_NO_PLAYS".to_string(),
-                                    details: None,
-                                }),
-                            ));
-                        }
-
-                        tracing::info!("Bot {} playing cards: {:?}", user.username, cards_to_play);
-
-                        let use_case = PlayCards::new(state.party_repo.clone());
-                        match use_case
-                            .execute(PlayCardsInput {
-                                party_id: party_id.clone(),
-                                user_id: user_id.clone(),
-                                card_ids: cards_to_play.clone(),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                actions_taken += 1;
-                                tracing::info!("Bot {} played {:?}", user.username, cards_to_play);
-                            }
-                            Err(e) => {
-                                tracing::error!("Bot play cards error: {}", e);
-                                return Err((
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    Json(ErrorResponse {
-                                        error: format!("Bot play cards failed: {}", e),
-                                        code: "BOT_ACTION_ERROR".to_string(),
-                                        details: None,
-                                    }),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-            crate::domain::value_objects::GameAction::Draw => {
-                // Handle LLM bots with async strategy
-                let (source_str, card_id) = if is_llm_bot {
-                    let memory = state.get_llm_memory(&user_id).await;
-                    let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-                    let draw_source = llm_strategy
-                        .decide_draw_source_async(&game_state, player_index)
-                        .await;
-                    match draw_source {
-                        DrawSource::Deck => ("deck".to_string(), None),
-                        DrawSource::Discard(card) => ("played".to_string(), Some(card)),
-                    }
-                } else {
-                    let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => {
-                            Box::new(EasyBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Medium) => {
-                            Box::new(MediumBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
-                            Box::new(ThibotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
-                            Box::new(VinceBotStrategy::new())
-                        }
-                        _ => Box::new(HardBotStrategy::new()),
-                    };
-                    let draw_source = strategy.decide_draw_source(&game_state, player_index);
-                    match draw_source {
-                        DrawSource::Deck => ("deck".to_string(), None),
-                        DrawSource::Discard(card) => ("played".to_string(), Some(card)),
-                    }
-                };
-
-                tracing::info!("Bot {} drawing from {}", user.username, source_str);
-
-                let use_case = DrawCard::new(state.party_repo.clone());
-                match use_case
-                    .execute(DrawCardInput {
-                        party_id: party_id.clone(),
-                        user_id: user_id.clone(),
-                        source: source_str.clone(),
-                        card_id,
-                    })
-                    .await
-                {
-                    Ok(_) => {
-                        actions_taken += 1;
-                        tracing::info!("Bot {} drew from {}", user.username, source_str);
-                    }
-                    Err(e) => {
-                        tracing::error!("Bot draw error: {}", e);
-                        // Try deck if discard failed
-                        if source_str == "played" {
-                            tracing::info!("Bot {} retrying with deck", user.username);
-                            let use_case = DrawCard::new(state.party_repo.clone());
-                            match use_case
-                                .execute(DrawCardInput {
-                                    party_id: party_id.clone(),
-                                    user_id: user_id.clone(),
-                                    source: "deck".to_string(),
-                                    card_id: None,
-                                })
-                                .await
-                            {
-                                Ok(_) => {
-                                    actions_taken += 1;
-                                    tracing::info!(
-                                        "Bot {} drew from deck (fallback)",
-                                        user.username
-                                    );
-                                }
-                                Err(e2) => {
-                                    return Err((
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(ErrorResponse {
-                                            error: format!("Bot draw failed: {}", e2),
-                                            code: "BOT_ACTION_ERROR".to_string(),
-                                            details: None,
-                                        }),
-                                    ));
-                                }
-                            }
-                        } else {
-                            return Err((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse {
-                                    error: format!("Bot draw failed: {}", e),
-                                    code: "BOT_ACTION_ERROR".to_string(),
-                                    details: None,
-                                }),
-                            ));
-                        }
-                    }
-                }
-            }
-            crate::domain::value_objects::GameAction::Finished => {
-                return Ok(Json(TriggerBotResponse {
-                    success: true,
-                    message: format!("Round finished. Actions taken: {}", actions_taken),
-                }));
-            }
-            crate::domain::value_objects::GameAction::ZapZap => {
-                // ZapZap state - waiting for counter, this shouldn't happen for bots
-                tracing::warn!("Bot encountered ZapZap action state, skipping");
-                return Ok(Json(TriggerBotResponse {
-                    success: true,
-                    message: format!("ZapZap state encountered. Actions taken: {}", actions_taken),
-                }));
-            }
-        }
-
-        // Small delay between actions to avoid overwhelming
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        return Err((e.status, Json(body)));
     }
-
-    Ok(Json(TriggerBotResponse {
-        success: true,
-        message: format!("Bot trigger completed. Actions taken: {}", actions_taken),
-    }))
-}
-
-/// Internal function to trigger bot actions (used by background tasks)
-async fn trigger_bot_internal(state: &Arc<AppState>, party_id: &str) -> Result<(), String> {
-    use crate::domain::repositories::{PartyRepository, UserRepository};
-    use crate::infrastructure::bot::strategies::{
-        BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, LlmBotStrategy,
-        MediumBotStrategy, ThibotStrategy, VinceBotStrategy,
-    };
-
-    // Check if there are any active human players
-    let players = match state.party_repo.get_party_players(party_id).await {
-        Ok(p) => p,
-        Err(e) => return Err(e.to_string()),
-    };
-
-    let game_state_initial = match state.party_repo.get_game_state(party_id).await {
-        Ok(Some(gs)) => gs,
-        Ok(None) => return Ok(()),
-        Err(e) => return Err(e.to_string()),
-    };
-
-    let mut has_active_human = false;
-    for player in &players {
-        if game_state_initial.is_eliminated(player.player_index) {
-            continue;
-        }
-        if let Ok(Some(user)) = state.user_repo.find_by_id(&player.user_id).await {
-            if user.user_type.as_str() == "human" {
-                has_active_human = true;
-                break;
-            }
-        }
-    }
-
-    // If only bots remain, allow many more iterations to finish the game
-    let max_iterations = if has_active_human { 50 } else { 500 };
-    let mut iterations = 0;
-
-    loop {
-        iterations += 1;
-        if iterations > max_iterations {
-            tracing::warn!("Auto bot trigger hit max iterations for party {}", party_id);
-            break;
-        }
-
-        // Get game state
-        let game_state = match state.party_repo.get_game_state(party_id).await {
-            Ok(Some(gs)) => gs,
-            Ok(None) => return Ok(()),
-            Err(e) => return Err(e.to_string()),
-        };
-
-        // Check if round is finished
-        if game_state.current_action == crate::domain::value_objects::GameAction::Finished {
-            return Ok(());
-        }
-
-        // Get current player
-        let players = match state.party_repo.get_party_players(party_id).await {
-            Ok(p) => p,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let current_player = match players
-            .iter()
-            .find(|p| p.player_index == game_state.current_turn)
-        {
-            Some(p) => p,
-            None => return Ok(()),
-        };
-
-        // Get user info
-        let user = match state.user_repo.find_by_id(&current_player.user_id).await {
-            Ok(Some(u)) => u,
-            Ok(None) => return Ok(()),
-            Err(e) => return Err(e.to_string()),
-        };
-
-        // If human's turn, stop
-        if user.user_type.as_str() != "bot" {
-            return Ok(());
-        }
-
-        // Skip eliminated bots
-        if game_state.is_eliminated(current_player.player_index) {
-            let mut next_turn = (game_state.current_turn + 1) % game_state.player_count;
-            let mut attempts = 0;
-            while game_state.is_eliminated(next_turn) && attempts < game_state.player_count {
-                next_turn = (next_turn + 1) % game_state.player_count;
-                attempts += 1;
-            }
-            let mut updated_state = game_state.clone();
-            updated_state.current_turn = next_turn;
-            if let Err(e) = state
-                .party_repo
-                .save_game_state(party_id, &updated_state)
-                .await
-            {
-                tracing::error!("Failed to update game state: {}", e);
-            }
-            continue;
-        }
-
-        let player_index = current_player.player_index;
-        let user_id = user.id.clone();
-
-        // Check if this is an LLM bot
-        let is_llm_bot = matches!(
-            user.bot_difficulty,
-            Some(crate::domain::entities::BotDifficulty::Llm)
-        );
-
-        // Execute bot action
-        match game_state.current_action {
-            crate::domain::value_objects::GameAction::SelectHandSize => {
-                let strategy = HardBotStrategy::new();
-                let hand_size = strategy.select_hand_size(&game_state, player_index);
-                tracing::info!(
-                    "Auto: Bot {} selecting hand size: {}",
-                    user.username,
-                    hand_size
-                );
-                let use_case = SelectHandSize::new(state.party_repo.clone());
-                use_case
-                    .execute(SelectHandSizeInput {
-                        party_id: party_id.to_string(),
-                        user_id: user_id.clone(),
-                        hand_size,
-                    })
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                // Broadcast SSE event for bot action
-                let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                    .with_action("selectHandSize")
-                    .with_data(serde_json::json!({
-                        "handSize": hand_size,
-                        "isBot": true
-                    }));
-                state.broadcast_event(event);
-            }
-            crate::domain::value_objects::GameAction::Play => {
-                if is_llm_bot {
-                    let memory = state.get_llm_memory(&user_id).await;
-                    let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-
-                    let can_zapzap = llm_strategy
-                        .should_call_zapzap_async(&game_state, player_index)
-                        .await;
-                    if can_zapzap {
-                        tracing::info!("Auto: LLM Bot {} calling ZapZap!", user.username);
-                        let use_case = CallZapZap::new(state.party_repo.clone());
-                        let zapzap_result = use_case
-                            .execute(CallZapZapInput {
-                                party_id: party_id.to_string(),
-                                user_id: user_id.clone(),
-                            })
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                        let event = GameEvent::new(
-                            "gameUpdate",
-                            Some(party_id.to_string()),
-                            Some(user_id.clone()),
-                        )
-                        .with_action("zapzap")
-                        .with_data(serde_json::json!({"isBot": true}));
-                        state.broadcast_event(event);
-
-                        // Trigger LLM reflection after round finishes
-                        trigger_llm_reflection(
-                            state,
-                            party_id,
-                            game_state.round_number as u32,
-                            Some(player_index),
-                            zapzap_result.counteracted,
-                        )
-                        .await;
-                    } else {
-                        let cards_to_play = llm_strategy
-                            .select_cards_async(&game_state, player_index)
-                            .await;
-                        if cards_to_play.is_empty() {
-                            return Err("LLM Bot has no valid play".to_string());
-                        }
-                        tracing::info!(
-                            "Auto: LLM Bot {} playing cards: {:?}",
-                            user.username,
-                            cards_to_play
-                        );
-                        let use_case = PlayCards::new(state.party_repo.clone());
-                        use_case
-                            .execute(PlayCardsInput {
-                                party_id: party_id.to_string(),
-                                user_id: user_id.clone(),
-                                card_ids: cards_to_play.clone(),
-                            })
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                        let event =
-                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                                .with_action("play")
-                                .with_data(
-                                    serde_json::json!({"cardIds": cards_to_play, "isBot": true}),
-                                );
-                        state.broadcast_event(event);
-                    }
-                } else {
-                    let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => {
-                            Box::new(EasyBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Medium) => {
-                            Box::new(MediumBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
-                            Box::new(ThibotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
-                            Box::new(VinceBotStrategy::new())
-                        }
-                        _ => Box::new(HardBotStrategy::new()),
-                    };
-
-                    let can_zapzap = strategy.should_call_zapzap(&game_state, player_index);
-                    if can_zapzap {
-                        tracing::info!("Auto: Bot {} calling ZapZap!", user.username);
-                        let use_case = CallZapZap::new(state.party_repo.clone());
-                        let zapzap_result = use_case
-                            .execute(CallZapZapInput {
-                                party_id: party_id.to_string(),
-                                user_id: user_id.clone(),
-                            })
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                        let event =
-                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                                .with_action("zapzap")
-                                .with_data(serde_json::json!({"isBot": true}));
-                        state.broadcast_event(event);
-
-                        // Trigger LLM reflection for any LLM bots in the party
-                        trigger_llm_reflection(
-                            state,
-                            party_id,
-                            game_state.round_number as u32,
-                            Some(player_index),
-                            zapzap_result.counteracted,
-                        )
-                        .await;
-                    } else {
-                        let cards_to_play = strategy.select_cards(&game_state, player_index);
-                        if cards_to_play.is_empty() {
-                            return Err("Bot has no valid play".to_string());
-                        }
-                        tracing::info!(
-                            "Auto: Bot {} playing cards: {:?}",
-                            user.username,
-                            cards_to_play
-                        );
-                        let use_case = PlayCards::new(state.party_repo.clone());
-                        use_case
-                            .execute(PlayCardsInput {
-                                party_id: party_id.to_string(),
-                                user_id: user_id.clone(),
-                                card_ids: cards_to_play.clone(),
-                            })
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                        let event =
-                            GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                                .with_action("play")
-                                .with_data(
-                                    serde_json::json!({"cardIds": cards_to_play, "isBot": true}),
-                                );
-                        state.broadcast_event(event);
-                    }
-                }
-            }
-            crate::domain::value_objects::GameAction::Draw => {
-                let (source_str, card_id) = if is_llm_bot {
-                    let memory = state.get_llm_memory(&user_id).await;
-                    let llm_strategy = LlmBotStrategy::new(state.llm_service.clone(), Some(memory));
-                    let draw_source = llm_strategy
-                        .decide_draw_source_async(&game_state, player_index)
-                        .await;
-                    match draw_source {
-                        DrawSource::Deck => ("deck".to_string(), None),
-                        DrawSource::Discard(card) => ("played".to_string(), Some(card)),
-                    }
-                } else {
-                    let strategy: Box<dyn BotStrategy> = match user.bot_difficulty {
-                        Some(crate::domain::entities::BotDifficulty::Easy) => {
-                            Box::new(EasyBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Medium) => {
-                            Box::new(MediumBotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::Thibot) => {
-                            Box::new(ThibotStrategy::new())
-                        }
-                        Some(crate::domain::entities::BotDifficulty::HardVince) => {
-                            Box::new(VinceBotStrategy::new())
-                        }
-                        _ => Box::new(HardBotStrategy::new()),
-                    };
-                    let draw_source = strategy.decide_draw_source(&game_state, player_index);
-                    match draw_source {
-                        DrawSource::Deck => ("deck".to_string(), None),
-                        DrawSource::Discard(card) => ("played".to_string(), Some(card)),
-                    }
-                };
-
-                tracing::info!("Auto: Bot {} drawing from {}", user.username, source_str);
-                let use_case = DrawCard::new(state.party_repo.clone());
-                let draw_result = use_case
-                    .execute(DrawCardInput {
-                        party_id: party_id.to_string(),
-                        user_id: user_id.clone(),
-                        source: source_str.clone(),
-                        card_id,
-                    })
-                    .await;
-
-                let final_source = if draw_result.is_err() {
-                    // Fallback to deck
-                    let use_case = DrawCard::new(state.party_repo.clone());
-                    use_case
-                        .execute(DrawCardInput {
-                            party_id: party_id.to_string(),
-                            user_id: user_id.clone(),
-                            source: "deck".to_string(),
-                            card_id: None,
-                        })
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    "deck".to_string()
-                } else {
-                    source_str
-                };
-
-                // Broadcast SSE event for bot draw
-                let event = GameEvent::new("gameUpdate", Some(party_id.to_string()), Some(user_id))
-                    .with_action("draw")
-                    .with_data(serde_json::json!({
-                        "source": final_source,
-                        "isBot": true
-                    }));
-                state.broadcast_event(event);
-            }
-            crate::domain::value_objects::GameAction::Finished => return Ok(()),
-            crate::domain::value_objects::GameAction::ZapZap => return Ok(()),
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    }
-
-    Ok(())
-}
-
-/// Trigger reflection for all LLM bots in a party after a round finishes
-async fn trigger_llm_reflection(
-    state: &Arc<AppState>,
-    party_id: &str,
-    round_number: u32,
-    zapzap_caller_idx: Option<u8>,
-    was_counteracted: bool,
-) {
-    use crate::domain::repositories::{PartyRepository, UserRepository};
-    use crate::infrastructure::bot::card_analyzer::calculate_hand_value;
-
-    // Skip if no LLM service
-    let Some(ref llm_service) = state.llm_service else {
-        return;
-    };
-
-    // Get game state
-    let game_state = match state.party_repo.get_game_state(party_id).await {
-        Ok(Some(gs)) => gs,
-        Ok(None) | Err(_) => return,
-    };
-
-    // Get players
-    let players = match state.party_repo.get_party_players(party_id).await {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-
-    // Find LLM bots and trigger reflection for each
-    for player in &players {
-        let user = match state.user_repo.find_by_id(&player.user_id).await {
-            Ok(Some(u)) => u,
-            _ => continue,
-        };
-
-        // Check if this is an LLM bot
-        if !matches!(
-            user.bot_difficulty,
-            Some(crate::domain::entities::BotDifficulty::Llm)
-        ) {
-            continue;
-        }
-
-        // Get bot memory
-        let memory = state.get_llm_memory(&player.user_id).await;
-
-        // Determine outcome for this bot
-        let hand = game_state.get_hand(player.player_index);
-        let hand_value = calculate_hand_value(hand);
-        let is_zapzap_caller = zapzap_caller_idx == Some(player.player_index);
-        let won = if is_zapzap_caller {
-            !was_counteracted
-        } else if let Some(lowest_idx) = game_state.lowest_hand_player_index {
-            lowest_idx == player.player_index
-        } else {
-            false
-        };
-
-        // Build round outcome
-        let outcome = RoundOutcome {
-            won,
-            counteracted: is_zapzap_caller && was_counteracted,
-            score_change: 0, // Would need to calculate this
-            hand_points: hand_value,
-            final_hand: hand.to_vec(),
-            is_golden_score: game_state.is_golden_score,
-        };
-
-        // Trigger reflection in background
-        let reflect_use_case = ReflectOnRound::new(llm_service.clone());
-        let input = ReflectOnRoundInput {
-            bot_user_id: player.user_id.clone(),
-            party_id: party_id.to_string(),
-            round_number,
-            outcome,
-        };
-
-        let memory_clone = memory.clone();
-        tokio::spawn(async move {
-            let result = reflect_use_case.execute(input, memory_clone).await;
-            if result.success {
-                tracing::info!(
-                    "LLM reflection completed: {} insights generated",
-                    result.insights_generated
-                );
-            } else if let Some(reason) = result.reason {
-                tracing::debug!("LLM reflection skipped: {}", reason);
-            }
-        });
+    match run_bot_turns_now(&state, &party_id).await {
+        Ok(actions) => Ok(Json(TriggerBotResponse {
+            success: true,
+            message: format!("Bot trigger completed. Actions taken: {}", actions),
+        })),
+        Err(error) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error,
+                code: "BOT_ACTION_ERROR".to_string(),
+                details: None,
+            }),
+        )),
     }
 }

@@ -10,8 +10,9 @@
 | Suite | Run | State 2026-09-22 | In CI |
 |---|---|---|---|
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
-| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | green | yes |
+| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 35 tests) | `cargo test --test api_tests` | green | yes |
 | Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 2 tests) | `cargo test --test schema_tests` | green | yes |
+| Rust backend rules and bots tests (`zapzap-rust/tests/rules_and_bots_tests.rs`, 8 tests: eliminated starter, starter wrap, tied lowest hands, repeated card, hand size with 8 players, concurrent bot triggers, a trigger during a manual loop, one strategy per bot) | `cargo test --test rules_and_bots_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |
@@ -20,14 +21,15 @@
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `flutter drive` against a live Node backend, below | green (2026-09-24) | no — local only; CI is its own wip entry (`2026-09-23-flutter-e2e-in-ci`) |
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
+| Backend parity, Node vs Rust (`tests/parity`, `node --test`, outside jest) | `cd zapzap-rust && cargo build --release`, then `npm run test:parity` (root), about 30 s | green with the differences `tests/parity/divergences.json` lists (2026-09-24) | yes (`parity` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
 | Docker images and the proxy config | `docker build zapzap-rust`, `docker build .` (the Node backend production runs), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
 
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
-- Unit tests (34 `#[test]`/`#[tokio::test]`) live next to the code: `domain/services/game_service.rs` (6), `infrastructure/bot/card_analyzer.rs` (5), `strategies/thibot.rs` (4), `strategies/vince_bot.rs` (4), `domain/value_objects/game_state.rs` (3), `application/bot/reflect_on_round.rs` (3), `bot/llm_memory.rs` (3), `auth/password.rs` (2), `strategies/llm_bot.rs` (2), `services/llm_service.rs` (2).
-- Integration tests: `zapzap-rust/tests/api_tests.rs:19-31` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key`, then drives it with tower `oneshot` (register, login, create/list party — `api_tests.rs:111-348`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (`zapzap-rust/src/infrastructure/app_state.rs:64`).
-- Schema tests: `zapzap-rust/tests/schema_tests.rs` reads the Node DDL from `src/infrastructure/database/sqlite/DatabaseConnection.js` at compile time (`include_str!`) and checks that `schema.sql` creates the same objects (`rust_schema_matches_node_schema`) and that the startup step leaves a filled Node-built DB unchanged (`schema_step_is_a_noop_on_a_node_built_database`). See [[Backend]].
+- Unit tests (54 `#[test]`/`#[tokio::test]`) live next to the code: `domain/services/game_service.rs` (6), `application/auth/login_with_google.rs` (6), `services/google_oauth.rs` (6, the key cache with an injected fetcher), `infrastructure/bot/card_analyzer.rs` (5), `infrastructure/app_state.rs` (4, the JWT secret), `strategies/thibot.rs` (4), `strategies/vince_bot.rs` (4), `domain/value_objects/game_state.rs` (3), `application/bot/reflect_on_round.rs` (3), `bot/llm_memory.rs` (3), `auth/password.rs` (2), `strategies/llm_bot.rs` (2), `services/llm_service.rs` (2), `application/bot/delete_bot.rs` (2), `application/bot/create_bot.rs` (1), `domain/entities/player.rs` (1). The Google and bot-admin races run on `RacingUserRepo` (`infrastructure/database/repositories/racing_user_repo.rs`, test-only), whose lookups can be made stale; tokens are signed with the test-only key `zapzap-rust/tests/fixtures/google_oauth_test_rsa.pem`, never checked against Google.
+- Integration tests: `zapzap-rust/tests/api_tests.rs:19-36` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key` (`create_test_app_with_state` also hands back the `AppState`, to set a game state or read SSE events), then drives it with tower `oneshot`: auth and party basics, then the error contract — tests per party and game route family asserting Node's status and `code` (`assert_error`, `api_tests.rs:539`), unreadable bodies answering 400, `partyCreated`, `isMyTurn`, adding a bot and the zapzap scores, on a started three-human party (`started_party`, `api_tests.rs:462`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (its `ensure_schema` call, `zapzap-rust/src/infrastructure/app_state.rs`). The security tests at the end (the router of `create_test_app_with_state` also serves `/suscribeupdate`): private join/details, game state, `nextRound`, `trigger-bot`, private history, admin 401/403, SSE per-user filtering and public-party lifecycle events (read the streamed body until a sentinel event), `/history/public` without private games, a deleted user's token refused, and `test_server_refuses_to_start_without_jwt_secret`, which runs the `zapzap-backend` binary (`CARGO_BIN_EXE_zapzap-backend`) in an empty directory without `JWT_SECRET`. Last, module `google_and_bot_admin`: `POST /api/auth/google` (missing credential, forged token, not configured, a full login with an injected key set) and the admin bot routes.
+- Schema tests: `zapzap-rust/tests/schema_tests.rs` reads the Node DDL from `src/infrastructure/database/sqlite/DatabaseConnection.js` at compile time (`include_str!`) and checks that `schema.sql` creates the same objects (`rust_schema_matches_node_schema`) and that the startup step leaves a filled Node-built DB unchanged (`schema_step_is_a_noop_on_a_node_built_database`), and that a failing step (an entrypoint-rebuilt `users` table without `google_id`) leaves the DB unchanged (`schema_step_failure_leaves_the_database_unchanged`). See [[Backend]].
 - CI gate (`rust` job): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --lib --bins --tests` (unit and integration tests).
 - `scripts/ci_scope.sh` sends a change to `src/` to `node` and `image`, and a change to `src/infrastructure/database/sqlite/DatabaseConnection.js` (the Node DDL `schema_tests` reads) to `rust` as well, so a PR that edits only the Node schema still runs the parity test.
 
@@ -46,12 +48,67 @@
 - CI gate (`frontend` job): Node 24, `npm ci`, `npm run lint`, `npx vitest run`, `npm run build`. The job keeps its `name:` "Frontend — build", which branch protection pins.
 
 ### Node backend (root; production runs it)
-- `npm test` → `jest` (`package.json:10`); `jest.config.js` sets `clearMocks`, `collectCoverage: true` (writes `coverage/` at the root on every run), `coverageProvider: "v8"`, `roots: ["<rootDir>/tests"]` and ignores `<rootDir>/tests/e2e/`. Without those two, jest also collected `frontend/`'s vitest files, the Playwright spec and every copy under `.claude/worktrees/` (~600 suites). Tests: `tests/unit/**` (entities, use cases, JwtService, DB connection) and `tests/integration/**` (repositories, migrations) — all against `src/`, the code production runs.
+- `npm test` → `jest` (`package.json:10`); `jest.config.js` sets `clearMocks`, `collectCoverage: true` (writes `coverage/` at the root on every run), `coverageProvider: "v8"`, `roots: ["<rootDir>/tests"]` and ignores `<rootDir>/tests/e2e/`. Without those two, jest also collected `frontend/`'s vitest files, the Playwright spec and every copy under `.claude/worktrees/` (~600 suites). Tests: `tests/unit/**` (entities, use cases, JwtService, DB connection, SSE presence over a real `createApp` on port 0 — `tests/unit/api/presence.test.js`) and `tests/integration/**` (repositories, migrations) — all against `src/`, the code production runs.
 - The repository suites (`tests/integration/repositories/`) open `src/infrastructure/database/sqlite/DatabaseConnection.js`, the class `src/api/bootstrap.js` opens in production, with its schema. `connection.test.js` and `migrations.test.js` test `src/infrastructure/database/sqlite/connection.js`, an older connection whose only caller is `src/infrastructure/di/container.js`, which nothing requires.
 - The integration suites write SQLite files under `data/` (`data/test-*.db`) and delete them after.
 - `npm run test:e2e` → Playwright (`package.json:11-15`): `testDir: './tests/e2e/scenarios'` (only `smoke.spec.js`, 8 tests), 1 worker, 30 s timeout, `headless: false`, chromium only (`playwright.config.js:10-88`). It starts `node tests/e2e/setup/test-server.js` on 9999 — an Express server wiring the legacy `src/` DI container (`tests/e2e/setup/test-server.js:6-18`) — and `npm run dev` in `frontend/` on 5173 (`playwright.config.js:91-110`). It therefore tests the React frontend against the **Node** backend — which is, in fact, the one in production ([[Deployment]]).
 - `node scripts/test-api.js` hits `http://localhost:9999` (`scripts/test-api.js:9`); usable against either backend.
 - CI runs jest in the `node` job (Node 20, the major of the production image) and builds the root `Dockerfile` in the `image` job. The Playwright suite runs nowhere.
+
+### Backend parity (`tests/parity/`)
+- **What**: the same HTTP scenarios against the Node backend (the reference: production
+  runs it) and the Rust backend (the target), compared. `parity.test.js` starts `node
+  app.js` and the release binary (`zapzap-rust/target/release/zapzap-backend`,
+  `PARITY_RUST_BIN` overrides it) on two free ports, each on its own scratch SQLite file
+  (Node `DB_PATH`, Rust `DATABASE_URL=sqlite:<file>?mode=rwc`) under `/dev/shm` when it
+  exists (fsync on a disk triples the time), the same `JWT_SECRET` and `ADMIN_PASSWORD`,
+  both with their cwd in the temp dir (no `.env` read, Node's logs land there); it waits
+  for `/api/health` (and Node's `Port: <n>` line: a port found free can be taken by
+  another process), and kills both at the end. Node creates the `admin` account at
+  startup (`src/api/bootstrap.js`); Rust has no such step, so the suite registers it and
+  sets `is_admin` in SQL.
+- **Scenarios** (`scenarios.js`): auth (register, duplicate, validation, login, missing
+  and bad token); parties (create with and without name/settings, list, details, join,
+  full, leave, start, too few players, a non-member reading the state, a private party's
+  invite code, the owner leaving, delete); illegal moves (hand size missing, out of range,
+  out of turn, by a non-member; a card not in hand, an invalid combination, a card twice,
+  out of turn, draw before play, zapzap with a high hand, nextRound too early); 16 games
+  of three human players to their end, played side by side; history, stats (leaderboard
+  `minGames=0`), `/api/bots`, health, an unknown route; admin (users, parties,
+  statistics, set/revoke admin, delete a user, stop and delete a party). No bots: both
+  backends play them on their own with no off switch, and they add randomness. Each step
+  leaves both backends in the same state whatever they answered, so one difference does
+  not cascade. Node cannot create a private party (its owner fails its own invite-code
+  check), so that party is created public and made private in SQL on both.
+- **The player** (`lib/game.js`), the same on both: on its turn it picks hand size 4,
+  calls ZapZap as soon as its hand is worth 5 or less, otherwise plays what sheds the
+  most points (all its cards of one rank, or its highest card), and draws from the deck
+  (the first draw of a round takes the last played card).
+- **Compared** (`lib/recorder.js`, `lib/compare.js`): per step, the HTTP status, the error
+  `code`, and the recursive set of `path:type` of the body (`lib/shape.js`: player-index
+  and id map keys collapse to `#`/`<id>`, a null counts as absent, an array one side only
+  ever returned empty is not compared element-wise), plus chosen values normalized
+  (UUIDs, JWTs, ISO dates, invite codes become placeholders; keys sorted). A step called
+  many times (every play of 16 games) is compared on the union of what it returned.
+  Dealt cards are never compared: no seed can be shared. Rust deals when the party
+  starts, Node when the hand size is chosen: the state in the hand-size phase is compared
+  without its hands.
+- **GAME_RULES.md, per backend**: turn order after each action, 54 cards after the deal,
+  distinct card ids, hand sizes, the round's scores recomputed from the revealed hands
+  (lowest hand 0 — every tied lowest hand —, others their points with Jokers at 25, a
+  counteracted caller its points plus 5 per other active player), eliminations above 100,
+  the next round's starter skipping eliminated players, Golden Score and the winner, a
+  repeated card refused. A broken rule is the difference `invariant:<rule>@<backend>`.
+- **`divergences.json`** lists every known difference: `{id, class, wip, why,
+  sometimes?}`. `class` is `node-bug` (Node is wrong — a 500 on a client error, leaked
+  hands, a route promising a field it never sends, unauthenticated bot routes — and Rust
+  rightly differs) or `pending` (Rust must change); `wip` names the local entry that
+  owns it. The suite fails on a difference not listed and on a listed one that no longer
+  occurs — fixing Rust means deleting its lines. `sometimes: true` marks a difference that
+  hangs on a random deal (a tie for the lowest hand): it may be absent from a run. A
+  failure prints each difference with both responses, normalized.
+- Run: `npm run test:parity`; `PARITY_DUMP=<file>` writes every difference found as JSON,
+  `PARITY_TIMING=1` prints each scenario's time.
 
 ### Flutter end to end (`frontend-flutter/integration_test/`)
 - `integration_test/play_round_test.dart`: the real client, no fake and no fixture, against
@@ -69,14 +126,12 @@
   `test/` only, so CI does not run it; `flutter analyze` covers it (dev dependencies
   `integration_test` and `flutter_driver`, from the SDK).
 - **Procedure** (checked 2026-09-24, Chrome 153, Node backend):
-  1. A backend with the bot accounts, on a port of your choice. Node's database is always
-     `data/zapzap.db` of the checkout it runs from
-     (`src/infrastructure/database/sqlite/DatabaseConnection.js:13`), so run it from a
-     worktree for a throwaway one: `npm ci && npm run init-bots && PORT=9921
-     NODE_ENV=development node app.js` (development allows any `http://localhost:` origin,
-     `src/api/server.js:32-45`; the test page is served from another port). Delete that
-     worktree's `data/zapzap.db` afterwards. Each run adds a user and a party, so reusing
-     a development database works too.
+  1. A backend with the bot accounts, on a port of your choice, on a throwaway database
+     (`DB_PATH`, [[Architecture]]): `npm ci && DB_PATH=/tmp/e2e.db npm run init-bots &&
+     DB_PATH=/tmp/e2e.db PORT=9921 NODE_ENV=development node app.js` (development allows
+     any `http://localhost:` origin, `src/api/server.js:32-45`; the test page is served
+     from another port). Each run adds a user and a party, so reusing a development
+     database works too.
   2. A chromedriver of Chrome's major version, on a free port:
      `npx @puppeteer/browsers install chromedriver@<google-chrome --version>`, then
      `chromedriver --port=4461`.
@@ -103,6 +158,7 @@
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
 | `node` | `node != 'false'` | Node 20 (`actions/setup-node`, npm cache), `npm ci`, `npm test` | 15 min |
+| `parity` | `parity != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, `cargo build --release --locked` in `zapzap-rust`, `npm ci`, `npm run test:parity` | 30 min |
 
 - **A job's `name:` is its check context, and five of them are pinned by branch
   protection**: `Rust backend — fmt, clippy, test`, `Native engine — fmt, build, test`,
@@ -113,8 +169,9 @@
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
   `native`. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The `node` job's
-  `Node backend — jest` and the `flutter` job's name are not pinned: adding them to branch
-  protection is the user's call. Changing a pinned name
+  `Node backend — jest`, the `parity` job's `Backend parity — Node vs Rust` and the
+  `flutter` job's name are not pinned: adding them to branch protection is the user's
+  call. Changing a pinned name
   on purpose means changing branch protection in the same breath, which is the user's
   setting to change.
 - Every downstream `if:` starts with `!cancelled()` and tests `!= 'false'` so that a failed or output-less `scope` runs everything, and a job skipped by `if:` still reports Success for branch protection; no workflow-level `paths:` filter, because a filtered required check never reports (the comment above the `rust` job).
@@ -122,12 +179,12 @@
 
 ### The scope job (`scripts/ci_scope.sh`)
 - On push/dispatch every flag is `true` (step "Which jobs this change needs"). On a PR it lists changed files with `gh api .../pulls/$PR/files --paginate`, including `previous_filename` so renames count on both sides; ≥ 3000 files → everything; otherwise pipes the list into `scripts/ci_scope.sh` — all in that step.
-- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter= node=`, in the order `ci.yml` declares the jobs. Per path, first match wins; the last case is the catch-all:
+- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter= node= parity=`, in the order `ci.yml` declares the jobs. Per path, first match wins; the last case is the catch-all:
 
 | Pattern | Flags |
 |---|---|
 | `*.md`, `.llmwiki/*`, `docs/*`, `LICENSE`, `image.png` | none |
-| `zapzap-rust/*` | rust, image |
+| `zapzap-rust/*` | rust, image, parity |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
 | `frontend/*` | frontend, image |
@@ -135,14 +192,15 @@
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `deploy.sh`, `rebuild.sh` | hooks |
 | `scripts/pwa_image_smoke.sh` | image |
-| `src/infrastructure/database/sqlite/DatabaseConnection.js` | rust, node, image (`zapzap-rust/tests/schema_tests.rs` compares it with the Rust schema) |
-| Node backend: `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image (the root `Dockerfile` copies them) |
+| `src/infrastructure/database/sqlite/DatabaseConnection.js` | rust, node, image, parity (`zapzap-rust/tests/schema_tests.rs` compares it with the Rust schema) |
+| Node backend: `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image, parity (the root `Dockerfile` copies them) |
 | `views/*`, `public/*`, root `Dockerfile`, `.dockerignore` | image |
+| `tests/parity/*` | parity |
 | `tests/*`, `jest.config.js` | node |
 | `playwright.config.js`, `eslint.config.mjs` | none |
 | anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
 
-- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl no>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
+- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl no pa>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
@@ -159,4 +217,19 @@
 - **2026-09-23: the Node backend is gated** (user decision). #39 went green and then failed to build on the NAS (npm 10 in `node:20-alpine` rejected a lockfile npm 11 accepted): the `image` job now builds the root `Dockerfile`. jest was 59/314 red on master, every failure test drift, none a bug in `src/`: messages translated to French, `handSize` moved out of `PartySettings` to a per-round choice, `JoinParty` no longer auto-starting a full party (commit 9712a26: the owner starts it), a single card being a legal play, mocks missing `updateLastLogin`/`recordGameAction`, and the repository suites opening the older `connection.js` whose schema lacks `users.user_type`. The tests were realigned with the code, none deleted or skipped, and the `node` job runs them. `deploy.sh` and `rebuild.sh` were classified as `hooks`, so a change to them no longer rebuilds every image.
 - 2026-09-23 (fix/rust-api-schema): `--tests` joined the `rust` job once the backend created its own schema; `api_tests` had also caught `POST /api/party` without `name` answering 422 instead of Node's 400 `MISSING_PARTY_NAME`, fixed in the handler rather than in the test.
 - **Frontend lint and vitest made green and gated (2026-09-23).** The 122 red tests were written against an older UI: English labels (the auth forms are French now), class-name hooks (`.player-card`, `.player-row`) that no longer exist, a prop-driven `GameBoard` that became the `/game/:partyId` route loading its own state, `ActionButtons`' `onDraw` split into `onDrawFromDeck`/`onDrawFromDiscard`, and a hand size that moved from party creation to `HandSizeSelector`. They were rewritten against the current components with their intent kept; the five counteract assertions were aligned on `GAME_RULES.md`'s `hand + (active players − 1) × 5`, which the code already applied. Only the three `CreateParty` hand-size tests were dropped (the field is gone), replaced by `HandSizeSelector.test.jsx`.
+- **2026-09-24 (test/backend-parity): the Rust backend is compared with the Node one in CI.**
+  The switch to Rust needs to know every way Rust answers differently from production. The
+  user decided: Node is the reference except where it is buggy (a 500 on a client error,
+  leaked hands or deck, a wrong rule, unauthenticated admin-like routes), where Rust keeps
+  the correct behaviour and the difference is `node-bug`; the rest is `pending`, each with
+  a wip entry; the job fails on an unlisted difference and on a listed one that went away,
+  so the list stays true. Human-only games (bots play on their own with no off switch)
+  with a deterministic player; dealt cards are not compared (no shared seed), so a game
+  is compared by the shapes of its responses and each backend is checked against
+  GAME_RULES.md on its own. A single game left keys to chance (a counteract, an
+  elimination's rotation): 16 games side by side make them all but certain, and the one
+  difference that hangs on a rare deal (a tie for the lowest hand) is marked
+  `sometimes`. `node --test`, no dependency, kept out of `npm test` (`jest.config.js`
+  ignores `tests/parity/`). The Node backend now reads `DB_PATH`, which the scratch
+  databases needed.
 - **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production runs; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.

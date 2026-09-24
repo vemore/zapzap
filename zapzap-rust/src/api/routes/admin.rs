@@ -88,17 +88,85 @@ pub struct PartiesListResponse {
     pub pagination: Pagination,
 }
 
-#[derive(Debug, Serialize)]
+/// A party as Node's `ListAllParties` lists it
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct PartyInfo {
     pub id: String,
     pub name: String,
-    pub status: String,
-    #[serde(rename = "playerCount")]
-    pub player_count: i32,
-    #[serde(rename = "createdAt")]
-    pub created_at: i64,
-    #[serde(rename = "ownerUsername")]
+    pub owner_id: String,
     pub owner_username: String,
+    pub invite_code: String,
+    pub visibility: String,
+    pub status: String,
+    /// The stored settings, JSON-encoded as Node sends them (the React admin parses them)
+    #[sqlx(rename = "settings_json")]
+    pub settings: String,
+    pub current_round_id: Option<String>,
+    pub player_count: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+const PARTY_INFO_SELECT: &str = r#"
+    SELECT
+        p.id,
+        p.name,
+        p.owner_id,
+        COALESCE(u.username, 'Unknown') as owner_username,
+        p.invite_code,
+        p.visibility,
+        p.status,
+        p.settings_json,
+        p.current_round_id,
+        (SELECT COUNT(*) FROM party_players WHERE party_id = p.id) as player_count,
+        p.created_at,
+        p.updated_at
+    FROM parties p
+    LEFT JOIN users u ON u.id = p.owner_id
+"#;
+
+/// `POST /admin/users/:userId/admin`, as Node's `SetUserAdmin`
+#[derive(Debug, Serialize)]
+pub struct SetAdminResponse {
+    pub success: bool,
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    pub username: String,
+    #[serde(rename = "isAdmin")]
+    pub is_admin: bool,
+}
+
+/// `DELETE /admin/users/:userId`, as Node's `DeleteUser`
+#[derive(Debug, Serialize)]
+pub struct DeleteUserResponse {
+    pub success: bool,
+    #[serde(rename = "deletedUserId")]
+    pub deleted_user_id: String,
+    #[serde(rename = "deletedUsername")]
+    pub deleted_username: String,
+}
+
+/// `POST /admin/parties/:partyId/stop`, as Node's `StopParty`
+#[derive(Debug, Serialize)]
+pub struct StopPartyResponse {
+    pub success: bool,
+    #[serde(rename = "partyId")]
+    pub party_id: String,
+    #[serde(rename = "partyName")]
+    pub party_name: String,
+    pub stopped: bool,
+}
+
+/// `DELETE /admin/parties/:partyId`, as Node's `AdminDeleteParty`
+#[derive(Debug, Serialize)]
+pub struct DeletePartyResponse {
+    pub success: bool,
+    #[serde(rename = "partyId")]
+    pub party_id: String,
+    #[serde(rename = "partyName")]
+    pub party_name: String,
+    pub deleted: bool,
 }
 
 // Statistics response (matching JS format)
@@ -163,11 +231,6 @@ pub struct ActiveUser {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SuccessResponse {
-    pub success: bool,
-}
-
-#[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub success: bool,
     pub error: String,
@@ -180,20 +243,8 @@ pub struct ErrorResponse {
 /// GET /api/admin/users - List all human users with stats
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Query(params): Query<ListUsersQuery>,
 ) -> Result<Json<UsersListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Get users with stats
     let users = sqlx::query_as::<
         _,
@@ -304,18 +355,7 @@ pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
-) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
+) -> Result<Json<DeleteUserResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Cannot delete self
     if user_id == claims.user_id {
         return Err((
@@ -377,7 +417,11 @@ pub async fn delete_user(
             )
         })?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    Ok(Json(DeleteUserResponse {
+        success: true,
+        deleted_user_id: user_id,
+        deleted_username: user.username,
+    }))
 }
 
 /// POST /api/admin/users/:userId/admin - Grant or revoke admin rights
@@ -386,18 +430,7 @@ pub async fn set_user_admin(
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
     Json(body): Json<SetAdminRequest>,
-) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
+) -> Result<Json<SetAdminResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Cannot modify self
     if user_id == claims.user_id {
         return Err((
@@ -410,7 +443,7 @@ pub async fn set_user_admin(
     }
 
     // Check user exists
-    state
+    let user = state
         .user_repo
         .find_by_id(&user_id)
         .await
@@ -449,58 +482,39 @@ pub async fn set_user_admin(
             )
         })?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    Ok(Json(SetAdminResponse {
+        success: true,
+        user_id,
+        username: user.username,
+        is_admin: body.is_admin,
+    }))
 }
 
 /// GET /api/admin/parties - List all parties
 pub async fn list_parties(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Query(params): Query<ListPartiesQuery>,
 ) -> Result<Json<PartiesListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Build query with optional status filter
     let (parties, total) = if let Some(status) = &params.status {
-        let parties = sqlx::query_as::<_, (String, String, String, i32, i64, String)>(
-            r#"
-            SELECT
-                p.id,
-                p.name,
-                p.status,
-                (SELECT COUNT(*) FROM party_players WHERE party_id = p.id) as player_count,
-                p.created_at,
-                COALESCE(u.username, 'Unknown') as owner_username
-            FROM parties p
-            LEFT JOIN users u ON u.id = p.owner_id
-            WHERE p.status = ?
-            ORDER BY p.created_at DESC
-            LIMIT ? OFFSET ?
-            "#,
-        )
-        .bind(status)
-        .bind(params.limit)
-        .bind(params.offset)
-        .fetch_all(state.party_repo.get_db())
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+        let sql = format!(
+            "{PARTY_INFO_SELECT} WHERE p.status = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
+        );
+        let parties = sqlx::query_as::<_, PartyInfo>(&sql)
+            .bind(status)
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
         let total: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties WHERE status = ?")
             .bind(status)
@@ -518,34 +532,21 @@ pub async fn list_parties(
 
         (parties, total)
     } else {
-        let parties = sqlx::query_as::<_, (String, String, String, i32, i64, String)>(
-            r#"
-            SELECT
-                p.id,
-                p.name,
-                p.status,
-                (SELECT COUNT(*) FROM party_players WHERE party_id = p.id) as player_count,
-                p.created_at,
-                COALESCE(u.username, 'Unknown') as owner_username
-            FROM parties p
-            LEFT JOIN users u ON u.id = p.owner_id
-            ORDER BY p.created_at DESC
-            LIMIT ? OFFSET ?
-            "#,
-        )
-        .bind(params.limit)
-        .bind(params.offset)
-        .fetch_all(state.party_repo.get_db())
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+        let sql = format!("{PARTY_INFO_SELECT} ORDER BY p.created_at DESC LIMIT ? OFFSET ?");
+        let parties = sqlx::query_as::<_, PartyInfo>(&sql)
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(state.party_repo.get_db())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        success: false,
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
         let total: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM parties")
             .fetch_one(state.party_repo.get_db())
@@ -563,23 +564,9 @@ pub async fn list_parties(
         (parties, total)
     };
 
-    let party_list: Vec<PartyInfo> = parties
-        .into_iter()
-        .map(
-            |(id, name, status, player_count, created_at, owner_username)| PartyInfo {
-                id,
-                name,
-                status,
-                player_count,
-                created_at,
-                owner_username,
-            },
-        )
-        .collect();
-
     Ok(Json(PartiesListResponse {
         success: true,
-        parties: party_list,
+        parties,
         pagination: Pagination {
             total,
             limit: params.limit,
@@ -591,20 +578,8 @@ pub async fn list_parties(
 /// POST /api/admin/parties/:partyId/stop - Force stop a party
 pub async fn stop_party(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
+) -> Result<Json<StopPartyResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Check party exists
     let party = state
         .party_repo
@@ -655,28 +630,21 @@ pub async fn stop_party(
             )
         })?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    Ok(Json(StopPartyResponse {
+        success: true,
+        party_id,
+        party_name: party.name,
+        stopped: true,
+    }))
 }
 
 /// DELETE /api/admin/parties/:partyId - Delete a party
 pub async fn admin_delete_party(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
+) -> Result<Json<DeletePartyResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Check party exists
-    state
+    let party = state
         .party_repo
         .find_by_id(&party_id)
         .await
@@ -728,25 +696,18 @@ pub async fn admin_delete_party(
             )
         })?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    Ok(Json(DeletePartyResponse {
+        success: true,
+        party_id,
+        party_name: party.name,
+        deleted: true,
+    }))
 }
 
 /// GET /api/admin/statistics - Get platform statistics
 pub async fn get_statistics(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
 ) -> Result<Json<StatisticsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Get user count
     let total_users: i32 =
         sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")

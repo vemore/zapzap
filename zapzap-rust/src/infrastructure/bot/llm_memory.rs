@@ -338,9 +338,15 @@ impl LlmBotMemory {
         }
     }
 
+    /// The key of a round's decisions: a bot plays in several parties at once, and one
+    /// party's reflection must not read or clear another party's round of the same number
+    fn round_key(party_id: &str, round_number: u32) -> String {
+        format!("{party_id}:{round_number}")
+    }
+
     /// Track a decision made during gameplay
-    pub fn track_decision(&mut self, round_number: u32, decision: Decision) {
-        let round_key = round_number.to_string();
+    pub fn track_decision(&mut self, party_id: &str, round_number: u32, decision: Decision) {
+        let round_key = Self::round_key(party_id, round_number);
         let decisions = self.data.round_decisions.entry(round_key).or_default();
 
         decisions.push(decision);
@@ -354,17 +360,19 @@ impl LlmBotMemory {
     }
 
     /// Get decisions for a specific round
-    pub fn get_decisions_for_round(&self, round_number: u32) -> &[Decision] {
+    pub fn get_decisions_for_round(&self, party_id: &str, round_number: u32) -> &[Decision] {
         self.data
             .round_decisions
-            .get(&round_number.to_string())
+            .get(&Self::round_key(party_id, round_number))
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
 
     /// Clear decisions for a round
-    pub fn clear_round_decisions(&mut self, round_number: u32) {
-        self.data.round_decisions.remove(&round_number.to_string());
+    pub fn clear_round_decisions(&mut self, party_id: &str, round_number: u32) {
+        self.data
+            .round_decisions
+            .remove(&Self::round_key(party_id, round_number));
         self.dirty = true;
     }
 
@@ -525,9 +533,9 @@ mod tests {
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
 
-        memory.track_decision(1, decision);
+        memory.track_decision("p", 1, decision);
 
-        let decisions = memory.get_decisions_for_round(1);
+        let decisions = memory.get_decisions_for_round("p", 1);
         assert_eq!(decisions.len(), 1);
     }
 }

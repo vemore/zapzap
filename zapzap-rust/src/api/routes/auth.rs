@@ -3,7 +3,9 @@ use std::sync::Arc;
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::application::auth::{LoginUser, LoginUserInput, RegisterUser, RegisterUserInput};
+use crate::application::auth::{
+    LoginUser, LoginUserInput, LoginWithGoogle, RegisterUser, RegisterUserInput,
+};
 use crate::infrastructure::app_state::AppState;
 
 /// Create auth router
@@ -11,6 +13,7 @@ pub fn create_auth_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/register", post(register_handler))
         .route("/login", post(login_handler))
+        .route("/google", post(google_handler))
 }
 
 // ========== DTOs ==========
@@ -57,6 +60,25 @@ pub struct LoginUserInfo {
     id: String,
     username: String,
     is_admin: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleLoginResponse {
+    success: bool,
+    user: GoogleUserInfo,
+    token: String,
+    is_new_user: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleUserInfo {
+    id: String,
+    username: String,
+    email: Option<String>,
+    is_admin: bool,
+    is_google_user: bool,
 }
 
 #[derive(Serialize)]
@@ -219,6 +241,92 @@ async fn login_handler(
                     } else {
                         None
                     },
+                }),
+            ))
+        }
+    }
+}
+
+/// POST /api/auth/google - login or sign up with a Google ID token (`credential`), as
+/// Node's `src/api/routes/authRoutes.js:123`
+async fn google_handler(
+    State(state): State<Arc<AppState>>,
+    body: Option<Json<serde_json::Value>>,
+) -> Result<Json<GoogleLoginResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let credential = body.as_ref().and_then(|Json(b)| b.get("credential"));
+
+    // Node refuses a falsy credential (`!credential`) with 400
+    let falsy = match credential {
+        None | Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::Bool(b)) => !b,
+        Some(serde_json::Value::String(s)) => s.is_empty(),
+        Some(serde_json::Value::Number(n)) => n.as_f64() == Some(0.0),
+        _ => false,
+    };
+    if falsy {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Token Google requis".to_string(),
+                code: "MISSING_CREDENTIAL".to_string(),
+                details: None,
+            }),
+        ));
+    }
+    // A truthy non-string credential fails in the use case with "Token Google requis"
+    let credential = credential.and_then(|c| c.as_str()).unwrap_or_default();
+
+    let use_case = LoginWithGoogle::new(
+        state.user_repo.clone(),
+        state.jwt_service.clone(),
+        state.google_oauth.clone(),
+    );
+
+    match use_case.execute(credential).await {
+        Ok(output) => {
+            tracing::info!(
+                "Google auth successful: {} (new: {})",
+                output.user.username,
+                output.is_new_user
+            );
+            Ok(Json(GoogleLoginResponse {
+                success: true,
+                user: GoogleUserInfo {
+                    id: output.user.id.clone(),
+                    username: output.user.username.clone(),
+                    email: output.user.email.clone(),
+                    is_admin: output.user.is_admin,
+                    is_google_user: output.user.google_id.is_some(),
+                },
+                token: output.token,
+                is_new_user: output.is_new_user,
+            }))
+        }
+        Err(e) if e.is_auth_failure() => {
+            tracing::warn!("Google auth failed: {}", e);
+            Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                    code: "GOOGLE_AUTH_FAILED".to_string(),
+                    details: None,
+                }),
+            ))
+        }
+        Err(e) => {
+            tracing::error!("Google auth error: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Authentification Google échouée".to_string(),
+                    code: "GOOGLE_AUTH_ERROR".to_string(),
+                    // The database's message stays in the log
+                    details: Some(match e {
+                        crate::application::auth::LoginWithGoogleError::NoUniqueUsername => {
+                            e.to_string()
+                        }
+                        _ => "Internal error".to_string(),
+                    }),
                 }),
             ))
         }

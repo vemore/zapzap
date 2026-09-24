@@ -74,11 +74,17 @@ List<SingleChildWidget> appProviders({
   ),
   // Presence for the app bar: app-wide, so moving between screens does not
   // reload it. Lazy, so a screen without an app bar never asks the backend.
-  ChangeNotifierProxyProvider<AuthProvider, ConnectedPlayersProvider>(
+  // Follows the stream too: every (re)connection reloads the list.
+  ChangeNotifierProxyProvider2<
+    AuthProvider,
+    SseProvider,
+    ConnectedPlayersProvider
+  >(
     create: (context) => ConnectedPlayersProvider(
       context.read<PartyRepository>(),
       events: context.read<SseProvider>().events,
     ),
-    update: (_, auth, players) => players!..follow(auth.isAuthenticated),
+    update: (_, auth, sse, players) =>
+        players!..follow(auth.isAuthenticated, streamConnected: sse.connected),
   ),
 ];

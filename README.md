@@ -309,7 +309,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics; no admin yet; Android (debug) + PWA deployed under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics, the admin users tab (parties and statistics tabs to come); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 | Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
 
@@ -346,7 +346,9 @@ unit and API integration tests), native engine (fmt, tests), frontend (lint, vit
 Rust backend, of the Node backend production runs — root `Dockerfile`, npm 10 — and of both
 frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
 debug apk builds), Node backend (`npm test`: the jest suites in `tests/unit` and
-`tests/integration`, on Node 20). `master` accepts only
+`tests/integration`, on Node 20), backend parity (`npm run test:parity`: the same HTTP
+scenarios against the Node and Rust backends, every known difference listed in
+`tests/parity/divergences.json`). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 
@@ -406,6 +408,9 @@ npx jest player.test.js
 
 # Run API integration tests (server must be running)
 node scripts/test-api.js
+
+# Compare the Node and Rust backends (needs the Rust release build)
+(cd zapzap-rust && cargo build --release) && npm run test:parity
 ```
 
 ### Demo Data
@@ -437,7 +442,7 @@ Create a `.env` file (optional):
 PORT=9999
 NODE_ENV=development
 
-# Database
+# Database (the Node backend and scripts/init-bots.js; default data/zapzap.db)
 DB_PATH=./data/zapzap.db
 
 # JWT

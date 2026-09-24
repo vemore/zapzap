@@ -365,18 +365,6 @@
   "@partyFullButton": {
     "description": "Disabled join button when every seat is taken"
   },
-  "partyInProgressButton": "Partie en cours",
-  "@partyInProgressButton": {
-    "description": "Disabled join button when the game has started"
-  },
-  "partyContinueButton": "Reprendre la partie",
-  "@partyContinueButton": {
-    "description": "Button that opens the running game of a party the user is in"
-  },
-  "partyReturnToLobbyButton": "Retour au salon",
-  "@partyReturnToLobbyButton": {
-    "description": "Button that opens the lobby of a party the user is in"
-  },
   "partiesMine": "Mes parties",
   "@partiesMine": {
     "description": "Section heading: the parties the signed-in user is in"
@@ -557,18 +545,6 @@
   "@lobbyBack": {
     "description": "Tooltip of the back button of the lobby and create screens"
   },
-  "lobbySettingsTitle": "Paramètres",
-  "@lobbySettingsTitle": {
-    "description": "Title of the lobby settings block"
-  },
-  "lobbyMaxPlayers": "Joueurs max",
-  "@lobbyMaxPlayers": {
-    "description": "Label of the party's seat count in the lobby settings"
-  },
-  "lobbyHandSize": "Cartes en main",
-  "@lobbyHandSize": {
-    "description": "Label of the hand size in the lobby settings"
-  },
   "lobbyPlayersTitle": "Joueurs ({count}/{max})",
   "@lobbyPlayersTitle": {
     "description": "Title of the lobby player list",
@@ -593,10 +569,6 @@
   "lobbyEmptySlot": "En attente d'un joueur…",
   "@lobbyEmptySlot": {
     "description": "An empty seat in the lobby"
-  },
-  "lobbyStartButton": "Démarrer la partie",
-  "@lobbyStartButton": {
-    "description": "Owner-only button that starts the game"
   },
   "lobbyLeaveButton": "Quitter la partie",
   "@lobbyLeaveButton": {
@@ -1266,6 +1238,168 @@
   "appBarMenu": "Plus",
   "@appBarMenu": {
     "description": "Tooltip of the app-bar menu leading to the history and the statistics"
+  },
+  "adminTitle": "Administration",
+  "@adminTitle": {
+    "description": "Title of the admin screen, and its entry in the app-bar menu (admins only)"
+  },
+  "adminTabUsers": "Utilisateurs",
+  "@adminTabUsers": {
+    "description": "Admin tab: the user accounts"
+  },
+  "adminTabParties": "Parties",
+  "@adminTabParties": {
+    "description": "Admin tab: every party"
+  },
+  "adminTabStatistics": "Statistiques",
+  "@adminTabStatistics": {
+    "description": "Admin tab: the site's statistics"
+  },
+  "adminComingSoon": "Bientôt disponible.",
+  "@adminComingSoon": {
+    "description": "An admin tab not built yet"
+  },
+  "adminUsersCount": "{count, plural, one{{count} utilisateur} other{{count} utilisateurs}}",
+  "@adminUsersCount": {
+    "description": "The number of human accounts",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminUsersSearch": "Rechercher un utilisateur",
+  "@adminUsersSearch": {
+    "description": "Hint of the admin users search field (filters the page on show)"
+  },
+  "adminUsersLoadError": "Impossible de charger les utilisateurs.",
+  "@adminUsersLoadError": {
+    "description": "The admin users list failed to load"
+  },
+  "adminUsersEmpty": "Aucun utilisateur",
+  "@adminUsersEmpty": {
+    "description": "The admin users list is empty"
+  },
+  "adminUsersNoMatch": "Aucun utilisateur trouvé",
+  "@adminUsersNoMatch": {
+    "description": "The admin users search matches no row"
+  },
+  "adminUserYou": "Toi",
+  "@adminUserYou": {
+    "description": "Badge on the admin's own row"
+  },
+  "adminUserAdminBadge": "Admin",
+  "@adminUserAdminBadge": {
+    "description": "Badge on an admin account's row"
+  },
+  "adminUserCreated": "Créé le {date}",
+  "@adminUserCreated": {
+    "description": "When the account was created",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "adminUserLastLogin": "Dernière connexion : {date}",
+  "@adminUserLastLogin": {
+    "description": "When the account last signed in",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "adminUserNeverLoggedIn": "Jamais connecté",
+  "@adminUserNeverLoggedIn": {
+    "description": "An account that never signed in"
+  },
+  "adminUserPlayTime": "Temps de jeu : {time}",
+  "@adminUserPlayTime": {
+    "description": "Total play time of an account, e.g. 2h 5m",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "adminGrantAdmin": "Donner les droits admin",
+  "@adminGrantAdmin": {
+    "description": "Button making an account admin"
+  },
+  "adminRevokeAdmin": "Retirer les droits admin",
+  "@adminRevokeAdmin": {
+    "description": "Button taking admin rights away"
+  },
+  "adminGrantConfirm": "Donner les droits admin à {username} ?",
+  "@adminGrantConfirm": {
+    "description": "Confirmation before making an account admin",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "adminRevokeConfirm": "Retirer les droits admin de {username} ?",
+  "@adminRevokeConfirm": {
+    "description": "Confirmation before taking admin rights away",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "adminDeleteUser": "Supprimer l'utilisateur",
+  "@adminDeleteUser": {
+    "description": "Button deleting an account"
+  },
+  "adminDeleteUserConfirm": "Supprimer {username} ? Cette action est définitive.",
+  "@adminDeleteUserConfirm": {
+    "description": "Confirmation before deleting an account",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "adminConfirmButton": "Confirmer",
+  "@adminConfirmButton": {
+    "description": "Confirm button of an admin dialog"
+  },
+  "adminPreviousPage": "Précédent",
+  "@adminPreviousPage": {
+    "description": "Admin list: the previous page"
+  },
+  "adminNextPage": "Suivant",
+  "@adminNextPage": {
+    "description": "Admin list: the next page"
+  },
+  "adminPageRange": "{first}–{last} sur {total}",
+  "@adminPageRange": {
+    "description": "Admin list: the rows on show",
+    "placeholders": {
+      "first": {
+        "type": "int"
+      },
+      "last": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "adminErrorRefused": "Action refusée pour ce compte.",
+  "@adminErrorRefused": {
+    "description": "The backend refused an admin action (400: oneself, the default admin)"
+  },
+  "adminErrorForbidden": "Réservé aux administrateurs.",
+  "@adminErrorForbidden": {
+    "description": "The backend says the session is not admin"
+  },
+  "adminErrorUserNotFound": "Utilisateur introuvable.",
+  "@adminErrorUserNotFound": {
+    "description": "The account is gone"
   },
   "gameTitle": "Partie",
   "@gameTitle": {

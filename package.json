@@ -8,6 +8,7 @@
     "init-demo": "node scripts/init-demo-data.js",
     "init-bots": "node scripts/init-bots.js",
     "test": "jest",
+    "test:parity": "node --test tests/parity/parity.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
