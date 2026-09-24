@@ -7,7 +7,7 @@
 ## Facts
 
 ### Conventions
-- Router assembly: `zapzap-rust/src/api/routes/mod.rs:23-35` (under `/api`), plus `/suscribeupdate` and `/health` at the root (`zapzap-rust/src/main.rs:41-45`).
+- Router assembly: `zapzap-rust/src/api/routes/mod.rs:23-60` (under `/api`), plus `/suscribeupdate` and `/health` at the root (`zapzap-rust/src/main.rs:41-45`).
 - Auth column: **JWT** = `auth_middleware` (Bearer header, bare 401 without JSON body on missing/invalid token, `zapzap-rust/src/api/middleware/auth_middleware.rs:28-37`); **opt** = optional auth; **admin** = JWT + `claims.is_admin` checked in the handler (403 `Admin access required`); **none** = public.
 - Error body for auth/party/game: `{error, code, details?}` (`zapzap-rust/src/api/routes/game.rs:243-248`); admin/bots/stats/history use `{success:false, error}` or `{error}` without `code`.
 - Error codes come from **substring matching on the use-case error message**, which is fragile (see "Error-mapping mismatches").
@@ -22,11 +22,11 @@
 ### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:12-17`)
 | Method | Path | Auth | Handler | Success | Failures |
 |---|---|---|---|---|---|
-| POST | `/register` | none | `auth.rs:79` | 201 `{success, user{id,username,createdAt}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 409 `USERNAME_EXISTS`, 500 `REGISTRATION_ERROR` |
-| POST | `/login` | none | `auth.rs:155` | 200 `{success, user{id,username,isAdmin}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 401 `INVALID_CREDENTIALS`, 500 `LOGIN_ERROR` |
-| POST | `/google` | none | `auth.rs:252` | 200 `{success, user{id,username,email,isAdmin,isGoogleUser}, token, isNewUser}`; finds the user by `google_id`, else creates a password-less human with a unique username (`zapzap-rust/src/application/auth/login_with_google.rs`) | 400 `MISSING_CREDENTIAL` (`credential` absent or falsy), 401 `GOOGLE_AUTH_FAILED` (invalid/forged/expired token, wrong `aud`/`iss`, `email_verified` false, or `GOOGLE_OAUTH_CLIENT_ID` unset: `Google OAuth non configuré sur ce serveur`, as Node), 500 `GOOGLE_AUTH_ERROR`. Token check in [[Backend]] § Google OAuth |
+| POST | `/register` | none | `auth.rs:101` | 201 `{success, user{id,username,createdAt}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 409 `USERNAME_EXISTS`, 500 `REGISTRATION_ERROR` |
+| POST | `/login` | none | `auth.rs:177` | 200 `{success, user{id,username,isAdmin}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 401 `INVALID_CREDENTIALS`, 500 `LOGIN_ERROR` |
+| POST | `/google` | none | `auth.rs:252` | 200 `{success, user{id,username,email,isAdmin,isGoogleUser}, token, isNewUser}`; finds the user by `google_id`, else creates a password-less human with a unique username (`zapzap-rust/src/application/auth/login_with_google.rs`) | 400 `MISSING_CREDENTIAL` (`credential` absent or falsy), 401 `GOOGLE_AUTH_FAILED` (invalid/forged/expired token, wrong `aud`/`iss`, `email_verified` false, or `GOOGLE_OAUTH_CLIENT_ID` unset: `Google OAuth non configuré sur ce serveur`, as Node), 500 `GOOGLE_AUTH_ERROR` (`details` is generic; the database message is only logged). Token check in [[Backend]] § Google OAuth |
 
-### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:38-92`)
+### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:63-117`)
 | Method | Path | Auth | Handler | Failures |
 |---|---|---|---|---|
 | GET | `/` | opt | `zapzap-rust/src/api/routes/party.rs:319` | 500 `GET_PARTIES_ERROR`. Query `status`, `limit` (default 50, **no max**), `offset` (default 0) (`party.rs:327-329`). Only `visibility='public'` parties (`zapzap-rust/src/infrastructure/database/repositories/party_repo.rs:149`) |
@@ -37,7 +37,7 @@
 | POST | `/:partyId/leave` | JWT | `party.rs:500` | 404, 500 for not-in-party / not waiting (should be 403). Owner leaving transfers ownership (`zapzap-rust/src/application/party/leave_party.rs:87-89`) |
 | POST | `/:partyId/start` | JWT | `party.rs:551` | 404, 403 `NOT_OWNER`, 500 for not-waiting and not-enough-players (3..=8 required, `zapzap-rust/src/domain/entities/party.rs:105-106`) |
 
-### Game — `/api/game` (`zapzap-rust/src/api/routes/mod.rs:95-147`), all JWT
+### Game — `/api/game` (`zapzap-rust/src/api/routes/mod.rs:120-172`), all JWT
 | Method | Path | Handler | Body | Failures |
 |---|---|---|---|---|
 | GET | `/:partyId/state` | `zapzap-rust/src/api/routes/game.rs:255` | — | 404, 500. No membership check: a non-member gets an empty `playerHand` but all public state and, once a round is finished, `allHands`. Spawns a bot trigger (`game.rs:345`). `eliminatedPlayers` computed as score > 100 hard-coded (`game.rs:302-308`), ignoring `maxScore` |
@@ -48,7 +48,7 @@
 | POST | `/:partyId/nextRound` | `game.rs:743` | — | 404, 400 `INVALID_PARTY_STATE`/`ROUND_NOT_FINISHED`; **any authenticated user** can advance any party: `NextRound` never reads `input.user_id` and has no `NotInParty` error (`zapzap-rust/src/application/game/next_round.rs:238-246`) |
 | POST | `/:partyId/trigger-bot` | `game.rs:846` | — | 500 on repo errors. Handler takes no `Claims`: any authenticated user can drive bots in any party |
 
-### Stats — `/api/stats` (`zapzap-rust/src/api/routes/mod.rs:150-163`)
+### Stats — `/api/stats` (`zapzap-rust/src/api/routes/mod.rs:175-188`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/me` | JWT | `zapzap-rust/src/api/routes/stats.rs:174` | 404 user not found |
@@ -56,14 +56,14 @@
 | GET | `/leaderboard` | none | `stats.rs:284` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only |
 | GET | `/bots` | none | `stats.rs:370` | per-difficulty bot stats |
 
-### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:166-191`)
+### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:191-216`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:164` | same handler; `limit` default 20 (`history.rs:28-30`) |
 | GET | `/public` | none | `history.rs:271` | finished public games |
 | GET | `/:partyId` | JWT | `history.rs:343` | 404 `Game not found`; `_claims` unused, `visibility` selected but not enforced — private game details readable by any user |
 
-### Admin — `/api/admin` (`zapzap-rust/src/api/routes/mod.rs:194-246`), all admin
+### Admin — `/api/admin` (`zapzap-rust/src/api/routes/mod.rs:219-271`), all admin
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:181` | humans only, `limit` 50 (`admin.rs:38-40`) |
@@ -78,8 +78,8 @@
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/api/bots?difficulty=` | none | `zapzap-rust/src/api/routes/bots.rs:52` | valid: easy, medium, hard, hard_vince, ml, drl, llm, thibot (`bots.rs:56-65`); 400 otherwise |
-| POST | `/api/bots` | admin (`auth_middleware` + `admin_middleware`, bare 401/403, `zapzap-rust/src/api/routes/mod.rs:32-55`) | `bots.rs:182` | body `{username, difficulty}`; 201 `{success, bot}` with `bot` shaped as Node's `toPublicObject()` (`id, username, userType, botDifficulty, isAdmin, lastLoginAt, totalPlayTimeSeconds, email, isGoogleUser, createdAt, updatedAt`). Every failure is 400 `{success:false, error}` with Node's message: `Username is required`, `Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm` (`thibot` is not creatable, as in Node), `Username "X" already exists`, the username format messages (`zapzap-rust/src/application/bot/create_bot.rs`) |
-| DELETE | `/api/bots/:botId` | admin (as above) | `bots.rs:207` | 200 `{success:true, deletedBotId}`; 400 `Bot not found` (unknown id, as Node's `DeleteBot`), 400 `User is not a bot - cannot delete human users via this endpoint` (`zapzap-rust/src/application/bot/delete_bot.rs`) |
+| POST | `/api/bots` | admin (`auth_middleware` + `admin_middleware`, bare 401/403, `zapzap-rust/src/api/routes/mod.rs:32-56`) | `bots.rs:182` | body `{username, difficulty}`; 201 `{success, bot}` with `bot` shaped as Node's `toPublicObject()` (`id, username, userType, botDifficulty, isAdmin, lastLoginAt, totalPlayTimeSeconds, email, isGoogleUser, createdAt, updatedAt`). Every failure is 400 `{success:false, error}` with Node's message: `Username is required`, `Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm` (`thibot` is not creatable, as in Node), `Username "X" already exists`, the username format messages; a name taken by a concurrent request between the lookup and the save also answers `already exists` (`zapzap-rust/src/application/bot/create_bot.rs`) |
+| DELETE | `/api/bots/:botId` | admin (as above) | `bots.rs:207` | 200 `{success:true, deletedBotId}`; 400 `Bot not found` (unknown id, as Node's `DeleteBot`), 400 `User is not a bot - cannot delete human users via this endpoint`, 400 `Bot is in an active party - cannot delete it` (seated in a `waiting` or `playing` party; Node has no such check), 400 `Failed to delete bot` when a concurrent delete removed it first (`zapzap-rust/src/application/bot/delete_bot.rs`) |
 | GET | `/api/players/connected` | none | `zapzap-rust/src/api/routes/players.rs:34` | max 5 sessions; status always `lobby` (see [[Backend]]) |
 
 ### Error-mapping mismatches (use-case message vs handler matcher)
@@ -108,6 +108,6 @@
 - Deliberate difference: Node serves the two bot mutations **without any authentication** (`src/api/routes/botRoutes.js`, mounted without middleware); Rust requires an admin.
 
 ## Decisions & History
-- Routes and JSON shapes were ported from the Node backend in `e4f83da` (2025-12-23, "rewrite backend in Rust"); handlers carry "matching JS behavior"/"like JS" comments (`zapzap-rust/src/api/routes/auth.rs:83`, `game.rs:288`). The substring-based error mapping appears to mimic the Node error-message checks, and the mismatches date from porting messages without re-aligning the matchers.
+- Routes and JSON shapes were ported from the Node backend in `e4f83da` (2025-12-23, "rewrite backend in Rust"); handlers carry "matching JS behavior"/"like JS" comments (`zapzap-rust/src/api/routes/auth.rs:105`, `game.rs:288`). The substring-based error mapping appears to mimic the Node error-message checks, and the mismatches date from porting messages without re-aligning the matchers.
 - The `/suscribeupdate` typo is kept for compatibility with the frontend and nginx config.
 - 2026-09-24 (feat/rust-google-and-bot-admin): `POST /api/auth/google`, `POST /api/bots` and `DELETE /api/bots/:botId` ported from Node with Node's bodies and messages. The bot mutations were made admin-only because Node leaving them open lets anyone create or delete bot accounts; no client calls them (the React and Flutter clients only list bots).

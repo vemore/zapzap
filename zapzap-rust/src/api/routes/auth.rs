@@ -320,7 +320,13 @@ async fn google_handler(
                 Json(ErrorResponse {
                     error: "Authentification Google échouée".to_string(),
                     code: "GOOGLE_AUTH_ERROR".to_string(),
-                    details: Some(e.to_string()),
+                    // The database's message stays in the log
+                    details: Some(match e {
+                        crate::application::auth::LoginWithGoogleError::NoUniqueUsername => {
+                            e.to_string()
+                        }
+                        _ => "Internal error".to_string(),
+                    }),
                 }),
             ))
         }

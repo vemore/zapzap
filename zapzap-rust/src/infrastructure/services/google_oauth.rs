@@ -3,12 +3,14 @@
 //! `src/infrastructure/services/GoogleOAuthService.js`, which relies on
 //! `google-auth-library`; here the RS256 signature is checked against Google's JWKS.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use jsonwebtoken::jwk::JwkSet;
+use futures::future::BoxFuture;
+use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{decode, decode_header, errors::ErrorKind, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 /// Google's public signing keys, as a JWK set
 pub const GOOGLE_CERTS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
@@ -19,8 +21,11 @@ const GOOGLE_ISSUERS: [&str; 2] = ["accounts.google.com", "https://accounts.goog
 /// How long fetched keys are trusted before a refetch (Google rotates them over days)
 const KEYS_TTL: Duration = Duration::from_secs(60 * 60);
 
-/// Minimum delay between two refetches triggered by an unknown `kid`
-const UNKNOWN_KID_REFETCH: Duration = Duration::from_secs(60);
+/// Minimum delay between two fetch attempts, successful or not
+const MIN_REFETCH_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Fetches the key set; the error text is logged, never sent to a client
+pub type KeyFetcher = Arc<dyn Fn() -> BoxFuture<'static, Result<JwkSet, String>> + Send + Sync>;
 
 /// Profile extracted from a verified ID token
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +33,6 @@ pub struct GoogleProfile {
     pub google_id: String,
     pub email: String,
     pub name: String,
-    pub picture: Option<String>,
 }
 
 /// Verification failure. The messages are Node's, and all of them contain "Token" or
@@ -50,7 +54,6 @@ struct GoogleIdClaims {
     #[serde(default)]
     email_verified: EmailVerified,
     name: Option<String>,
-    picture: Option<String>,
 }
 
 /// Google sends `email_verified` as a boolean; older tokens carried the string "true".
@@ -73,14 +76,23 @@ impl EmailVerified {
     }
 }
 
+#[derive(Default)]
+struct KeyCache {
+    keys: Option<JwkSet>,
+    fetched_at: Option<Instant>,
+    last_attempt: Option<Instant>,
+}
+
 enum KeySource {
     /// Keys given up front (tests)
     Static(JwkSet),
-    /// Keys fetched from Google and cached
+    /// Keys fetched and cached. The mutex is held across a fetch, so concurrent requests
+    /// wait for one fetch instead of each starting their own.
     Remote {
-        url: String,
-        http: reqwest::Client,
-        cache: RwLock<Option<(JwkSet, Instant)>>,
+        fetch: KeyFetcher,
+        cache: Mutex<KeyCache>,
+        ttl: Duration,
+        min_refetch: Duration,
     },
 }
 
@@ -93,15 +105,42 @@ pub struct GoogleOAuthService {
 impl GoogleOAuthService {
     /// Service that fetches Google's keys from `GOOGLE_CERTS_URL` and caches them
     pub fn new(client_id: String) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+        let fetch: KeyFetcher = Arc::new(move || {
+            let http = http.clone();
+            Box::pin(async move {
+                let body = http
+                    .get(GOOGLE_CERTS_URL)
+                    .send()
+                    .await
+                    .and_then(|r| r.error_for_status())
+                    .map_err(|e| e.to_string())?
+                    .json::<serde_json::Value>()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(parse_jwks(&body))
+            })
+        });
+        Self::with_fetcher(client_id, fetch, KEYS_TTL, MIN_REFETCH_INTERVAL)
+    }
+
+    /// Service with a custom key fetcher and cache timings (tests)
+    pub fn with_fetcher(
+        client_id: String,
+        fetch: KeyFetcher,
+        ttl: Duration,
+        min_refetch: Duration,
+    ) -> Self {
         Self {
             client_id,
             keys: KeySource::Remote {
-                url: GOOGLE_CERTS_URL.to_string(),
-                http: reqwest::Client::builder()
-                    .timeout(Duration::from_secs(10))
-                    .build()
-                    .unwrap_or_default(),
-                cache: RwLock::new(None),
+                fetch,
+                cache: Mutex::new(KeyCache::default()),
+                ttl,
+                min_refetch,
             },
         }
     }
@@ -114,17 +153,14 @@ impl GoogleOAuthService {
         }
     }
 
-    /// `Some` when `GOOGLE_OAUTH_CLIENT_ID` is set and not empty, as Node's bootstrap
-    /// (`src/api/bootstrap.js:110-118`)
+    /// `Some` when `GOOGLE_OAUTH_CLIENT_ID` is set and not blank, as Node's bootstrap
+    /// (`src/api/bootstrap.js:110-118`); the value is trimmed
     pub fn from_env() -> Option<Self> {
         std::env::var("GOOGLE_OAUTH_CLIENT_ID")
             .ok()
-            .filter(|id| !id.trim().is_empty())
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
             .map(Self::new)
-    }
-
-    pub fn client_id(&self) -> &str {
-        &self.client_id
     }
 
     /// Verify an ID token: RS256 signature by one of Google's keys, `aud` = the client
@@ -144,9 +180,7 @@ impl GoogleOAuthService {
 
         let claims = decode::<GoogleIdClaims>(id_token, &key, &validation)
             .map_err(|e| match e.kind() {
-                ErrorKind::ExpiredSignature | ErrorKind::ImmatureSignature => {
-                    GoogleAuthError::Expired
-                }
+                ErrorKind::ExpiredSignature => GoogleAuthError::Expired,
                 ErrorKind::InvalidAudience => GoogleAuthError::Verification(
                     "Wrong recipient, payload audience != requiredAudience".into(),
                 ),
@@ -173,7 +207,6 @@ impl GoogleOAuthService {
             google_id: claims.sub,
             email,
             name,
-            picture: claims.picture,
         })
     }
 
@@ -183,47 +216,65 @@ impl GoogleOAuthService {
                 .map(|jwk| DecodingKey::from_jwk(jwk).map_err(|_| GoogleAuthError::InvalidToken))
         };
 
-        match &self.keys {
-            KeySource::Static(set) => to_key(set).unwrap_or(Err(GoogleAuthError::InvalidToken)),
-            KeySource::Remote { url, http, cache } => {
-                {
-                    let guard = cache.read().await;
-                    if let Some((set, fetched_at)) = guard.as_ref() {
-                        let fresh = fetched_at.elapsed() < KEYS_TTL;
-                        if fresh {
-                            if let Some(key) = to_key(set) {
-                                return key;
-                            }
-                            // Unknown kid: Google may have rotated; refetch, but not in a loop
-                            if fetched_at.elapsed() < UNKNOWN_KID_REFETCH {
-                                return Err(GoogleAuthError::InvalidToken);
-                            }
-                        }
-                    }
-                }
+        let (fetch, cache, ttl, min_refetch) = match &self.keys {
+            KeySource::Static(set) => {
+                return to_key(set).unwrap_or(Err(GoogleAuthError::InvalidToken))
+            }
+            KeySource::Remote {
+                fetch,
+                cache,
+                ttl,
+                min_refetch,
+            } => (fetch, cache, *ttl, *min_refetch),
+        };
 
-                let set = Self::fetch_keys(http, url).await?;
-                let key = to_key(&set);
-                *cache.write().await = Some((set, Instant::now()));
-                key.unwrap_or(Err(GoogleAuthError::InvalidToken))
+        let mut cache = cache.lock().await;
+        let fresh = cache.fetched_at.is_some_and(|t| t.elapsed() < ttl);
+        if fresh {
+            if let Some(key) = cache.keys.as_ref().and_then(to_key) {
+                return key;
             }
         }
-    }
 
-    async fn fetch_keys(http: &reqwest::Client, url: &str) -> Result<JwkSet, GoogleAuthError> {
-        let fetch_error = |e: reqwest::Error| {
-            tracing::error!("Google certs fetch failed: {}", e);
-            GoogleAuthError::Verification(format!("cannot fetch Google certs: {}", e))
-        };
-        http.get(url)
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-            .map_err(fetch_error)?
-            .json::<JwkSet>()
-            .await
-            .map_err(fetch_error)
+        // Stale keys, or an unknown kid (Google may have rotated): refetch, at most once
+        // per `min_refetch` whatever the outcome, so failures cannot turn into a loop
+        let may_fetch = cache
+            .last_attempt
+            .is_none_or(|t| t.elapsed() >= min_refetch);
+        if may_fetch {
+            cache.last_attempt = Some(Instant::now());
+            match fetch().await {
+                Ok(set) => {
+                    cache.keys = Some(set);
+                    cache.fetched_at = Some(Instant::now());
+                }
+                Err(e) => tracing::error!("Google certs fetch failed: {}", e),
+            }
+        }
+
+        match cache.keys.as_ref() {
+            // Possibly stale when the refetch failed: better than refusing every login
+            Some(set) => to_key(set).unwrap_or(Err(GoogleAuthError::InvalidToken)),
+            None => Err(GoogleAuthError::Verification(
+                "certificats Google indisponibles".into(),
+            )),
+        }
     }
+}
+
+/// Key set from a JWKS document, keeping only the keys that parse: a key of an unknown
+/// `kty` or `alg` is skipped instead of failing the whole set.
+pub fn parse_jwks(body: &serde_json::Value) -> JwkSet {
+    let keys = body
+        .get("keys")
+        .and_then(|k| k.as_array())
+        .map(|keys| {
+            keys.iter()
+                .filter_map(|k| serde_json::from_value::<Jwk>(k.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    JwkSet { keys }
 }
 
 /// Username from a Google profile: the name, else the email prefix, lowercased, every
@@ -272,9 +323,61 @@ pub fn username_candidate(base: &str, counter: usize) -> String {
     format!("{}{}", cut, suffix)
 }
 
+/// Test-only RSA key (`tests/fixtures/google_oauth_test_rsa.pem`) and helpers to sign
+/// Google-like ID tokens with it
+#[cfg(test)]
+pub(crate) mod test_keys {
+    use jsonwebtoken::jwk::JwkSet;
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+
+    pub const PEM: &str = include_str!("../../../tests/fixtures/google_oauth_test_rsa.pem");
+    pub const N: &str = "ru3qPMAYvaU0HR8RHvqgNiQlq-XRKFtj5IkfTZaIfdiU5r_RyjSXi4Jx826eUZt38mjTFKgVd_apxmwjPxY-Odal5arEXdNuxxkHUI6_lJiZOv2qJrTRiylyipOobKWmQUrGamIT6F4tSx4wggUL7jST-EVUrI4jmdZqbx9BtYZoOUXBVK0QxEjNG4Zj7InwYEup64F7gC4nKyiFrfOQI3rsL85P7fFPttxFaZuyurMCSditw_VkAul88pIRmpf6ZvKjP6aMrTdxAuy4iaUbWyUOmPKRgG9fAWYwHptvHjyH8rjFJH2Q6SFE38Mup51QeVakOVGILMg8ZzFsl4k0Sw";
+    pub const KID: &str = "test-kid";
+    pub const CLIENT_ID: &str = "test-client.apps.googleusercontent.com";
+
+    pub fn key_set() -> JwkSet {
+        serde_json::from_value(serde_json::json!({
+            "keys": [{"kty": "RSA", "alg": "RS256", "use": "sig", "kid": KID, "n": N, "e": "AQAB"}]
+        }))
+        .unwrap()
+    }
+
+    pub fn sign(claims: &serde_json::Value, kid: &str) -> String {
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(kid.to_string());
+        encode(
+            &header,
+            claims,
+            &EncodingKey::from_rsa_pem(PEM.as_bytes()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// Valid claims for `sub`, with `overrides` applied
+    pub fn claims(sub: &str, overrides: serde_json::Value) -> serde_json::Value {
+        let now = chrono::Utc::now().timestamp();
+        let mut c = serde_json::json!({
+            "iss": "https://accounts.google.com",
+            "aud": CLIENT_ID,
+            "sub": sub,
+            "email": "jean.dupont@example.com",
+            "email_verified": true,
+            "name": "Jean Dupont",
+            "iat": now,
+            "exp": now + 3600,
+        });
+        for (k, v) in overrides.as_object().unwrap() {
+            c[k] = v.clone();
+        }
+        c
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::test_keys::{claims, key_set, sign, CLIENT_ID, KID};
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn username_from_name_is_sanitised() {
@@ -299,5 +402,105 @@ mod tests {
         );
         assert_eq!(username_candidate(&base, 12).len(), 30);
         assert_eq!(username_candidate("bob", 2), "bob_2");
+    }
+
+    /// A fetcher that counts its calls; `answers[i]` is the outcome of call `i` (the last
+    /// one repeats), each after a short delay so concurrent callers overlap
+    fn counting_fetcher(answers: Vec<Result<JwkSet, String>>) -> (KeyFetcher, Arc<AtomicUsize>) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        let answers = Arc::new(answers);
+        let fetch: KeyFetcher = Arc::new(move || {
+            let n = counter.fetch_add(1, Ordering::SeqCst);
+            let answer = answers[n.min(answers.len() - 1)].clone();
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                answer
+            })
+        });
+        (fetch, calls)
+    }
+
+    #[tokio::test]
+    async fn concurrent_unknown_kid_requests_fetch_once() {
+        let (fetch, calls) = counting_fetcher(vec![Ok(key_set())]);
+        let service = Arc::new(GoogleOAuthService::with_fetcher(
+            CLIENT_ID.into(),
+            fetch,
+            KEYS_TTL,
+            MIN_REFETCH_INTERVAL,
+        ));
+        let token = sign(&claims("g", serde_json::json!({})), "unknown-kid");
+
+        let tasks: Vec<_> = (0..10)
+            .map(|_| {
+                let service = service.clone();
+                let token = token.clone();
+                tokio::spawn(async move { service.verify_id_token(&token).await })
+            })
+            .collect();
+        for task in tasks {
+            assert!(matches!(
+                task.await.unwrap(),
+                Err(GoogleAuthError::InvalidToken)
+            ));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // The known kid is served from the cache
+        let good = sign(&claims("g", serde_json::json!({})), KID);
+        assert!(service.verify_id_token(&good).await.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn failing_refetch_falls_back_to_stale_keys() {
+        // TTL 0: every verification finds the keys stale and tries a refetch
+        let (fetch, calls) = counting_fetcher(vec![
+            Ok(key_set()),
+            Err("connection refused (secret detail)".into()),
+        ]);
+        let service = GoogleOAuthService::with_fetcher(
+            CLIENT_ID.into(),
+            fetch,
+            Duration::ZERO,
+            Duration::ZERO,
+        );
+        let token = sign(&claims("g", serde_json::json!({})), KID);
+
+        assert!(service.verify_id_token(&token).await.is_ok());
+        assert!(service.verify_id_token(&token).await.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn failing_fetches_are_rate_limited_and_not_leaked() {
+        let (fetch, calls) = counting_fetcher(vec![Err("dns error: secret-host".into())]);
+        let service = GoogleOAuthService::with_fetcher(
+            CLIENT_ID.into(),
+            fetch,
+            KEYS_TTL,
+            MIN_REFETCH_INTERVAL,
+        );
+        let token = sign(&claims("g", serde_json::json!({})), KID);
+        for _ in 0..3 {
+            let err = service.verify_id_token(&token).await.unwrap_err();
+            assert!(!err.to_string().contains("secret"), "{err}");
+            assert!(err.to_string().contains("Google"), "{err}");
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn jwks_parsing_skips_keys_it_cannot_read() {
+        let body = serde_json::json!({"keys": [
+            {"kty": "XYZ", "kid": "weird"},
+            {"kty": "RSA", "alg": "RS999", "kid": "future", "n": "AQAB", "e": "AQAB"},
+            {"kty": "RSA", "alg": "RS256", "use": "sig", "kid": KID, "n": test_keys::N, "e": "AQAB"}
+        ]});
+        let set = parse_jwks(&body);
+        assert_eq!(set.keys.len(), 1);
+        assert!(set.find(KID).is_some());
+        assert!(parse_jwks(&serde_json::json!({})).keys.is_empty());
     }
 }

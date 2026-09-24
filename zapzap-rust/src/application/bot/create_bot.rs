@@ -53,7 +53,14 @@ impl CreateBot {
         validate_username(username)?;
 
         let bot = User::new_bot(Uuid::new_v4().to_string(), username.to_string(), difficulty);
-        self.user_repo.save(&bot).await?;
+        // A concurrent request may have taken the name since the lookup
+        self.user_repo.save(&bot).await.map_err(|e| {
+            if e.is_unique_violation() {
+                BotAdminError::Invalid(format!("Username \"{}\" already exists", username))
+            } else {
+                e.into()
+            }
+        })?;
         tracing::info!("Bot created: {} ({})", bot.username, bot.id);
         Ok(bot)
     }
@@ -89,4 +96,24 @@ pub enum BotAdminError {
     Invalid(String),
     #[error("{0}")]
     Repository(#[from] crate::domain::repositories::RepositoryError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::database::repositories::racing_user_repo::RacingUserRepo;
+    use std::sync::atomic::Ordering;
+
+    #[tokio::test]
+    async fn name_taken_between_lookup_and_save_is_a_duplicate() {
+        let repo = Arc::new(RacingUserRepo::new().await);
+        let uc = CreateBot::new(repo.clone());
+        uc.execute(Some("RoboBot"), Some("easy")).await.unwrap();
+
+        // The second request's lookup ran before the first one saved
+        repo.stale_username_checks.store(1, Ordering::SeqCst);
+        let err = uc.execute(Some("RoboBot"), Some("hard")).await.unwrap_err();
+        assert!(matches!(err, BotAdminError::Invalid(_)));
+        assert_eq!(err.to_string(), "Username \"RoboBot\" already exists");
+    }
 }

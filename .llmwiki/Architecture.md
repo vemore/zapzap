@@ -38,15 +38,15 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:41`, handler `zapzap-rust/src/api/sse.rs:18`.
 - Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and every broadcast as SSE event name `event` with JSON payload (`zapzap-rust/src/api/sse.rs:51-74`).
-- Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).
+- Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:83-86`).
 - Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Details: [[Backend]], [[Frontend]].
 - Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
 ### SQLite database
 
-- Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:47-56`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
-- **Both backends create the same schema**: the Node code in `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) plus its `runMigrations()`, the Rust backend at startup from a verbatim copy, `zapzap-rust/src/infrastructure/database/schema.sql` (`zapzap-rust/src/infrastructure/app_state.rs:64`). All `IF NOT EXISTS`, so the Rust step is a no-op on a Node-built DB; `zapzap-rust/tests/schema_tests.rs` keeps the two identical ([[Backend]]). Older Node databases are upgraded by the Node side only (`runMigrations()`, `scripts/docker-entrypoint.js`).
+- Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:52-61`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
+- **Both backends create the same schema**: the Node code in `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) plus its `runMigrations()`, the Rust backend at startup from a verbatim copy, `zapzap-rust/src/infrastructure/database/schema.sql` (`zapzap-rust/src/infrastructure/app_state.rs:69`). All `IF NOT EXISTS`, so the Rust step is a no-op on a Node-built DB; `zapzap-rust/tests/schema_tests.rs` keeps the two identical ([[Backend]]). Older Node databases are upgraded by the Node side only (`runMigrations()`, `scripts/docker-entrypoint.js`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
 
 ### `data/` directory

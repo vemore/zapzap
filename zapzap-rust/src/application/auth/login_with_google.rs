@@ -8,7 +8,7 @@ use crate::domain::entities::User;
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::services::{
-    generate_username, username_candidate, GoogleAuthError, GoogleOAuthService,
+    generate_username, username_candidate, GoogleAuthError, GoogleOAuthService, GoogleProfile,
 };
 
 /// Output of a Google login
@@ -59,33 +59,7 @@ impl LoginWithGoogle {
                 self.user_repo.update_last_login(&user.id).await?;
                 (user, false)
             }
-            None => {
-                let base = generate_username(&profile.email, &profile.name);
-                let mut username = None;
-                // Node gives up after counter 1000 (GoogleOAuthService.generateUniqueUsername)
-                for counter in 0..1000 {
-                    let candidate = username_candidate(&base, counter);
-                    if !self.user_repo.exists_by_username(&candidate).await? {
-                        username = Some(candidate);
-                        break;
-                    }
-                }
-                let username = username.ok_or(LoginWithGoogleError::NoUniqueUsername)?;
-
-                let user = User::new_google(
-                    Uuid::new_v4().to_string(),
-                    username,
-                    profile.google_id.clone(),
-                    profile.email.clone(),
-                );
-                self.user_repo.save(&user).await?;
-                tracing::info!(
-                    "New Google user registered: {} ({})",
-                    user.username,
-                    user.id
-                );
-                (user, true)
-            }
+            None => self.create_user(&profile).await?,
         };
 
         let token = self
@@ -98,6 +72,59 @@ impl LoginWithGoogle {
             token,
             is_new_user,
         })
+    }
+
+    /// First login: create the user under a free username. Two first logins of the same
+    /// account can race; the loser's save hits the username UNIQUE index, and it then
+    /// answers the winner's user. A username taken by someone else meanwhile is picked
+    /// again, once.
+    async fn create_user(
+        &self,
+        profile: &GoogleProfile,
+    ) -> Result<(User, bool), LoginWithGoogleError> {
+        let base = generate_username(&profile.email, &profile.name);
+        let mut attempts_left = 2;
+        loop {
+            attempts_left -= 1;
+            let mut username = None;
+            // Node gives up after counter 1000 (GoogleOAuthService.generateUniqueUsername)
+            for counter in 0..1000 {
+                let candidate = username_candidate(&base, counter);
+                if !self.user_repo.exists_by_username(&candidate).await? {
+                    username = Some(candidate);
+                    break;
+                }
+            }
+            let username = username.ok_or(LoginWithGoogleError::NoUniqueUsername)?;
+
+            let user = User::new_google(
+                Uuid::new_v4().to_string(),
+                username,
+                profile.google_id.clone(),
+                profile.email.clone(),
+            );
+            match self.user_repo.save(&user).await {
+                Ok(()) => {
+                    tracing::info!(
+                        "New Google user registered: {} ({})",
+                        user.username,
+                        user.id
+                    );
+                    return Ok((user, true));
+                }
+                Err(e) if e.is_unique_violation() => {
+                    if let Some(winner) =
+                        self.user_repo.find_by_google_id(&profile.google_id).await?
+                    {
+                        return Ok((winner, false));
+                    }
+                    if attempts_left == 0 {
+                        return Err(e.into());
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
     }
 }
 
@@ -133,62 +160,15 @@ impl LoginWithGoogleError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::database::repositories::SqliteUserRepository;
-    use crate::infrastructure::database::schema::ensure_schema;
-    use jsonwebtoken::jwk::JwkSet;
+    use crate::infrastructure::database::repositories::racing_user_repo::RacingUserRepo;
+    use crate::infrastructure::services::google_oauth_test_keys::{
+        claims, key_set, sign, CLIENT_ID, KID, N,
+    };
     use jsonwebtoken::{encode, EncodingKey, Header};
-    use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::atomic::Ordering;
 
-    /// Test-only RSA key (tests/fixtures), and its public half as a JWK
-    const TEST_KEY_PEM: &str = include_str!("../../../tests/fixtures/google_oauth_test_rsa.pem");
-    const TEST_KEY_N: &str = "ru3qPMAYvaU0HR8RHvqgNiQlq-XRKFtj5IkfTZaIfdiU5r_RyjSXi4Jx826eUZt38mjTFKgVd_apxmwjPxY-Odal5arEXdNuxxkHUI6_lJiZOv2qJrTRiylyipOobKWmQUrGamIT6F4tSx4wggUL7jST-EVUrI4jmdZqbx9BtYZoOUXBVK0QxEjNG4Zj7InwYEup64F7gC4nKyiFrfOQI3rsL85P7fFPttxFaZuyurMCSditw_VkAul88pIRmpf6ZvKjP6aMrTdxAuy4iaUbWyUOmPKRgG9fAWYwHptvHjyH8rjFJH2Q6SFE38Mup51QeVakOVGILMg8ZzFsl4k0Sw";
-    const KID: &str = "test-kid";
-    const CLIENT_ID: &str = "test-client.apps.googleusercontent.com";
-
-    fn key_set() -> JwkSet {
-        serde_json::from_value(serde_json::json!({
-            "keys": [{"kty": "RSA", "alg": "RS256", "use": "sig", "kid": KID, "n": TEST_KEY_N, "e": "AQAB"}]
-        }))
-        .unwrap()
-    }
-
-    fn sign(claims: serde_json::Value, kid: &str) -> String {
-        let mut header = Header::new(jsonwebtoken::Algorithm::RS256);
-        header.kid = Some(kid.to_string());
-        encode(
-            &header,
-            &claims,
-            &EncodingKey::from_rsa_pem(TEST_KEY_PEM.as_bytes()).unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn claims(sub: &str, overrides: serde_json::Value) -> serde_json::Value {
-        let now = chrono::Utc::now().timestamp();
-        let mut c = serde_json::json!({
-            "iss": "https://accounts.google.com",
-            "aud": CLIENT_ID,
-            "sub": sub,
-            "email": "jean.dupont@example.com",
-            "email_verified": true,
-            "name": "Jean Dupont",
-            "iat": now,
-            "exp": now + 3600,
-        });
-        for (k, v) in overrides.as_object().unwrap() {
-            c[k] = v.clone();
-        }
-        c
-    }
-
-    async fn setup() -> (LoginWithGoogle, Arc<SqliteUserRepository>, Arc<JwtService>) {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        ensure_schema(&pool).await.unwrap();
-        let repo = Arc::new(SqliteUserRepository::new(pool));
+    async fn setup() -> (LoginWithGoogle, Arc<RacingUserRepo>, Arc<JwtService>) {
+        let repo = Arc::new(RacingUserRepo::new().await);
         let jwt = Arc::new(JwtService::new("unit-test-secret".into()));
         let google = Arc::new(GoogleOAuthService::with_keys(CLIENT_ID.into(), key_set()));
         (
@@ -201,7 +181,7 @@ mod tests {
     #[tokio::test]
     async fn verified_token_creates_then_finds_the_user() {
         let (uc, repo, jwt) = setup().await;
-        let token = sign(claims("g-1", serde_json::json!({})), KID);
+        let token = sign(&claims("g-1", serde_json::json!({})), KID);
 
         let first = uc.execute(&token).await.unwrap();
         assert!(first.is_new_user);
@@ -230,13 +210,13 @@ mod tests {
         .await
         .unwrap();
 
-        let token = sign(claims("g-2", serde_json::json!({})), KID);
+        let token = sign(&claims("g-2", serde_json::json!({})), KID);
         let out = uc.execute(&token).await.unwrap();
         assert_eq!(out.user.username, "jean_dupont_1");
 
         // Issuer without scheme is accepted too, and a missing name falls back to the email
         let token = sign(
-            claims(
+            &claims(
                 "g-3",
                 serde_json::json!({"iss": "accounts.google.com", "name": null, "email": "zo@example.com"}),
             ),
@@ -252,34 +232,50 @@ mod tests {
         let cases = [
             (
                 "wrong audience",
-                sign(claims("g", serde_json::json!({"aud": "other"})), KID),
+                sign(&claims("g", serde_json::json!({"aud": "other"})), KID),
             ),
             (
                 "wrong issuer",
                 sign(
-                    claims("g", serde_json::json!({"iss": "https://evil.example"})),
+                    &claims("g", serde_json::json!({"iss": "https://evil.example"})),
                     KID,
                 ),
             ),
             (
                 "expired",
                 sign(
-                    claims("g", serde_json::json!({"exp": 1000, "iat": 900})),
+                    &claims("g", serde_json::json!({"exp": 1000, "iat": 900})),
                     KID,
                 ),
             ),
             (
                 "email not verified",
                 sign(
-                    claims("g", serde_json::json!({"email_verified": false})),
+                    &claims("g", serde_json::json!({"email_verified": false})),
                     KID,
                 ),
             ),
             (
                 "unknown kid",
-                sign(claims("g", serde_json::json!({})), "other-kid"),
+                sign(&claims("g", serde_json::json!({})), "other-kid"),
             ),
             ("not a jwt", "forged.token.value".to_string()),
+            ("HS256 keyed with the public key", {
+                let mut header = Header::new(jsonwebtoken::Algorithm::HS256);
+                header.kid = Some(KID.to_string());
+                encode(
+                    &header,
+                    &claims("g", serde_json::json!({})),
+                    &EncodingKey::from_secret(N.as_bytes()),
+                )
+                .unwrap()
+            }),
+            ("alg none", {
+                let signed = sign(&claims("g", serde_json::json!({})), KID);
+                let payload = signed.split('.').nth(1).unwrap().to_string();
+                // {"alg":"none","typ":"JWT","kid":"test-kid"}
+                format!("eyJhbGciOiJub25lIiwidHlwIjoiSldUIiwia2lkIjoidGVzdC1raWQifQ.{payload}.")
+            }),
         ];
         for (what, token) in cases {
             let err = uc
@@ -296,8 +292,8 @@ mod tests {
         }
 
         // A payload re-signed by nobody: another token's signature on it fails the check
-        let honest = sign(claims("g", serde_json::json!({})), KID);
-        let other = sign(claims("attacker", serde_json::json!({})), KID);
+        let honest = sign(&claims("g", serde_json::json!({})), KID);
+        let other = sign(&claims("attacker", serde_json::json!({})), KID);
         let honest: Vec<&str> = honest.split('.').collect();
         let other: Vec<&str> = other.split('.').collect();
         let forged = format!("{}.{}.{}", other[0], other[1], honest[2]);
@@ -318,5 +314,38 @@ mod tests {
         let err = uc.execute("anything").await.err().unwrap();
         assert!(matches!(err, LoginWithGoogleError::NotConfigured));
         assert_eq!(err.to_string(), "Google OAuth non configuré sur ce serveur");
+    }
+
+    #[tokio::test]
+    async fn racing_first_logins_answer_the_same_user() {
+        let (uc, repo, _) = setup().await;
+        let token = sign(&claims("g-race", serde_json::json!({})), KID);
+        let first = uc.execute(&token).await.unwrap();
+
+        // The second request looked the account and the username up before the first saved
+        repo.stale_google_lookups.store(1, Ordering::SeqCst);
+        repo.stale_username_checks.store(1, Ordering::SeqCst);
+        let second = uc.execute(&token).await.unwrap();
+        assert_eq!(second.user.id, first.user.id);
+        assert!(!second.is_new_user);
+    }
+
+    #[tokio::test]
+    async fn username_taken_meanwhile_is_picked_again() {
+        let (uc, repo, _) = setup().await;
+        repo.save(&User::new_human(
+            "u-1".into(),
+            "jean_dupont".into(),
+            "hash".into(),
+        ))
+        .await
+        .unwrap();
+
+        // The username check ran before someone else took "jean_dupont"
+        repo.stale_username_checks.store(1, Ordering::SeqCst);
+        let token = sign(&claims("g-new", serde_json::json!({})), KID);
+        let out = uc.execute(&token).await.unwrap();
+        assert!(out.is_new_user);
+        assert_eq!(out.user.username, "jean_dupont_1");
     }
 }
