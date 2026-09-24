@@ -2,7 +2,7 @@
 
 > Scope: the React + Vite single-page client in `frontend/` — structure, routing, API and SSE clients, Google sign-in, build, tests, image.
 > Related: [[Architecture]] · [[Api]] · [[Backend]] · [[Testing]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -58,7 +58,7 @@
 - axios `baseURL: '/api'`, `timeout: 10000` — `api.js:4-10`. Always relative: works behind the proxy (`nginx/nginx.conf` `/api/`) and in dev via the Vite proxy.
 - Request interceptor adds `Authorization: Bearer <localStorage.token>` — `api.js:13-24`.
 - On 401 it clears `token` and `user`, but the redirect to `/login` is commented out (`api.js:34-38`): the user stays on a page whose calls keep failing until a navigation hits `ProtectedRoute`.
-- Endpoints called (all exist in the Rust router except the Google one): auth `login`/`register`/`google` (`services/auth.js:19,110,180`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx:55-92`); `/bots` (`CreateParty.jsx:20`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
+- Endpoints called (all exist in the Rust router): auth `login`/`register`/`google` (`services/auth.js:19,110,180`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx:55-92`); `/bots` (`CreateParty.jsx:20`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
 
 ### Real-time (SSE)
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
@@ -69,7 +69,7 @@
 ### Google OAuth
 - Client id from `import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID` (build-time) — `App.jsx:22`, `components/Auth/Login.jsx:9`, `Register.jsx:9`. When empty, `GoogleOAuthProvider` is not mounted (`App.jsx:121-129`) and the button is hidden (`Login.jsx:56`).
 - `GoogleLoginButton` sends the Google credential to `POST /api/auth/google` (`services/auth.js:174-195`), then stores token/user and navigates to `/parties` (`GoogleLoginButton.jsx:12-17`).
-- **The Rust backend has no `/api/auth/google` route**: its auth router declares only `/register` and `/login` (`zapzap-rust/src/api/routes/auth.rs:12-13`). The route existed in the legacy Node backend (commit 6cca2b1). With a client id configured, Google sign-in would answer 404 once production runs Rust. The Rust user entity keeps a `google_id` column (`zapzap-rust/src/domain/entities/user.rs:82`).
+- The Rust backend serves `POST /api/auth/google` since 2026-09-24 (`zapzap-rust/src/api/routes/auth.rs:16`), with Node's contract; it needs `GOOGLE_OAUTH_CLIENT_ID` on the backend, the same client id as `VITE_GOOGLE_OAUTH_CLIENT_ID` (see [[Api]], [[Backend]]).
 
 ### Environment variables
 | Var | Where | Effect |

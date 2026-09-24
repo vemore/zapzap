@@ -240,3 +240,5 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   > **Status: Outdated** (2026-09-23) — the schema bootstrap gap is closed: the Rust backend
   > creates the Node schema itself, and on the production file that step is a no-op
   > ([[Backend]]). The other gaps stand.
+  > **Status: Outdated** (2026-09-24) — Google login and bot creation/deletion are ported
+  > ([[Api]]); the Rust compose passes `GOOGLE_OAUTH_CLIENT_ID`.

@@ -16,7 +16,7 @@ use axum::{
     Router,
 };
 
-use crate::api::middleware::{auth_middleware, optional_auth_middleware};
+use crate::api::middleware::{admin_middleware, auth_middleware, optional_auth_middleware};
 use crate::api::AppState;
 
 /// Create the main API router
@@ -29,6 +29,31 @@ pub fn create_api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .nest("/history", create_history_router(state.clone()))
         .nest("/admin", create_admin_router(state.clone()))
         .route("/bots", get(bots::list_bots))
+        // Bot creation and deletion are admin only (Node left them open)
+        .route(
+            "/bots",
+            post(bots::create_bot)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    admin_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth_middleware,
+                )),
+        )
+        .route(
+            "/bots/:botId",
+            delete(bots::delete_bot)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    admin_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth_middleware,
+                )),
+        )
         .route("/players/connected", get(players::get_connected_players))
         .route("/health", get(health::health_handler))
         .with_state(state)

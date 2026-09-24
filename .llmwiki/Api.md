@@ -2,7 +2,7 @@
 
 > Scope: every HTTP route served by the Rust backend (`zapzap-rust/src/main.rs`, `zapzap-rust/src/api/routes/*.rs`): method, path, auth, handler, failure codes; differences with the old `BACKEND_API.md` and the legacy Node routes.
 > Related: [[Backend]] · [[Frontend]] · [[Bots]] · [[GameRules]] · [[Testing]]
-> Updated: 2026-09-22
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -19,11 +19,12 @@
 | GET | `/health` and `/api/health` | none | `zapzap-rust/src/api/routes/health.rs:13` | `{status:"ok", version, uptime_seconds}`; uptime counts from the first health call, not process start (`health.rs:11-14`) |
 | GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs:18` | SSE, see [[Backend]] |
 
-### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:10-14`)
+### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:12-17`)
 | Method | Path | Auth | Handler | Success | Failures |
 |---|---|---|---|---|---|
 | POST | `/register` | none | `auth.rs:79` | 201 `{success, user{id,username,createdAt}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 409 `USERNAME_EXISTS`, 500 `REGISTRATION_ERROR` |
 | POST | `/login` | none | `auth.rs:155` | 200 `{success, user{id,username,isAdmin}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 401 `INVALID_CREDENTIALS`, 500 `LOGIN_ERROR` |
+| POST | `/google` | none | `auth.rs:252` | 200 `{success, user{id,username,email,isAdmin,isGoogleUser}, token, isNewUser}`; finds the user by `google_id`, else creates a password-less human with a unique username (`zapzap-rust/src/application/auth/login_with_google.rs`) | 400 `MISSING_CREDENTIAL` (`credential` absent or falsy), 401 `GOOGLE_AUTH_FAILED` (invalid/forged/expired token, wrong `aud`/`iss`, `email_verified` false, or `GOOGLE_OAUTH_CLIENT_ID` unset: `Google OAuth non configuré sur ce serveur`, as Node), 500 `GOOGLE_AUTH_ERROR`. Token check in [[Backend]] § Google OAuth |
 
 ### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:38-92`)
 | Method | Path | Auth | Handler | Failures |
@@ -76,7 +77,9 @@
 ### Misc
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
-| GET | `/api/bots?difficulty=` | none | `zapzap-rust/src/api/routes/bots.rs:51` | valid: easy, medium, hard, hard_vince, ml, drl, llm, thibot (`bots.rs:55-64`); 400 otherwise |
+| GET | `/api/bots?difficulty=` | none | `zapzap-rust/src/api/routes/bots.rs:52` | valid: easy, medium, hard, hard_vince, ml, drl, llm, thibot (`bots.rs:56-65`); 400 otherwise |
+| POST | `/api/bots` | admin (`auth_middleware` + `admin_middleware`, bare 401/403, `zapzap-rust/src/api/routes/mod.rs:32-55`) | `bots.rs:182` | body `{username, difficulty}`; 201 `{success, bot}` with `bot` shaped as Node's `toPublicObject()` (`id, username, userType, botDifficulty, isAdmin, lastLoginAt, totalPlayTimeSeconds, email, isGoogleUser, createdAt, updatedAt`). Every failure is 400 `{success:false, error}` with Node's message: `Username is required`, `Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm` (`thibot` is not creatable, as in Node), `Username "X" already exists`, the username format messages (`zapzap-rust/src/application/bot/create_bot.rs`) |
+| DELETE | `/api/bots/:botId` | admin (as above) | `bots.rs:207` | 200 `{success:true, deletedBotId}`; 400 `Bot not found` (unknown id, as Node's `DeleteBot`), 400 `User is not a bot - cannot delete human users via this endpoint` (`zapzap-rust/src/application/bot/delete_bot.rs`) |
 | GET | `/api/players/connected` | none | `zapzap-rust/src/api/routes/players.rs:34` | max 5 sessions; status always `lobby` (see [[Backend]]) |
 
 ### Error-mapping mismatches (use-case message vs handler matcher)
@@ -101,9 +104,10 @@
 - `AUDIT_REPORT.md` (2025-11-06) audits the pre-clean-architecture `app.js`/jQuery app (e.g. "No Turn Validation in API Endpoints"); obsolete for Rust, which checks turn and phase in every game use case.
 
 ### Missing vs legacy Node / frontend
-- `POST /api/auth/google` exists in Node (`src/api/routes/authRoutes.js:123`) and is called by the frontend (`frontend/src/services/auth.js:180`) but has **no Rust route** → Google sign-in 404s on the Rust backend.
-- Node `POST /api/bots` and `DELETE /api/bots/:botId` (`src/api/routes/botRoutes.js`) have no Rust equivalent.
+- `POST /api/auth/google` and `POST /api/bots` / `DELETE /api/bots/:botId` were missing until 2026-09-24; they are ported (see Auth and Misc above).
+- Deliberate difference: Node serves the two bot mutations **without any authentication** (`src/api/routes/botRoutes.js`, mounted without middleware); Rust requires an admin.
 
 ## Decisions & History
 - Routes and JSON shapes were ported from the Node backend in `e4f83da` (2025-12-23, "rewrite backend in Rust"); handlers carry "matching JS behavior"/"like JS" comments (`zapzap-rust/src/api/routes/auth.rs:83`, `game.rs:288`). The substring-based error mapping appears to mimic the Node error-message checks, and the mismatches date from porting messages without re-aligning the matchers.
 - The `/suscribeupdate` typo is kept for compatibility with the frontend and nginx config.
+- 2026-09-24 (feat/rust-google-and-bot-admin): `POST /api/auth/google`, `POST /api/bots` and `DELETE /api/bots/:botId` ported from Node with Node's bodies and messages. The bot mutations were made admin-only because Node leaving them open lets anyone create or delete bot accounts; no client calls them (the React and Flutter clients only list bots).

@@ -115,7 +115,7 @@
   `INVALID_RESPONSE`. `message` is the backend's text for logs — screens pick a localised
   text from `code` (`ApiErrorCode` names the codes they react to).
 - **Repositories** (`repositories/*.dart`), stateless, each `XRepository(ApiClient)`:
-  `AuthRepository` (login, register, loginWithGoogle — Node only), `PartyRepository` (list,
+  `AuthRepository` (login, register, loginWithGoogle), `PartyRepository` (list,
   create — `playerCount` required, Node rejects a create without it —, details, join,
   leave, start, delete, bots, connectedPlayers), `GameRepository`
   (state, selectHandSize, play, drawFromDeck, drawFromPlayed, zapZap, nextRound),

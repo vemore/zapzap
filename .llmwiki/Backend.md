@@ -2,7 +2,7 @@
 
 > Scope: the Rust backend in `zapzap-rust/` (axum 0.7, sqlx 0.8 sqlite, tokio) — layout, state, config, auth, SSE, sessions, bot triggering, LLM service, DB schema situation. Routes are in [[Api]].
 > Related: [[Architecture]] · [[Api]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -10,7 +10,7 @@
 - Package `zapzap-backend` 0.1.0, edition 2021 (`zapzap-rust/Cargo.toml:2`). Binary `main.rs` + library `lib.rs` exposing the same four modules (`zapzap-rust/src/lib.rs:4-7`) so `tests/` can build the router.
 - Both roots carry `#![allow(dead_code)]` "for features under development" (`zapzap-rust/src/main.rs:2`, `zapzap-rust/src/lib.rs:2`).
 - Only cargo feature: `bedrock = ["aws-config", "aws-sdk-bedrockruntime"]`, not default (`zapzap-rust/Cargo.toml:58-60`). The Dockerfile builds with plain `cargo build --release` (`zapzap-rust/Dockerfile:30`), so the image has **no Bedrock**.
-- Password crates: `argon2 = "0.5"` and `bcrypt = "0.15"` "for verifying existing bcrypt hashes during migration" (`zapzap-rust/Cargo.toml:24-25`). `reqwest` with rustls is commented "for Google OAuth" (`zapzap-rust/Cargo.toml:45-46`) but no Google route exists (see [[Api]]).
+- Password crates: `argon2 = "0.5"` and `bcrypt = "0.15"` "for verifying existing bcrypt hashes during migration" (`zapzap-rust/Cargo.toml:24-25`). `reqwest` with rustls is commented "for Google OAuth" (`zapzap-rust/Cargo.toml:45-46`); it fetches Google's signing keys (§ Google OAuth).
 - Clippy `should_implement_trait` allowed crate-wide (`zapzap-rust/Cargo.toml:54-56`). Release profile: `lto = true`, `codegen-units = 1`, `opt-level = 3` (`zapzap-rust/Cargo.toml:78-81`).
 - Toolchain pinned to `1.92` with rustfmt + clippy (`zapzap-rust/rust-toolchain.toml:4`); Dockerfile builder `rust:1.92-slim-bookworm` (`zapzap-rust/Dockerfile:6`).
 
@@ -18,9 +18,9 @@
 | Layer | Contents |
 |---|---|
 | `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `middleware/auth_middleware.rs`, `sse.rs`, `dto/` (empty mod, 1 line) |
-| `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/reflect_on_round`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
+| `application/` | use cases: `auth/{login_user,register_user,login_with_google}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/{create_bot,delete_bot,reflect_on_round}`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
 | `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 679 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
-| `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{llm_service,session_manager}` |
+| `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{google_oauth,llm_service,session_manager}` |
 | `training/` | **empty directory**, untracked by git |
 
 ### Startup (`zapzap-rust/src/main.rs`)
@@ -41,13 +41,14 @@
 | `OLLAMA_BASE_URL` or `ENABLE_LLM_BOTS` (presence enables Ollama) | unset → no LLM | `zapzap-rust/src/infrastructure/app_state.rs:114-115` |
 | `OLLAMA_BASE_URL` (value) | `http://localhost:11434` | `zapzap-rust/src/infrastructure/services/llm_service.rs:47-48` |
 | `OLLAMA_MODEL` | `llama3.2` | `zapzap-rust/src/infrastructure/services/llm_service.rs:49` |
+| `GOOGLE_OAUTH_CLIENT_ID` | unset → `google_oauth` is `None` and `POST /api/auth/google` answers 401 `GOOGLE_AUTH_FAILED` `Google OAuth non configuré sur ce serveur`, as Node | `zapzap-rust/src/infrastructure/services/google_oauth.rs:119`, `zapzap-rust/src/infrastructure/app_state.rs:139` |
 | `BOT_STRATEGIES_DIR` | `data/bot-strategies` (LLM bot memory JSON per bot id) | `zapzap-rust/src/infrastructure/bot/llm_memory.rs:155-156` |
 
-- `zapzap-rust/docker-compose.yml` sets `PORT=9999`, `DATABASE_URL=sqlite:/app/data/zapzap.db`, `JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}` (same default as the code), mounts `../data:/app/data`, healthcheck `curl -f http://localhost:9999/api/health`.
+- `zapzap-rust/docker-compose.yml` sets `PORT=9999`, `DATABASE_URL=sqlite:/app/data/zapzap.db`, `JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}` (same default as the code), `GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}`, mounts `../data:/app/data`, healthcheck `curl -f http://localhost:9999/api/health`.
 - Ollama config: timeout 60 s, temperature 0.3, max_tokens 512 (`llm_service.rs:50-52`); Bedrock: timeout 30 s (`llm_service.rs:183`).
 
 ### AppState (`zapzap-rust/src/infrastructure/app_state.rs`)
-- Fields (`:17-42`): `db: SqlitePool`, `jwt_service`, `session_manager`, `user_repo`, `party_repo`, `event_sender`/`event_receiver` (async-broadcast), `llm_service: Option<Arc<dyn LlmService>>`, `llm_memories` (per-bot `LlmBotMemory` map).
+- Fields (`:17-42`): `db: SqlitePool`, `jwt_service`, `session_manager`, `user_repo`, `party_repo`, `event_sender`/`event_receiver` (async-broadcast), `llm_service: Option<Arc<dyn LlmService>>`, `llm_memories` (per-bot `LlmBotMemory` map), `google_oauth: Option<Arc<GoogleOAuthService>>` (`:46`).
 - DB: `SqlitePool::connect(&db_url)` (`:61`) — no `create_if_missing`, so the file must already exist (it may be empty: the tables are created, see below).
 - LLM priority Bedrock > Ollama > None; each is kept only if `health_check()` succeeds at startup (`:84-129`). With no LLM, LLM bots use a fallback strategy (see [[Bots]]).
 - `get_llm_memory` lazily creates and `load()`s a bot's memory (`:148-165`).
@@ -62,7 +63,8 @@
 
 ### Auth
 - JWT HS256 (`Header::default()`), claims `userId`, `username`, `isAdmin` (default false), `exp`, `iat` (`zapzap-rust/src/infrastructure/auth/jwt_service.rs:7-15`). Lifetime `7 * 24 * 60 * 60` s = 7 days (`:28`). `decode_without_verify` exists, unused (`:60`).
-- `auth_middleware` requires `Authorization: Bearer <token>`, else bare 401 with empty body (`zapzap-rust/src/api/middleware/auth_middleware.rs:16-42`). `optional_auth_middleware` attaches claims if valid (`:45-64`). `admin_middleware` (`:67-83`) is **never mounted**; admin handlers check `claims.is_admin` themselves, so admin rights come from the token (revocation takes effect only after the 7-day expiry).
+- Google OAuth (`zapzap-rust/src/infrastructure/services/google_oauth.rs`): `verify_id_token` (`:132`) requires an RS256 token whose `kid` is in Google's JWKS (`https://www.googleapis.com/oauth2/v3/certs`, `:14`), `aud` = `GOOGLE_OAUTH_CLIENT_ID`, `iss` `accounts.google.com` or `https://accounts.google.com`, a valid `exp` (jsonwebtoken default 60 s leeway), and `email_verified` true. Keys are cached 1 h (`:20`); an unknown `kid` refetches at most once a minute (`:23`). Tests inject a key set (`GoogleOAuthService::with_keys`) and never reach the network. Username of a new Google user: Node's `generateUsername`/`generateUniqueUsername` (`generate_username`, `username_candidate`).
+- `auth_middleware` requires `Authorization: Bearer <token>`, else bare 401 with empty body (`zapzap-rust/src/api/middleware/auth_middleware.rs:16-42`). `optional_auth_middleware` attaches claims if valid (`:45-64`). `admin_middleware` (`:67-83`) is mounted only on `POST /api/bots` and `DELETE /api/bots/:botId` (`zapzap-rust/src/api/routes/mod.rs:32-55`); the `/api/admin` handlers check `claims.is_admin` themselves, so admin rights come from the token (revocation takes effect only after the 7-day expiry).
 - Passwords: new hashes Argon2 default params (`zapzap-rust/src/infrastructure/auth/password.rs:11`); `verify` dispatches on prefix `$argon2` vs `$2` (bcrypt, legacy Node hashes), anything else → `UnknownFormat` (`:38-50`). Login rehashes bcrypt to Argon2 after a successful login (`zapzap-rust/src/application/auth/login_user.rs:71-77`).
 
 ### Event broadcaster / SSE
@@ -92,3 +94,4 @@
 - 2026-09-23 (fix/rust-api-schema): the backend got its own schema step so that `tests/api_tests.rs` could run on an in-memory DB and join CI. The Node DDL was copied rather than written as sqlx migrations, because a migration runner on the production file (no `_sqlx_migrations` table) would either refuse it or re-run `CREATE TABLE` on it; `IF NOT EXISTS` DDL is a no-op there. The same change made `POST /api/party` without `name` answer 400 `MISSING_PARTY_NAME` like Node (it answered axum's 422), which `test_create_party_missing_name` had caught.
 - `8a3509b` added the background bot triggers and the 50/500 iteration limit; `c9ac7a7` enabled broadcaster overflow after SSE sends blocked on a full channel (commit title).
 - `1e063d6` (2026-09-22, PR #21) added CI, committed `Cargo.lock` (was gitignored though the Dockerfile copies it), stopped tracking `data/zapzap.db`, ran `cargo fmt`, fixed clippy findings and pinned Rust 1.92 because newer clippy added lints and `rust:1.83` could not parse `base64ct` 1.8.1.
+- 2026-09-24 (feat/rust-google-and-bot-admin): Google login is verified locally against Google's JWKS with `jsonwebtoken` (already a dependency) rather than through Google's `tokeninfo` endpoint, so a login costs no round trip once the keys are cached, and tests can inject keys. The verifier lives in `AppState` so tests can swap it without touching the process environment, which parallel tests share.

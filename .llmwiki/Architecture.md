@@ -2,7 +2,7 @@
 
 > Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -76,7 +76,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### Legacy backend (brief)
 
 - Express app, DI container in `src/infrastructure/di`, routes in `src/api/routes/*Routes.js`, SSE also at `/suscribeupdate` with `?token=` (`src/api/server.js:69-109`).
-- Still the only place that upgrades an old SQLite schema (`runMigrations()`), `POST /api/auth/google` (`src/api/routes/authRoutes.js:120-123`, missing in Rust, see [[Api]]), JS bot strategies and the JS simulation runners (`src/simulation/`).
+- Still the only place that upgrades an old SQLite schema (`runMigrations()`), and the home of the JS bot strategies and the JS simulation runners (`src/simulation/`). `POST /api/auth/google` is served by both backends since 2026-09-24 ([[Api]]).
 - Tests: jest + playwright (see [[Testing]]).
 
 ## Decisions & History
