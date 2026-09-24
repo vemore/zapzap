@@ -208,7 +208,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The table drives the guards with payloads in sandbox repositories and a
-      # stubbed gh, cargo, npm and flutter: nothing is built and nothing leaves the runner.
+      # stubbed gh, cargo, npm, flutter and dart: nothing is built and nothing leaves the runner.
       - run: scripts/hooks_selftest.sh
 
   flutter:
@@ -247,6 +247,9 @@ jobs:
       # lib/l10n/app_localizations*.dart are not committed, and a pub get does not always
       # write them: generated explicitly, or analyze reports every AppLocalizations use.
       - run: if [ -f l10n.yaml ]; then flutter gen-l10n; fi
+      # The commit hook runs the same check (.llmwiki/Hooks.md); fix with `dart format lib test`.
+      - name: dart format --set-exit-if-changed
+        run: dart format --output=none --set-exit-if-changed lib test $([ -d integration_test ] && echo integration_test)
       - run: flutter analyze
       - run: flutter test
       # The PWA is served under /app/ on the API's own domain, CanvasKit included: the same
