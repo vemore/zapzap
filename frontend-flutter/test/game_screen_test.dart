@@ -1138,6 +1138,9 @@ void main() {
           size: phone,
           textScale: scale,
         );
+        // The phone board folds the table on the player to move.
+        await tester.tap(find.byKey(GamePlayerTable.toggleKey));
+        await tester.pumpAndSettle();
 
         expect(find.text('Éliminé'), findsOneWidget);
         expect(tester.takeException(), isNull);

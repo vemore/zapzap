@@ -13,7 +13,8 @@ enum PhoneBoardSlot { players, felt, hand, actions }
 /// the moves a scroll view that scrolls past that. The felt fills everything
 /// between the players and the hand, so no empty band ever lies between the
 /// felt and the hand; its own content scrolls inside its edge when it needs
-/// more.
+/// more. The phone board folds the players on the player to move
+/// (`GamePlayerTable.onToggle`), so the felt gets the other lines' height.
 ///
 /// While this player draws ([feltFirst]) the hand, which cannot be played
 /// then, keeps at most [drawHandShare] of the height and scrolls, and the

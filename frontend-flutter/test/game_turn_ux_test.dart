@@ -639,6 +639,11 @@ void main() {
             size: entry.value,
             textScale: scale,
           );
+          // The phone board folds the table on the player to move.
+          if (entry.value.width < 800) {
+            await tester.tap(find.byKey(GamePlayerTable.toggleKey));
+            await tester.pumpAndSettle();
+          }
 
           // Turn order from the round's starting player.
           final order = [2, 3, 0, 1];
