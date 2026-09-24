@@ -11,7 +11,12 @@ use sqlx::SqlitePool;
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 /// Create every table and index that does not exist yet. Idempotent.
+///
+/// The whole DDL runs in one transaction: a statement that fails (say, an index on a
+/// column an older `users` table lacks) rolls back the ones before it, and the database is
+/// left exactly as it was.
 pub async fn ensure_schema(db: &SqlitePool) -> Result<(), sqlx::Error> {
-    sqlx::raw_sql(SCHEMA_SQL).execute(db).await?;
-    Ok(())
+    let mut tx = db.begin().await?;
+    sqlx::raw_sql(SCHEMA_SQL).execute(&mut *tx).await?;
+    tx.commit().await
 }

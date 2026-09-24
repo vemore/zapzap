@@ -579,7 +579,8 @@ pub async fn delete_party(
     )
     .with_action("partyDeleted")
     .with_data(serde_json::json!({
-        "partyName": result.deleted_party_name
+        "partyName": result.deleted_party_name,
+        "visibility": result.deleted_party_visibility
     }));
     state.broadcast_event(event);
 

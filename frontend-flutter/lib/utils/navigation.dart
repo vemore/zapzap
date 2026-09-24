@@ -9,20 +9,18 @@ import 'package:go_router/go_router.dart';
 /// when nothing is below it — a deep link, a reload of the PWA — does it
 /// `go` to [fallback].
 extension BackNavigation on BuildContext {
+  /// Pops the screen on show, or `go`es to [fallback] when nothing is below
+  /// it, replacing the screen left in the browser's history too: go_router
+  /// reports a pop, like a `go`, as a new browser entry, so without
+  /// `Router.neglect` the browser's Back would return to the screen left.
   void popOrGo(String fallback) {
-    if (canPop()) {
-      pop();
-    } else {
-      go(fallback);
-    }
-  }
-
-  /// [popOrGo], replacing the screen left in the browser's history too: a
-  /// pop is reported to the browser as a new entry, so its Back would
-  /// return to the screen left. For a screen that must not be come back to
-  /// that way — the game, over or left.
-  void leaveFor(String fallback) {
-    Router.neglect(this, () => popOrGo(fallback));
+    Router.neglect(this, () {
+      if (canPop()) {
+        pop();
+      } else {
+        go(fallback);
+      }
+    });
   }
 
   /// Replaces the screen on show with [location], in the browser's history

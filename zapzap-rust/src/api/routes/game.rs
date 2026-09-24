@@ -678,6 +678,7 @@ pub async fn next_round(
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<NextRoundResponse>, ApiError> {
+    crate::api::access::require_party_member(&state, &party_id, &claims.user_id).await?;
     let party_id_for_event = party_id.clone();
     let party_id_for_bot = party_id.clone();
     let use_case = NextRound::new(state.party_repo.clone());
@@ -756,8 +757,20 @@ pub async fn next_round(
 /// POST /api/game/:partyId/trigger-bot - Manually trigger bot turn
 pub async fn trigger_bot(
     State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<TriggerBotResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if let Err(e) =
+        crate::api::access::require_party_member(&state, &party_id, &claims.user_id).await
+    {
+        let (code, details) = (e.code.to_string(), None);
+        let body = ErrorResponse {
+            error: e.message,
+            code,
+            details,
+        };
+        return Err((e.status, Json(body)));
+    }
     use crate::domain::repositories::{PartyRepository, UserRepository};
     use crate::infrastructure::bot::strategies::{
         BotStrategy, DrawSource, EasyBotStrategy, HardBotStrategy, LlmBotStrategy,

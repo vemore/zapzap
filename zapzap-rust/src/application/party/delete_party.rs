@@ -13,6 +13,8 @@ pub struct DeletePartyInput {
 pub struct DeletePartyOutput {
     pub deleted_party_id: String,
     pub deleted_party_name: String,
+    /// `public` or `private`: SSE sends a public party's deletion to every stream
+    pub deleted_party_visibility: String,
 }
 
 /// Delete party use case
@@ -79,6 +81,7 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
 
         let party_id = party.id.clone();
         let party_name = party.name.clone();
+        let deleted_party_visibility = party.visibility.as_str().to_string();
 
         // Delete party
         self.party_repo.delete(&input.party_id).await?;
@@ -86,6 +89,7 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
         Ok(DeletePartyOutput {
             deleted_party_id: party_id,
             deleted_party_name: party_name,
+            deleted_party_visibility,
         })
     }
 }

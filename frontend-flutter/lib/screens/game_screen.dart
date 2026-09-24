@@ -86,7 +86,7 @@ class _GameScreenState extends State<GameScreen> {
     if (_game.outcome == GameOutcome.closed && !_left) {
       _left = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.leaveFor(AppRoutes.parties);
+        if (mounted) context.popOrGo(AppRoutes.parties);
       });
     }
   }
@@ -110,7 +110,7 @@ class _GameScreenState extends State<GameScreen> {
             key: const Key('game-back'),
             tooltip: l10n.lobbyBack,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.leaveFor(AppRoutes.parties),
+            onPressed: () => context.popOrGo(AppRoutes.parties),
           ),
         ),
         body: SafeArea(child: _body(context, l10n)),
@@ -227,7 +227,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             OutlinedButton(
               key: const Key('game-back-body'),
-              onPressed: () => context.leaveFor(AppRoutes.parties),
+              onPressed: () => context.popOrGo(AppRoutes.parties),
               child: Text(l10n.lobbyBack),
             ),
           ],
@@ -516,7 +516,7 @@ class _GameScreenState extends State<GameScreen> {
       winnerScore: winner?.score,
       busy: _game.busy,
       onNextRound: _game.nextRound,
-      onBackToParties: () => context.leaveFor(AppRoutes.parties),
+      onBackToParties: () => context.popOrGo(AppRoutes.parties),
     );
   }
 }
