@@ -2,8 +2,8 @@
 //!
 //! Balanced bot with some strategic awareness but not optimal play.
 
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::seq::IndexedRandom;
+use rand::RngExt;
 
 use super::{BotAction, BotStrategy, DrawSource};
 use crate::domain::value_objects::GameState;
@@ -35,8 +35,8 @@ impl BotStrategy for MediumBotStrategy {
             4 // Smaller hand in golden score
         } else {
             // Random 4 or 5
-            let mut rng = rand::thread_rng();
-            rng.gen_range(4..=5)
+            let mut rng = rand::rng();
+            rng.random_range(4..=5)
         }
     }
 
@@ -58,8 +58,8 @@ impl BotStrategy for MediumBotStrategy {
 
             // 50% chance to call with hand value 4-5
             if hand_value <= 5 {
-                let mut rng = rand::thread_rng();
-                if rng.gen_bool(0.5) {
+                let mut rng = rand::rng();
+                if rng.random_bool(0.5) {
                     return BotAction::ZapZap;
                 }
             }
@@ -76,10 +76,10 @@ impl BotStrategy for MediumBotStrategy {
             return Vec::new();
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // 70% chance to make a strategic choice, 30% random
-        if rng.gen_bool(0.7) {
+        if rng.random_bool(0.7) {
             // Find play that removes most points
             let best_play = plays
                 .into_iter()
@@ -99,7 +99,7 @@ impl BotStrategy for MediumBotStrategy {
 
     fn decide_draw_source(&self, state: &GameState, player_index: u8) -> DrawSource {
         let hand = state.get_hand(player_index);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Check discard pile for useful cards
         for &card in &state.last_cards_played {
@@ -111,7 +111,7 @@ impl BotStrategy for MediumBotStrategy {
             // Is it a very low value card?
             if get_card_points(card) <= 2 {
                 // 80% chance to take low value card
-                if rng.gen_bool(0.8) {
+                if rng.random_bool(0.8) {
                     return DrawSource::Discard(card);
                 }
             }

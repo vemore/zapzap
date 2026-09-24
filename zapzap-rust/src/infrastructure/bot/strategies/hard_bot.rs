@@ -31,9 +31,9 @@ impl BotStrategy for HardBotStrategy {
             4
         } else {
             // Normal play: random 4-5
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            rng.gen_range(4..=5)
+            use rand::RngExt;
+            let mut rng = rand::rng();
+            rng.random_range(4..=5)
         }
     }
 

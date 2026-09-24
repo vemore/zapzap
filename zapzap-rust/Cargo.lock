@@ -3820,7 +3820,6 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "rand 0.10.3",
- "rand_chacha",
  "reqwest",
  "serde",
  "serde_json",

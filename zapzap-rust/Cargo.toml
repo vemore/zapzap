@@ -28,7 +28,6 @@ bcrypt = "0.15"  # For verifying existing bcrypt hashes during migration
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.10"
-rand_chacha = "0.3"
 smallvec = { version = "1", features = ["serde"] }
 dotenvy = "0.15"
 
