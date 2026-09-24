@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
 import '../utils/rules.dart';
 import 'card_fan.dart';
+import 'hand_suggestions.dart';
 
 /// The player's own cards, in the fan of `CardFan.jsx`, under what the hand
 /// is worth in plain words (J3 of the UX study): "Ta main · 29 pts" — jokers
@@ -22,6 +23,7 @@ class GameHand extends StatelessWidget {
     required this.penaltyValue,
     this.onCardTap,
     this.onClearSelection,
+    this.onSelectCards,
     this.disabled = false,
     this.compact = false,
   });
@@ -44,6 +46,10 @@ class GameHand extends StatelessWidget {
   /// picked in the draw phase, where the hand itself is disabled.
   final VoidCallback? onClearSelection;
 
+  /// Selects a suggestion's cards in place of the selection; `null` hides
+  /// the suggestions (J8), as does a hand that cannot be played.
+  final ValueChanged<List<int>>? onSelectCards;
+
   /// The cards cannot be selected (not this player's turn, or a draw is
   /// owed).
   final bool disabled;
@@ -56,12 +62,18 @@ class GameHand extends StatelessWidget {
 
   bool get _holdsJoker => hasJoker(cards);
 
+  bool get _showSuggestions =>
+      onSelectCards != null && !disabled && !compact && cards.isNotEmpty;
+
   /// The gauge fills green as the hand comes down to the threshold.
   static const gaugeColor = Color(0xFF4ADE80);
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final suggestions = _showSuggestions
+        ? suggestPlays(cards)
+        : const <PlaySuggestion>[];
     return Card(
       key: const Key('gameHand'),
       color: AppColors.slate800,
@@ -128,6 +140,14 @@ class GameHand extends StatelessWidget {
                 ),
               ),
             SizedBox(height: compact ? 2 : 4),
+            if (suggestions.isNotEmpty) ...[
+              HandSuggestions(
+                suggestions: suggestions,
+                selectedCards: selectedCards,
+                onSelect: onSelectCards!,
+              ),
+              const SizedBox(height: 6),
+            ],
             if (cards.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),

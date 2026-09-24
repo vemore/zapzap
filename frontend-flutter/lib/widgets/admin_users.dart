@@ -6,25 +6,10 @@ import '../models/admin.dart';
 import '../models/json.dart';
 import '../providers/auth_provider.dart';
 import '../repositories/admin_repository.dart';
-import '../services/api_exception.dart';
 import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
+import 'admin_common.dart';
 import 'error_banner.dart';
-
-/// The localised text of an admin failure: the backend's message is never
-/// shown, only its code or status is read ([ApiException.code]).
-String adminErrorText(AppLocalizations l10n, Object error) {
-  if (error is! ApiException) return l10n.errorGeneric;
-  if (error.isConnectivity) return l10n.errorNetwork;
-  return switch (error.code) {
-    // Node answers 400 for oneself and the default admin, without a code.
-    ApiErrorCode.badRequest => l10n.adminErrorRefused,
-    ApiErrorCode.adminRequired ||
-    ApiErrorCode.forbidden => l10n.adminErrorForbidden,
-    ApiErrorCode.notFound => l10n.adminErrorUserNotFound,
-    _ => l10n.errorGeneric,
-  };
-}
 
 /// The users tab of the admin screen, the port of
 /// `frontend/src/components/Admin/Users/UserList.jsx`: the human accounts,
@@ -126,29 +111,13 @@ class _AdminUsersViewState extends State<AdminUsersView> {
     required String message,
     required String confirmLabel,
     Color? confirmColor,
-  }) async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: key,
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.cancelButton),
-          ),
-          TextButton(
-            key: const Key('admin-confirm-ok'),
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: confirmColor),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
-  }
+  }) => confirmAdminAction(
+    context,
+    key: key,
+    message: message,
+    confirmLabel: confirmLabel,
+    confirmColor: confirmColor,
+  );
 
   Future<void> _toggleAdmin(AdminUser user) async {
     final l10n = AppLocalizations.of(context);
@@ -277,7 +246,9 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                   onDelete: _busy == null ? () => _delete(user) : null,
                 ),
               if (total > AdminUsersView.pageSize)
-                _Pager(
+                AdminPager(
+                  keyPrefix: 'admin-users',
+                  pageSize: AdminUsersView.pageSize,
                   offset: _offset,
                   total: total,
                   onPage: _loading ? null : _goTo,
@@ -286,58 +257,6 @@ class _AdminUsersViewState extends State<AdminUsersView> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Previous, the rows on show, next.
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.offset,
-    required this.total,
-    required this.onPage,
-  });
-
-  final int offset;
-  final int total;
-
-  /// Null while a page loads.
-  final ValueChanged<int>? onPage;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    const size = AdminUsersView.pageSize;
-    final last = (offset + size).clamp(0, total);
-    final onPage = this.onPage;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 12,
-        runSpacing: 8,
-        children: [
-          OutlinedButton(
-            key: const Key('admin-users-previous'),
-            onPressed: onPage == null || offset == 0
-                ? null
-                : () => onPage((offset - size).clamp(0, offset)),
-            child: Text(l10n.adminPreviousPage),
-          ),
-          Text(
-            l10n.adminPageRange(offset + 1, last, total),
-            key: const Key('admin-users-range'),
-          ),
-          OutlinedButton(
-            key: const Key('admin-users-next'),
-            onPressed: onPage == null || last >= total
-                ? null
-                : () => onPage(offset + size),
-            child: Text(l10n.adminNextPage),
-          ),
-        ],
-      ),
     );
   }
 }
