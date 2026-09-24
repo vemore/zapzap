@@ -7,8 +7,8 @@
 ## Facts
 
 ### Crate
-- Package `zapzap-backend` 0.1.0, edition 2021 (`zapzap-rust/Cargo.toml:2`). Library `lib.rs` with the four modules (`zapzap-rust/src/lib.rs:4-7`), used by the binary `main.rs` (which declares no module of its own since 2026-09-24) and by `tests/`, which drive the same `api::build_app`.
-- The library carries `#![allow(dead_code)]` "for features under development" (`zapzap-rust/src/lib.rs:2`).
+- Package `zapzap-backend` 0.1.0, edition 2021 (`zapzap-rust/Cargo.toml:2`). Binary `main.rs` + library `lib.rs` declaring the same four modules (`zapzap-rust/src/lib.rs:4-7`) so `tests/` can build the router: both call `api::build_app`, the tests through the library. The binary compiles the modules itself rather than linking the library, because the image's dependency-caching step (`zapzap-rust/Dockerfile`, a dummy `lib.rs` built first) leaves a stale library that the binary would link.
+- Both roots carry `#![allow(dead_code)]` "for features under development" (`zapzap-rust/src/main.rs:2`, `zapzap-rust/src/lib.rs:2`).
 - Only cargo feature: `bedrock = ["aws-config", "aws-sdk-bedrockruntime"]`, not default (`zapzap-rust/Cargo.toml:58-60`). The Dockerfile builds with plain `cargo build --release` (`zapzap-rust/Dockerfile:30`), so the image has **no Bedrock**.
 - Password crates: `argon2 = "0.5"` and `bcrypt = "0.15"` "for verifying existing bcrypt hashes during migration" (`zapzap-rust/Cargo.toml:24-25`). `reqwest` with rustls is commented "for Google OAuth" (`zapzap-rust/Cargo.toml:45-46`); it fetches Google's signing keys (§ Google OAuth).
 - Clippy `should_implement_trait` allowed crate-wide (`zapzap-rust/Cargo.toml:54-56`). Release profile: `lto = true`, `codegen-units = 1`, `opt-level = 3` (`zapzap-rust/Cargo.toml:78-81`).
@@ -24,15 +24,15 @@
 | `training/` | **empty directory**, untracked by git |
 
 ### Startup (`zapzap-rust/src/main.rs`)
-- First `health::start_clock()`, the start of the uptime `/api/health` reports (`:13`). `dotenvy::dotenv()` loads `.env` (`:16`). Tracing filter from `RUST_LOG`, default `zapzap_backend=debug,tower_http=debug` (`:21-22`).
+- First `health::start_clock()`, the start of the uptime `/api/health` reports (`:23`). `dotenvy::dotenv()` loads `.env` (`:26`). Tracing filter from `RUST_LOG`, default `zapzap_backend=debug,tower_http=debug` (`:31-32`).
 - Router: `api::build_app` (`zapzap-rust/src/api/mod.rs`): `/api` nested from `create_api_router`, `/suscribeupdate` SSE, `/health`, then `route_not_found` (Node's 404 body) as the fallback of unknown paths and, through `method_not_allowed_fallback`, of unserved methods (the `/api` router sets its own unknown-path fallback, the `/api/admin` router both, behind its auth and admin layers), `CorsLayer::permissive()`, `TraceLayer`. No timeout layer although `tower-http` `timeout` feature is enabled.
-- Binds `0.0.0.0:$PORT`, default 9999 (`:35-40`).
+- Binds `0.0.0.0:$PORT`, default 9999 (`:45-50`).
 
 ### Configuration (environment variables)
 | Var | Default | Where |
 |---|---|---|
-| `PORT` | `9999` | `zapzap-rust/src/main.rs:35-38` |
-| `RUST_LOG` | `zapzap_backend=debug,tower_http=debug` | `zapzap-rust/src/main.rs:21-22` |
+| `PORT` | `9999` | `zapzap-rust/src/main.rs:45-48` |
+| `RUST_LOG` | `zapzap_backend=debug,tower_http=debug` | `zapzap-rust/src/main.rs:31-32` |
 | `DATABASE_URL`, then `DB_PATH` | `sqlite:./data/zapzap.db` (a `sqlite:` prefix is added if missing) | `zapzap-rust/src/infrastructure/app_state.rs:82-92` |
 | `JWT_SECRET` | **none — required.** `AppState::new()` reads it first and returns an error (the binary exits with `Error: JWT_SECRET is not set ...`) when it is unset, blank, or one of the placeholders published in the repository (`PUBLIC_JWT_SECRETS`: the old code default `zapzap-secret-key-change-in-production`, the `.env.example` and README values) | `jwt_secret_from` in `zapzap-rust/src/infrastructure/app_state.rs` |
 | `AWS_BEDROCK_ENABLED` or `AWS_ACCESS_KEY_ID` (presence) | unset → no Bedrock; only with `bedrock` feature | `zapzap-rust/src/infrastructure/app_state.rs:123-124` |

@@ -1,11 +1,21 @@
+// Allow dead code for features under development
+#![allow(dead_code)]
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use zapzap_backend::api;
-use zapzap_backend::infrastructure::app_state::AppState;
+// The binary compiles the modules itself rather than linking the library: the image's
+// dependency-caching step (zapzap-rust/Dockerfile) leaves a stale dummy library behind.
+// `api::build_app` is the same source the API tests drive through the library.
+mod api;
+mod application;
+mod domain;
+mod infrastructure;
+
+use crate::infrastructure::app_state::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
