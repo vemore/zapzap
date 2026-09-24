@@ -622,6 +622,74 @@
   "@lobbyNotFoundBody": {
     "description": "Body shown when the party does not exist any more"
   },
+  "lobbyInviteCodeLabel": "Code d'invitation",
+  "@lobbyInviteCodeLabel": {
+    "description": "Label above the party's invite code in the lobby"
+  },
+  "lobbyCopyInviteCode": "Copier",
+  "@lobbyCopyInviteCode": {
+    "description": "Button that copies the invite code to the clipboard"
+  },
+  "lobbyInviteCodeCopied": "Code copié : envoie-le à tes amis.",
+  "@lobbyInviteCodeCopied": {
+    "description": "Snack bar once the invite code is on the clipboard"
+  },
+  "lobbySeatsChip": "{count, plural, =1{1 place} other{{count} places}}",
+  "@lobbySeatsChip": {
+    "description": "Settings chip: how many seats the party has",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyHandSizeChip": "{count, plural, =1{1 carte en main} other{{count} cartes en main}}",
+  "@lobbyHandSizeChip": {
+    "description": "Settings chip: the party's hand size (Rust only)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyYouHostChip": "Tu es l'hôte",
+  "@lobbyYouHostChip": {
+    "description": "Settings chip shown to the party's owner"
+  },
+  "lobbySeatOnline": "en ligne",
+  "@lobbySeatOnline": {
+    "description": "Beside a human seat whose player is connected"
+  },
+  "lobbySeatHost": "hôte",
+  "@lobbySeatHost": {
+    "description": "Beside the owner's seat, after the crown"
+  },
+  "lobbyEmptySlotHint": "Envoie le code d'invitation pour la remplir.",
+  "@lobbyEmptySlotHint": {
+    "description": "Under an empty seat: how to fill it"
+  },
+  "lobbyStartWithCount": "{count, plural, =1{Lancer la partie (1 joueur)} other{Lancer la partie ({count} joueurs)}}",
+  "@lobbyStartWithCount": {
+    "description": "Owner-only button that starts the game, with the number of players",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyCanStart": "Au moins {min} joueurs : la partie peut commencer.",
+  "@lobbyCanStart": {
+    "description": "Why Start is active",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyWaitingForHost": "L'hôte peut lancer la partie.",
+  "@lobbyWaitingForHost": {
+    "description": "Shown to a player who does not own the party, once there are enough players"
+  },
   "connectedPlayersTitle": "Joueurs connectés",
   "@connectedPlayersTitle": {
     "description": "Title of the connected players list, and tooltip of the app bar button that opens it"

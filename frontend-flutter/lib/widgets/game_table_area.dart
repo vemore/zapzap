@@ -47,6 +47,7 @@ class GameTableArea extends StatefulWidget {
     this.selectedDiscardCard,
     this.takeCard,
     this.cardWidth = CardSizes.tablePhone,
+    this.drawPlayedWidth,
   });
 
   final List<int> cardsPlayed;
@@ -77,6 +78,12 @@ class GameTableArea extends StatefulWidget {
   final int? takeCard;
 
   final double cardWidth;
+
+  /// The width of the cards played this turn while this player draws —
+  /// by default [cardWidth]. On a phone they are smaller then: a reminder
+  /// of this player's own play beside the pile and the deck, the targets,
+  /// the height they leave going to the hand.
+  final double? drawPlayedWidth;
 
   /// How long the "Reshuffled!" banner stays, as React
   /// (`TableArea.jsx:222`).
@@ -228,7 +235,9 @@ class _GameTableAreaState extends State<GameTableArea> {
                           widget.cardsPlayed,
                           (id) => PlayingCard(
                             cardId: id,
-                            width: widget.cardWidth,
+                            width: drawing
+                                ? widget.drawPlayedWidth ?? widget.cardWidth
+                                : widget.cardWidth,
                             disabled: true,
                           ),
                         ),

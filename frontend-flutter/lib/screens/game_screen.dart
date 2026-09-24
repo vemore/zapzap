@@ -288,12 +288,16 @@ class _GameScreenState extends State<GameScreen> {
     };
   }
 
-  Widget _tableArea({double cardWidth = CardSizes.tablePhone}) => GameTableArea(
+  Widget _tableArea({
+    double cardWidth = CardSizes.tablePhone,
+    double? drawPlayedWidth,
+  }) => GameTableArea(
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
     playerName: _nameOf,
     cardWidth: cardWidth,
+    drawPlayedWidth: drawPlayedWidth,
     step: _tableStep,
     deckSize: _game.deckSize,
     selectedDiscardCard: _game.selectedDiscardCard,
@@ -302,9 +306,10 @@ class _GameScreenState extends State<GameScreen> {
     onDeckTap: _game.canDraw ? () => _game.draw(fromDeck: true) : null,
   );
 
-  Widget _hand() {
+  Widget _hand({bool compact = false}) {
     final values = _game.handValues;
     return GameHand(
+      compact: compact,
       cards: _game.myHand,
       selectedCards: _game.selectedCards,
       eligibilityValue: values.eligibility,
@@ -341,18 +346,27 @@ class _GameScreenState extends State<GameScreen> {
   /// A phone: one column that fills the height, each section over its own
   /// scroll view, so a large system font shrinks a section rather than
   /// overflowing the column. How the height is shared: [PhoneBoardLayout].
-  Widget _phoneBoard() => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-    child: CustomMultiChildLayout(
-      delegate: PhoneBoardLayout(feltFirst: _tableStep == TableStep.draw),
-      children: [
-        LayoutId(id: PhoneBoardSlot.players, child: _scroll(_playerTable())),
-        LayoutId(id: PhoneBoardSlot.felt, child: _tableArea()),
-        LayoutId(id: PhoneBoardSlot.hand, child: _scroll(_hand())),
-        LayoutId(id: PhoneBoardSlot.actions, child: _actions()),
-      ],
-    ),
-  );
+  Widget _phoneBoard() {
+    final drawing = _tableStep == TableStep.draw;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      child: CustomMultiChildLayout(
+        delegate: PhoneBoardLayout(feltFirst: drawing),
+        children: [
+          LayoutId(id: PhoneBoardSlot.players, child: _scroll(_playerTable())),
+          LayoutId(
+            id: PhoneBoardSlot.felt,
+            child: _tableArea(drawPlayedWidth: CardSizes.tablePlayedDraw),
+          ),
+          LayoutId(
+            id: PhoneBoardSlot.hand,
+            child: _scroll(_hand(compact: drawing)),
+          ),
+          LayoutId(id: PhoneBoardSlot.actions, child: _actions()),
+        ],
+      ),
+    );
+  }
 
   /// A wide screen: the players beside the felt, the hand and the moves
   /// under them.

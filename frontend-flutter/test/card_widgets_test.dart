@@ -301,6 +301,29 @@ void main() {
       }
     });
 
+    test(
+      'a compact fan is one row of small cards, with no room for a lift',
+      () {
+        for (final count in [1, 4, 7, 10]) {
+          for (final width in [300.0, 328.0, 358.0]) {
+            final fan = CardFan.layoutFor(count, width, compact: true);
+            expect(fan.rowLengths, [count]);
+            expect(fan.cardWidth, CardSizes.handCompact);
+            expect(fan.height, fan.cardHeight);
+            for (var i = 0; i < count; i++) {
+              expect(fan.cardRect(i).top, 0);
+              // The rank and suit corner, a sixth of the width, stays in view.
+              expect(
+                fan.visibleRect(i).width,
+                greaterThanOrEqualTo(fan.cardWidth / 2),
+              );
+              expect(fan.cardRect(i).right, lessThanOrEqualTo(width + 0.01));
+            }
+          }
+        }
+      },
+    );
+
     testWidgets('each card takes a tap at the centre of its visible part', (
       tester,
     ) async {

@@ -16,6 +16,10 @@ import 'playing_card.dart';
 /// bows down a few pixels at its ends, and a selected card rises by
 /// [CardSizes.selectedLift] without leaving its place in the order, so the
 /// cards beside it stay as easy to tap.
+///
+/// A [compact] fan is to be read, not played — the hand in the draw step:
+/// one row whatever the count, straight, cards at most
+/// [CardSizes.handCompact] wide, opaque, and no room kept for a lift.
 class CardFan extends StatelessWidget {
   const CardFan({
     super.key,
@@ -23,12 +27,14 @@ class CardFan extends StatelessWidget {
     this.selectedCards = const {},
     this.onCardTap,
     this.disabled = false,
+    this.compact = false,
   });
 
   final List<int> cards;
   final Set<int> selectedCards;
   final ValueChanged<int>? onCardTap;
   final bool disabled;
+  final bool compact;
 
   /// How much of a card's height the row below leaves uncovered.
   static const rowReveal = 0.5;
@@ -40,15 +46,19 @@ class CardFan extends StatelessWidget {
   static Key itemKey(int index) => ValueKey('cardFanItem-$index');
 
   /// Where each card lies, for a hand of [count] cards [width] wide.
-  static FanLayout layoutFor(int count, double width) =>
-      FanLayout._(count, width);
+  static FanLayout layoutFor(int count, double width, {bool compact = false}) =>
+      FanLayout._(count, width, compact: compact);
 
   @override
   Widget build(BuildContext context) {
     if (cards.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fan = layoutFor(cards.length, constraints.maxWidth);
+        final fan = layoutFor(
+          cards.length,
+          constraints.maxWidth,
+          compact: compact,
+        );
         return SizedBox(
           width: fan.width,
           height: fan.height,
@@ -75,6 +85,7 @@ class CardFan extends StatelessWidget {
         cardId: id,
         selected: selected,
         disabled: disabled,
+        dimmed: compact ? false : null,
         width: fan.cardWidth,
         onTap: onCardTap == null ? null : () => onCardTap!(id),
       ),
@@ -85,14 +96,23 @@ class CardFan extends StatelessWidget {
 /// The geometry of a [CardFan]: the card size, the rows, and each card's
 /// rect at rest, in the fan's own coordinates.
 class FanLayout {
-  FanLayout._(this.count, double available)
+  FanLayout._(this.count, double available, {this.compact = false})
     : width = available.isFinite ? available : 4 * CardSizes.handMax,
-      cardWidth = (available.isFinite ? available / 4 : CardSizes.handMax)
-          .clamp(CardSizes.handMin, CardSizes.handMax) {
-    final perRow = math.max(
-      1,
-      ((width - cardWidth) / CardSizes.handMinVisible).floor() + 1,
-    );
+      cardWidth = compact
+          ? math.min(
+              CardSizes.handCompact,
+              available.isFinite ? available / 4 : CardSizes.handCompact,
+            )
+          : (available.isFinite ? available / 4 : CardSizes.handMax).clamp(
+              CardSizes.handMin,
+              CardSizes.handMax,
+            ) {
+    final perRow = compact
+        ? math.max(1, count)
+        : math.max(
+            1,
+            ((width - cardWidth) / CardSizes.handMinVisible).floor() + 1,
+          );
     final rows = (count / perRow).ceil();
     // Balanced rows, the longer ones first: 7 cards on two is 4 + 3, not
     // 6 + 1.
@@ -106,6 +126,9 @@ class FanLayout {
   }
 
   final int count;
+
+  /// One row, and no room for a lift ([CardFan.compact]).
+  final bool compact;
 
   /// The width the fan takes: all of what it is given.
   final double width;
@@ -124,8 +147,14 @@ class FanLayout {
 
   int get rows => rowLengths.length;
 
-  double get height =>
-      CardSizes.selectedLift + cardHeight + (rows - 1) * rowStep + CardFan.bow;
+  /// The room kept above the top row for a selected card to rise into.
+  double get lift => compact ? 0 : CardSizes.selectedLift;
+
+  /// How far below its centre a row's end cards sit: a compact row is
+  /// straight.
+  double get bow => compact ? 0 : CardFan.bow;
+
+  double get height => lift + cardHeight + (rows - 1) * rowStep + bow;
 
   /// The row of card [index] and its place in that row.
   (int row, int column) position(int index) {
@@ -145,8 +174,7 @@ class FanLayout {
     final left = (width - rowWidth) / 2 + column * step;
     final centre = (length - 1) / 2;
     final off = centre == 0 ? 0.0 : (column - centre) / centre;
-    final top =
-        CardSizes.selectedLift + row * rowStep + CardFan.bow * off * off;
+    final top = lift + row * rowStep + bow * off * off;
     return Rect.fromLTWH(left, top, cardWidth, cardHeight);
   }
 
@@ -157,9 +185,7 @@ class FanLayout {
     final rect = cardRect(index);
     final (row, column) = position(index);
     final last = column == rowLengths[row] - 1;
-    final bottom = row == rows - 1
-        ? rect.bottom
-        : CardSizes.selectedLift + (row + 1) * rowStep;
+    final bottom = row == rows - 1 ? rect.bottom : lift + (row + 1) * rowStep;
     return Rect.fromLTRB(
       rect.left,
       rect.top,

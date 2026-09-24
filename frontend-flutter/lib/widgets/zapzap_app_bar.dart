@@ -14,12 +14,21 @@ import 'connection_indicator.dart';
 ///
 /// Signing out needs no navigation: the router follows [AuthProvider].
 class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const ZapZapAppBar({super.key, required this.title, this.leading});
+  const ZapZapAppBar({
+    super.key,
+    required this.title,
+    this.leading,
+    this.actions = const [],
+  });
 
   final String title;
 
   /// A back button, when the screen has somewhere to go back to.
   final Widget? leading;
+
+  /// The screen's own entries of the ⋮ menu, below the destinations: what
+  /// should be reachable but not a thumb away (the lobby's Delete).
+  final List<AppBarMenuAction> actions;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -40,7 +49,7 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.logout),
           onPressed: () => context.read<AuthProvider>().logout(),
         ),
-        const _NavigationMenu(),
+        _NavigationMenu(actions: actions),
       ],
     );
   }
@@ -54,7 +63,9 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// only the router guard — so the entry would land on the not-found screen.
 /// It belongs here once the admin screen exists.
 class _NavigationMenu extends StatelessWidget {
-  const _NavigationMenu();
+  const _NavigationMenu({required this.actions});
+
+  final List<AppBarMenuAction> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +76,14 @@ class _NavigationMenu extends StatelessWidget {
       position: PopupMenuPosition.under,
       // `push`, not `go`: the destination goes on top of the screen the
       // player came from, so the Android system Back button returns to it.
-      onSelected: (route) => context.push(route),
+      onSelected: (route) {
+        final action = actions.where((action) => action.id == route);
+        if (action.isNotEmpty) {
+          action.first.onSelected();
+        } else {
+          context.push(route);
+        }
+      },
       itemBuilder: (context) => [
         _item(
           key: const Key('menu-history'),
@@ -79,6 +97,16 @@ class _NavigationMenu extends StatelessWidget {
           icon: Icons.bar_chart,
           label: l10n.statsTitle,
         ),
+        if (actions.isNotEmpty) const PopupMenuDivider(),
+        for (final action in actions)
+          _item(
+            key: action.key,
+            route: action.id,
+            icon: action.icon,
+            label: action.label,
+            color: action.color,
+            enabled: action.enabled,
+          ),
       ],
     );
   }
@@ -90,15 +118,43 @@ class _NavigationMenu extends StatelessWidget {
     required String route,
     required IconData icon,
     required String label,
+    Color? color,
+    bool enabled = true,
   }) => PopupMenuItem<String>(
     key: key,
     value: route,
+    enabled: enabled,
     child: Row(
       children: [
-        Icon(icon, size: 20),
+        Icon(icon, size: 20, color: color),
         const SizedBox(width: 12),
-        Flexible(child: Text(label)),
+        Flexible(
+          child: Text(label, style: TextStyle(color: color)),
+        ),
       ],
     ),
   );
+}
+
+/// An entry a screen adds to the app bar's ⋮ menu.
+class AppBarMenuAction {
+  const AppBarMenuAction({
+    required this.id,
+    required this.key,
+    required this.icon,
+    required this.label,
+    required this.onSelected,
+    this.color,
+    this.enabled = true,
+  });
+
+  /// Tells it apart from the destinations, which are routes: never one
+  /// starting with `/`.
+  final String id;
+  final Key key;
+  final IconData icon;
+  final String label;
+  final VoidCallback onSelected;
+  final Color? color;
+  final bool enabled;
 }
