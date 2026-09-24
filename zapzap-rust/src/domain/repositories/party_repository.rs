@@ -69,8 +69,16 @@ pub trait PartyRepository: Send + Sync {
     /// Get party players
     async fn get_party_players(&self, party_id: &str) -> Result<Vec<PartyPlayer>, RepositoryError>;
 
-    /// Add player to party
+    /// Add player to party; `AlreadyExists` when the user already has a seat in it
     async fn add_party_player(
+        &self,
+        party_id: &str,
+        user_id: &str,
+        player_index: u8,
+    ) -> Result<(), RepositoryError>;
+
+    /// Move a player to another (free) seat
+    async fn set_player_index(
         &self,
         party_id: &str,
         user_id: &str,

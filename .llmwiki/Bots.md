@@ -11,7 +11,7 @@
 - `BotDifficulty` string values: `easy`, `medium`, `hard`, `hard_vince`, `thibot`, `drl`, `llm`, `ml` (`zapzap-rust/src/domain/entities/user.rs:44-66`).
 - `GET /api/bots?difficulty=` accepts exactly those 8 values (lower-cased), else 400 "Invalid difficulty filter" (`zapzap-rust/src/api/routes/bots.rs:56-81`); lists via `user_repo.find_all_bots` (`bots.rs:88-90`). See [[Api]].
 - The Rust backend has **no endpoint to create bots**. Bot users are seeded by the legacy Node script `scripts/init-bots.js` (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2, `scripts/init-bots.js:24-31`); VinceBot and LlamaBot exist in the local DB but not in that script (created elsewhere in the Node era, commit 0185eb0 "create VinceBot").
-- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:39`, `:303`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:591`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; Rust only, see [[Api]]).
+- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:40`, `:304`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:595`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; Rust only, see [[Api]]).
 
 ### Strategy trait
 - `BotStrategy` (sync): `select_hand_size`, `decide_action`, `select_cards`, `decide_draw_source`, `should_call_zapzap` (`zapzap-rust/src/infrastructure/bot/strategies/mod.rs:25-40`). `DrawSource::{Deck, Discard(card)}` (`mod.rs:51-54`).
@@ -29,10 +29,10 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
 | llm | `LlmBotStrategy` (async path) | `strategies/llm_bot.rs:27` |
 | hard, drl, ml, anything else | `HardBotStrategy` (catch-all `_`) | `strategies/hard_bot.rs:13` |
 
-- `drl` and `ml` have **no Rust implementation**: they silently play as `hard` (`game.rs:1429`). The DRL/ML models in `data/` are only used by legacy Node (`src/infrastructure/bot/strategies/DRLBotStrategy.js`, `MLBotStrategy.js`) and native training ([[NativeEngine]]).
-- Hand-size selection always uses `HardBotStrategy` whatever the difficulty (`game.rs:890`, `:1322`), so Easy's fixed 5, Thibot's 4 and Vince's 6-7 / 8-10 (`vince_bot.rs:576-582`) are dead code in the Rust backend.
-- The trigger loop calls `should_call_zapzap`, never `decide_action` (`game.rs:1432`); in Hard/Medium the two disagree (e.g. Hard `decide_action` calls at ≤4 after round 3, `hard_bot.rs:52-55`, but `should_call_zapzap` only in golden score, `hard_bot.rs:129-132`).
-- A new strategy instance is built for every single action (`game.rs:1416-1429`, `:1501-1514`), so stateful strategies lose their state between play and draw (see Thibot/Vince below).
+- `drl` and `ml` have **no Rust implementation**: they silently play as `hard` (`game.rs:1444`). The DRL/ML models in `data/` are only used by legacy Node (`src/infrastructure/bot/strategies/DRLBotStrategy.js`, `MLBotStrategy.js`) and native training ([[NativeEngine]]).
+- Hand-size selection always uses `HardBotStrategy` whatever the difficulty (`game.rs:905`, `:1337`), so Easy's fixed 5, Thibot's 4 and Vince's 6-7 / 8-10 (`vince_bot.rs:576-582`) are dead code in the Rust backend.
+- The trigger loop calls `should_call_zapzap`, never `decide_action` (`game.rs:1447`); in Hard/Medium the two disagree (e.g. Hard `decide_action` calls at ≤4 after round 3, `hard_bot.rs:52-55`, but `should_call_zapzap` only in golden score, `hard_bot.rs:129-132`).
+- A new strategy instance is built for every single action (`game.rs:1431-1444`, `:1516-1529`), so stateful strategies lose their state between play and draw (see Thibot/Vince below).
 
 ### Rule-based strategies
 - **Easy** (`easy_bot.rs`): random valid play (`:52-65`); ZapZap only if hand value ≤1 or one card (`:82-93`); draws from discard with probability 0.2 (`:72`).
@@ -44,7 +44,7 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
 - 33 tunable `ThibotParams` (`thibot.rs:23-68`); defaults hard-coded (`:70-115`), comment "44.25% winrate vs 40.55% baseline" (`:72`). Values equal the `optimized.params` block of `data/thibot_genetic_params.json` (e.g. jokerKeepScore 705, holdPairForThreeBonus 226, discardThreshold 8; file winRate 0.4425).
 - Defensive mode when an opponent has ≤ `defensive_threshold` (3) cards: play max points (`thibot.rs:621-627`).
 - ZapZap: always at 0 (`:719`), else `can_safely_zapzap` (`:159-204`).
-- Coordinated play/draw: `select_cards` stores a target card in an `RwLock<CoordinatedDecision>` (`:630-637`) that `decide_draw_source` reads (`:660-664`). Because the backend recreates `ThibotStrategy::new()` for the draw (`game.rs:1509`), **this coordination never fires in the Rust backend**.
+- Coordinated play/draw: `select_cards` stores a target card in an `RwLock<CoordinatedDecision>` (`:630-637`) that `decide_draw_source` reads (`:660-664`). Because the backend recreates `ThibotStrategy::new()` for the draw (`game.rs:1524`), **this coordination never fires in the Rust backend**.
 
 ### VinceBot / hard_vince (`strategies/vince_bot.rs`)
 - "11 strategic layers" (joker hoarding in golden score, card counting, opponent modelling, bad-hand fallback…) listed at `vince_bot.rs:1-14`.
@@ -71,16 +71,16 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
 - `LlmBotMemory` per bot, JSON file `{BOT_STRATEGIES_DIR}/{bot_user_id}.json`, default dir `data/bot-strategies` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:152-159`); atomic save via `.tmp` + rename (`:247-252`). `data/bot-strategies/` is untracked in git.
 - Limits: 20 strategies, 5 per category, 50 recent decisions, 10 game summaries (`llm_memory.rs:48-51`). Categories: play_strategy, zapzap_timing, draw_decision, golden_score, opponent_reading (`:14-20`).
 - Cached in `AppState.llm_memories`, loaded lazily (`app_state.rs:41`, `:148-165`).
-- Decisions are recorded by the async LLM methods (`llm_bot.rs:372`, `:473`, `:601`). After a ZapZap (bot: `game.rs:1377`, `:1451`; human: `game.rs:587-627`), `trigger_llm_reflection` (`game.rs:1571`) spawns `ReflectOnRound` for every LLM bot in the party; it asks for 0-1 insight and stores it with confidence 0.5 (`reflect_on_round.rs:84-108`). `score_change` is always 0 ("Would need to calculate this", `game.rs:1632`).
+- Decisions are recorded by the async LLM methods (`llm_bot.rs:372`, `:473`, `:601`). After a ZapZap (bot: `game.rs:1392`, `:1466`; human: `game.rs:602-642`), `trigger_llm_reflection` (`game.rs:1586`) spawns `ReflectOnRound` for every LLM bot in the party; it asks for 0-1 insight and stores it with confidence 0.5 (`reflect_on_round.rs:84-108`). `score_change` is always 0 ("Would need to calculate this", `game.rs:1647`).
 - The memory write lock is held across the LLM call (`reflect_on_round.rs:58` → `:84`), blocking that bot's next decisions for up to the service timeout.
 - The manual `trigger-bot` path never triggers reflection.
 
 ### How bot turns are triggered
-- No scheduler and no startup recovery (`zapzap-rust/src/main.rs:20-63`): bots move only when some request spawns `trigger_bot_internal` (`game.rs:1209`):
-  - after `GET /api/game/:id/state` (100 ms delay, `game.rs:365-372`) — i.e. every client poll;
-  - after select-hand-size, play, draw (300 ms, `game.rs:434-439`, `:487-492`, `:542-547`) and next-round when the starter is a bot (`:699-704`).
-- Loop: up to 50 iterations if an active human remains, else 500 (`game.rs:1228-1242`); stops on human turn or finished round; 200 ms between bot actions (`:1564`). Eliminated bots are skipped by advancing `current_turn` (`:1291-1307`). A failed discard draw falls back to deck (`:1534-1548`). Each action broadcasts a `gameUpdate` SSE with `isBot: true` (e.g. `:1342-1348`).
-- Manual `POST /api/game/:partyId/trigger-bot` (auth required, no party-membership check; `zapzap-rust/src/api/routes/mod.rs:139-144`) runs the same logic synchronously, max 50 iterations, 100 ms pause (`game.rs:742-1205`).
+- No scheduler and no startup recovery (`zapzap-rust/src/main.rs:20-63`): bots move only when some request spawns `trigger_bot_internal` (`game.rs:1224`):
+  - after `GET /api/game/:id/state` (100 ms delay, `game.rs:366-373`) — i.e. every client poll;
+  - after select-hand-size, play, draw (300 ms, `game.rs:435-440`, `:502-507`, `:557-562`) and next-round when the starter is a bot (`:714-719`).
+- Loop: up to 50 iterations if an active human remains, else 500 (`game.rs:1243-1257`); stops on human turn or finished round; 200 ms between bot actions (`:1579`). Eliminated bots are skipped by advancing `current_turn` (`:1306-1322`). A failed discard draw falls back to deck (`:1549-1563`). Each action broadcasts a `gameUpdate` SSE with `isBot: true` (e.g. `:1357-1363`).
+- Manual `POST /api/game/:partyId/trigger-bot` (auth required, no party-membership check; `zapzap-rust/src/api/routes/mod.rs:139-144`) runs the same logic synchronously, max 50 iterations, 100 ms pause (`game.rs:757-1220`).
 - There is no per-party lock: concurrent polls can start several `trigger_bot_internal` loops for the same party; use-case turn checks (`NotYourTurn`) limit but do not prevent double reads of the same state.
 
 ### Native strategies (training only)

@@ -16,6 +16,7 @@ use crate::application::party::{
     DeletePartyInput, GetPartyDetails, GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty,
     LeavePartyInput, ListPartiesInput, ListPublicParties, StartParty, StartPartyInput,
 };
+use crate::domain::entities::PartyVisibility;
 use crate::domain::value_objects::PartySettings;
 use crate::infrastructure::app_state::GameEvent;
 
@@ -304,17 +305,20 @@ pub async fn create_party(
         })
         .await?;
 
-    // Emit SSE event for partyCreated, so that live party lists show the new party
-    let event = GameEvent::new(
-        "partyUpdate",
-        Some(result.party.id.clone()),
-        Some(claims.user_id.clone()),
-    )
-    .with_action("partyCreated")
-    .with_data(serde_json::json!({
-        "partyName": result.party.name
-    }));
-    state.broadcast_event(event);
+    // Emit SSE event for partyCreated, so that live party lists show the new party.
+    // A private party is not in GET /party: announcing it would only leak it.
+    if result.party.visibility == PartyVisibility::Public {
+        let event = GameEvent::new(
+            "partyUpdate",
+            Some(result.party.id.clone()),
+            Some(claims.user_id.clone()),
+        )
+        .with_action("partyCreated")
+        .with_data(serde_json::json!({
+            "partyName": result.party.name
+        }));
+        state.broadcast_event(event);
+    }
 
     Ok((
         StatusCode::CREATED,

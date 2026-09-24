@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::entities::{Party, PartyStatus, User};
+use crate::domain::entities::{lowest_free_seat, Party, PartyStatus, User};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Add bot input
@@ -67,14 +67,16 @@ impl<U: UserRepository, P: PartyRepository> AddBotToParty<U, P> {
             return Err(AddBotToPartyError::PartyFull);
         }
 
-        // The lowest free seat: a player who left leaves a gap in the indices
-        let player_index = (0u8..)
-            .find(|i| !players.iter().any(|p| p.player_index == *i))
-            .unwrap_or(players.len() as u8);
+        let player_index = lowest_free_seat(&players);
 
+        // A concurrent add of the same bot loses on UNIQUE(party_id, user_id)
         self.party_repo
             .add_party_player(&input.party_id, &input.bot_id, player_index)
-            .await?;
+            .await
+            .map_err(|e| match e {
+                RepositoryError::AlreadyExists(_) => AddBotToPartyError::AlreadyInParty,
+                e => e.into(),
+            })?;
 
         Ok(AddBotToPartyOutput {
             party,

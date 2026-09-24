@@ -77,11 +77,11 @@
 - `GET /api/players/connected` returns at most 5 sessions, newest first (`zapzap-rust/src/api/routes/players.rs:39`).
 
 ### Bot triggering
-- No bot scheduler: bots are driven by `trigger_bot_internal` (`zapzap-rust/src/api/routes/game.rs:1209`) spawned with `tokio::spawn` after `GET state` (100 ms delay, `:367-373`), `selectHandSize`, `play`, `draw`, `nextRound` (300 ms, `:434`, `:487`, `:542`, `:699`). It loops while the current player is a bot, sleeping 200 ms between actions (`:1564`).
-- Iteration cap: 50 if an active human remains, 500 if only bots (`game.rs:1242`). Hand size for bots always chosen by `HardBotStrategy` (`game.rs:1322`).
+- No bot scheduler: bots are driven by `trigger_bot_internal` (`zapzap-rust/src/api/routes/game.rs:1224`) spawned with `tokio::spawn` after `GET state` (100 ms delay, `:368-374`), `selectHandSize`, `play`, `draw`, `nextRound` (300 ms, `:435`, `:502`, `:557`, `:714`). It loops while the current player is a bot, sleeping 200 ms between actions (`:1579`).
+- Iteration cap: 50 if an active human remains, 500 if only bots (`game.rs:1257`). Hand size for bots always chosen by `HardBotStrategy` (`game.rs:1337`).
 - **No per-party lock**: every state poll spawns a new loop, so concurrent loops can act on the same bot turn (read-modify-write on `game_state`).
-- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs:742`) duplicates the loop inline with a cap of 50 (`:752`).
-- After a human ZapZap, `trigger_llm_reflection` (`game.rs:1571`) runs `ReflectOnRound` for each LLM bot if an LLM service exists; `score_change` is hard-coded 0 (`game.rs:1632`).
+- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs:757`) duplicates the loop inline with a cap of 50 (`:767`).
+- After a human ZapZap, `trigger_llm_reflection` (`game.rs:1586`) runs `ReflectOnRound` for each LLM bot if an LLM service exists; `score_change` is hard-coded 0 (`game.rs:1647`).
 - Pending bot turns are not recovered at startup (the Node `BotOrchestrator.recoverPendingBotTurns`, `src/infrastructure/bot/BotOrchestrator.js:59`, has no Rust equivalent); the next `GET state` restarts them.
 
 ### Error mapping
@@ -90,7 +90,7 @@
 - The auth, admin, bots, stats and history handlers still build their errors inline (no message matching there).
 
 ## Decisions & History
-- 2026-09-24 (fix/rust-api-errors-contract): the substring matching of error messages was replaced by typed errors, after six of its branches were found answering 500 for client errors ([[Api]] keeps the list of cases where Rust answers a 4xx and Node a 500). The play and draw use cases gained typed variants (`CardNotInHand`, `DeckEmpty`, `NoCardsAvailable`, `CardNotAvailable`) checked before the domain call, so that no error code depends on the domain's message strings.
+- 2026-09-24 (fix/rust-api-errors-contract): the substring matching of error messages was replaced by typed errors, after six of its branches were found answering 500 for client errors ([[Api]] keeps the list of cases where Rust answers a 4xx and Node a 500). The play and draw use cases gained typed variants (`CardNotInHand`, `DeckEmpty`, `NoCardsAvailable`, `CardNotAvailable`) checked before the domain call, so that no error code depends on the domain's message strings. The same change fixed the seats: join used `players.len()` as the new seat, which after a leave collided with a held seat on `UNIQUE(party_id, player_index)` (a 500); join, add-bot and create now take the lowest free seat (`lowest_free_seat`, `zapzap-rust/src/domain/entities/player.rs`), and start renumbers the seats 0..n-1 (`PartyRepository::set_player_index`) because the game state indexes hands and scores by seat position. `add_party_player` reports a second seat for the same user as `RepositoryError::AlreadyExists`, answered 409 `ALREADY_IN_PARTY`.
 - Backend rewritten from Node/Express to Rust in `e4f83da` (2025-12-23), keeping the Node JSON shapes ("matching JS behavior" comments, `zapzap-rust/src/api/routes/auth.rs:83`) and the SQLite file, which explains the bcrypt fallback and the absence of Rust-side schema creation.
 - 2026-09-23 (fix/rust-api-schema): the backend got its own schema step so that `tests/api_tests.rs` could run on an in-memory DB and join CI. The Node DDL was copied rather than written as sqlx migrations, because a migration runner on the production file (no `_sqlx_migrations` table) would either refuse it or re-run `CREATE TABLE` on it; `IF NOT EXISTS` DDL is a no-op there. The same change made `POST /api/party` without `name` answer 400 `MISSING_PARTY_NAME` like Node (it answered axum's 422), which `test_create_party_missing_name` had caught.
 - `8a3509b` added the background bot triggers and the 50/500 iteration limit; `c9ac7a7` enabled broadcaster overflow after SSE sends blocked on a full channel (commit title).

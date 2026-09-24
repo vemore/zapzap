@@ -134,6 +134,14 @@ where
                 return Ok(ApiJson(value));
             }
         }
+        // A body over the limit is no validation failure of the route's
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            return Err(ApiError::new(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "PAYLOAD_TOO_LARGE",
+                "Request body too large",
+            ));
+        }
         Err(ApiError {
             details: Some(rejection.body_text()),
             ..ApiError::bad_request(T::INVALID_CODE, T::INVALID_MESSAGE)
@@ -203,7 +211,7 @@ impl From<LeavePartyError> for ApiError {
         match e {
             LeavePartyError::PartyNotFound => Self::party_not_found(),
             LeavePartyError::NotInParty => Self::not_in_party(),
-            LeavePartyError::PartyNotWaiting => {
+            LeavePartyError::PartyPlaying => {
                 Self::conflict("PARTY_PLAYING", "Cannot leave party during active game")
             }
             LeavePartyError::Repository(e) => {
@@ -220,8 +228,12 @@ impl From<StartPartyError> for ApiError {
             StartPartyError::NotOwner => {
                 Self::forbidden("NOT_OWNER", "Only the party owner can start the game")
             }
-            StartPartyError::PartyNotWaiting => {
+            StartPartyError::PartyPlaying => {
                 Self::conflict("PARTY_ALREADY_PLAYING", "Party is already playing")
+            }
+            // Node's message; Node answers it 500, Rust keeps the 409 of a started party
+            StartPartyError::PartyFinished => {
+                Self::conflict("PARTY_ALREADY_PLAYING", "Party has finished")
             }
             StartPartyError::NotEnoughPlayers => {
                 Self::bad_request("NOT_ENOUGH_PLAYERS", "At least 3 players required to start")

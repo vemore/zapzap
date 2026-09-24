@@ -1250,3 +1250,219 @@ async fn test_zapzap_counteracted_scores() {
     assert_eq!(body["roundScores"], json!({"0": 13, "1": 0, "2": 6}));
     assert_eq!(body["scores"], json!({"0": 23, "1": 20, "2": 36}));
 }
+
+// ============================================================================
+// Review follow-ups: private parties, finished parties, seats, body limits
+// ============================================================================
+
+/// Mark a party finished, as the last zapzap of a game does
+async fn finish_party(state: &AppState, party_id: &str) {
+    let mut party = state
+        .party_repo
+        .find_by_id(party_id)
+        .await
+        .unwrap()
+        .expect("party");
+    party.finish();
+    state.party_repo.save(&party).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_create_private_party_emits_no_event() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "private_creator").await;
+    let mut receiver = state.event_sender.new_receiver();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Hidden party", "visibility": "private"}),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    while let Ok(event) = receiver.try_recv() {
+        assert_ne!(
+            event.action.as_deref(),
+            Some("partyCreated"),
+            "a private party is not announced"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_leave_finished_party_is_200() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "leave_fin").await;
+    finish_party(&state, &party_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/leave"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["success"], true);
+}
+
+#[tokio::test]
+async fn test_start_finished_party_is_409() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "start_fin").await;
+    finish_party(&state, &party_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_ALREADY_PLAYING");
+    assert_eq!(body["error"], "Party has finished");
+}
+
+/// The seats of a party, from its details
+async fn seats(app: &mut Router, party_id: &str, token: &str) -> Vec<u64> {
+    let (_, details) = get_auth(app, &format!("/api/party/{party_id}"), token).await;
+    let mut seats: Vec<u64> = details["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["playerIndex"].as_u64().unwrap())
+        .collect();
+    seats.sort();
+    seats
+}
+
+#[tokio::test]
+async fn test_join_after_leave_takes_the_free_seat() {
+    let mut app = create_test_app().await;
+    let (a, _) = register(&mut app, "seat_a").await;
+    let (b, _) = register(&mut app, "seat_b").await;
+    let (c, _) = register(&mut app, "seat_c").await;
+    let (d, _) = register(&mut app, "seat_d").await;
+    let party_id = create_party(&mut app, &a, "Seats").await;
+    let path = |action: &str| format!("/api/party/{party_id}/{action}");
+
+    for token in [&b, &c] {
+        let (status, _) = post_json_auth(&mut app, &path("join"), json!({}), token).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = post_json_auth(&mut app, &path("leave"), json!({}), &b).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Seats 0 and 2 are held: `players.len()` = 2 would collide, the free seat is 1
+    let (status, body) = post_json_auth(&mut app, &path("join"), json!({}), &d).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["playerIndex"], 1);
+    assert_eq!(seats(&mut app, &party_id, &a).await, vec![0, 1, 2]);
+
+    let (status, body) = post_json_auth(&mut app, &path("start"), json!({}), &a).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    for token in [&a, &c, &d] {
+        let (status, body) =
+            get_auth(&mut app, &format!("/api/game/{party_id}/state"), token).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert!(!body["gameState"]["playerHand"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_start_renumbers_seats_left_with_a_gap() {
+    let mut app = create_test_app().await;
+    let (a, _) = register(&mut app, "gap_a").await;
+    let (b, _) = register(&mut app, "gap_b").await;
+    let (c, _) = register(&mut app, "gap_c").await;
+    let (d, _) = register(&mut app, "gap_d").await;
+    let party_id = create_party(&mut app, &a, "Gap").await;
+    let path = |action: &str| format!("/api/party/{party_id}/{action}");
+    for token in [&b, &c, &d] {
+        post_json_auth(&mut app, &path("join"), json!({}), token).await;
+    }
+    post_json_auth(&mut app, &path("leave"), json!({}), &b).await;
+    assert_eq!(seats(&mut app, &party_id, &a).await, vec![0, 2, 3]);
+
+    // The game state knows seats 0..n-1 only: start closes the gap
+    let (status, body) = post_json_auth(&mut app, &path("start"), json!({}), &a).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(seats(&mut app, &party_id, &a).await, vec![0, 1, 2]);
+    for token in [&a, &c, &d] {
+        let (status, body) =
+            get_auth(&mut app, &format!("/api/game/{party_id}/state"), token).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert!(!body["gameState"]["playerHand"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_add_party_player_twice_is_already_exists() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, user_id) = register(&mut app, "twice_owner").await;
+    let party_id = create_party(&mut app, &token, "Twice").await;
+
+    // A second seat for the same user: what a concurrent join or add-bot runs into
+    let err = state
+        .party_repo
+        .add_party_player(&party_id, &user_id, 5)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            zapzap_backend::domain::repositories::RepositoryError::AlreadyExists(_)
+        ),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_play_card_ids_out_of_range_are_invalid_cards() {
+    let mut app = create_test_app().await;
+    let (party_id, tokens) = started_party(&mut app, "range").await;
+    let path = format!("/api/game/{party_id}/play");
+
+    for ids in [json!([300]), json!([-1]), json!(["a"]), json!([1, 999])] {
+        let (status, body) =
+            post_json_auth(&mut app, &path, json!({ "cardIds": ids }), &tokens[0]).await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "INVALID_CARDS");
+    }
+    // Missing or not an array stays the route's missing-field code
+    for body in [json!({}), json!({"cardIds": null}), json!({"cardIds": 3})] {
+        let (status, resp) = post_json_auth(&mut app, &path, body, &tokens[0]).await;
+        assert_error(status, &resp, StatusCode::BAD_REQUEST, "MISSING_CARDS");
+    }
+}
+
+#[tokio::test]
+async fn test_body_too_large_is_413() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "big_body").await;
+
+    // Past axum's 2 MB default body limit
+    let big = format!("{{\"name\": \"{}\"}}", "x".repeat(3 * 1024 * 1024));
+    let (status, body) = send_raw(
+        &mut app,
+        "POST",
+        "/api/party",
+        &big,
+        Some("application/json"),
+        Some(&token),
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "PAYLOAD_TOO_LARGE",
+    );
+}

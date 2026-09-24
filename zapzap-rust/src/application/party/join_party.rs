@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::entities::{Party, PartyStatus};
+use crate::domain::entities::{lowest_free_seat, Party, PartyStatus};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Join party input
@@ -73,13 +73,17 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             return Err(JoinPartyError::PartyFull);
         }
 
-        // Assign next player index
-        let player_index = players.len() as u8;
+        // The lowest free seat, not `players.len()`: a leave can leave a gap
+        let player_index = lowest_free_seat(&players);
 
-        // Add player to party
+        // A concurrent join of the same user loses on UNIQUE(party_id, user_id)
         self.party_repo
             .add_party_player(&input.party_id, &input.user_id, player_index)
-            .await?;
+            .await
+            .map_err(|e| match e {
+                RepositoryError::AlreadyExists(_) => JoinPartyError::AlreadyInParty,
+                e => e.into(),
+            })?;
 
         Ok(JoinPartyOutput {
             party,

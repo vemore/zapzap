@@ -153,6 +153,13 @@ impl<P: PartyRepository> CallZapZap<P> {
             )
             .await?;
 
+        let winner_user_id = winner.and_then(|w| {
+            players
+                .iter()
+                .find(|p| p.player_index == w)
+                .map(|p| p.user_id.clone())
+        });
+
         // If game is over, update party status and save game results
         if let Some(winner_idx) = winner {
             // Update party status to Finished
@@ -209,12 +216,6 @@ impl<P: PartyRepository> CallZapZap<P> {
                 }
             });
 
-            let winner_user_id = players
-                .iter()
-                .find(|p| p.player_index == winner_idx)
-                .map(|p| p.user_id.clone())
-                .unwrap_or_default();
-
             let winner_score = game_state.scores[winner_idx as usize];
 
             // Create PlayerGameResult entries
@@ -236,7 +237,7 @@ impl<P: PartyRepository> CallZapZap<P> {
             self.party_repo
                 .save_game_results(
                     &input.party_id,
-                    &winner_user_id,
+                    winner_user_id.as_deref().unwrap_or_default(),
                     winner_score,
                     game_state.round_number as u32,
                     game_state.is_golden_score,
@@ -258,12 +259,6 @@ impl<P: PartyRepository> CallZapZap<P> {
                 )
             })
             .collect();
-        let winner_user_id = winner.and_then(|w| {
-            players
-                .iter()
-                .find(|p| p.player_index == w)
-                .map(|p| p.user_id.clone())
-        });
 
         Ok(CallZapZapOutput {
             success: !result.counteracted,

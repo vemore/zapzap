@@ -24,8 +24,9 @@ use crate::infrastructure::app_state::GameEvent;
 
 #[derive(Debug, Deserialize)]
 pub struct PlayCardsRequest {
+    /// Raw values: an id out of the card range is INVALID_CARDS, not an unreadable body
     #[serde(rename = "cardIds")]
-    pub card_ids: Vec<u8>,
+    pub card_ids: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -453,11 +454,25 @@ pub async fn play_cards(
     Path(party_id): Path<String>,
     ApiJson(body): ApiJson<PlayCardsRequest>,
 ) -> Result<Json<PlayCardsResponse>, ApiError> {
-    if body.card_ids.is_empty() {
+    let raw_ids = body.card_ids.unwrap_or_default();
+    if raw_ids.is_empty() {
         return Err(ApiError::bad_request(
             "MISSING_CARDS",
             "Card IDs are required",
         ));
+    }
+    // An id that is no card id (300, -1, "a") is in no hand: Node's INVALID_CARDS
+    let mut card_ids = Vec::with_capacity(raw_ids.len());
+    for raw in &raw_ids {
+        match raw.as_u64().and_then(|id| u8::try_from(id).ok()) {
+            Some(id) => card_ids.push(id),
+            None => {
+                return Err(ApiError::bad_request(
+                    "INVALID_CARDS",
+                    format!("Card {raw} not in hand"),
+                ))
+            }
+        }
     }
 
     let party_id_for_bot = party_id.clone();
@@ -466,7 +481,7 @@ pub async fn play_cards(
         .execute(PlayCardsInput {
             party_id,
             user_id: claims.user_id.clone(),
-            card_ids: body.card_ids.clone(),
+            card_ids: card_ids.clone(),
         })
         .await?;
 
@@ -478,7 +493,7 @@ pub async fn play_cards(
     )
     .with_action("play")
     .with_data(serde_json::json!({
-        "cardIds": body.card_ids
+        "cardIds": card_ids
     }));
     state.broadcast_event(event);
 

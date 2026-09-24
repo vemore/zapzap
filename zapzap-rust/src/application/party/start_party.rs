@@ -45,16 +45,29 @@ impl<P: PartyRepository> StartParty<P> {
         }
 
         // Check party status
-        if party.status != PartyStatus::Waiting {
-            return Err(StartPartyError::PartyNotWaiting);
+        match party.status {
+            PartyStatus::Waiting => {}
+            PartyStatus::Playing => return Err(StartPartyError::PartyPlaying),
+            PartyStatus::Finished => return Err(StartPartyError::PartyFinished),
         }
 
         // Get players
-        let players = self.party_repo.get_party_players(&input.party_id).await?;
+        let mut players = self.party_repo.get_party_players(&input.party_id).await?;
 
         // Check minimum players
         if !party.can_start(players.len()) {
             return Err(StartPartyError::NotEnoughPlayers);
+        }
+
+        // The game state indexes seats 0..n-1: close the gaps a leave left. In seat
+        // order, each player moves down to a seat the ones before it have just vacated.
+        players.sort_by_key(|p| p.player_index);
+        for (seat, player) in players.iter().enumerate() {
+            if player.player_index != seat as u8 {
+                self.party_repo
+                    .set_player_index(&input.party_id, &player.user_id, seat as u8)
+                    .await?;
+            }
         }
 
         // Create first round
@@ -96,8 +109,10 @@ pub enum StartPartyError {
     PartyNotFound,
     #[error("Not the party owner")]
     NotOwner,
-    #[error("Party is not in waiting state")]
-    PartyNotWaiting,
+    #[error("Party is already playing")]
+    PartyPlaying,
+    #[error("Party has finished")]
+    PartyFinished,
     #[error("Not enough players (minimum 3)")]
     NotEnoughPlayers,
     #[error("Repository error: {0}")]

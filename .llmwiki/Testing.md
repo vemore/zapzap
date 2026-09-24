@@ -10,7 +10,7 @@
 | Suite | Run | State 2026-09-22 | In CI |
 |---|---|---|---|
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
-| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 27 tests) | `cargo test --test api_tests` | green | yes |
+| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 35 tests) | `cargo test --test api_tests` | green | yes |
 | Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 2 tests) | `cargo test --test schema_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
