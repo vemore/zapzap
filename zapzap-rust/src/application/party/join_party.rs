@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::entities::{lowest_free_seat, Party, PartyStatus};
+use crate::domain::entities::{lowest_free_seat, Party, PartyStatus, PartyVisibility};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Join party input
@@ -51,6 +51,15 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             .await?
             .ok_or(JoinPartyError::PartyNotFound)?;
 
+        // A private party is joined with its invite code only (Node: JoinParty.js)
+        if party.visibility == PartyVisibility::Private {
+            match input.invite_code.as_deref() {
+                Some(code) if code == party.invite_code => {}
+                Some(_) => return Err(JoinPartyError::InvalidInviteCode),
+                None => return Err(JoinPartyError::PrivateParty),
+            }
+        }
+
         // Check party status
         if party.status != PartyStatus::Waiting {
             return Err(JoinPartyError::PartyNotWaiting);
@@ -100,6 +109,10 @@ pub enum JoinPartyError {
     UserNotFound,
     #[error("Party not found")]
     PartyNotFound,
+    #[error("Party is private. Use invite code to join.")]
+    PrivateParty,
+    #[error("Invalid invite code")]
+    InvalidInviteCode,
     #[error("Party is not in waiting state")]
     PartyNotWaiting,
     #[error("Already in party")]

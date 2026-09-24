@@ -96,6 +96,11 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
             .get_player_index(&input.party_id, &input.user_id)
             .await?;
 
+        // Only a player of the party sees its state (Node: GetGameState.js)
+        if player_index.is_none() {
+            return Err(GetGameStateError::NotInParty);
+        }
+
         // Get players
         let party_players = self.party_repo.get_party_players(&input.party_id).await?;
 
@@ -292,6 +297,8 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
 pub enum GetGameStateError {
     #[error("Party not found")]
     PartyNotFound,
+    #[error("User is not in this party")]
+    NotInParty,
     #[error("Repository error: {0}")]
     Repository(#[from] RepositoryError),
 }

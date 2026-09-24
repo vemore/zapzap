@@ -8,7 +8,7 @@
 
 ### Conventions
 - Router assembly: `zapzap-rust/src/api/routes/mod.rs:23-35` (under `/api`), plus `/suscribeupdate` and `/health` at the root (`zapzap-rust/src/main.rs:41-45`).
-- Auth column: **JWT** = `auth_middleware` (Bearer header, bare 401 without JSON body on missing/invalid token, `zapzap-rust/src/api/middleware/auth_middleware.rs:28-37`); **opt** = optional auth; **admin** = JWT + `claims.is_admin` checked in the handler (403 `Admin access required`); **none** = public.
+- Auth column: **JWT** = `auth_middleware` (Bearer header, bare 401 without JSON body on a missing or invalid token, or a token whose user no longer exists, `zapzap-rust/src/api/middleware/auth_middleware.rs`); **opt** = optional auth; **admin** = JWT + `admin_middleware`, which reads `is_admin` from the database (401 `AUTH_REQUIRED` / 403 `ADMIN_REQUIRED`, `{success:false, error, code}`, as Node); the handlers do not check again; **none** = public.
 - Error body for auth/party/game: `{error, code, details?}` (`ErrorBody`, `zapzap-rust/src/api/error.rs`); admin/bots/stats/history use `{success:false, error}` or `{error}` without `code`.
 - Party and game errors are typed: each use-case error variant maps to Node's status and `code` in one `From` impl per use case (`zapzap-rust/src/api/error.rs`). A 500 carries a generic `error` (`Failed to …`), a `<ROUTE>_ERROR` code and the cause in `details`, as on Node.
 - A JSON body that does not parse — malformed, a field missing or mistyped — answers **400** with the route's missing-field code (`ApiJson`, `zapzap-rust/src/api/error.rs`), not axum's 422 plain text. A request without a JSON content type reads as `{}`, as Express does; a body over axum's 2 MB default limit answers 413 `PAYLOAD_TOO_LARGE`.
@@ -18,7 +18,7 @@
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/health` and `/api/health` | none | `zapzap-rust/src/api/routes/health.rs:13` | `{status:"ok", version, uptime_seconds}`; uptime counts from the first health call, not process start (`health.rs:11-14`) |
-| GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs:18` | SSE, see [[Backend]] |
+| GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs` | SSE; events without a party and a public party's lifecycle events to all, a game's moves and private-party events only to that party's players (a token of a deleted user names nobody). See [[Backend]] |
 
 ### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:10-14`)
 | Method | Path | Auth | Handler | Success | Failures |
@@ -31,9 +31,9 @@
 |---|---|---|---|---|
 | GET | `/` | opt | `zapzap-rust/src/api/routes/party.rs:348` | 500 `GET_PARTIES_ERROR`. Query `status`, `limit` (default 50, **no max**), `offset` (default 0) (`party.rs:358-359`). Only `visibility='public'` parties (`zapzap-rust/src/infrastructure/database/repositories/party_repo.rs:149`). Each item carries `isMyTurn`: true when the caller is a member, the party is playing, the round is not finished and `currentTurn` is the caller's seat (`zapzap-rust/src/application/party/list_parties.rs`); **Rust only**, Node has no such field |
 | POST | `/` | JWT | `party.rs:277` | 400 `MISSING_PARTY_NAME`; 400 `VALIDATION_ERROR` for an unreadable body or a use-case validation error (Node: 500 `CREATE_PARTY_ERROR`); 500 `CREATE_PARTY_ERROR` on repository errors. Body `name`, `visibility` (default `public`), `settings{handSize=5,maxScore=100,enableGoldenScore=true,goldenScoreThreshold=100}` (`party.rs:287-295`), `botIds[]`. Emits `partyUpdate`/`partyCreated` with the new `partyId` for a public party only — a private one is not in `GET /party` (**Rust only**, Node emits nothing). Bots from `botIds` take the seats after the owner's, contiguous whatever ids are skipped or repeated |
-| GET | `/:partyId` | JWT | `party.rs:389` | 404 `PARTY_NOT_FOUND`, 500. **No membership check**: any user gets details incl. `inviteCode` of private parties (`zapzap-rust/src/application/party/get_party_details.rs:44-100`) |
+| GET | `/:partyId` | JWT | `party.rs:389` | 404 `PARTY_NOT_FOUND`, 403 `NOT_IN_PARTY` (`User is not in this party`) for a non-member of a **private** party, so its `inviteCode` stays with its players (`zapzap-rust/src/application/party/get_party_details.rs`); Node means to refuse too but its message has no branch and answers 500 `GET_PARTY_ERROR`. Public parties: any user, as in Node |
 | DELETE | `/:partyId` | JWT | `party.rs:560` | 404, 403 `NOT_AUTHORIZED` (neither owner nor only human), 409 `PARTY_PLAYING` |
-| POST | `/:partyId/join` | JWT | `party.rs:440` | 404, 409 `PARTY_FULL` (8 players, `zapzap-rust/src/domain/entities/party.rs:100-101`), 409 `ALREADY_IN_PARTY` (also when a concurrent join loses on `UNIQUE(party_id, user_id)`), 409 `PARTY_STARTED` (not waiting). The joiner takes the lowest free seat (`lowest_free_seat`, `zapzap-rust/src/domain/entities/player.rs`), not `players.len()`, which collided with a seat after a leave. Body `inviteCode` is **ignored** by the use case |
+| POST | `/:partyId/join` | JWT | `party.rs:440` | 404, 409 `PARTY_FULL` (8 players, `zapzap-rust/src/domain/entities/party.rs:100-101`), 409 `ALREADY_IN_PARTY` (also when a concurrent join loses on `UNIQUE(party_id, user_id)`), 409 `PARTY_STARTED` (not waiting). The joiner takes the lowest free seat (`lowest_free_seat`, `zapzap-rust/src/domain/entities/player.rs`), not `players.len()`, which collided with a seat after a leave. A **private** party needs body `inviteCode` equal to its code: without one 403 `PRIVATE_PARTY` `Party is private. Use invite code to join.`, with a wrong one 403 `INVALID_INVITE_CODE` `Invalid invite code` (`zapzap-rust/src/application/party/join_party.rs`). Node's messages; Node answers 500 `JOIN_PARTY_ERROR` (no branch in `partyRoutes.js`), a Node bug |
 | POST | `/:partyId/leave` | JWT | `party.rs:482` | 404, 403 `NOT_IN_PARTY`, 409 `PARTY_PLAYING` (during a game only; a finished party can be left, as on Node). Owner leaving transfers ownership (`zapzap-rust/src/application/party/leave_party.rs:87-89`) |
 | POST | `/:partyId/start` | JWT | `party.rs:517` | 404, 403 `NOT_OWNER`, 409 `PARTY_ALREADY_PLAYING` (playing: `Party is already playing`; finished: `Party has finished`), 400 `NOT_ENOUGH_PLAYERS` (3..=8 required, `zapzap-rust/src/domain/entities/party.rs:105-106`). Renumbers the seats 0..n-1 before dealing, since the game state indexes seats by position (`zapzap-rust/src/application/party/start_party.rs`) |
 | POST | `/:partyId/bots` | JWT | `party.rs:595` | **Rust only.** Body `{botId}`; the owner fills the lowest free seat of a waiting party with a bot (`zapzap-rust/src/application/party/add_bot_to_party.rs`). 201 `{success, party{id,name,status}, bot{id,username,botDifficulty}, playerIndex}`, and a `partyUpdate`/`playerJoined` event with the bot as `userId`. 400 `MISSING_BOT_ID`, 404 `PARTY_NOT_FOUND`, 403 `NOT_OWNER`, 409 `PARTY_STARTED`, 404 `BOT_NOT_FOUND`, 400 `NOT_A_BOT`, 409 `ALREADY_IN_PARTY`, 409 `PARTY_FULL` |
@@ -43,13 +43,13 @@ Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the p
 
 | Method | Path | Handler | Body | Failures |
 |---|---|---|---|---|
-| GET | `/:partyId/state` | `zapzap-rust/src/api/routes/game.rs:294` | — | 404, 500. No membership check: a non-member gets an empty `playerHand` but all public state and, once a round is finished, `allHands`. Spawns a bot trigger (`game.rs:368`). `eliminatedPlayers` computed as score > 100 hard-coded (`game.rs:325-331`), ignoring `maxScore` |
+| GET | `/:partyId/state` | `zapzap-rust/src/api/routes/game.rs:294` | — | 404, 403 `NOT_IN_PARTY` for a non-member, as Node (`zapzap-rust/src/application/game/get_game_state.rs`), 500. Spawns a bot trigger (`game.rs:368`). `eliminatedPlayers` computed as score > 100 hard-coded (`game.rs:325-331`), ignoring `maxScore` |
 | POST | `/:partyId/selectHandSize` | `game.rs:404` | `{handSize}` (4-7, 4-10 in golden score, `zapzap-rust/src/application/game/select_hand_size.rs`) | 400 `INVALID_ACTION_STATE` (checked first, as Node), 403 `NOT_YOUR_TURN`, 400 `INVALID_HAND_SIZE` (also for an unreadable body) |
 | POST | `/:partyId/play` | `game.rs:451` | `{cardIds:[u8]}` | 400 `MISSING_CARDS` (empty, missing, not an array or unreadable), 400 `INVALID_ACTION_STATE`, 400 `INVALID_CARDS` (a card not in hand, or an id that is no card id such as `300`, `-1`, `"a"` — checked before the turn, where Node finds it after; or a card named twice, `[c, c]`, which Node accepts and plays), 400 `INVALID_PLAY` (not a valid combination; Node: 500) |
 | POST | `/:partyId/draw` | `game.rs:519` | `{source:"deck"\|"played", cardId?}`; no `cardId` from `played` takes the top card, as Node | 400 `INVALID_SOURCE` (also for an unreadable body), 400 `INVALID_ACTION_STATE`, 400 `DECK_EMPTY` (deck and discard empty; Node: 500), 400 `NO_CARDS_AVAILABLE`, 400 `CARD_NOT_AVAILABLE` |
 | POST | `/:partyId/zapzap` | `game.rs:575` | — | 400 `INVALID_ACTION_STATE`, 400 `HAND_TOO_HIGH`; response below |
-| POST | `/:partyId/nextRound` | `game.rs:676` | — | 404, 400 `INVALID_PARTY_STATE`/`ROUND_NOT_FINISHED`; **any authenticated user** can advance any party: `NextRound` never reads `input.user_id` and has no `NotInParty` error (`zapzap-rust/src/application/game/next_round.rs:238-246`) |
-| POST | `/:partyId/trigger-bot` | `game.rs` | — | Runs the party's bot loop through the per-party lock (`run_bot_turns_now`, [[Backend]] "Bot triggering"); `{success, message: "Bot trigger completed. Actions taken: n"}`, 500 `BOT_ACTION_ERROR` when a bot action or a repository call fails. Handler takes no `Claims`: any authenticated user can drive bots in any party |
+| POST | `/:partyId/nextRound` | `game.rs:676` | — | 404, 403 `NOT_IN_PARTY` for a non-member (checked in the handler, `require_party_member`, `zapzap-rust/src/api/access.rs`; `NextRound` itself still never reads `input.user_id`), 400 `INVALID_PARTY_STATE`/`ROUND_NOT_FINISHED` |
+| POST | `/:partyId/trigger-bot` | `game.rs` | — | 404 `PARTY_NOT_FOUND`, 403 `NOT_IN_PARTY` for a non-member (`require_party_member`; Node has no check here). Runs the party's bot loop through the per-party lock (`run_bot_turns_now`, [[Backend]] "Bot triggering"); `{success, message: "Bot trigger completed. Actions taken: n"}`, 500 `BOT_ACTION_ERROR` when a bot action or a repository call fails |
 
 #### zapzap response (Node's contract, plus three Rust-only keys)
 Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedBy, scores, handPoints, callerPoints}` (`src/api/routes/gameRoutes.js:392-400`; its use case computes `gameFinished`/`winner` but the route drops them). Rust sends those seven keys with Node's meanings, plus `roundScores`, `gameFinished?` and `winner?`, **Rust-only additions**:
@@ -73,10 +73,10 @@ Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedB
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:164` | same handler; `limit` default 20 (`history.rs:28-30`) |
-| GET | `/public` | none | `history.rs:271` | finished public games |
-| GET | `/:partyId` | JWT | `history.rs:343` | 404 `Game not found`; `_claims` unused, `visibility` selected but not enforced — private game details readable by any user |
+| GET | `/public` | none | `history.rs:271` | finished public games: list and `total` both filter `visibility = 'public'`, as Node (`src/infrastructure/database/sqlite/repositories/PartyRepository.js:760`, `:1028`) |
+| GET | `/:partyId` | JWT | `history.rs:343` | 404 `Game not found`; 403 `{error:"Access denied. Party is private."}` for a **private** game to a user in neither `party_players` nor `player_game_results`. Node checks nothing here; public games stay readable by any signed-in user |
 
-### Admin — `/api/admin` (`zapzap-rust/src/api/routes/mod.rs:201-253`), all admin
+### Admin — `/api/admin` (`create_admin_router`, `zapzap-rust/src/api/routes/mod.rs`), all admin: 401 without a token, 403 `ADMIN_REQUIRED` for a non-admin
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:181` | humans only, `limit` 50 (`admin.rs:38-40`) |
@@ -108,6 +108,8 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 | draw | deck and discard empty (`Deck is empty and no cards to reshuffle` ≠ `Deck is empty`) | 500 | 400 `DECK_EMPTY` |
 | draw | wrong phase (`Cannot draw at this time…` ≠ `Current action is not DRAW`) | 500 | 400 `INVALID_ACTION_STATE` |
 | any JSON route | malformed JSON (Express error handler) | 500 `INTERNAL_ERROR` | 400, route's code |
+| GET `/party/:id` | non-member of a private party (`Access denied. Party is private.` has no branch) | 500 `GET_PARTY_ERROR` | 403 `NOT_IN_PARTY` |
+| join | private party without its invite code / with a wrong one (no branch) | 500 `JOIN_PARTY_ERROR` | 403 `PRIVATE_PARTY` / `INVALID_INVITE_CODE` *new* |
 
 ### Differences with `BACKEND_API.md` (old doc, Node era, "Last Updated 2025-12-04"; removed 2026-09-22, read it with `git show 1e063d6:BACKEND_API.md`)
 - Token lifetime: doc says 24 hours (`BACKEND_API.md:94`); code is 7 days (`zapzap-rust/src/infrastructure/auth/jwt_service.rs:28`).
@@ -133,6 +135,7 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 - Node `POST /api/bots` and `DELETE /api/bots/:botId` (`src/api/routes/botRoutes.js`) have no Rust equivalent.
 
 ## Decisions & History
+- 2026-09-24 (fix/rust-security): the authorization holes listed on this page were closed. Where Node refuses correctly, Rust answers as Node does (state 403 `NOT_IN_PARTY`, admin 401/403); where Node is lax or buggy (details and join refusals answer 500, `trigger-bot` and history unchecked), Rust refuses with 403 — the user's rule: a Node 500 on a client error is a Node bug, Rust keeps the correct 4xx. So a private join without the code is 403 `PRIVATE_PARTY`, with a wrong code 403 `INVALID_INVITE_CODE`. `/history/public` had lost Node's public-only filter and listed private games; it filters again.
 - 2026-09-24 (fix/rust-api-errors-contract): the substring matching of use-case error messages was replaced by typed errors (`zapzap-rust/src/api/error.rs`), after six of its branches were found answering 500 for client errors (join already-in-party and not-waiting, start, delete, leave, and `NOT_IN_PARTY` on every game action). The zapzap `scores` were aligned on Node's meaning (running totals, user decision), with round points under `roundScores`; `partyCreated`, `isMyTurn` and `POST /party/:id/bots` were added on the Rust side first, Node and the clients following in their own changes.
 - Routes and JSON shapes were ported from the Node backend in `e4f83da` (2025-12-23, "rewrite backend in Rust"); handlers carry "matching JS behavior"/"like JS" comments (`zapzap-rust/src/api/routes/auth.rs:83`, `game.rs:311`). The substring-based error mapping appears to mimic the Node error-message checks, and the mismatches date from porting messages without re-aligning the matchers.
 - The `/suscribeupdate` typo is kept for compatibility with the frontend and nginx config.

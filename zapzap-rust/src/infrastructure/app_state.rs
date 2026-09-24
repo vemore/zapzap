@@ -13,6 +13,34 @@ use crate::infrastructure::database::repositories::{SqlitePartyRepository, Sqlit
 use crate::infrastructure::services::{BedrockConfig, BedrockService};
 use crate::infrastructure::services::{LlmService, OllamaConfig, OllamaService, SessionManager};
 
+/// Placeholder secrets published in this repository (code defaults, `.env.example`,
+/// README): a token signed with one of them can be forged by anyone.
+pub const PUBLIC_JWT_SECRETS: [&str; 4] = [
+    "zapzap-secret-key-change-in-production",
+    "your-secret-key-change-in-production",
+    "change-this-to-a-secure-random-string",
+    "your-secure-random-string-here",
+];
+
+/// The JWT signing secret, from the value of `JWT_SECRET`. There is no default: a missing,
+/// blank or publicly known secret is an error, and the server refuses to start.
+pub fn jwt_secret_from(value: Option<String>) -> anyhow::Result<String> {
+    let secret = value.unwrap_or_default().trim().to_string();
+    if secret.is_empty() {
+        anyhow::bail!(
+            "JWT_SECRET is not set: the server refuses to start without a secret to sign \
+             tokens with (generate one with `openssl rand -hex 32`)"
+        );
+    }
+    if PUBLIC_JWT_SECRETS.contains(&secret.as_str()) {
+        anyhow::bail!(
+            "JWT_SECRET is a placeholder published in the repository: set it to a private \
+             random value (`openssl rand -hex 32`)"
+        );
+    }
+    Ok(secret)
+}
+
 /// Application state shared across all handlers
 #[derive(Clone)]
 pub struct AppState {
@@ -47,6 +75,9 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
+        // The signing secret first: without one the server must not start at all
+        let jwt_secret = jwt_secret_from(std::env::var("JWT_SECRET").ok())?;
+
         // Get database path from environment
         let db_path = std::env::var("DATABASE_URL")
             .or_else(|_| std::env::var("DB_PATH"))
@@ -68,8 +99,6 @@ impl AppState {
         crate::infrastructure::database::schema::ensure_schema(&db).await?;
 
         // Create JWT service
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "zapzap-secret-key-change-in-production".to_string());
         let jwt_service = Arc::new(JwtService::new(jwt_secret));
 
         // Create session manager
@@ -233,5 +262,47 @@ impl GameEvent {
     pub fn with_data(mut self, data: serde_json::Value) -> Self {
         self.data = data;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jwt_secret_is_required() {
+        let err = jwt_secret_from(None).unwrap_err().to_string();
+        assert!(err.contains("JWT_SECRET is not set"), "{err}");
+        assert!(jwt_secret_from(Some("  ".into())).is_err());
+    }
+
+    #[test]
+    fn jwt_secret_refuses_the_published_placeholders() {
+        for secret in PUBLIC_JWT_SECRETS {
+            let err = jwt_secret_from(Some(secret.into()))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("placeholder"), "{secret}: {err}");
+        }
+    }
+
+    #[test]
+    fn jwt_secret_is_trimmed_before_checks_and_use() {
+        let err = jwt_secret_from(Some(" zapzap-secret-key-change-in-production\n".into()))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("placeholder"), "{err}");
+        assert_eq!(
+            jwt_secret_from(Some("  4f1c0e9a\n".into())).unwrap(),
+            "4f1c0e9a"
+        );
+    }
+
+    #[test]
+    fn jwt_secret_accepts_a_private_value() {
+        assert_eq!(
+            jwt_secret_from(Some("4f1c0e9a".into())).unwrap(),
+            "4f1c0e9a"
+        );
     }
 }

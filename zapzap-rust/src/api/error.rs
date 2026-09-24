@@ -74,11 +74,11 @@ impl ApiError {
         }
     }
 
-    fn party_not_found() -> Self {
+    pub(crate) fn party_not_found() -> Self {
         Self::not_found("PARTY_NOT_FOUND", "Party not found")
     }
 
-    fn not_in_party() -> Self {
+    pub(crate) fn not_in_party() -> Self {
         Self::forbidden("NOT_IN_PARTY", "User is not in this party")
     }
 
@@ -178,6 +178,8 @@ impl From<GetPartyDetailsError> for ApiError {
     fn from(e: GetPartyDetailsError) -> Self {
         match e {
             GetPartyDetailsError::PartyNotFound => Self::party_not_found(),
+            // Node means this refusal too but answers 500 (its message has no branch)
+            GetPartyDetailsError::NotInParty => Self::not_in_party(),
             GetPartyDetailsError::Repository(e) => {
                 Self::internal("GET_PARTY_ERROR", "Failed to get party details", e)
             }
@@ -191,6 +193,14 @@ impl From<JoinPartyError> for ApiError {
             JoinPartyError::Validation(msg) => Self::bad_request("VALIDATION_ERROR", msg),
             JoinPartyError::UserNotFound => Self::not_found("USER_NOT_FOUND", "User not found"),
             JoinPartyError::PartyNotFound => Self::party_not_found(),
+            // Node answers 500 JOIN_PARTY_ERROR for both (no branch): a Node bug
+            JoinPartyError::PrivateParty => Self::forbidden(
+                "PRIVATE_PARTY",
+                "Party is private. Use invite code to join.",
+            ),
+            JoinPartyError::InvalidInviteCode => {
+                Self::forbidden("INVALID_INVITE_CODE", "Invalid invite code")
+            }
             JoinPartyError::PartyNotWaiting => {
                 Self::conflict("PARTY_STARTED", "Party has already started")
             }
@@ -293,6 +303,7 @@ impl From<GetGameStateError> for ApiError {
     fn from(e: GetGameStateError) -> Self {
         match e {
             GetGameStateError::PartyNotFound => Self::party_not_found(),
+            GetGameStateError::NotInParty => Self::not_in_party(),
             GetGameStateError::Repository(e) => {
                 Self::internal("GET_STATE_ERROR", "Failed to get game state", e)
             }
