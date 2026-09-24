@@ -5,6 +5,7 @@ use async_broadcast::{broadcast, Receiver, Sender};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
+use crate::application::bot::BotRunner;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
@@ -70,6 +71,8 @@ pub struct AppState {
     /// LLM bot memories (keyed by bot user ID)
     pub llm_memories: Arc<RwLock<HashMap<String, Arc<RwLock<LlmBotMemory>>>>>,
 
+    /// Bot turns: one loop at a time per party, and each bot's strategy for the game
+    pub bot_runner: Arc<BotRunner>,
     /// Google ID token verifier; `None` when `GOOGLE_OAUTH_CLIENT_ID` is unset
     pub google_oauth: Option<Arc<GoogleOAuthService>>,
 }
@@ -120,9 +123,7 @@ impl AppState {
             // Check for AWS Bedrock configuration
             #[cfg(feature = "bedrock")]
             {
-                if std::env::var("AWS_BEDROCK_ENABLED").is_ok()
-                    || std::env::var("AWS_ACCESS_KEY_ID").is_ok()
-                {
+                if llm_enabled("AWS_BEDROCK_ENABLED", "AWS_ACCESS_KEY_ID") {
                     let config = BedrockConfig::default();
                     let service = BedrockService::new(config).await;
                     if service.health_check().await {
@@ -145,9 +146,7 @@ impl AppState {
         // Fall back to Ollama if Bedrock not configured/available
         let llm_service: Option<Arc<dyn LlmService>> = if llm_service.is_some() {
             llm_service
-        } else if std::env::var("OLLAMA_BASE_URL").is_ok()
-            || std::env::var("ENABLE_LLM_BOTS").is_ok()
-        {
+        } else if llm_enabled("ENABLE_LLM_BOTS", "OLLAMA_BASE_URL") {
             let service = OllamaService::new(OllamaConfig::default());
             // Check if Ollama is available
             if service.health_check().await {
@@ -180,6 +179,7 @@ impl AppState {
             event_receiver,
             llm_service,
             llm_memories,
+            bot_runner: Arc::new(BotRunner::new()),
             google_oauth,
         })
     }
@@ -226,6 +226,25 @@ impl AppState {
     }
 }
 
+/// Whether an LLM service is switched on. The switch (`AWS_BEDROCK_ENABLED`,
+/// `ENABLE_LLM_BOTS`), when present, decides alone: off when empty, `false` or `0`, so a
+/// compose file passing `AWS_BEDROCK_ENABLED=false` keeps Bedrock off even with AWS keys.
+/// Only without a switch does its key (`AWS_ACCESS_KEY_ID`, `OLLAMA_BASE_URL`), set and
+/// not empty, turn the service on.
+fn llm_enabled(switch: &str, key: &str) -> bool {
+    llm_switch(std::env::var(switch).ok(), std::env::var(key).ok())
+}
+
+fn llm_switch(switch: Option<String>, key: Option<String>) -> bool {
+    match switch {
+        Some(v) => {
+            let v = v.trim();
+            !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+        }
+        None => key.is_some_and(|k| !k.trim().is_empty()),
+    }
+}
+
 /// Game event for SSE broadcasting
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -268,6 +287,28 @@ impl GameEvent {
 
 #[cfg(test)]
 mod tests {
+    fn some(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    #[test]
+    fn test_llm_switch_present_decides_alone() {
+        // AWS_BEDROCK_ENABLED=false with AWS keys set: off
+        assert!(!llm_switch(some("false"), some("AKIA123")));
+        assert!(!llm_switch(some("0"), some("AKIA123")));
+        assert!(!llm_switch(some(""), some("http://ollama:11434")));
+        assert!(llm_switch(some("true"), None));
+        assert!(llm_switch(some("1"), some("")));
+    }
+
+    #[test]
+    fn test_llm_switch_absent_falls_back_on_the_key() {
+        assert!(llm_switch(None, some("AKIA123")));
+        assert!(llm_switch(None, some("http://ollama:11434")));
+        assert!(!llm_switch(None, some("  ")));
+        assert!(!llm_switch(None, None));
+    }
+
     use super::*;
 
     #[test]

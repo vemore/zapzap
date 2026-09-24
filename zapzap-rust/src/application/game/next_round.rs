@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::domain::entities::{PartyStatus, Round};
 use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError};
 use crate::domain::services::{initialize_round, is_game_over};
-use crate::domain::value_objects::GameAction;
+use crate::domain::value_objects::{GameAction, GameState};
 
 /// Next round input
 pub struct NextRoundInput {
@@ -171,8 +171,7 @@ impl<P: PartyRepository> NextRound<P> {
         // Get players
         let players = self.party_repo.get_party_players(&input.party_id).await?;
 
-        // Calculate next starting player (rotate)
-        let next_starting_player = (game_state.starting_player + 1) % game_state.player_count;
+        let next_starting_player = next_starting_player(&game_state);
 
         // Create scores array
         let mut scores = [0u16; 8];
@@ -233,6 +232,16 @@ impl<P: PartyRepository> NextRound<P> {
     }
 }
 
+/// The next round's starter: the seat after this round's starter, clockwise, skipping
+/// eliminated players (GAME_RULES.md "Subsequent Rounds")
+pub fn next_starting_player(game_state: &GameState) -> u8 {
+    let n = game_state.player_count.max(1);
+    (1..=n)
+        .map(|step| (game_state.starting_player + step) % n)
+        .find(|&seat| !game_state.is_eliminated(seat))
+        .unwrap_or(game_state.starting_player)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum NextRoundError {
     #[error("Party not found")]
@@ -245,4 +254,38 @@ pub enum NextRoundError {
     RoundNotFinished,
     #[error("Repository error: {0}")]
     Repository(#[from] RepositoryError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(player_count: u8, starting_player: u8, eliminated: &[u8]) -> GameState {
+        let mut gs = GameState::new(player_count);
+        gs.starting_player = starting_player;
+        for &p in eliminated {
+            gs.eliminate_player(p);
+        }
+        gs
+    }
+
+    #[test]
+    fn test_next_starter_rotates() {
+        assert_eq!(next_starting_player(&state(4, 0, &[])), 1);
+        assert_eq!(next_starting_player(&state(4, 3, &[])), 0);
+    }
+
+    #[test]
+    fn test_next_starter_skips_an_eliminated_seat() {
+        // Seat 1 is next in line but out of the game: seat 2 starts
+        assert_eq!(next_starting_player(&state(4, 0, &[1])), 2);
+        assert_eq!(next_starting_player(&state(5, 0, &[1, 2, 3])), 4);
+    }
+
+    #[test]
+    fn test_next_starter_wraps_past_the_last_seat() {
+        // From the last seat the rotation wraps to seat 0, skipping it when eliminated
+        assert_eq!(next_starting_player(&state(4, 2, &[3])), 0);
+        assert_eq!(next_starting_player(&state(4, 2, &[3, 0])), 1);
+    }
 }

@@ -141,6 +141,15 @@ impl ThibotStrategy {
         }
     }
 
+    /// The discard card the last `select_cards` planned to take, if it planned one
+    pub fn coordinated_target(&self) -> Option<u8> {
+        self.coordinated_decision
+            .read()
+            .ok()
+            .filter(|c| c.is_coordinated)
+            .map(|c| c.target_card)
+    }
+
     /// Get the minimum opponent hand size
     fn min_opponent_hand_size(&self, state: &GameState, player_index: u8) -> usize {
         let mut min_size = usize::MAX;
@@ -799,5 +808,38 @@ mod tests {
 
         // Should play the kings (24 points) not the ace (1 point)
         assert!(cards.contains(&12) || cards.contains(&25));
+    }
+
+    #[test]
+    fn test_draw_follows_the_play_on_the_same_instance() {
+        use crate::domain::services::{execute_play, initialize_round};
+        use crate::domain::value_objects::GameAction;
+
+        // Deal first plays of a round until Thibot holds cards back for the flipped card
+        for seed in 0..2000u64 {
+            let mut state = initialize_round(4, 6, &[0u16; 8], 0, 1, 0, Some(seed));
+            let Some(flipped) = state.deck.pop() else {
+                continue;
+            };
+            state.last_cards_played.push(flipped);
+            state.current_action = GameAction::Play;
+
+            let thibot = ThibotStrategy::new();
+            let play = thibot.select_cards(&state, 0);
+            let Some(target) = thibot.coordinated_target() else {
+                continue;
+            };
+            execute_play(&mut state, &play).unwrap();
+
+            // The instance that played remembers the plan and draws the card it held for
+            assert!(matches!(
+                thibot.decide_draw_source(&state, 0),
+                DrawSource::Discard(card) if card == target
+            ));
+            // A fresh instance knows no plan: the backend rebuilding strategies lost it
+            assert_eq!(ThibotStrategy::new().coordinated_target(), None);
+            return;
+        }
+        panic!("no deal made Thibot coordinate its play and its draw");
     }
 }

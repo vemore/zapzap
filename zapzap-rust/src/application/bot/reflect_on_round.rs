@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+use crate::domain::services::COUNTERACT_PENALTY_PER_OPPONENT;
 use crate::infrastructure::bot::llm_memory::{
     Decision, LlmBotMemory, StrategyCategory, StrategyContext,
 };
@@ -55,11 +56,12 @@ impl ReflectOnRound {
         input: ReflectOnRoundInput,
         memory: Arc<RwLock<LlmBotMemory>>,
     ) -> ReflectOnRoundOutput {
-        let mut memory_guard = memory.write().await;
-
-        // Get decisions made this round
-        let decisions = memory_guard
-            .get_decisions_for_round(input.round_number)
+        // The round's decisions are copied out under a read lock: the LLM call below can
+        // take the service timeout, and the bot's next decisions need the memory meanwhile
+        let decisions = memory
+            .read()
+            .await
+            .get_decisions_for_round(&input.party_id, input.round_number)
             .to_vec();
 
         if decisions.is_empty() {
@@ -80,13 +82,13 @@ impl ReflectOnRound {
         let user_prompt =
             Self::build_reflection_prompt(input.round_number, &input.outcome, &decisions);
 
-        // Call LLM for reflection
+        // Call LLM for reflection, no lock held
         match self.llm_service.invoke(&system_prompt, &user_prompt).await {
             Ok(response) => {
                 // Parse insights from response
                 let insights = Self::parse_insights(&response);
 
-                // Add insights to memory
+                let mut memory_guard = memory.write().await;
                 for insight in &insights {
                     let context = StrategyContext {
                         party_id: Some(input.party_id.clone()),
@@ -98,14 +100,13 @@ impl ReflectOnRound {
                 }
 
                 // Clear round decisions and increment counter
-                memory_guard.clear_round_decisions(input.round_number);
+                memory_guard.clear_round_decisions(&input.party_id, input.round_number);
                 memory_guard.increment_rounds_analyzed();
 
-                // Save memory
-                drop(memory_guard);
-                if let Err(e) = memory.write().await.save().await {
+                if let Err(e) = memory_guard.save().await {
                     error!("Failed to save LLM memory: {}", e);
                 }
+                drop(memory_guard);
 
                 info!(
                     "Round reflection completed: {} insights generated for round {}",
@@ -140,7 +141,7 @@ impl ReflectOnRound {
 - But: réduire la valeur de sa main et appeler ZapZap quand ≤5 points
 - Valeurs: A=1, 2-10=face, J=11, Q=12, K=13, Joker=0 (ou 25 si pénalité)
 - Coups valides: cartes seules, paires/brelans, suites (3+ cartes même couleur)
-- Si contre: +main + (joueurs-1)×5 points de pénalité
+- Si contre: +main + (joueurs-1)×{PENALITE} points de pénalité
 
 ## Ta tâche
 Analyser les décisions d'un round et générer 0-1 insight stratégique.
@@ -161,7 +162,7 @@ Exemples:
 [draw_decision] Prendre les Jokers de la défausse est toujours rentable
 
 Sois concis et actionnable. Un seul insight maximum."#
-            .to_string()
+            .replace("{PENALITE}", &COUNTERACT_PENALTY_PER_OPPONENT.to_string())
     }
 
     /// Build reflection prompt with round context
@@ -358,5 +359,95 @@ mod tests {
         assert_eq!(ReflectOnRound::cards_to_text(&[0]), "AP");
         assert_eq!(ReflectOnRound::cards_to_text(&[52]), "JKR");
         assert_eq!(ReflectOnRound::cards_to_text(&[0, 13]), "AP, AC");
+    }
+
+    use crate::infrastructure::bot::llm_memory::DecisionDetails;
+    use crate::infrastructure::services::LlmError;
+    use async_trait::async_trait;
+    use std::time::Duration;
+    use tokio::sync::Notify;
+
+    /// An LLM whose answer waits until the test releases it
+    struct HeldLlm {
+        called: Notify,
+        release: Notify,
+    }
+
+    #[async_trait]
+    impl LlmService for HeldLlm {
+        async fn invoke(&self, _system: &str, _user: &str) -> Result<String, LlmError> {
+            self.called.notify_one();
+            self.release.notified().await;
+            Ok("[play_strategy] Jouer les figures en premier vide la main plus vite".to_string())
+        }
+
+        async fn health_check(&self) -> bool {
+            true
+        }
+    }
+
+    fn decision(kind: &str) -> Decision {
+        Decision {
+            decision_type: kind.to_string(),
+            details: DecisionDetails::default(),
+            timestamp: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_reflection_releases_the_memory_during_the_llm_call() {
+        let dir = std::env::temp_dir().join(format!("zapzap-reflect-{}", uuid::Uuid::new_v4()));
+        let memory = Arc::new(RwLock::new(LlmBotMemory::new("bot", Some(dir.clone()))));
+        memory
+            .write()
+            .await
+            .track_decision("party", 1, decision("play"));
+        // The same round number in another party is not this reflection's
+        memory
+            .write()
+            .await
+            .track_decision("other", 1, decision("play"));
+
+        let llm = Arc::new(HeldLlm {
+            called: Notify::new(),
+            release: Notify::new(),
+        });
+        let reflect = ReflectOnRound::new(llm.clone());
+        let input = ReflectOnRoundInput {
+            bot_user_id: "bot".to_string(),
+            party_id: "party".to_string(),
+            round_number: 1,
+            outcome: RoundOutcome {
+                won: false,
+                counteracted: false,
+                score_change: 12,
+                hand_points: 12,
+                final_hand: vec![11],
+                is_golden_score: false,
+            },
+        };
+        let task = tokio::spawn({
+            let memory = memory.clone();
+            async move { reflect.execute(input, memory).await }
+        });
+
+        // While the LLM call is pending, the bot's next action records its decision
+        llm.called.notified().await;
+        let write = tokio::time::timeout(Duration::from_secs(1), memory.write()).await;
+        let mut guard = write.expect("the memory is locked during the LLM call");
+        guard.track_decision("party", 2, decision("draw"));
+        drop(guard);
+
+        llm.release.notify_one();
+        let output = task.await.unwrap();
+        assert!(output.success);
+        assert_eq!(output.insights_generated, 1);
+        let memory = memory.read().await;
+        assert!(memory.get_decisions_for_round("party", 1).is_empty());
+        assert_eq!(memory.get_decisions_for_round("party", 2).len(), 1);
+        assert_eq!(memory.get_decisions_for_round("other", 1).len(), 1);
+        assert!(memory.has_strategies());
+        drop(memory);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
