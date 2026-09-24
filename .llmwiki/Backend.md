@@ -18,7 +18,7 @@
 | Layer | Contents |
 |---|---|
 | `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `error.rs` (typed `ApiError` and the `ApiJson` body extractor, see Error mapping), `middleware/auth_middleware.rs`, `sse.rs`, `dto/` (empty mod, 1 line) |
-| `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `party/add_bot_to_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/reflect_on_round`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
+| `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `party/add_bot_to_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/{reflect_on_round,runner}`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
 | `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 679 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
 | `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{llm_service,session_manager}` |
 | `training/` | **empty directory**, untracked by git |
@@ -35,19 +35,19 @@
 | `RUST_LOG` | `zapzap_backend=debug,tower_http=debug` | `zapzap-rust/src/main.rs:28-29` |
 | `DATABASE_URL`, then `DB_PATH` | `sqlite:./data/zapzap.db` (a `sqlite:` prefix is added if missing) | `zapzap-rust/src/infrastructure/app_state.rs:47-56` |
 | `JWT_SECRET` | `zapzap-secret-key-change-in-production` (hardcoded fallback, no warning logged) | `zapzap-rust/src/infrastructure/app_state.rs:67-68` |
-| `AWS_BEDROCK_ENABLED` or `AWS_ACCESS_KEY_ID` (presence) | unset → no Bedrock; only with `bedrock` feature | `zapzap-rust/src/infrastructure/app_state.rs:89-90` |
+| `AWS_BEDROCK_ENABLED` or `AWS_ACCESS_KEY_ID` (set, not empty, not `false`/`0`: `env_on`) | unset → no Bedrock; only with `bedrock` feature (image: build arg `CARGO_FEATURES=bedrock`) | `zapzap-rust/src/infrastructure/app_state.rs` |
 | `AWS_BEDROCK_REGION` | `us-east-1` | `zapzap-rust/src/infrastructure/services/llm_service.rs:180` |
 | `AWS_BEDROCK_MODEL_ID` | `meta.llama3-3-70b-instruct-v1:0` | `zapzap-rust/src/infrastructure/services/llm_service.rs:181-182` |
-| `OLLAMA_BASE_URL` or `ENABLE_LLM_BOTS` (presence enables Ollama) | unset → no LLM | `zapzap-rust/src/infrastructure/app_state.rs:114-115` |
+| `OLLAMA_BASE_URL` or `ENABLE_LLM_BOTS` (set, not empty, not `false`/`0`, enables Ollama) | unset → no LLM | `zapzap-rust/src/infrastructure/app_state.rs` |
 | `OLLAMA_BASE_URL` (value) | `http://localhost:11434` | `zapzap-rust/src/infrastructure/services/llm_service.rs:47-48` |
 | `OLLAMA_MODEL` | `llama3.2` | `zapzap-rust/src/infrastructure/services/llm_service.rs:49` |
 | `BOT_STRATEGIES_DIR` | `data/bot-strategies` (LLM bot memory JSON per bot id) | `zapzap-rust/src/infrastructure/bot/llm_memory.rs:155-156` |
 
-- `zapzap-rust/docker-compose.yml` sets `PORT=9999`, `DATABASE_URL=sqlite:/app/data/zapzap.db`, `JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}` (same default as the code), mounts `../data:/app/data`, healthcheck `curl -f http://localhost:9999/api/health`.
+- `zapzap-rust/docker-compose.yml` sets `PORT=9999`, `DATABASE_URL=sqlite:/app/data/zapzap.db`, `JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}` (same default as the code), mounts `../data:/app/data`, healthcheck `curl -f http://localhost:9999/api/health`. It passes the LLM variables above (and `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) through only when they are set on the host, sets `BOT_STRATEGIES_DIR=/app/data/bot-strategies`, and hands the build arg `CARGO_FEATURES` (empty by default; `bedrock` compiles the Bedrock client) to `zapzap-rust/Dockerfile`.
 - Ollama config: timeout 60 s, temperature 0.3, max_tokens 512 (`llm_service.rs:50-52`); Bedrock: timeout 30 s (`llm_service.rs:183`).
 
 ### AppState (`zapzap-rust/src/infrastructure/app_state.rs`)
-- Fields (`:17-42`): `db: SqlitePool`, `jwt_service`, `session_manager`, `user_repo`, `party_repo`, `event_sender`/`event_receiver` (async-broadcast), `llm_service: Option<Arc<dyn LlmService>>`, `llm_memories` (per-bot `LlmBotMemory` map).
+- Fields (`:17-42`): `db: SqlitePool`, `jwt_service`, `session_manager`, `user_repo`, `party_repo`, `event_sender`/`event_receiver` (async-broadcast), `llm_service: Option<Arc<dyn LlmService>>`, `llm_memories` (per-bot `LlmBotMemory` map), `bot_runner` (per-party bot loops and strategies, see Bot triggering).
 - DB: `SqlitePool::connect(&db_url)` (`:61`) — no `create_if_missing`, so the file must already exist (it may be empty: the tables are created, see below).
 - LLM priority Bedrock > Ollama > None; each is kept only if `health_check()` succeeds at startup (`:84-129`). With no LLM, LLM bots use a fallback strategy (see [[Bots]]).
 - `get_llm_memory` lazily creates and `load()`s a bot's memory (`:148-165`).
@@ -77,11 +77,12 @@
 - `GET /api/players/connected` returns at most 5 sessions, newest first (`zapzap-rust/src/api/routes/players.rs:39`).
 
 ### Bot triggering
-- No bot scheduler: bots are driven by `trigger_bot_internal` (`zapzap-rust/src/api/routes/game.rs:1224`) spawned with `tokio::spawn` after `GET state` (100 ms delay, `:368-374`), `selectHandSize`, `play`, `draw`, `nextRound` (300 ms, `:435`, `:502`, `:557`, `:714`). It loops while the current player is a bot, sleeping 200 ms between actions (`:1579`).
-- Iteration cap: 50 if an active human remains, 500 if only bots (`game.rs:1257`). Hand size for bots always chosen by `HardBotStrategy` (`game.rs:1337`).
-- **No per-party lock**: every state poll spawns a new loop, so concurrent loops can act on the same bot turn (read-modify-write on `game_state`).
-- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs:757`) duplicates the loop inline with a cap of 50 (`:767`).
-- After a human ZapZap, `trigger_llm_reflection` (`game.rs:1586`) runs `ReflectOnRound` for each LLM bot if an LLM service exists; `score_change` is hard-coded 0 (`game.rs:1647`).
+- No bot scheduler: bots move when a request triggers them. `GET state` (100 ms delay), `selectHandSize`, `play`, `draw` and `nextRound` (300 ms) call `spawn_bot_turns` (`zapzap-rust/src/application/bot/runner.rs`), which runs `trigger_bot_turns` in a `tokio::spawn`. The loop plays while the current player is a bot, 200 ms between actions (`ACTION_PAUSE`).
+- **One loop at a time per party**: `AppState.bot_runner` (`BotRunner`) keeps one slot per party — a `pending` flag and the party's `Roster` behind a tokio mutex. A trigger sets `pending` and returns at once when a loop holds the mutex; the running loop goes round again while `pending` is set, and re-checks it after unlocking, so no trigger is lost and no two loops act on the same party. The slot is dropped when the party is no longer playing.
+- **One strategy per bot for the game**: the `Roster` builds a bot's `BotBrain` (a rule-based `BotStrategy`, or the `LlmBotStrategy`) on its first move and hands back the same instance afterwards; hand size is the strategy's choice, clamped to 4-7 (4-10 in Golden Score). See [[Bots]].
+- Action cap per loop: 50 if an active human remains, 500 if only bots (`MAX_ACTIONS_WITH_HUMANS`, `MAX_ACTIONS_BOTS_ONLY`).
+- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs`) calls `run_bot_turns_now`, which waits for the party's running loop, then runs one itself and answers the number of actions taken (500 `BOT_ACTION_ERROR` on a failed bot action).
+- After a ZapZap (a human's, from `game.rs`, or a bot's, from the loop), `trigger_llm_reflection` (`runner.rs`) runs `ReflectOnRound` for each LLM bot if an LLM service exists, with the round outcome `round_outcome` reads from the round-end state: `score_change` is the points the round added to the bot's total (`round_scores`).
 - Pending bot turns are not recovered at startup (the Node `BotOrchestrator.recoverPendingBotTurns`, `src/infrastructure/bot/BotOrchestrator.js:59`, has no Rust equivalent); the next `GET state` restarts them.
 
 ### Error mapping
@@ -90,6 +91,7 @@
 - The auth, admin, bots, stats and history handlers still build their errors inline (no message matching there).
 
 ## Decisions & History
+- 2026-09-24 (fix/rust-rules-and-bots): bot turns moved out of `api/routes/game.rs` into `application/bot/runner.rs`, behind a per-party lock with a `pending` flag — concurrent polls used to start one loop each, which read the same state and played the same bot turn twice (a test replaying six polls and six triggers at once saw six plays for one turn). Strategies are kept per bot for the game, because Thibot's play/draw coordination and VinceBot's round memory were rebuilt away on every action. The image gained the `CARGO_FEATURES` build arg and the compose file the LLM variables; the LLM switches now read `false`/`0`/empty as off, since the Node compose file sets `AWS_BEDROCK_ENABLED=false`.
 - 2026-09-24 (fix/rust-api-errors-contract): the substring matching of error messages was replaced by typed errors, after six of its branches were found answering 500 for client errors ([[Api]] keeps the list of cases where Rust answers a 4xx and Node a 500). The play and draw use cases gained typed variants (`CardNotInHand`, `DeckEmpty`, `NoCardsAvailable`, `CardNotAvailable`) checked before the domain call, so that no error code depends on the domain's message strings. The same change fixed the seats: join used `players.len()` as the new seat, which after a leave collided with a held seat on `UNIQUE(party_id, player_index)` (a 500); join, add-bot and create now take the lowest free seat (`lowest_free_seat`, `zapzap-rust/src/domain/entities/player.rs`), and start renumbers the seats 0..n-1 (`PartyRepository::set_player_index`) because the game state indexes hands and scores by seat position. `add_party_player` reports a second seat for the same user as `RepositoryError::AlreadyExists`, answered 409 `ALREADY_IN_PARTY`.
 - Backend rewritten from Node/Express to Rust in `e4f83da` (2025-12-23), keeping the Node JSON shapes ("matching JS behavior" comments, `zapzap-rust/src/api/routes/auth.rs:83`) and the SQLite file, which explains the bcrypt fallback and the absence of Rust-side schema creation.
 - 2026-09-23 (fix/rust-api-schema): the backend got its own schema step so that `tests/api_tests.rs` could run on an in-memory DB and join CI. The Node DDL was copied rather than written as sqlx migrations, because a migration runner on the production file (no `_sqlx_migrations` table) would either refuse it or re-run `CREATE TABLE` on it; `IF NOT EXISTS` DDL is a no-op there. The same change made `POST /api/party` without `name` answer 400 `MISSING_PARTY_NAME` like Node (it answered axum's 422), which `test_create_party_missing_name` had caught.

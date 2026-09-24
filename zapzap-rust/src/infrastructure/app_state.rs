@@ -5,6 +5,7 @@ use async_broadcast::{broadcast, Receiver, Sender};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
+use crate::application::bot::BotRunner;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
@@ -39,6 +40,9 @@ pub struct AppState {
 
     /// LLM bot memories (keyed by bot user ID)
     pub llm_memories: Arc<RwLock<HashMap<String, Arc<RwLock<LlmBotMemory>>>>>,
+
+    /// Bot turns: one loop at a time per party, and each bot's strategy for the game
+    pub bot_runner: Arc<BotRunner>,
 }
 
 impl AppState {
@@ -86,9 +90,7 @@ impl AppState {
             // Check for AWS Bedrock configuration
             #[cfg(feature = "bedrock")]
             {
-                if std::env::var("AWS_BEDROCK_ENABLED").is_ok()
-                    || std::env::var("AWS_ACCESS_KEY_ID").is_ok()
-                {
+                if env_on("AWS_BEDROCK_ENABLED") || env_on("AWS_ACCESS_KEY_ID") {
                     let config = BedrockConfig::default();
                     let service = BedrockService::new(config).await;
                     if service.health_check().await {
@@ -111,9 +113,7 @@ impl AppState {
         // Fall back to Ollama if Bedrock not configured/available
         let llm_service: Option<Arc<dyn LlmService>> = if llm_service.is_some() {
             llm_service
-        } else if std::env::var("OLLAMA_BASE_URL").is_ok()
-            || std::env::var("ENABLE_LLM_BOTS").is_ok()
-        {
+        } else if env_on("OLLAMA_BASE_URL") || env_on("ENABLE_LLM_BOTS") {
             let service = OllamaService::new(OllamaConfig::default());
             // Check if Ollama is available
             if service.health_check().await {
@@ -141,6 +141,7 @@ impl AppState {
             event_receiver,
             llm_service,
             llm_memories,
+            bot_runner: Arc::new(BotRunner::new()),
         })
     }
 
@@ -184,6 +185,15 @@ impl AppState {
             }
         }
     }
+}
+
+/// Whether an LLM switch is set: present, not empty, not `false` or `0` (a compose file
+/// that passes `AWS_BEDROCK_ENABLED=false` means off)
+fn env_on(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|v| {
+        let v = v.trim();
+        !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+    })
 }
 
 /// Game event for SSE broadcasting

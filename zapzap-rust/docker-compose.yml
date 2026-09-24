@@ -4,6 +4,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # `bedrock` builds the AWS Bedrock client for the LLM bots
+        - CARGO_FEATURES=${CARGO_FEATURES:-}
     container_name: zapzap-rust-backend
     restart: unless-stopped
     environment:
@@ -11,6 +14,17 @@ services:
       - DATABASE_URL=sqlite:/app/data/zapzap.db
       - JWT_SECRET=${JWT_SECRET:-zapzap-secret-key-change-in-production}
       - RUST_LOG=${RUST_LOG:-info,zapzap_backend=debug}
+      # LLM bots (Bots wiki page): passed only when set, since setting one turns a service on
+      - AWS_BEDROCK_ENABLED
+      - AWS_BEDROCK_REGION
+      - AWS_BEDROCK_MODEL_ID
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - OLLAMA_BASE_URL
+      - OLLAMA_MODEL
+      - ENABLE_LLM_BOTS
+      - BOT_STRATEGIES_DIR=/app/data/bot-strategies
     volumes:
       - ../data:/app/data
     ports:

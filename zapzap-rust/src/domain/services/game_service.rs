@@ -166,6 +166,15 @@ pub fn execute_draw(
     Ok(card)
 }
 
+/// Points a counteracted ZapZap caller takes per other active player, on top of their hand
+pub const COUNTERACT_PENALTY_PER_OPPONENT: u16 = 5;
+
+/// The counteract penalty with `active_players` players still in the game:
+/// (active players − 1) × [`COUNTERACT_PENALTY_PER_OPPONENT`]
+pub fn counteract_penalty(active_players: u8) -> u16 {
+    active_players.saturating_sub(1) as u16 * COUNTERACT_PENALTY_PER_OPPONENT
+}
+
 /// Execute a ZapZap call
 pub fn execute_zapzap(state: &mut GameState) -> Result<ZapZapResult, &'static str> {
     let caller = state.current_turn;
@@ -202,8 +211,9 @@ pub fn execute_zapzap(state: &mut GameState) -> Result<ZapZapResult, &'static st
         scores: Vec::new(),
     };
 
-    // Determine who has lowest hand
+    // Who holds the lowest hand: the counteracting player, else the caller
     let winner = counteracted_by.unwrap_or(caller);
+    let counteracted = counteracted_by.is_some();
 
     for player in 0..state.player_count {
         if state.is_eliminated(player) {
@@ -211,15 +221,16 @@ pub fn execute_zapzap(state: &mut GameState) -> Result<ZapZapResult, &'static st
         }
 
         let hand = state.get_hand(player);
-        let is_lowest = player == winner;
+        // Every player tied at the lowest value scores 0 (GAME_RULES.md "Final Scoring"),
+        // except a counteracted caller, who takes the penalty even when tied
+        let is_lowest = card_analyzer::calculate_hand_value(hand) == lowest_value
+            && !(player == caller && counteracted);
         let hand_score = card_analyzer::calculate_hand_score(hand, is_lowest);
 
-        let round_score = if player == caller && counteracted_by.is_some() {
-            // Caller was counteracted: gets hand value + penalty
-            let penalty = (state.active_player_count() - 1) as u16 * 5;
-            hand_score + penalty
+        let round_score = if player == caller && counteracted {
+            hand_score + counteract_penalty(state.active_player_count())
         } else if is_lowest {
-            0 // Lowest hand gets 0
+            0
         } else {
             hand_score
         };
@@ -424,5 +435,60 @@ mod tests {
             Some(1),
             "In Golden Score tie, caller (player 0) should lose"
         );
+    }
+
+    /// Four active players in the play phase, player 0 to act, with the given hands
+    fn four_player_state(hands: [&[u8]; 4]) -> GameState {
+        let mut state = initialize_round(4, 5, &[0u16; 8], 0, 2, 0, Some(7));
+        for (i, hand) in hands.iter().enumerate() {
+            state.hands[i].clear();
+            state.hands[i].extend(hand.iter().copied());
+        }
+        state.current_turn = 0;
+        state.current_action = GameAction::Play;
+        state
+    }
+
+    fn round_score(result: &ZapZapResult, player: u8) -> u16 {
+        result
+            .scores
+            .iter()
+            .find(|(p, _)| *p == player)
+            .map(|(_, s)| *s)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_tied_lowest_hands_all_score_zero() {
+        // Caller 0 holds 4; players 1 and 2 tie at the lowest, 2 points (A + A, and
+        // A + Joker + A); player 3 holds 6. Both tied players score 0, a Joker in a
+        // lowest hand included; the counteracted caller takes 4 + (4 - 1) × 5.
+        let mut state = four_player_state([&[1, 14], &[0, 13], &[26, 52, 39], &[2, 15]]);
+        let result = execute_zapzap(&mut state).unwrap();
+
+        assert!(result.counteracted);
+        assert_eq!(round_score(&result, 0), 4 + 15);
+        assert_eq!(round_score(&result, 1), 0);
+        assert_eq!(round_score(&result, 2), 0);
+        assert_eq!(round_score(&result, 3), 6);
+    }
+
+    #[test]
+    fn test_counteracted_caller_tied_at_lowest_still_takes_the_penalty() {
+        // Caller 0 and player 1 both hold 3: player 1 scores 0, the caller 3 + 15
+        let mut state = four_player_state([&[0, 1], &[13, 14], &[2, 3], &[4, 5]]);
+        let result = execute_zapzap(&mut state).unwrap();
+
+        assert_eq!(round_score(&result, 0), 3 + counteract_penalty(4));
+        assert_eq!(round_score(&result, 1), 0);
+        assert_eq!(round_score(&result, 2), 3 + 4);
+        assert_eq!(round_score(&result, 3), 5 + 6);
+    }
+
+    #[test]
+    fn test_counteract_penalty_counts_other_active_players() {
+        assert_eq!(counteract_penalty(5), 4 * COUNTERACT_PENALTY_PER_OPPONENT);
+        assert_eq!(counteract_penalty(2), COUNTERACT_PENALTY_PER_OPPONENT);
+        assert_eq!(counteract_penalty(0), 0);
     }
 }

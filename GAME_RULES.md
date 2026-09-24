@@ -139,6 +139,10 @@ if (zapzap_called && someone_has_lower_or_equal) {
 }
 ```
 
+**Ties:** when several players share the lowest hand value, **every one of them** scores 0.
+A counteracted ZapZap caller still takes the penalty above, even when tied for the lowest.
+(Golden Score ties: see below.)
+
 **Example Scoring:**
 
 ```

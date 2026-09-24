@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 use super::{BotAction, BotStrategy, DrawSource, HardBotStrategy};
+use crate::domain::services::{counteract_penalty, COUNTERACT_PENALTY_PER_OPPONENT};
 use crate::domain::value_objects::GameState;
 use crate::infrastructure::bot::card_analyzer::{
     calculate_hand_value, can_call_zapzap, find_all_valid_plays, get_card_points, is_valid_play,
@@ -97,7 +98,7 @@ Each turn has two phases:
 ### ZapZap Rules
 - You can call ZapZap when your hand value is 5 points or less (Joker = 0 for this check)
 - If you have the lowest hand value: You score 0, all other players score their hand value (Joker = 25 points penalty)
-- If someone else has equal or lower hand value: You are COUNTERACTED and receive +20 points penalty plus your hand value
+- If someone else has equal or lower hand value: You are COUNTERACTED and score {COUNTERACT_RULE}
 
 ### Winning
 - Players are eliminated when their total score exceeds 100 points
@@ -119,7 +120,16 @@ You must respond with ONLY the requested information:
 - For ZapZap decisions: Answer "YES" or "NO"
 - For draw decisions: Answer "DECK" or "DISCARD"
 
-Be concise and direct in your responses."#.to_string()
+Be concise and direct in your responses."#
+            .replace("{COUNTERACT_RULE}", &Self::counteract_rule_text())
+    }
+
+    /// The counteract penalty as the rules state it, built from the constant scoring uses
+    fn counteract_rule_text() -> String {
+        format!(
+            "your hand value (Jokers = 25) plus a penalty of {} points per other active player",
+            COUNTERACT_PENALTY_PER_OPPONENT
+        )
     }
 
     /// Build system prompt with learned strategies
@@ -441,10 +451,13 @@ Consider:
 1. Opponents with few cards (1-3) have higher chance of having low hands = counter risk
 2. Opponents with many cards (5+) likely have high hands = safer to ZapZap
 3. Your current score vs opponents - risk tolerance
-4. If counteracted: +20 penalty plus your hand value
+4. If counteracted: +{} penalty plus your hand value
 
 Respond with ONLY "YES" or "NO"."#,
-            context, hand_value, avg_opponent_cards
+            context,
+            hand_value,
+            avg_opponent_cards,
+            counteract_penalty(state.active_player_count())
         );
 
         match llm_service.invoke(&system_prompt, &user_prompt).await {
@@ -670,5 +683,27 @@ mod tests {
         // Joker
         let result = LlmBotStrategy::parse_play_response("Play the Joker", &hand);
         assert_eq!(result, Some(vec![52]));
+    }
+
+    #[test]
+    fn test_prompt_counteract_penalty_matches_scoring() {
+        let prompt = LlmBotStrategy::build_system_prompt_base();
+        assert!(!prompt.contains("{COUNTERACT_RULE}"));
+        assert!(
+            !prompt.contains("+20"),
+            "the penalty depends on the player count"
+        );
+        assert!(prompt.contains(&format!(
+            "a penalty of {} points per other active player",
+            COUNTERACT_PENALTY_PER_OPPONENT
+        )));
+
+        // The per-player rate times the other active players is what scoring charges
+        for active in 2..=8u8 {
+            assert_eq!(
+                counteract_penalty(active),
+                (active as u16 - 1) * COUNTERACT_PENALTY_PER_OPPONENT
+            );
+        }
     }
 }

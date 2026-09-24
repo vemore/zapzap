@@ -71,6 +71,16 @@ impl<P: PartyRepository> PlayCards<P> {
             return Err(PlayCardsError::NoCardsSelected);
         }
 
+        // Each card once: [c, c, c] would take one card from the hand and put three down
+        if let Some((_, &card)) = input
+            .card_ids
+            .iter()
+            .enumerate()
+            .find(|(i, c)| input.card_ids[..*i].contains(c))
+        {
+            return Err(PlayCardsError::RepeatedCard(card));
+        }
+
         // Every card in hand before the combination check, as Node's PlayCards does
         let hand = game_state.get_hand(player_index);
         if let Some(&card) = input.card_ids.iter().find(|c| !hand.contains(c)) {
@@ -124,6 +134,8 @@ pub enum PlayCardsError {
     NoCardsSelected,
     #[error("Card {0} not in hand")]
     CardNotInHand(u8),
+    #[error("Card {0} played more than once")]
+    RepeatedCard(u8),
     #[error("Invalid card combination")]
     InvalidCombination,
     #[error("Game error: {0}")]
