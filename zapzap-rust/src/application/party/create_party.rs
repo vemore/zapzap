@@ -6,6 +6,11 @@ use crate::domain::entities::{generate_invite_code, Party, PartyVisibility};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 use crate::domain::value_objects::PartySettings;
 
+/// Party name bounds once trimmed, in UTF-16 code units as JavaScript's `length`
+/// (Node: CreateParty.js), so "🎲🎲" is 4 long
+pub const MIN_NAME_LENGTH: usize = 3;
+pub const MAX_NAME_LENGTH: usize = 50;
+
 /// Create party input
 pub struct CreatePartyInput {
     pub owner_id: String,
@@ -52,11 +57,40 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             ));
         }
 
-        // Validate name
-        if input.name.trim().is_empty() {
+        // Validate name, trimmed, as Node's CreateParty.js
+        let name = input.name.trim().to_string();
+        let name_length = name.encode_utf16().count();
+        if name_length < MIN_NAME_LENGTH {
+            return Err(CreatePartyError::Validation(format!(
+                "Party name must be at least {MIN_NAME_LENGTH} characters long"
+            )));
+        }
+        if name_length > MAX_NAME_LENGTH {
+            return Err(CreatePartyError::Validation(format!(
+                "Party name must not exceed {MAX_NAME_LENGTH} characters"
+            )));
+        }
+
+        input
+            .settings
+            .validate()
+            .map_err(CreatePartyError::Validation)?;
+
+        // Node: CreateParty.js
+        let unique_bot_ids: std::collections::HashSet<&String> = input.bot_ids.iter().collect();
+        if unique_bot_ids.len() != input.bot_ids.len() {
             return Err(CreatePartyError::Validation(
-                "Party name is required".into(),
+                "Duplicate bot IDs detected".into(),
             ));
+        }
+
+        // The owner and the bots must fit in the seats (Node: CreateParty.js)
+        let total_players = input.bot_ids.len() + 1;
+        if total_players > input.settings.player_count as usize {
+            return Err(CreatePartyError::Validation(format!(
+                "Total players ({total_players}) exceeds party player count ({})",
+                input.settings.player_count
+            )));
         }
 
         // Parse visibility
@@ -69,7 +103,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
 
         let party = Party::new(
             party_id.clone(),
-            input.name,
+            name,
             input.owner_id.clone(),
             invite_code,
             visibility,
@@ -87,11 +121,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
         let mut bots_joined = 0;
 
         // Add bots if specified: contiguous seats after the owner, whatever ids are skipped
-        let mut seated = std::collections::HashSet::new();
         for bot_id in &input.bot_ids {
-            if !seated.insert(bot_id) {
-                continue; // a repeated id would break UNIQUE(party_id, user_id)
-            }
             // Verify bot exists
             if let Some(bot) = self.user_repo.find_by_id(bot_id).await? {
                 if bot.is_bot() {

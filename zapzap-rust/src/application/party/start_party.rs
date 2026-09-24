@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::domain::entities::{Party, PartyStatus, Round};
 use crate::domain::repositories::{PartyRepository, RepositoryError};
 use crate::domain::services::initialize_round;
+use crate::domain::value_objects::PROVISIONAL_HAND_SIZE;
 
 /// Start party input
 pub struct StartPartyInput {
@@ -78,7 +79,7 @@ impl<P: PartyRepository> StartParty<P> {
         let scores = [0u16; 8];
         let game_state = initialize_round(
             players.len() as u8,
-            party.settings.hand_size,
+            PROVISIONAL_HAND_SIZE,
             &scores,
             0, // No eliminated players yet
             1, // Round 1
