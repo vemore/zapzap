@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Sparkles } from 'lucide-react';
 import { getHandValueDisplay, isZapZapEligible } from '../../utils/scoring';
 import CardFan from './CardFan';
@@ -39,10 +39,14 @@ function PlayerHand({ hand = [], onCardsSelected, disabled = false, deckSize, on
     onCardsSelected([]);
   };
 
-  // Reset selection when hand changes
-  useEffect(() => {
+  // Reset selection when hand changes. Done during render, not in an effect: a
+  // passive effect runs in a later task, and a click landing before it — right
+  // after the hand first appears — would be wiped out.
+  const [handSize, setHandSize] = useState(hand.length);
+  if (hand.length !== handSize) {
+    setHandSize(hand.length);
     setSelectedCards([]);
-  }, [hand.length]);
+  }
 
   if (hand.length === 0) {
     return (
