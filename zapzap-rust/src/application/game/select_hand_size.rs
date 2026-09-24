@@ -56,21 +56,20 @@ impl<P: PartyRepository> SelectHandSize<P> {
             .await?
             .ok_or(SelectHandSizeError::NoGameState)?;
 
-        // Validate hand size based on game mode
-        // Normal mode: 4-7 cards, Golden Score mode: 4-10 cards
-        let max_hand_size = if game_state.is_golden_score { 10 } else { 7 };
-        if input.hand_size < 4 || input.hand_size > max_hand_size {
-            return Err(SelectHandSizeError::InvalidHandSize);
+        // Phase, then turn, then size: the order of Node's SelectHandSize
+        if game_state.current_action != GameAction::SelectHandSize {
+            return Err(SelectHandSizeError::WrongAction);
         }
 
-        // Check it's player's turn
         if game_state.current_turn != player_index {
             return Err(SelectHandSizeError::NotYourTurn);
         }
 
-        // Check action is SelectHandSize
-        if game_state.current_action != GameAction::SelectHandSize {
-            return Err(SelectHandSizeError::WrongAction);
+        // Validate hand size based on game mode
+        // Normal mode: 4-7 cards, Golden Score mode: 4-10 cards
+        let (min, max) = (4, if game_state.is_golden_score { 10 } else { 7 });
+        if input.hand_size < min || input.hand_size > max {
+            return Err(SelectHandSizeError::InvalidHandSize { min, max });
         }
 
         // Re-deal cards with the selected hand size
@@ -135,8 +134,8 @@ impl<P: PartyRepository> SelectHandSize<P> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SelectHandSizeError {
-    #[error("Invalid hand size (must be 4-7)")]
-    InvalidHandSize,
+    #[error("Hand size must be between {min} and {max}")]
+    InvalidHandSize { min: u8, max: u8 },
     #[error("Party not found")]
     PartyNotFound,
     #[error("Party is not playing")]

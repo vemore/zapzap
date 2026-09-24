@@ -11,7 +11,7 @@ const User = require('../src/domain/entities/User');
 const logger = require('../logger');
 
 async function initBots() {
-    const db = new DatabaseConnection(path.join(__dirname, '../data/zapzap.db'));
+    const db = new DatabaseConnection(process.env.DB_PATH || path.join(__dirname, '../data/zapzap.db'));
 
     try {
         logger.info('Initializing bots...');

@@ -86,30 +86,6 @@ function createApp(container, emitter) {
             'Expires': '0'
         });
 
-        // Try to authenticate user from token query param
-        let userId = null;
-        let username = null;
-        const token = req.query.token;
-        if (token) {
-            try {
-                const decoded = jwtService.verify(token);
-                userId = decoded.userId;
-                username = decoded.username;
-                // Register user connection in session manager
-                sessionManager.connect(userId, username);
-                // Emit user connected event
-                emitter.emit('event', {
-                    type: 'userConnected',
-                    userId,
-                    username,
-                    timestamp: Date.now()
-                });
-            } catch (error) {
-                // Invalid token - continue without user tracking
-                logger.debug('SSE connection with invalid token', { error: error.message });
-            }
-        }
-
         // Send initial connection message
         res.write('retry: 1000\n');
         res.write('event: connected\n');
@@ -130,12 +106,38 @@ function createApp(container, emitter) {
 
         emitter.on('event', onEvent);
 
+        // Try to authenticate user from token query param
+        let userId = null;
+        let username = null;
+        const token = req.query.token;
+        if (token) {
+            try {
+                const decoded = jwtService.verify(token);
+                userId = decoded.userId;
+                username = decoded.username;
+                // Register this stream; only the user's first one is an
+                // arrival. The stream is subscribed above, so its own client
+                // hears it too.
+                if (sessionManager.connect(userId, username)) {
+                    emitter.emit('event', {
+                        type: 'userConnected',
+                        userId,
+                        username,
+                        timestamp: Date.now()
+                    });
+                }
+            } catch (error) {
+                // Invalid token - continue without user tracking
+                logger.debug('SSE connection with invalid token', { error: error.message });
+            }
+        }
+
         // Clear heartbeat and listener on disconnect
         req.on('close', () => {
             clearInterval(hbt);
             emitter.removeListener('event', onEvent);
 
-            // Remove user from session manager on disconnect
+            // Unregister this stream; the user leaves with their last one
             if (userId) {
                 const session = sessionManager.disconnect(userId);
                 if (session) {
