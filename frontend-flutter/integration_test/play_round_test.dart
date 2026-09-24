@@ -117,8 +117,6 @@ void main() {
       expect(find.byKey(GameRoundEnd.playerKey(index)), findsOneWidget);
     }
     expect(find.byKey(const Key('roundEndMe')), findsOneWidget);
-    // THROWAWAY: a deliberately broken assertion, to prove the CI job turns red.
-    expect(find.byKey(const Key('roundEndMe')), findsNothing);
     expect(find.byKey(const Key('zapZapBanner')), findsOneWidget);
     expect(
       find.byWidgetPredicate(
