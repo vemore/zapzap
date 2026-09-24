@@ -110,8 +110,8 @@
   every error shape: `{error, code, details?}` (auth/party/game, both backends);
   `{success:false, error}` and `{error}` (admin on Rust, history, stats, bots) — `code` then
   comes from the status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
-  `CONFLICT`, `SERVER_ERROR`, else `HTTP_<n>`); `{error, code, message}` (Node 404/500
-  fallbacks, `src/api/server.js:176-196`); `{message}`; the Rust bare 401 with no body.
+  `CONFLICT`, `SERVER_ERROR`, else `HTTP_<n>`); `{error, code, message}` (the 404 of an unknown route on both backends, Node's 500
+  fallback, `src/api/server.js:176-196`); `{message}`; a response with no body.
   No response: status 0, `NETWORK_ERROR` or `TIMEOUT`; a 2xx that is not an object:
   `INVALID_RESPONSE`. `message` is the backend's text for logs — screens pick a localised
   text from `code` (`ApiErrorCode` names the codes they react to).

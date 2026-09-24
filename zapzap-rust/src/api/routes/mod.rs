@@ -17,6 +17,7 @@ use axum::{
 };
 
 use crate::api::middleware::{admin_middleware, auth_middleware, optional_auth_middleware};
+use crate::api::not_found::route_not_found;
 use crate::api::AppState;
 
 /// Create the main API router
@@ -56,6 +57,7 @@ pub fn create_api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         )
         .route("/players/connected", get(players::get_connected_players))
         .route("/health", get(health::health_handler))
+        .fallback(route_not_found)
         .with_state(state)
 }
 
@@ -222,8 +224,11 @@ fn create_history_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .with_state(state)
 }
 
-/// Create admin router: every route behind `auth_middleware` (401), then
-/// `admin_middleware` (403 for a non-admin)
+/// Create admin router: every path under `/admin`, served or not, behind
+/// `auth_middleware` (401), then `admin_middleware` (403 for a non-admin), as Node's
+/// `router.use(authMiddleware); router.use(adminMiddleware)` (`adminRoutes.js`); only an
+/// admin reaches the `ROUTE_NOT_FOUND` 404 of an unknown path or an unserved method. So
+/// `layer`, which wraps the fallbacks too, not `route_layer`.
 fn create_admin_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/users", get(admin::list_users))
@@ -233,12 +238,15 @@ fn create_admin_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/parties/:partyId/stop", post(admin::stop_party))
         .route("/parties/:partyId", delete(admin::admin_delete_party))
         .route("/statistics", get(admin::get_statistics))
+        // Set before the layers, so that the root router's own does not replace it
+        .method_not_allowed_fallback(route_not_found)
+        .fallback(route_not_found)
         // The last layer runs first: auth sets the claims admin_middleware reads
-        .route_layer(middleware::from_fn_with_state(
+        .layer(middleware::from_fn_with_state(
             state.clone(),
             admin_middleware,
         ))
-        .route_layer(middleware::from_fn_with_state(
+        .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
         ))
