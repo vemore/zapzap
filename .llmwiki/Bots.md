@@ -7,10 +7,10 @@
 ## Facts
 
 ### Bot users and difficulties
-- A bot is a `users` row with `user_type = "bot"` and a `bot_difficulty` (`zapzap-rust/src/domain/entities/user.rs:15`, `:80`, constructor `new_bot` `:111`).
+- A bot is a `users` row with `user_type = "bot"` and a `bot_difficulty` (`zapzap-rust/src/domain/entities/user.rs:15`, `:80`, constructor `new_bot` `:130`).
 - `BotDifficulty` string values: `easy`, `medium`, `hard`, `hard_vince`, `thibot`, `drl`, `llm`, `ml` (`zapzap-rust/src/domain/entities/user.rs:44-66`).
-- `GET /api/bots?difficulty=` accepts exactly those 8 values (lower-cased), else 400 "Invalid difficulty filter" (`zapzap-rust/src/api/routes/bots.rs:56-81`); lists via `user_repo.find_all_bots` (`bots.rs:88-90`). See [[Api]].
-- The Rust backend has **no endpoint to create bots**. Bot users are seeded by the legacy Node script `scripts/init-bots.js` (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2, `scripts/init-bots.js:24-31`); VinceBot and LlamaBot exist in the local DB but not in that script (created elsewhere in the Node era, commit 0185eb0 "create VinceBot").
+- `GET /api/bots?difficulty=` accepts exactly those 8 values (lower-cased), else 400 "Invalid difficulty filter" (`zapzap-rust/src/api/routes/bots.rs:57-82`); lists via `user_repo.find_all_bots` (`bots.rs:89-91`). See [[Api]].
+- Admins create and delete bots with `POST /api/bots` and `DELETE /api/bots/:botId` (since 2026-09-24, [[Api]]); `thibot` cannot be created that way (Node's list, `zapzap-rust/src/application/bot/create_bot.rs`). Bot users are otherwise seeded by the legacy Node script `scripts/init-bots.js` (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2, `scripts/init-bots.js:24-31`); VinceBot and LlamaBot exist in the local DB but not in that script (created elsewhere in the Node era, commit 0185eb0 "create VinceBot").
 - Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:40`, `:304`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:595`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; Rust only, see [[Api]]).
 
 ### Strategy trait
@@ -60,17 +60,17 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
 
 ### LLM bot
 - `LlmBotStrategy` wraps an optional `LlmService` and a `HardBotStrategy` fallback (`llm_bot.rs:27-47`). Sync trait methods always use the fallback (`:614-641`); the trigger loop calls the async variants `should_call_zapzap_async` (`:393`), `select_cards_async` (`:292`), `decide_draw_source_async` (`:486`), each falling back on missing service or unparsable answer (e.g. `:298-300`, `:380-387`).
-- Service selection at startup, priority Bedrock > Ollama > none (`zapzap-rust/src/infrastructure/app_state.rs:83-128`):
-  - Bedrock only when compiled with feature `bedrock` (`zapzap-rust/Cargo.toml:60-62`) and `AWS_BEDROCK_ENABLED` or `AWS_ACCESS_KEY_ID` set (`app_state.rs:89-90`); `AWS_BEDROCK_REGION` default `us-east-1`, `AWS_BEDROCK_MODEL_ID` default `meta.llama3-3-70b-instruct-v1:0`, timeout 30 s (`zapzap-rust/src/infrastructure/services/llm_service.rs:178-184`).
-  - Ollama when `OLLAMA_BASE_URL` or `ENABLE_LLM_BOTS` is set and `/api/tags` answers (`app_state.rs:114-124`, `llm_service.rs:154`); `OLLAMA_BASE_URL` default `http://localhost:11434`, `OLLAMA_MODEL` default `llama3.2`, timeout 60 s, temperature 0.3, max_tokens 512 (`llm_service.rs:44-54`); calls `POST {base}/api/generate` non-streaming (`:118-126`).
-  - Otherwise LLM bots play exactly like Hard (`app_state.rs:127`).
+- Service selection at startup, priority Bedrock > Ollama > none (`zapzap-rust/src/infrastructure/app_state.rs:117-163`):
+  - Bedrock only when compiled with feature `bedrock` (`zapzap-rust/Cargo.toml:60-62`) and `AWS_BEDROCK_ENABLED` or `AWS_ACCESS_KEY_ID` set (`app_state.rs:123-124`); `AWS_BEDROCK_REGION` default `us-east-1`, `AWS_BEDROCK_MODEL_ID` default `meta.llama3-3-70b-instruct-v1:0`, timeout 30 s (`zapzap-rust/src/infrastructure/services/llm_service.rs:178-184`).
+  - Ollama when `OLLAMA_BASE_URL` or `ENABLE_LLM_BOTS` is set and `/api/tags` answers (`app_state.rs:148-159`, `llm_service.rs:154`); `OLLAMA_BASE_URL` default `http://localhost:11434`, `OLLAMA_MODEL` default `llama3.2`, timeout 60 s, temperature 0.3, max_tokens 512 (`llm_service.rs:44-54`); calls `POST {base}/api/generate` non-streaming (`:118-126`).
+  - Otherwise LLM bots play exactly like Hard (`app_state.rs:161`).
 - System prompt restates the rules (`llm_bot.rs:65-123`) — it says a counteracted caller gets "+20 points penalty" (`:100`), which is only true with 5 active players; the real rule is (active−1)×5 (`zapzap-rust/src/domain/services/game_service.rs:219`).
 - Card notation in prompts: `RankSuit`, suits S/H/C/D, joker `JKR` (`llm_bot.rs:21`, `:147-154`); reflection prompt is in French with suits P/C/T/K (`zapzap-rust/src/application/bot/reflect_on_round.rs:136-166`, `:225`).
 
 ### LLM memory and reflection
 - `LlmBotMemory` per bot, JSON file `{BOT_STRATEGIES_DIR}/{bot_user_id}.json`, default dir `data/bot-strategies` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:152-159`); atomic save via `.tmp` + rename (`:247-252`). `data/bot-strategies/` is untracked in git.
 - Limits: 20 strategies, 5 per category, 50 recent decisions, 10 game summaries (`llm_memory.rs:48-51`). Categories: play_strategy, zapzap_timing, draw_decision, golden_score, opponent_reading (`:14-20`).
-- Cached in `AppState.llm_memories`, loaded lazily (`app_state.rs:41`, `:148-165`).
+- Cached in `AppState.llm_memories`, loaded lazily (`app_state.rs:71`, `:188-205`).
 - Decisions are recorded by the async LLM methods (`llm_bot.rs:372`, `:473`, `:601`). After a ZapZap (bot: `game.rs:1392`, `:1466`; human: `game.rs:602-642`), `trigger_llm_reflection` (`game.rs:1586`) spawns `ReflectOnRound` for every LLM bot in the party; it asks for 0-1 insight and stores it with confidence 0.5 (`reflect_on_round.rs:84-108`). `score_change` is always 0 ("Would need to calculate this", `game.rs:1647`).
 - The memory write lock is held across the LLM call (`reflect_on_round.rs:58` → `:84`), blocking that bot's next decisions for up to the service timeout.
 - The manual `trigger-bot` path never triggers reflection.
@@ -80,7 +80,7 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
   - after `GET /api/game/:id/state` (100 ms delay, `game.rs:366-373`) — i.e. every client poll;
   - after select-hand-size, play, draw (300 ms, `game.rs:435-440`, `:502-507`, `:557-562`) and next-round when the starter is a bot (`:714-719`).
 - Loop: up to 50 iterations if an active human remains, else 500 (`game.rs:1243-1257`); stops on human turn or finished round; 200 ms between bot actions (`:1579`). Eliminated bots are skipped by advancing `current_turn` (`:1306-1322`). A failed discard draw falls back to deck (`:1549-1563`). Each action broadcasts a `gameUpdate` SSE with `isBot: true` (e.g. `:1357-1363`).
-- Manual `POST /api/game/:partyId/trigger-bot` (auth required, no party-membership check; `zapzap-rust/src/api/routes/mod.rs:139-144`) runs the same logic synchronously, max 50 iterations, 100 ms pause (`game.rs:757-1220`).
+- Manual `POST /api/game/:partyId/trigger-bot` (auth required, no party-membership check; `zapzap-rust/src/api/routes/mod.rs:171-176`) runs the same logic synchronously, max 50 iterations, 100 ms pause (`game.rs:757-1220`).
 - There is no per-party lock: concurrent polls can start several `trigger_bot_internal` loops for the same party; use-case turn checks (`NotYourTurn`) limit but do not prevent double reads of the same state.
 
 ### Native strategies (training only)

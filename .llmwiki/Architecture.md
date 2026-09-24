@@ -38,14 +38,14 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:41`, handler `zapzap-rust/src/api/sse.rs:18`.
 - Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A game's moves and every event of a private party reach only its players' streams; events without a party and a public party's lifecycle events (joined, left, started, deleted, finished) reach every stream ([[Backend]]).
-- Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).
+- Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:112-115`).
 - Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Against the Rust backend those two tokenless streams miss a game's moves and every private-party event, since it filters per user; the switch needs them to pass the token (tracked in `wip/`). Details: [[Backend]], [[Frontend]].
 - Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
 ### SQLite database
 
-- Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:47-56`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
+- Rust backend URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`zapzap-rust/src/infrastructure/app_state.rs:82-92`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `zapzap-rust/docker-compose.yml:11`).
 - Node backend file: `DB_PATH`, else `data/zapzap.db` of the checkout (`src/api/bootstrap.js:87`, `src/infrastructure/database/sqlite/DatabaseConnection.js:13`); `scripts/init-bots.js` reads `DB_PATH` too. The root image sets `DB_PATH=/app/data/zapzap.db` (`Dockerfile:27`), the path the default already resolved to. A local server on a throwaway database: `DB_PATH=/tmp/x.db PORT=9941 node app.js`.
 - **Both backends create the same schema**: the Node code in `src/infrastructure/database/sqlite/DatabaseConnection.js:69-240` (users, parties, party_players, rounds, game_state, round_scores, game_results, player_game_results, game_actions) plus its `runMigrations()`, the Rust backend at startup from a verbatim copy, `zapzap-rust/src/infrastructure/database/schema.sql` (`zapzap-rust/src/infrastructure/app_state.rs:64`). All `IF NOT EXISTS`, so the Rust step is a no-op on a Node-built DB; `zapzap-rust/tests/schema_tests.rs` keeps the two identical ([[Backend]]). Older Node databases are upgraded by the Node side only (`runMigrations()`, `scripts/docker-entrypoint.js`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
@@ -77,7 +77,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### Legacy backend (brief)
 
 - Express app, DI container in `src/infrastructure/di`, routes in `src/api/routes/*Routes.js`, SSE also at `/suscribeupdate` with `?token=` (`src/api/server.js:69-109`).
-- Still the only place that upgrades an old SQLite schema (`runMigrations()`), `POST /api/auth/google` (`src/api/routes/authRoutes.js:120-123`, missing in Rust, see [[Api]]), JS bot strategies and the JS simulation runners (`src/simulation/`).
+- Still the only place that upgrades an old SQLite schema (`runMigrations()`), and the home of the JS bot strategies and the JS simulation runners (`src/simulation/`). `POST /api/auth/google` is served by both backends since 2026-09-24 ([[Api]]).
 - Tests: jest + playwright (see [[Testing]]).
 
 ## Decisions & History

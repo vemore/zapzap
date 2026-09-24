@@ -117,7 +117,7 @@
   `INVALID_RESPONSE`. `message` is the backend's text for logs — screens pick a localised
   text from `code` (`ApiErrorCode` names the codes they react to).
 - **Repositories** (`repositories/*.dart`), stateless, each `XRepository(ApiClient)`:
-  `AuthRepository` (login, register, loginWithGoogle — Node only), `PartyRepository` (list,
+  `AuthRepository` (login, register, loginWithGoogle), `PartyRepository` (list,
   create — `playerCount` required, Node rejects a create without it —, details, join,
   leave, start, delete, bots, connectedPlayers), `GameRepository`
   (state, selectHandSize, play, drawFromDeck, drawFromPlayed, zapZap, nextRound),
@@ -236,7 +236,7 @@ game's moves and every event of a private party only to its players' streams —
 token matters; an initial `event: connected`, then every broadcast as `event:
 event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `retry: 1000`
 (`src/api/server.js:69-130`), Rust a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,
-`GameEvent`, `zapzap-rust/src/infrastructure/app_state.rs:189-204`).
+`GameEvent`, `zapzap-rust/src/infrastructure/app_state.rs:230-244`).
 
 - **`SseParser`** (`services/sse_parser.dart`): the `text/event-stream` format, pure, fed
   chunks of any size — `\n`/`\r\n`/`\r` line ends, `:` comments ignored, multi-line `data`

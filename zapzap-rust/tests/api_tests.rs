@@ -2006,3 +2006,295 @@ async fn test_deleted_users_token_is_refused() {
     assert!(!saw.contains("own-action"), "{saw}");
     assert!(!saw.contains("userConnected"), "{saw}");
 }
+
+// Google login and bot administration
+// ============================================================================
+
+mod google_and_bot_admin {
+    use super::*;
+    use jsonwebtoken::jwk::JwkSet;
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use zapzap_backend::infrastructure::services::GoogleOAuthService;
+
+    /// Test-only RSA key; its public half is the JWK below. No network: the service gets
+    /// this key set instead of Google's certs.
+    const TEST_KEY_PEM: &str = include_str!("fixtures/google_oauth_test_rsa.pem");
+    const TEST_KEY_N: &str = "ru3qPMAYvaU0HR8RHvqgNiQlq-XRKFtj5IkfTZaIfdiU5r_RyjSXi4Jx826eUZt38mjTFKgVd_apxmwjPxY-Odal5arEXdNuxxkHUI6_lJiZOv2qJrTRiylyipOobKWmQUrGamIT6F4tSx4wggUL7jST-EVUrI4jmdZqbx9BtYZoOUXBVK0QxEjNG4Zj7InwYEup64F7gC4nKyiFrfOQI3rsL85P7fFPttxFaZuyurMCSditw_VkAul88pIRmpf6ZvKjP6aMrTdxAuy4iaUbWyUOmPKRgG9fAWYwHptvHjyH8rjFJH2Q6SFE38Mup51QeVakOVGILMg8ZzFsl4k0Sw";
+    const CLIENT_ID: &str = "api-test.apps.googleusercontent.com";
+
+    /// The test app, with its state, and a Google verifier when `google` is true
+    async fn app_with_state(google: bool) -> (Router, Arc<AppState>) {
+        std::env::set_var("DATABASE_URL", "sqlite::memory:");
+        std::env::set_var("JWT_SECRET", "test-secret-key");
+        let mut state = AppState::new().await.expect("Failed to create app state");
+        state.google_oauth = if google {
+            let keys: JwkSet = serde_json::from_value(json!({
+                "keys": [{"kty": "RSA", "alg": "RS256", "kid": "k1", "n": TEST_KEY_N, "e": "AQAB"}]
+            }))
+            .unwrap();
+            Some(Arc::new(GoogleOAuthService::with_keys(
+                CLIENT_ID.to_string(),
+                keys,
+            )))
+        } else {
+            None
+        };
+        let state = Arc::new(state);
+        let app = Router::new()
+            .nest("/api", api::routes::create_api_router(state.clone()))
+            .with_state(state.clone());
+        (app, state)
+    }
+
+    fn google_token(sub: &str, aud: &str) -> String {
+        let now = chrono::Utc::now().timestamp();
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("k1".to_string());
+        encode(
+            &header,
+            &json!({
+                "iss": "accounts.google.com", "aud": aud, "sub": sub,
+                "email": "ada@example.com", "email_verified": true, "name": "Ada Lovelace",
+                "iat": now, "exp": now + 600
+            }),
+            &EncodingKey::from_rsa_pem(TEST_KEY_PEM.as_bytes()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    async fn delete_auth(app: &mut Router, path: &str, token: Option<&str>) -> (StatusCode, Value) {
+        send_raw(app, "DELETE", path, "", None, token).await
+    }
+
+    /// Register a human and return (id, token); `admin` makes it an admin (read from the
+    /// database by admin_middleware)
+    async fn user_token(
+        app: &mut Router,
+        state: &AppState,
+        name: &str,
+        admin: bool,
+    ) -> (String, String) {
+        let (token, id) = register(app, name).await;
+        if admin {
+            state.user_repo.set_admin(&id, true).await.unwrap();
+        }
+        (id, token)
+    }
+
+    #[tokio::test]
+    async fn test_google_missing_credential() {
+        let (mut app, _) = app_with_state(true).await;
+        for body in [
+            json!({}),
+            json!({"credential": ""}),
+            json!({"credential": null}),
+        ] {
+            let (status, body) = post_json(&mut app, "/api/auth/google", body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(body["code"], "MISSING_CREDENTIAL");
+            assert_eq!(body["error"], "Token Google requis");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_google_forged_token_is_refused() {
+        let (mut app, state) = app_with_state(true).await;
+        for credential in [
+            "forged.token.value".to_string(),
+            google_token("g-1", "another-client"),
+        ] {
+            let (status, body) = post_json(
+                &mut app,
+                "/api/auth/google",
+                json!({"credential": credential}),
+            )
+            .await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+            assert_eq!(body["code"], "GOOGLE_AUTH_FAILED");
+        }
+        assert!(state
+            .user_repo
+            .find_by_google_id("g-1")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_google_not_configured() {
+        // Node without GOOGLE_OAUTH_CLIENT_ID: the placeholder use case throws
+        // "Google OAuth non configuré sur ce serveur", which its route answers with 401
+        let (mut app, _) = app_with_state(false).await;
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-1", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(body["code"], "GOOGLE_AUTH_FAILED");
+        assert_eq!(body["error"], "Google OAuth non configuré sur ce serveur");
+    }
+
+    #[tokio::test]
+    async fn test_google_login_creates_then_logs_in() {
+        let (mut app, _) = app_with_state(true).await;
+        let credential = google_token("g-42", CLIENT_ID);
+
+        let (status, first) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": credential}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        assert_eq!(first["success"], true);
+        assert_eq!(first["isNewUser"], true);
+        assert_eq!(first["user"]["username"], "ada_lovelace");
+        assert_eq!(first["user"]["email"], "ada@example.com");
+        assert_eq!(first["user"]["isAdmin"], false);
+        assert_eq!(first["user"]["isGoogleUser"], true);
+        let token = first["token"].as_str().unwrap();
+        let (status, _) = get_auth(&mut app, "/api/stats/me", token).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, second) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": credential}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(second["isNewUser"], false);
+        assert_eq!(second["user"]["id"], first["user"]["id"]);
+    }
+
+    #[tokio::test]
+    async fn test_bot_admin_requires_admin() {
+        let (mut app, state) = app_with_state(false).await;
+        let body = json!({"username": "RoboBot", "difficulty": "easy"});
+
+        let (status, _) = post_json(&mut app, "/api/bots", body.clone()).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = delete_auth(&mut app, "/api/bots/whatever", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (_, token) = user_token(&mut app, &state, "plainuser", false).await;
+        let (status, _) = post_json_auth(&mut app, "/api/bots", body, &token).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = delete_auth(&mut app, "/api/bots/whatever", Some(&token)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(state
+            .user_repo
+            .find_by_username("RoboBot")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_bot_admin_create_and_delete() {
+        let (mut app, state) = app_with_state(false).await;
+        let (human_id, token) = user_token(&mut app, &state, "adminuser", true).await;
+
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "  RoboBot ", "difficulty": "HARD"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["success"], true);
+        let bot = &body["bot"];
+        assert_eq!(bot["username"], "RoboBot");
+        assert_eq!(bot["userType"], "bot");
+        assert_eq!(bot["botDifficulty"], "hard");
+        assert_eq!(bot["isAdmin"], false);
+        assert_eq!(bot["isGoogleUser"], false);
+        assert!(bot["createdAt"].is_i64());
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+
+        let (status, body) = get_auth(&mut app, "/api/bots?difficulty=hard", &token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body["bots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["id"] == bot_id));
+
+        // Duplicate username
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "RoboBot", "difficulty": "easy"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body,
+            json!({"success": false, "error": "Username \"RoboBot\" already exists"})
+        );
+
+        // Unknown difficulty (thibot is listable but not creatable, as in Node)
+        for difficulty in [json!("insane"), json!("thibot"), Value::Null] {
+            let (status, body) = post_json_auth(
+                &mut app,
+                "/api/bots",
+                json!({"username": "OtherBot", "difficulty": difficulty}),
+                &token,
+            )
+            .await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(
+                body["error"],
+                "Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm"
+            );
+        }
+
+        // Missing and invalid usernames
+        let (status, body) =
+            post_json_auth(&mut app, "/api/bots", json!({"difficulty": "easy"}), &token).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "Username is required");
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "no spaces", "difficulty": "easy"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body["error"],
+            "Username can only contain alphanumeric characters, hyphens, and underscores"
+        );
+
+        // A human cannot be deleted here
+        let (status, body) =
+            delete_auth(&mut app, &format!("/api/bots/{}", human_id), Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body["error"],
+            "User is not a bot - cannot delete human users via this endpoint"
+        );
+        assert!(state
+            .user_repo
+            .find_by_id(&human_id)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Delete, then the same id is unknown
+        let path = format!("/api/bots/{}", bot_id);
+        let (status, body) = delete_auth(&mut app, &path, Some(&token)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!({"success": true, "deletedBotId": bot_id}));
+        assert!(state.user_repo.find_by_id(&bot_id).await.unwrap().is_none());
+
+        let (status, body) = delete_auth(&mut app, &path, Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
+    }
+}
