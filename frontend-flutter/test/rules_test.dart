@@ -1,6 +1,8 @@
 // Ported from frontend/src/utils/__tests__/validation.test.js and
 // scoring.test.js (the hand-value and eligibility cases), checked against
 // GAME_RULES.md (Valid Card Combinations, ZapZap Eligibility).
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/utils/rules.dart';
 
@@ -224,6 +226,91 @@ void main() {
   group('sorting', () {
     test('by suit then rank, jokers last', () {
       expect(sortCards([53, 13, 12, 0, 52, 40]), [0, 12, 13, 40, 52, 53]);
+    });
+  });
+
+  // J8: the chips above the hand. Card ids: spades 0-12, hearts 13-25,
+  // clubs 26-38, diamonds 39-51, Ace to King; 52 and 53 the jokers.
+  group('suggestPlays', () {
+    List<List<int>> cardsOf(List<PlaySuggestion> suggestions) => [
+      for (final s in suggestions) s.cards,
+    ];
+
+    test('a hand with a joker offers the run the joker completes', () {
+      // 4♥ 6♥ 🃏 2♠: the joker stands for 5♥.
+      final suggestions = suggestPlays([16, 18, 52, 1]);
+      expect(suggestions.first.cards, [16, 52, 18]);
+      expect(suggestions.first.type, PlayType.sequence);
+      expect(suggestions.first.points, 10);
+      expect(isValidPlay(suggestions.first.cards), isTrue);
+    });
+
+    test('the mockup hand: the pair of 7, then the Queen alone', () {
+      // A♠ 2♥ 7♣ 7♦ Q♠ 🃏.
+      final suggestions = suggestPlays([0, 14, 32, 45, 11, 52]);
+      expect(cardsOf(suggestions), [
+        [32, 45],
+        [11],
+        [14],
+      ]);
+      expect([for (final s in suggestions) s.points], [14, 12, 2]);
+      expect(suggestions.first.type, PlayType.sameRank);
+    });
+
+    test('a run needs no joker when it is complete', () {
+      // 5♠ 6♠ 7♠ 🃏: the same points without the joker.
+      expect(suggestPlays([4, 5, 6, 52]).first.cards, [4, 5, 6]);
+    });
+
+    test('a joker ends a run of two, above it', () {
+      // 5♠ 6♠ 🃏: 5-6-🃏, the run 5 to 7.
+      expect(suggestPlays([4, 5, 52]).first.cards, [4, 5, 52]);
+    });
+
+    test('two jokers fill two gaps', () {
+      // 3♠ 5♠ 7♠ and both jokers: 3-🃏-5-🃏-7.
+      final run = suggestPlays([2, 4, 6, 52, 53]).first;
+      expect(run.cards, [2, 52, 4, 53, 6]);
+      expect(run.points, 15);
+    });
+
+    test('a card in a group is not offered alone', () {
+      // K♠ K♥ Q♠: the pair of Kings, then the Queen.
+      expect(cardsOf(suggestPlays([12, 25, 11])), [
+        [12, 25],
+        [11],
+      ]);
+    });
+
+    test('jokers alone are not offered', () {
+      expect(suggestPlays([52, 53]), isEmpty);
+      expect(suggestPlays(const []), isEmpty);
+    });
+
+    test('matches a selection in any order', () {
+      final pair = PlaySuggestion([32, 45]);
+      expect(pair.matches([45, 32]), isTrue);
+      expect(pair.matches([32]), isFalse);
+      expect(pair.matches([32, 45, 11]), isFalse);
+    });
+
+    test('every suggestion is a legal play of the hand, most points first', () {
+      final random = Random(8);
+      for (var round = 0; round < 500; round++) {
+        final deck = List.generate(54, (i) => i)..shuffle(random);
+        final hand = deck.take(4 + random.nextInt(7)).toList();
+        final suggestions = suggestPlays(hand);
+        expect(suggestions.length, lessThanOrEqualTo(maxSuggestions));
+        for (final s in suggestions) {
+          expect(isValidPlay(s.cards), isTrue, reason: '$hand → ${s.cards}');
+          expect(hand, containsAll(s.cards));
+          expect(s.points, greaterThan(0));
+        }
+        final points = [for (final s in suggestions) s.points];
+        expect(points, [...points]..sort((a, b) => b - a));
+        // A hand with a regular card always has something to play.
+        if (hand.any((id) => id < 52)) expect(suggestions, isNotEmpty);
+      }
     });
   });
 }

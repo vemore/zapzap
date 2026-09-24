@@ -26,9 +26,10 @@ import '../widgets/zapzap_app_bar.dart';
 /// the felt, this player's hand and the moves, driven by the event stream.
 ///
 /// Three modes, from `gameState.currentAction`: the starting player picks
-/// the hand size, the round is played, the round is over. A refused move
-/// shows its reason in a snack bar and the board stays — the React board
-/// replaces itself with an error page instead.
+/// the hand size under the players and their scores, the round is played,
+/// the round is over. A refused move shows its reason in a snack bar and
+/// the board stays — the React board replaces itself with an error page
+/// instead.
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key, required this.partyId});
 
@@ -236,6 +237,10 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// The start of a round: the players and their scores stay on screen,
+  /// the selector under them — who is close to 100 is what the choice is
+  /// made on (T3 of the UX study). One scroll view, so a large system font
+  /// scrolls the page rather than overflowing it.
   Widget _handSize(AppLocalizations l10n) => SingleChildScrollView(
     padding: const EdgeInsets.all(16),
     child: Center(
@@ -243,8 +248,14 @@ class _GameScreenState extends State<GameScreen> {
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.gameRoundLabel(_game.round?.roundNumber ?? 1)),
+            Text(
+              l10n.gameRoundLabel(_game.round?.roundNumber ?? 1),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            _playerTable(),
             const SizedBox(height: 12),
             GameHandSizeSelector(
               isMyTurn: _game.isMyTurn,
@@ -316,6 +327,7 @@ class _GameScreenState extends State<GameScreen> {
       penaltyValue: values.penalty,
       disabled: !_game.isMyTurn || _game.currentAction != GameAction.play,
       onCardTap: _game.toggleCard,
+      onSelectCards: _game.selectCards,
       onClearSelection: _game.hasSelection ? _game.clearSelection : null,
     );
   }

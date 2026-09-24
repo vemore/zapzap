@@ -206,6 +206,31 @@ void main() {
   });
 
   group('the selection', () {
+    test('a suggestion replaces it, and stays editable card by card', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'play',
+            playerHand: [3, 16, 29],
+          ),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+
+      game
+        ..toggleCard(29)
+        ..selectCards([3, 16]);
+      expect(game.selectedCards, [3, 16]);
+
+      game.toggleCard(16);
+      expect(game.selectedCards, [3]);
+
+      game.selectCards([3, 99]);
+      expect(game.selectedCards, [3], reason: 'an unknown id is refused');
+    });
+
     test('keeps the tap order and toggles off', () async {
       final backend = FakeGameBackend(
         state: gameSnapshotJson(

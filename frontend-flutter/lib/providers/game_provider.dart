@@ -279,6 +279,16 @@ class GameProvider extends ChangeNotifier {
     _notify();
   }
 
+  /// Selects [cards] in place of the hand's current selection, in their
+  /// order — a suggestion picked above the hand. The discard card stays.
+  void selectCards(List<int> cards) {
+    if (!cards.every(GameCard.isValidId)) return;
+    _selectedCards
+      ..clear()
+      ..addAll(cards.toSet());
+    _notify();
+  }
+
   /// Drops the whole selection — the cards *and* the discard card, which
   /// otherwise leaves the Draw button reading "Take".
   void clearSelection() {

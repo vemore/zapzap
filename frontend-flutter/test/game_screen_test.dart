@@ -212,6 +212,38 @@ void main() {
       });
     });
 
+    testWidgets('the players and their scores stay above the selector', (
+      tester,
+    ) async {
+      await pumpGame(
+        tester,
+        FakeGameBackend(
+          state: gameSnapshotJson(
+            gameState: gameStateJson(
+              currentTurn: 0,
+              currentAction: 'selectHandSize',
+            ),
+          ),
+        ),
+        size: const Size(360, 740),
+      );
+
+      expect(find.byType(GamePlayerTable), findsOneWidget);
+      for (final (index, score) in [(0, '12'), (1, '30'), (2, '5')]) {
+        final seat = find.byKey(GamePlayerTable.seatKey(index));
+        expect(seat, findsOneWidget);
+        expect(
+          find.descendant(of: seat, matching: find.text(score)),
+          findsOneWidget,
+        );
+      }
+      final table = tester.getRect(find.byType(GamePlayerTable));
+      final selector = tester.getRect(find.byType(GameHandSizeSelector));
+      expect(table.bottom, lessThanOrEqualTo(selector.top));
+      // Both fit on a phone at the default scale, the deal button included.
+      expect(selector.bottom, lessThanOrEqualTo(740));
+    });
+
     testWidgets('anybody else waits for the starting player', (tester) async {
       await pumpGame(
         tester,
@@ -231,6 +263,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('confirm-hand-size')), findsNothing);
+      expect(find.byKey(GamePlayerTable.seatKey(1)), findsOneWidget);
     });
   });
 
@@ -1019,6 +1052,7 @@ void main() {
         );
 
         expect(find.byType(GameHandSizeSelector), findsOneWidget);
+        expect(find.byType(GamePlayerTable), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
 
