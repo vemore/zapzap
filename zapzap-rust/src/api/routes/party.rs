@@ -17,7 +17,7 @@ use crate::application::party::{
     LeavePartyInput, ListPartiesInput, ListPublicParties, StartParty, StartPartyInput,
 };
 use crate::domain::entities::PartyVisibility;
-use crate::domain::value_objects::PartySettings;
+use crate::domain::value_objects::{player_count_message, PartySettings};
 use crate::infrastructure::app_state::GameEvent;
 
 // ============================================================================
@@ -53,8 +53,9 @@ impl ApiBody for AddBotRequest {
 /// `settings` is sent, as Node's `PartySettings` requires it.
 #[derive(Debug, Deserialize)]
 pub struct PartySettingsDto {
+    /// Any number, so that 300 or 3.5 get the 3-8 message rather than "Invalid party data"
     #[serde(rename = "playerCount")]
-    pub player_count: Option<u8>,
+    pub player_count: Option<f64>,
     #[serde(rename = "allowSpectators")]
     pub allow_spectators: Option<bool>,
     #[serde(rename = "roundTimeLimit")]
@@ -270,9 +271,11 @@ pub async fn create_party(
     let settings = match body.settings {
         None => PartySettings::default(),
         Some(s) => PartySettings {
-            player_count: s.player_count.ok_or_else(|| {
-                ApiError::bad_request("VALIDATION_ERROR", "Player count must be between 3 and 8")
-            })?,
+            player_count: s
+                .player_count
+                .ok_or_else(player_count_message)
+                .and_then(PartySettings::player_count_from)
+                .map_err(|message| ApiError::bad_request("VALIDATION_ERROR", message))?,
             allow_spectators: s.allow_spectators.unwrap_or(false),
             round_time_limit: s.round_time_limit.unwrap_or(0),
         },

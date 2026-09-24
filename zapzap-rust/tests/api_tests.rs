@@ -2810,3 +2810,189 @@ async fn test_party_with_node_written_settings() {
     let (status, body) = post_json_auth(&mut app, join, json!({}), &late).await;
     assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
 }
+
+#[tokio::test]
+async fn test_create_party_refuses_duplicate_bot_ids() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "dup_bots").await;
+    let bot = create_bot(&state, "dup_bot").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Twice", "settings": {"playerCount": 4}, "botIds": [&bot, &bot]}),
+        &token,
+    )
+    .await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    assert_eq!(body["error"], "Duplicate bot IDs detected");
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    assert_eq!(list["parties"], json!([]), "no party is left behind");
+}
+
+#[tokio::test]
+async fn test_create_party_name_length_counts_utf16_units() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "utf16_names").await;
+    let create = |name: String| json!({"name": name, "settings": {"playerCount": 3}});
+
+    // "🎲🎲" is 2 characters but 4 UTF-16 units, JavaScript's length: accepted, as on Node
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲🎲".to_string()), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // 25 dice are 50 units, 26 are 52
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲".repeat(25)), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲".repeat(26)), &token).await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    assert_eq!(body["error"], "Party name must not exceed 50 characters");
+}
+
+#[tokio::test]
+async fn test_create_party_player_count_out_of_range_message() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "pc_message").await;
+    for count in [json!(300), json!(-1), json!(3.5), json!(2)] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Odd seats", "settings": {"playerCount": count}}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+        assert_eq!(
+            body["error"], "Player count must be between 3 and 8",
+            "{count}"
+        );
+    }
+    // A whole float is a whole number, as in JavaScript
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Float seats", "settings": {"playerCount": 4.0}}),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["party"]["settings"]["playerCount"], 4);
+}
+
+/// Replay a lost race on a seat: `intruder_id` takes the lowest free seat of `party_id`
+/// at once, but the seat reads miss it until an insert has collided with it, as when a
+/// concurrent join commits between a player's read of the seats and its insert.
+/// `party_players` becomes a view over the real table; its insert trigger records the
+/// collision (`INSERT OR FAIL` keeps that record when the seat insert fails) and the
+/// view shows the intruder from then on.
+async fn steal_next_seat(state: &AppState, party_id: &str, intruder_id: &str) {
+    sqlx::raw_sql(&format!(
+        "INSERT INTO party_players (party_id, user_id, player_index, joined_at)
+           SELECT '{party_id}', '{intruder_id}', MIN(free.i), 0
+           FROM (SELECT 0 AS i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
+                 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7) AS free
+           WHERE free.i NOT IN (SELECT player_index FROM party_players
+                                WHERE party_id = '{party_id}');
+         CREATE TABLE seat_race_lost (lost INTEGER);
+         ALTER TABLE party_players RENAME TO party_players_real;
+         CREATE VIEW party_players AS
+           SELECT * FROM party_players_real
+           WHERE user_id != '{intruder_id}' OR EXISTS (SELECT 1 FROM seat_race_lost);
+         CREATE TRIGGER party_players_insert INSTEAD OF INSERT ON party_players
+         BEGIN
+           INSERT INTO seat_race_lost
+             SELECT 1 WHERE EXISTS (SELECT 1 FROM party_players_real
+                                    WHERE party_id = NEW.party_id
+                                      AND player_index = NEW.player_index);
+           INSERT OR FAIL INTO party_players_real (party_id, user_id, player_index, joined_at)
+             VALUES (NEW.party_id, NEW.user_id, NEW.player_index, NEW.joined_at);
+         END;"
+    ))
+    .execute(&state.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_join_that_loses_its_seat_takes_the_next_one() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_owner").await;
+    let (joiner, _) = register(&mut app, "race_joiner").await;
+    let (_, intruder_id) = register(&mut app, "race_intruder").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race", 4).await;
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &joiner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["playerIndex"], 2,
+        "seat 1 went to the intruder: {body}"
+    );
+    assert_eq!(seats(&mut app, &party_id, &owner).await, vec![0, 1, 2]);
+}
+
+#[tokio::test]
+async fn test_join_that_loses_the_last_seat_is_party_full() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_full_owner").await;
+    let (second, _) = register(&mut app, "race_full_second").await;
+    let (joiner, _) = register(&mut app, "race_full_joiner").await;
+    let (_, intruder_id) = register(&mut app, "race_full_intruder").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race full", 3).await;
+    let join = format!("/api/party/{party_id}/join");
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &second).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &joiner).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_add_bot_that_loses_its_seat_takes_the_next_one() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_bot_owner").await;
+    let (_, intruder_id) = register(&mut app, "race_bot_intruder").await;
+    let bot = create_bot(&state, "race_bot").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race bot", 4).await;
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/bots"),
+        json!({"botId": bot}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["playerIndex"], 2, "{body}");
+}
+
+#[tokio::test]
+async fn test_party_with_loosely_typed_node_settings_keeps_its_seats() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "loose_owner").await;
+    sqlx::query(
+        "INSERT INTO parties (id, name, owner_id, invite_code, visibility, status,
+                              settings_json, current_round_id, created_at, updated_at)
+         VALUES ('loose-party', 'Loose', ?, 'LOOSE123', 'public', 'waiting',
+                 '{\"playerCount\":6,\"allowSpectators\":1}', NULL, 1700000000, 1700000000)",
+    )
+    .bind(&owner_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let (status, details) = get_auth(&mut app, "/api/party/loose-party", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{details}");
+    assert_eq!(
+        details["party"]["settings"],
+        json!({"playerCount": 6, "allowSpectators": true, "roundTimeLimit": 0})
+    );
+}

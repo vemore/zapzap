@@ -5,6 +5,7 @@ mod get_party_details;
 mod join_party;
 mod leave_party;
 mod list_parties;
+mod seat;
 mod start_party;
 
 pub use add_bot_to_party::*;
