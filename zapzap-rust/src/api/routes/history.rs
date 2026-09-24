@@ -29,31 +29,40 @@ fn default_limit() -> i32 {
     20
 }
 
+/// Node's `GetGameHistory` body: `{success, games, pagination}`
 #[derive(Debug, Serialize)]
 pub struct HistoryResponse {
     pub success: bool,
     pub games: Vec<GameHistoryEntry>,
-    pub total: i32,
+    pub pagination: HistoryPagination,
 }
 
 #[derive(Debug, Serialize)]
+pub struct HistoryPagination {
+    pub limit: i32,
+    pub offset: i32,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GameHistoryEntry {
-    #[serde(rename = "partyId")]
+    pub id: i64,
     pub party_id: String,
-    #[serde(rename = "partyName")]
     pub party_name: String,
-    #[serde(rename = "finishedAt")]
-    pub finished_at: i64,
-    #[serde(rename = "playerCount")]
-    pub player_count: i32,
-    #[serde(rename = "roundsPlayed")]
-    pub rounds_played: i32,
-    #[serde(rename = "winnerUsername")]
+    pub winner_user_id: String,
     pub winner_username: String,
-    #[serde(rename = "userPlacement")]
+    pub winner_final_score: i32,
+    pub total_rounds: i32,
+    pub was_golden_score: bool,
+    pub player_count: i32,
+    pub finished_at: i64,
+    /// `GET /history` only, as in Node
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_placement: Option<i32>,
-    #[serde(rename = "userScore")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_score: Option<i32>,
 }
@@ -160,111 +169,112 @@ pub struct ErrorResponse {
 // Route Handlers
 // ============================================================================
 
+/// A finished game as the history listings read it
+#[derive(sqlx::FromRow)]
+struct HistoryRow {
+    id: i64,
+    party_id: String,
+    party_name: String,
+    visibility: String,
+    winner_user_id: String,
+    winner_username: String,
+    winner_final_score: i32,
+    total_rounds: i32,
+    was_golden_score: bool,
+    player_count: i32,
+    finished_at: i64,
+    user_placement: Option<i32>,
+    user_score: Option<i32>,
+}
+
+impl HistoryRow {
+    /// Node's entry: `visibility` and the caller's own result on `GET /history` only
+    fn into_entry(self, personal: bool) -> GameHistoryEntry {
+        GameHistoryEntry {
+            id: self.id,
+            party_id: self.party_id,
+            party_name: self.party_name,
+            winner_user_id: self.winner_user_id,
+            winner_username: self.winner_username,
+            winner_final_score: self.winner_final_score,
+            total_rounds: self.total_rounds,
+            was_golden_score: self.was_golden_score,
+            player_count: self.player_count,
+            finished_at: self.finished_at,
+            visibility: personal.then_some(self.visibility),
+            user_placement: self.user_placement.filter(|_| personal),
+            user_score: self.user_score.filter(|_| personal),
+        }
+    }
+}
+
+const HISTORY_SELECT: &str = r#"
+    SELECT
+        gr.id,
+        gr.party_id,
+        p.name AS party_name,
+        p.visibility,
+        gr.winner_user_id,
+        wu.username AS winner_username,
+        gr.winner_final_score,
+        gr.total_rounds,
+        gr.was_golden_score,
+        gr.player_count,
+        gr.finished_at,
+        pgr.finish_position AS user_placement,
+        pgr.final_score AS user_score
+    FROM game_results gr
+    JOIN parties p ON p.id = gr.party_id
+    JOIN users wu ON wu.id = gr.winner_user_id
+"#;
+
+fn history_response(
+    rows: Vec<HistoryRow>,
+    params: &HistoryQuery,
+    personal: bool,
+) -> HistoryResponse {
+    // As Node: a full page may have more after it
+    let has_more = rows.len() as i64 == params.limit as i64;
+    HistoryResponse {
+        success: true,
+        games: rows.into_iter().map(|r| r.into_entry(personal)).collect(),
+        pagination: HistoryPagination {
+            limit: params.limit,
+            offset: params.offset,
+            has_more,
+        },
+    }
+}
+
+fn internal_error(e: sqlx::Error) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: e.to_string(),
+        }),
+    )
+}
+
 /// GET /api/history - Get user's finished games history
 pub async fn get_history(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Query(params): Query<HistoryQuery>,
 ) -> Result<Json<HistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let games = sqlx::query_as::<
-        _,
-        (
-            String,
-            String,
-            i64,
-            i32,
-            i32,
-            String,
-            Option<i32>,
-            Option<i32>,
-        ),
-    >(
-        r#"
-        SELECT
-            gr.party_id,
-            p.name as party_name,
-            gr.finished_at,
-            gr.player_count,
-            gr.total_rounds,
-            wu.username as winner_username,
-            pgr.finish_position as user_placement,
-            pgr.final_score as user_score
-        FROM game_results gr
-        JOIN parties p ON p.id = gr.party_id
-        JOIN users wu ON wu.id = gr.winner_user_id
-        LEFT JOIN player_game_results pgr ON pgr.party_id = gr.party_id AND pgr.user_id = ?
-        WHERE pgr.user_id = ?
-        ORDER BY gr.finished_at DESC
-        LIMIT ? OFFSET ?
-        "#,
-    )
-    .bind(&claims.user_id)
-    .bind(&claims.user_id)
-    .bind(params.limit)
-    .bind(params.offset)
-    .fetch_all(state.party_repo.get_db())
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let sql = format!(
+        "{HISTORY_SELECT} JOIN player_game_results pgr \
+         ON pgr.party_id = gr.party_id AND pgr.user_id = ? \
+         ORDER BY gr.finished_at DESC LIMIT ? OFFSET ?"
+    );
+    let rows = sqlx::query_as::<_, HistoryRow>(&sql)
+        .bind(&claims.user_id)
+        .bind(params.limit)
+        .bind(params.offset)
+        .fetch_all(state.party_repo.get_db())
+        .await
+        .map_err(internal_error)?;
 
-    let history: Vec<GameHistoryEntry> = games
-        .into_iter()
-        .map(
-            |(
-                party_id,
-                party_name,
-                finished_at,
-                player_count,
-                rounds_played,
-                winner_username,
-                user_placement,
-                user_score,
-            )| {
-                GameHistoryEntry {
-                    party_id,
-                    party_name,
-                    finished_at,
-                    player_count,
-                    rounds_played,
-                    winner_username,
-                    user_placement,
-                    user_score,
-                }
-            },
-        )
-        .collect();
-
-    // Get total count
-    let total: (i32,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*)
-        FROM player_game_results pgr
-        WHERE pgr.user_id = ?
-        "#,
-    )
-    .bind(&claims.user_id)
-    .fetch_one(state.party_repo.get_db())
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(HistoryResponse {
-        success: true,
-        games: history,
-        total: total.0,
-    }))
+    Ok(Json(history_response(rows, &params, true)))
 }
 
 /// GET /api/history/public - Get public finished games history
@@ -272,75 +282,19 @@ pub async fn get_public_history(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryQuery>,
 ) -> Result<Json<HistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let games = sqlx::query_as::<_, (String, String, i64, i32, i32, String)>(
-        r#"
-        SELECT
-            gr.party_id,
-            p.name as party_name,
-            gr.finished_at,
-            gr.player_count,
-            gr.total_rounds,
-            wu.username as winner_username
-        FROM game_results gr
-        JOIN parties p ON p.id = gr.party_id
-        JOIN users wu ON wu.id = gr.winner_user_id
-        WHERE p.visibility = 'public'
-        ORDER BY gr.finished_at DESC
-        LIMIT ? OFFSET ?
-        "#,
-    )
-    .bind(params.limit)
-    .bind(params.offset)
-    .fetch_all(state.party_repo.get_db())
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    // No caller: the joined player_game_results columns stay empty
+    let sql = format!(
+        "{HISTORY_SELECT} LEFT JOIN player_game_results pgr ON 0 \
+         WHERE p.visibility = 'public' ORDER BY gr.finished_at DESC LIMIT ? OFFSET ?"
+    );
+    let rows = sqlx::query_as::<_, HistoryRow>(&sql)
+        .bind(params.limit)
+        .bind(params.offset)
+        .fetch_all(state.party_repo.get_db())
+        .await
+        .map_err(internal_error)?;
 
-    let history: Vec<GameHistoryEntry> = games
-        .into_iter()
-        .map(
-            |(party_id, party_name, finished_at, player_count, rounds_played, winner_username)| {
-                GameHistoryEntry {
-                    party_id,
-                    party_name,
-                    finished_at,
-                    player_count,
-                    rounds_played,
-                    winner_username,
-                    user_placement: None,
-                    user_score: None,
-                }
-            },
-        )
-        .collect();
-
-    // Get total count (public games only, as the list)
-    let total: (i32,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM game_results gr JOIN parties p ON p.id = gr.party_id \
-         WHERE p.visibility = 'public'",
-    )
-    .fetch_one(state.party_repo.get_db())
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(HistoryResponse {
-        success: true,
-        games: history,
-        total: total.0,
-    }))
+    Ok(Json(history_response(rows, &params, false)))
 }
 
 /// GET /api/history/:partyId - Get detailed information about a finished game

@@ -77,7 +77,24 @@ pub struct ZapZapStats {
 pub struct LeaderboardResponse {
     pub success: bool,
     pub leaderboard: Vec<LeaderboardEntry>,
-    pub total: i32,
+    pub criteria: LeaderboardCriteria,
+    pub pagination: LeaderboardPagination,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LeaderboardCriteria {
+    #[serde(rename = "minGames")]
+    pub min_games: i32,
+    #[serde(rename = "sortBy")]
+    pub sort_by: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LeaderboardPagination {
+    pub limit: i32,
+    pub offset: i32,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +108,9 @@ pub struct LeaderboardEntry {
     pub wins: i32,
     #[serde(rename = "winRate")]
     pub win_rate: f64,
+    /// Mean final score over the player's games
+    #[serde(rename = "averageScore")]
+    pub average_score: f64,
 }
 
 // Bot Stats Response (matching JS format)
@@ -285,19 +305,21 @@ pub async fn get_leaderboard(
     State(state): State<Arc<AppState>>,
     Query(params): Query<LeaderboardQuery>,
 ) -> Result<Json<LeaderboardResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let entries = sqlx::query_as::<_, (String, String, i32, i32)>(
+    // Node's order: win rate, then wins
+    let entries = sqlx::query_as::<_, (String, String, i32, i32, f64)>(
         r#"
         SELECT
             u.id,
             u.username,
             COUNT(*) as games_played,
-            SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as games_won
+            SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as games_won,
+            CAST(AVG(pgr.final_score) AS REAL) as avg_score
         FROM player_game_results pgr
         JOIN users u ON u.id = pgr.user_id
         WHERE u.user_type = 'human'
         GROUP BY u.id
         HAVING games_played >= ?
-        ORDER BY (CAST(games_won AS FLOAT) / games_played) DESC, games_played DESC
+        ORDER BY (CAST(games_won AS REAL) / games_played) DESC, games_won DESC
         LIMIT ? OFFSET ?
         "#,
     )
@@ -315,11 +337,13 @@ pub async fn get_leaderboard(
         )
     })?;
 
+    // As Node: a full page may have more after it
+    let has_more = entries.len() as i64 == params.limit as i64;
     let leaderboard: Vec<LeaderboardEntry> = entries
         .into_iter()
         .enumerate()
         .map(
-            |(i, (user_id, username, games_played, wins))| LeaderboardEntry {
+            |(i, (user_id, username, games_played, wins, average_score))| LeaderboardEntry {
                 rank: (params.offset + i as i32 + 1),
                 user_id,
                 username,
@@ -330,39 +354,23 @@ pub async fn get_leaderboard(
                 } else {
                     0.0
                 },
+                average_score,
             },
         )
         .collect();
 
-    // Get total count - fixed query
-    let total: i32 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*) FROM (
-            SELECT u.id
-            FROM player_game_results pgr
-            JOIN users u ON u.id = pgr.user_id
-            WHERE u.user_type = 'human'
-            GROUP BY u.id
-            HAVING COUNT(*) >= ?
-        )
-        "#,
-    )
-    .bind(params.min_games)
-    .fetch_one(state.party_repo.get_db())
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
-
     Ok(Json(LeaderboardResponse {
         success: true,
         leaderboard,
-        total,
+        criteria: LeaderboardCriteria {
+            min_games: params.min_games,
+            sort_by: "winRate",
+        },
+        pagination: LeaderboardPagination {
+            limit: params.limit,
+            offset: params.offset,
+            has_more,
+        },
     }))
 }
 

@@ -147,8 +147,9 @@
   settings are `{playerCount, allowSpectators, roundTimeLimit}` on Node — which **requires**
   `playerCount` 3-8 on create, else 500 `CREATE_PARTY_ERROR` — and `{handSize, maxScore,
   enableGoldenScore, goldenScoreThreshold}` on Rust, so `PartySettings` has both, all
-  optional; history entries carry `totalRounds`/`winnerFinalScore` (Node) or
-  `roundsPlayed`/`userPlacement`/`userScore` (Rust); Node `join` has no `playerIndex`; Node
+  optional; history entries carry Node's keys on both backends since 2026-09-24 (Rust
+  sent `roundsPlayed` and no `winnerFinalScore` before; the models still read both, as
+  they read Rust's former admin party subset); Node `join` has no `playerIndex`; Node
   `zapzap` adds a `handPoints` map, Rust sends one number; zapzap `scores` are the running
   **totals** after the round on Node (an object, `src/use-cases/game/CallZapZap.js:121-125`)
   but the **round's own points** on Rust (a list, `zapzap-rust/src/domain/services/game_service.rs:228`),
