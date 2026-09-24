@@ -353,6 +353,10 @@ impl From<PlayCardsError> for ApiError {
             PlayCardsError::CardNotInHand(card) => {
                 Self::bad_request("INVALID_CARDS", format!("Card {card} not in hand"))
             }
+            PlayCardsError::RepeatedCard(card) => Self::bad_request(
+                "INVALID_CARDS",
+                format!("Card {card} played more than once"),
+            ),
             PlayCardsError::InvalidCombination => {
                 Self::bad_request("INVALID_PLAY", "Invalid card combination")
             }
