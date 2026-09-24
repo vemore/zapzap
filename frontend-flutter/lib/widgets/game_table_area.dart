@@ -8,6 +8,7 @@ import '../models/game_state.dart';
 import '../utils/app_theme.dart';
 import '../utils/card_l10n.dart';
 import 'card_back.dart';
+import 'felt_painter.dart';
 import 'playing_card.dart';
 
 /// Where this player's turn stands, as the felt shows it.
@@ -92,6 +93,14 @@ class GameTableArea extends StatefulWidget {
   /// The edge of the felt while a draw is owed.
   static const drawEdgeColor = AppColors.amber400;
 
+  /// The dark wood rim around the felt, and the felt's corner radius.
+  static const rimWidth = 6.0;
+  static const feltRadius = 8.0;
+
+  /// The room between the felt's edge and its content: the rim takes 6 px
+  /// a side the plain felt did not, so the felt gives some back.
+  static const feltPadding = EdgeInsets.symmetric(horizontal: 6, vertical: 4);
+
   static Key discardKey(int cardId) => ValueKey('discardCard-$cardId');
 
   @override
@@ -168,104 +177,142 @@ class _GameTableAreaState extends State<GameTableArea> {
     // the "Posées" row shows already: the draw hint takes the line.
     final message = drawing ? null : _message(l10n);
     final take = widget.takeCard;
+    final edge = drawing ? GameTableArea.drawEdgeColor : AppColors.rimInlay;
+    final edgeWidth = drawing ? 2.0 : 1.0;
     return Stack(
       // Passes a tight height down to the felt, which then fills it.
       fit: StackFit.passthrough,
       children: [
         Container(
-          key: const Key('gameTable'),
+          key: const Key('feltRim'),
           width: double.infinity,
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(GameTableArea.rimWidth),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [AppColors.table, AppColors.tableLight],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.rimLight, AppColors.rimDark],
             ),
-            borderRadius: BorderRadius.circular(12),
-            border: drawing
-                ? Border.all(color: GameTableArea.drawEdgeColor, width: 2)
-                : Border.all(color: AppColors.tableLight),
-          ),
-          // The content scrolls inside the edge: a felt given less height
-          // than it needs keeps its whole border, amber in the draw step,
-          // instead of being cut by a scroll view around it.
-          child: LayoutBuilder(
-            builder: (context, box) => SingleChildScrollView(
-              key: const Key('gameTableScroll'),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: box.hasTightHeight ? box.maxHeight : 0,
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (message != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Text(
-                            message,
-                            key: const Key('tableMessage'),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF86EFAC),
-                            ),
-                          ),
-                        ),
-                      if (drawing)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            l10n.gameTableDrawHint,
-                            key: const Key('drawInstruction'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFFFDE68A),
-                            ),
-                          ),
-                        ),
-                      if (widget.cardsPlayed.isNotEmpty) ...[
-                        _label(l10n.gameTablePlayedLabel),
-                        _cards(
-                          widget.cardsPlayed,
-                          (id) => PlayingCard(
-                            cardId: id,
-                            width: drawing
-                                ? widget.drawPlayedWidth ?? widget.cardWidth
-                                : widget.cardWidth,
-                            disabled: true,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                      ],
-                      // The pile and the deck side by side, the deck folding under
-                      // the pile when the pile is long.
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        spacing: 18,
-                        runSpacing: 6,
-                        children: [_pile(l10n), _deck(l10n)],
+            borderRadius: BorderRadius.circular(
+              GameTableArea.feltRadius + GameTableArea.rimWidth,
+            ),
+            // In the draw step the rim glows amber around the amber edge.
+            boxShadow: [
+              drawing
+                  ? BoxShadow(
+                      color: GameTableArea.drawEdgeColor.withValues(
+                        alpha: 0.45,
                       ),
-                      if (drawing && take != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            _takeHint(l10n, GameCard(take)),
-                            key: const Key('takeHint'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFFBBF7D0),
-                            ),
+                      blurRadius: 8,
+                    )
+                  : const BoxShadow(
+                      color: Color(0x66000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
+            ],
+          ),
+          child: Container(
+            key: const Key('gameTable'),
+            decoration: BoxDecoration(
+              gradient: const RadialGradient(
+                radius: 0.9,
+                colors: [AppColors.feltCenter, AppColors.feltEdge],
+              ),
+              borderRadius: BorderRadius.circular(GameTableArea.feltRadius),
+              // The edge sits on the rim's inner lip, above the texture —
+              // which paints inside it —: amber and 2 px in the draw step.
+              border: Border.all(color: edge, width: edgeWidth),
+            ),
+            child: CustomPaint(
+              painter: FeltPainter(
+                watermark: l10n.appTitle,
+                radius: GameTableArea.feltRadius - edgeWidth,
+              ),
+              child: RepaintBoundary(
+                child: Padding(
+                  padding: GameTableArea.feltPadding,
+                  child: LayoutBuilder(
+                    builder: (context, box) => SingleChildScrollView(
+                      key: const Key('gameTableScroll'),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: box.hasTightHeight ? box.maxHeight : 0,
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (message != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Text(
+                                    message,
+                                    key: const Key('tableMessage'),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF86EFAC),
+                                    ),
+                                  ),
+                                ),
+                              if (drawing)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    l10n.gameTableDrawHint,
+                                    key: const Key('drawInstruction'),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFFFDE68A),
+                                    ),
+                                  ),
+                                ),
+                              if (widget.cardsPlayed.isNotEmpty) ...[
+                                _label(l10n.gameTablePlayedLabel),
+                                _cards(
+                                  widget.cardsPlayed,
+                                  (id) => PlayingCard(
+                                    cardId: id,
+                                    width: drawing
+                                        ? widget.drawPlayedWidth ??
+                                              widget.cardWidth
+                                        : widget.cardWidth,
+                                    disabled: true,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              // The pile and the deck side by side, the deck folding under
+                              // the pile when the pile is long.
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                crossAxisAlignment: WrapCrossAlignment.end,
+                                spacing: 18,
+                                runSpacing: 6,
+                                children: [_pile(l10n), _deck(l10n)],
+                              ),
+                              if (drawing && take != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                    _takeHint(l10n, GameCard(take)),
+                                    key: const Key('takeHint'),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFFBBF7D0),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                    ],
+                      ),
+                    ),
                   ),
                 ),
               ),
