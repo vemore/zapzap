@@ -12,8 +12,9 @@ import '../utils/card_l10n.dart';
 /// `frontend/src/components/Game/PlayingCard.jsx`.
 ///
 /// Height is `width × 1.4`; a selected card takes an amber edge and glows
-/// amber, a disabled one is half transparent and ignores taps. A screen
-/// reader activates it as a tap does.
+/// amber, a disabled one is greyed — opaque, so neither the felt nor the
+/// card under it shows through — and ignores taps. A screen reader activates
+/// it as a tap does.
 class PlayingCard extends StatelessWidget {
   const PlayingCard({
     super.key,
@@ -31,9 +32,21 @@ class PlayingCard extends StatelessWidget {
   final VoidCallback? onTap;
   final double width;
 
-  /// Half transparent; by default when [disabled]. A hand only read, whose
-  /// cards overlap, stays opaque: the cards under would show through.
+  /// Greyed with [greyed]; by default when [disabled]. A hand only read (the
+  /// hand in the draw step) keeps its colours: it is not unplayable, only
+  /// not played yet.
   final bool? dimmed;
+
+  /// The grey of a card that cannot be played: its face desaturated and
+  /// washed toward a light grey, opaque. White becomes ~#E5E5E5 and black
+  /// ~#595959, so the card still reads but plainly stands back. Also greys
+  /// the deck out of the draw step (`GameTableArea`).
+  static const greyed = ColorFilter.matrix(<double>[
+    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
+    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
+    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
+    0, 0, 0, 1, 0, //
+  ]);
 
   /// The standard playing-card ratio of the React client.
   static const aspectRatio = 1.4;
@@ -52,6 +65,12 @@ class PlayingCard extends StatelessWidget {
     final radius = BorderRadius.circular(radiusFor(width));
 
     final tap = disabled ? null : onTap;
+    final face = SvgPicture.asset(
+      card.assetPath,
+      width: width,
+      height: height,
+      fit: BoxFit.fill,
+    );
     return Semantics(
       button: true,
       enabled: !disabled,
@@ -61,49 +80,43 @@ class PlayingCard extends StatelessWidget {
       excludeSemantics: true,
       child: GestureDetector(
         onTap: tap,
-        child: Opacity(
-          opacity: (dimmed ?? disabled) ? 0.5 : 1,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: width,
-            height: height,
-            // In front of the face, so the edge does not shrink it.
-            foregroundDecoration: selected
-                ? BoxDecoration(
-                    borderRadius: radius,
-                    border: Border.all(
-                      color: AppColors.amber400,
-                      width: CardSizes.selectedBorder,
-                    ),
-                  )
-                : null,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: radius,
-              boxShadow: [
-                if (selected)
-                  BoxShadow(
-                    color: AppColors.amber400.withValues(alpha: 0.7),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                  )
-                else
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: width,
+          height: height,
+          // In front of the face, so the edge does not shrink it.
+          foregroundDecoration: selected
+              ? BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: AppColors.amber400,
+                    width: CardSizes.selectedBorder,
                   ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: radius,
-              child: SvgPicture.asset(
-                card.assetPath,
-                width: width,
-                height: height,
-                fit: BoxFit.fill,
-              ),
-            ),
+                )
+              : null,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: radius,
+            boxShadow: [
+              if (selected)
+                BoxShadow(
+                  color: AppColors.amber400.withValues(alpha: 0.7),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                )
+              else
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: radius,
+            child: (dimmed ?? disabled)
+                ? ColorFiltered(colorFilter: greyed, child: face)
+                : face,
           ),
         ),
       ),

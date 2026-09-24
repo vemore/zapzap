@@ -425,7 +425,7 @@ class _GameTableAreaState extends State<GameTableArea> {
     ],
   );
 
-  /// The deck: a target in the draw step, as the pile is, dimmed otherwise.
+  /// The deck: a target in the draw step, as the pile is, greyed otherwise.
   Widget _deck(AppLocalizations l10n) {
     final onTap = widget.onDeckTap;
     return TextButton(
@@ -437,19 +437,23 @@ class _GameTableAreaState extends State<GameTableArea> {
         foregroundColor: AppColors.slate100,
         disabledForegroundColor: AppColors.slate400,
       ),
-      child: Opacity(
-        opacity: onTap == null ? 0.6 : 1,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Greyed, not transparent: the felt would show through the back.
+          if (onTap == null)
+            const ColorFiltered(
+              colorFilter: PlayingCard.greyed,
+              child: CardBack(size: CardBackSize.md),
+            )
+          else
             const CardBack(size: CardBackSize.md),
-            const SizedBox(height: 3),
-            Text(
-              l10n.gameDeckLabel(widget.deckSize),
-              style: const TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
+          const SizedBox(height: 3),
+          Text(
+            l10n.gameDeckLabel(widget.deckSize),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ],
       ),
     );
   }
