@@ -91,6 +91,12 @@ test('Node and Rust backends answer the same, but for the listed divergences', {
         }));
     }
     t.diagnostic(`game: ${ctx.node.gameRounds} round(s) on Node, ${ctx.rust.gameRounds} on Rust`);
+    // The game end is checked against GAME_RULES.md: every game reached it and named a winner.
+    for (const name of ['node', 'rust']) {
+        const checks = ctx[name].winnerChecks || [];
+        assert.ok(ctx[name].games > 0 && checks.length === ctx[name].games && checks.every((k) => k >= 1),
+            `rules.winner ran ${JSON.stringify(checks)} time(s) per game on ${name}, not at least once in each of ${ctx[name].games} games`);
+    }
 
     for (const b of [backends.node, backends.rust]) {
         const why = b.death();
