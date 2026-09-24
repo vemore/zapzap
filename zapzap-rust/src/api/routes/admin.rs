@@ -713,6 +713,7 @@ pub async fn admin_delete_party(
                 }),
             )
         })?;
+    state.bot_runner.drop_party(&party_id);
 
     Ok(Json(DeletePartyResponse {
         success: true,

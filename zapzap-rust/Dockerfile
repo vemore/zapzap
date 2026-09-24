@@ -26,15 +26,23 @@ RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn dummy() {}" > src/lib.rs
 
-# Build dependencies only (cached layer)
+# Build dependencies only (cached layer). Everything the dummy crate left is removed —
+# its objects, its library and its fingerprints — or cargo, seeing a fingerprint newer
+# than the copied sources, would link the dummy library into the real binary.
 RUN cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} && \
-    rm -rf src target/release/deps/zapzap*
+    rm -rf src \
+        target/release/deps/zapzap* \
+        target/release/deps/libzapzap* \
+        target/release/libzapzap* \
+        target/release/zapzap-backend* \
+        target/release/.fingerprint/zapzap*
 
 # Copy actual source code
 COPY src ./src
 
-# Build the application
-RUN cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
+# Build the application; touching the sources makes them newer than anything cached
+RUN touch src/lib.rs src/main.rs && \
+    cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
