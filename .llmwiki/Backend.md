@@ -19,7 +19,7 @@
 |---|---|
 | `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `error.rs` (typed `ApiError` and the `ApiJson` body extractor, see Error mapping), `middleware/auth_middleware.rs`, `not_found.rs` (the `ROUTE_NOT_FOUND` fallback), `sse.rs`, `dto/` (empty mod, 1 line) |
 | `application/` | use cases: `auth/{login_user,register_user,login_with_google}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `party/add_bot_to_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/{create_bot,delete_bot,reflect_on_round,runner}`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
-| `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 679 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
+| `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 978 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
 | `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{google_oauth,llm_service,session_manager}` |
 | `training/` | **empty directory**, untracked by git |
 

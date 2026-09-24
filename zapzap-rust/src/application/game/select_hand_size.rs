@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{PartyRepository, RepositoryError};
 use crate::domain::services::hand_size_bounds;
-use crate::domain::value_objects::GameAction;
+use crate::domain::value_objects::{GameAction, LastAction, LAST_ACTION_SELECT_HAND_SIZE};
 
 /// Select hand size input
 pub struct SelectHandSizeInput {
@@ -114,6 +114,12 @@ impl<P: PartyRepository> SelectHandSize<P> {
 
         // Update action to Play
         game_state.current_action = GameAction::Play;
+        game_state.last_action = LastAction {
+            action_type: LAST_ACTION_SELECT_HAND_SIZE,
+            player_index,
+            hand_size: input.hand_size,
+            ..LastAction::default()
+        };
 
         // Save game state
         self.party_repo

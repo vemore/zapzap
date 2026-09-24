@@ -137,8 +137,8 @@ class NextRoundResult {
   /// When the game is over.
   final Map<int, int>? finalScores;
 
-  /// Player indexes (Node sends objects with `playerIndex`, Rust bare
-  /// indexes).
+  /// Player indexes. Both backends send objects with `playerIndex`; the
+  /// bare indexes of older Rust responses are read too.
   final List<int> eliminatedPlayers;
 
   /// Node only.

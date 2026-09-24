@@ -140,7 +140,9 @@
   Card ids stay `int` (0-53); no model is named `Card`.
 - **Parsing rules** (`models/json.dart`), because the two backends disagree on types:
   maps keyed by player index arrive with string keys (`{"0": 28}`) and become `Map<int, …>`;
-  Rust's `nextRound` sends them as `[{playerIndex, score}]`, read too.
+  Rust's `nextRound` sent them as `[{playerIndex, score}]` (and `eliminatedPlayers`/`winner`
+  as bare indexes) until 2026-09-24; it now sends Node's shapes, and the tolerant parsing
+  stays for such older responses.
   A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
   can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,

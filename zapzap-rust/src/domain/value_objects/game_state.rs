@@ -49,14 +49,61 @@ impl GameAction {
     }
 }
 
-/// Last action information
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// `lastAction.type` codes of [`LastAction::action_type`]
+pub const LAST_ACTION_NONE: u8 = 0;
+pub const LAST_ACTION_DRAW: u8 = 1;
+pub const LAST_ACTION_PLAY: u8 = 2;
+pub const LAST_ACTION_ZAPZAP: u8 = 3;
+pub const LAST_ACTION_SELECT_HAND_SIZE: u8 = 4;
+
+/// The last move of the round, the `lastAction` Node's use cases write
+/// (`src/use-cases/game/{SelectHandSize,PlayCards,DrawCard,CallZapZap}.js`).
+/// Which fields mean something depends on [`Self::action_type`]; the zapzap's
+/// `roundScores` and `counterActedByPlayerIndex` live on [`GameState`].
+#[derive(Debug, Clone, Default)]
 pub struct LastAction {
-    pub action_type: u8, // 0=none, 1=draw, 2=play, 3=zapzap
+    /// One of the `LAST_ACTION_*` codes
+    pub action_type: u8,
     pub player_index: u8,
+    /// zapzap
     pub was_counteracted: bool,
+    /// zapzap: the caller's hand value (Joker = 0)
     pub caller_hand_points: u8,
+    /// selectHandSize
+    pub hand_size: u8,
+    /// play: the cards played
+    pub card_ids: SmallVec<[u8; 8]>,
+    /// draw: from the played pile, else from the deck (also when a state written before
+    /// the source was kept does not say: then no card is named)
+    pub from_played: bool,
+    /// draw from the played pile: the card taken, which every player saw on the table.
+    /// A card drawn from the deck is never kept: naming it would show it to everyone
+    /// (Node's `cardId` leak, `2026-09-22-node-play-draw-leak-all-hands`)
+    pub card_id: Option<u8>,
+    /// draw: the discard pile was shuffled into the empty deck
+    pub deck_reshuffled: bool,
+    /// Unix milliseconds of the move, 0 when unknown (selectHandSize has none on Node)
+    pub timestamp: u64,
+}
+
+impl LastAction {
+    fn type_str(&self) -> &'static str {
+        match self.action_type {
+            LAST_ACTION_DRAW => "draw",
+            LAST_ACTION_PLAY => "play",
+            LAST_ACTION_ZAPZAP => "zapzap",
+            LAST_ACTION_SELECT_HAND_SIZE => "selectHandSize",
+            _ => "unknown",
+        }
+    }
+}
+
+/// Now, in Unix milliseconds (Node's `Date.now()`)
+pub fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Card tracking for opponent hand prediction
@@ -124,6 +171,32 @@ pub struct GameState {
     pub lowest_hand_player_index: Option<u8>,
     pub was_counter_acted: Option<bool>,
     pub counter_acted_by_player_index: Option<u8>,
+}
+
+/// The seat holding the lowest hand of a finished round, as `execute_zapzap` decides it
+/// (`zapzap-rust/src/domain/services/game_service.rs`): from the caller's value, the last
+/// other seat, in seat order, whose hand is as low or lower; the caller when none is.
+/// Seats without cards (eliminated before the round) take no part. `None` when no seat
+/// holds a card.
+fn lowest_hand_of(
+    hands: &[SmallVec<[u8; MAX_HAND_SIZE]>; MAX_PLAYERS],
+    player_count: u8,
+    caller: Option<u8>,
+) -> Option<u8> {
+    use crate::infrastructure::bot::card_analyzer::calculate_hand_value;
+    let seats = (0..player_count.min(MAX_PLAYERS as u8)).filter(|&i| !hands[i as usize].is_empty());
+    let mut lowest: Option<(u8, u16)> = caller
+        .filter(|&c| (c as usize) < MAX_PLAYERS && !hands[c as usize].is_empty())
+        .map(|c| (c, calculate_hand_value(&hands[c as usize])));
+    for seat in seats.filter(|&i| Some(i) != caller) {
+        let value = calculate_hand_value(&hands[seat as usize]);
+        match lowest {
+            // Without a caller the first lowest seat holds it; after one, ties go on
+            Some((_, low)) if value > low || (caller.is_none() && value == low) => {}
+            _ => lowest = Some((seat, value)),
+        }
+    }
+    lowest.map(|(seat, _)| seat)
 }
 
 impl Default for GameState {
@@ -363,23 +436,60 @@ impl GameState {
         self.deck.len()
     }
 
-    /// Get last action as JSON value (for API response)
+    /// `lastAction` as Node's use cases write it, per action type: `{type, playerIndex}`
+    /// plus `handSize` (selectHandSize), `cardIds` (play), `source`, `cardId` (played pile
+    /// only), `deckReshuffled` (draw), `wasCounterActed`, `counterActedByPlayerIndex`,
+    /// `callerHandPoints`, `roundScores` (zapzap), and `timestamp` but on selectHandSize.
+    /// `None` before the round's first move. Both the API response and the stored state.
     pub fn get_last_action_json(&self) -> Option<serde_json::Value> {
-        if self.last_action.action_type == 0 {
+        use serde_json::{json, Value};
+        let la = &self.last_action;
+        if la.action_type == LAST_ACTION_NONE {
             return None;
         }
-        let action_type_str = match self.last_action.action_type {
-            1 => "draw",
-            2 => "play",
-            3 => "zapzap",
-            _ => "unknown",
-        };
-        Some(serde_json::json!({
-            "type": action_type_str,
-            "playerIndex": self.last_action.player_index,
-            "wasCounterActed": self.last_action.was_counteracted,
-            "callerHandPoints": self.last_action.caller_hand_points
-        }))
+        let mut obj = serde_json::Map::new();
+        obj.insert("type".into(), json!(la.type_str()));
+        obj.insert("playerIndex".into(), json!(la.player_index));
+        match la.action_type {
+            LAST_ACTION_SELECT_HAND_SIZE => {
+                obj.insert("handSize".into(), json!(la.hand_size));
+            }
+            LAST_ACTION_PLAY => {
+                obj.insert("cardIds".into(), json!(la.card_ids.to_vec()));
+            }
+            LAST_ACTION_DRAW => {
+                let source = if la.from_played { "played" } else { "deck" };
+                obj.insert("source".into(), json!(source));
+                if la.from_played {
+                    if let Some(card) = la.card_id {
+                        obj.insert("cardId".into(), json!(card));
+                    }
+                }
+                obj.insert("deckReshuffled".into(), json!(la.deck_reshuffled));
+            }
+            LAST_ACTION_ZAPZAP => {
+                obj.insert("wasCounterActed".into(), json!(la.was_counteracted));
+                obj.insert(
+                    "counterActedByPlayerIndex".into(),
+                    json!(self.counter_acted_by_player_index),
+                );
+                obj.insert("callerHandPoints".into(), json!(la.caller_hand_points));
+                let round_scores = self.round_scores.map(|scores| {
+                    scores
+                        .iter()
+                        .take(self.player_count as usize)
+                        .enumerate()
+                        .map(|(i, s)| (i.to_string(), json!(s)))
+                        .collect::<serde_json::Map<String, Value>>()
+                });
+                obj.insert("roundScores".into(), json!(round_scores));
+            }
+            _ => {}
+        }
+        if la.timestamp != 0 {
+            obj.insert("timestamp".into(), json!(la.timestamp));
+        }
+        Some(Value::Object(obj))
     }
 
     /// Draw card from deck
@@ -422,23 +532,7 @@ impl GameState {
             scores_map.insert(i.to_string(), self.scores[i]);
         }
 
-        // Convert lastAction to JSON format if present
-        let last_action_json = if self.last_action.action_type != 0 {
-            let action_type_str = match self.last_action.action_type {
-                1 => "draw",
-                2 => "play",
-                3 => "zapzap",
-                _ => "unknown",
-            };
-            Some(json!({
-                "type": action_type_str,
-                "playerIndex": self.last_action.player_index,
-                "wasCounterActed": self.last_action.was_counteracted,
-                "callerHandPoints": self.last_action.caller_hand_points
-            }))
-        } else {
-            None
-        };
+        let last_action_json = self.get_last_action_json();
 
         // Convert round_scores to object if present
         let round_scores_map: Option<HashMap<String, u16>> = self.round_scores.map(|scores| {
@@ -463,6 +557,9 @@ impl GameState {
             "playerCount": self.player_count,
             "isGoldenScore": self.is_golden_score,
             "eliminatedMask": self.eliminated_mask,
+            "eliminatedPlayers": (0..self.player_count)
+                .filter(|&i| self.is_eliminated(i))
+                .collect::<Vec<u8>>(),
             "lastAction": last_action_json,
             "roundScores": round_scores_map,
             "zapZapCaller": self.zapzap_caller,
@@ -558,34 +655,76 @@ impl GameState {
             .unwrap_or(GameAction::SelectHandSize);
         let round_number = v["roundNumber"].as_u64().unwrap_or(1) as u16;
         let is_golden_score = v["isGoldenScore"].as_bool().unwrap_or(false);
-        let eliminated_mask = v["eliminatedMask"].as_u64().unwrap_or(0) as u8;
+        // Node stores `eliminatedPlayers: [index…]` and no mask
+        let eliminated_mask = match v["eliminatedMask"].as_u64() {
+            Some(mask) => mask as u8,
+            None => v["eliminatedPlayers"]
+                .as_array()
+                .map(|seats| {
+                    seats
+                        .iter()
+                        .filter_map(|x| x.as_u64())
+                        .filter(|&i| (i as usize) < MAX_PLAYERS)
+                        .fold(0u8, |mask, i| mask | (1 << i))
+                })
+                .unwrap_or(0),
+        };
 
-        // Parse lastAction
-        let last_action = if let Some(la) = v["lastAction"].as_object() {
+        // Parse lastAction: Node's format, which this one follows, and the older Rust one
+        // `{type, playerIndex, wasCounterActed, callerHandPoints}`
+        let la_obj = v["lastAction"].as_object();
+        let last_action = if let Some(la) = la_obj {
             let action_type = match la.get("type").and_then(|t| t.as_str()) {
-                Some("draw") => 1,
-                Some("play") => 2,
-                Some("zapzap") => 3,
-                _ => 0,
+                Some("draw") => LAST_ACTION_DRAW,
+                Some("play") => LAST_ACTION_PLAY,
+                Some("zapzap") => LAST_ACTION_ZAPZAP,
+                Some("selectHandSize") => LAST_ACTION_SELECT_HAND_SIZE,
+                _ => LAST_ACTION_NONE,
             };
+            let u8_of = |key: &str| la.get(key).and_then(|x| x.as_u64()).map(|n| n as u8);
+            let from_played = la.get("source").and_then(|s| s.as_str()) == Some("played");
             LastAction {
                 action_type,
-                player_index: la.get("playerIndex").and_then(|p| p.as_u64()).unwrap_or(0) as u8,
+                player_index: u8_of("playerIndex").unwrap_or(0),
                 was_counteracted: la
                     .get("wasCounterActed")
                     .and_then(|w| w.as_bool())
                     .unwrap_or(false),
-                caller_hand_points: la
-                    .get("callerHandPoints")
-                    .and_then(|c| c.as_u64())
-                    .unwrap_or(0) as u8,
+                caller_hand_points: u8_of("callerHandPoints").unwrap_or(0),
+                hand_size: u8_of("handSize").unwrap_or(0),
+                card_ids: la
+                    .get("cardIds")
+                    .and_then(|c| c.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|x| x.as_u64().map(|n| n as u8))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                from_played,
+                // Node also names the card drawn from the deck: dropped, never shown
+                card_id: if from_played { u8_of("cardId") } else { None },
+                deck_reshuffled: la
+                    .get("deckReshuffled")
+                    .and_then(|d| d.as_bool())
+                    .unwrap_or(false),
+                timestamp: la.get("timestamp").and_then(|t| t.as_u64()).unwrap_or(0),
             }
         } else {
             LastAction::default()
         };
+        // Node keeps the zapzap's outcome in lastAction only; Rust also at the top level
+        let zapzap_la = la_obj.filter(|_| last_action.action_type == LAST_ACTION_ZAPZAP);
+        let top_or_zapzap = |key: &str| -> Option<&Value> {
+            v.get(key).filter(|x| !x.is_null()).or_else(|| {
+                zapzap_la
+                    .and_then(|la| la.get(key))
+                    .filter(|x| !x.is_null())
+            })
+        };
 
         // Parse round end data if present
-        let round_scores = v.get("roundScores").and_then(|rs| {
+        let round_scores = top_or_zapzap("roundScores").and_then(|rs| {
             let obj = rs.as_object()?;
             let mut scores_arr = [0u16; MAX_PLAYERS];
             for (key, val) in obj {
@@ -600,14 +739,19 @@ impl GameState {
         let zapzap_caller = v
             .get("zapZapCaller")
             .and_then(|c| c.as_u64())
-            .map(|c| c as u8);
+            .map(|c| c as u8)
+            .or_else(|| zapzap_la.map(|_| last_action.player_index));
         let lowest_hand_player_index = v
             .get("lowestHandPlayerIndex")
             .and_then(|l| l.as_u64())
-            .map(|l| l as u8);
-        let was_counter_acted = v.get("wasCounterActed").and_then(|w| w.as_bool());
-        let counter_acted_by_player_index = v
-            .get("counterActedByPlayerIndex")
+            .map(|l| l as u8)
+            .or_else(|| {
+                (current_action == GameAction::Finished)
+                    .then(|| lowest_hand_of(&hands, player_count, zapzap_caller))
+                    .flatten()
+            });
+        let was_counter_acted = top_or_zapzap("wasCounterActed").and_then(|w| w.as_bool());
+        let counter_acted_by_player_index = top_or_zapzap("counterActedByPlayerIndex")
             .and_then(|c| c.as_u64())
             .map(|c| c as u8);
 
@@ -678,5 +822,157 @@ mod tests {
 
         state.advance_turn();
         assert_eq!(state.current_turn, 0); // Wraps around, skipping 1
+    }
+
+    /// A game state as Node's `GameState.toJSON()` stores it (`src/domain/value-objects/
+    /// GameState.js`), with `lastAction` as `DrawCard.js` writes it
+    fn node_state(last_action: serde_json::Value) -> String {
+        serde_json::json!({
+            "deck": [5, 6, 7],
+            "hands": {"0": [0, 1], "1": [13, 14], "2": [26, 27]},
+            "lastCardsPlayed": [40],
+            "cardsPlayed": [41],
+            "discardPile": [],
+            "scores": {"0": 10, "1": 20, "2": 30},
+            "currentTurn": 1,
+            "currentAction": "play",
+            "roundNumber": 3,
+            "lastAction": last_action,
+            "isGoldenScore": false,
+            "eliminatedPlayers": [],
+            "startingPlayer": 0
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn test_node_deck_draw_reads_without_the_card() {
+        let json = node_state(serde_json::json!({
+            "type": "draw", "playerIndex": 0, "source": "deck", "cardId": 52,
+            "deckReshuffled": true, "timestamp": 1_758_000_000_000u64
+        }));
+        let state = GameState::from_json(&json).expect("Node's state reads");
+        assert_eq!(state.player_count, 3);
+        assert_eq!(state.scores[..3], [10, 20, 30]);
+        assert_eq!(
+            state.get_last_action_json().unwrap(),
+            serde_json::json!({
+                "type": "draw", "playerIndex": 0, "source": "deck",
+                "deckReshuffled": true, "timestamp": 1_758_000_000_000u64
+            })
+        );
+        // Nor is the card written back
+        assert!(!state.to_json().contains("\"cardId\""));
+    }
+
+    #[test]
+    fn test_node_played_draw_and_play_and_hand_size_read_back() {
+        for la in [
+            serde_json::json!({"type": "draw", "playerIndex": 2, "source": "played",
+                "cardId": 40, "deckReshuffled": false, "timestamp": 1_758_000_000_001u64}),
+            serde_json::json!({"type": "play", "playerIndex": 1, "cardIds": [3, 16],
+                "timestamp": 1_758_000_000_002u64}),
+            serde_json::json!({"type": "selectHandSize", "playerIndex": 0, "handSize": 7}),
+        ] {
+            let state = GameState::from_json(&node_state(la.clone())).unwrap();
+            assert_eq!(state.get_last_action_json().unwrap(), la);
+            // And through Rust's own storage
+            let again = GameState::from_json(&state.to_json()).unwrap();
+            assert_eq!(again.get_last_action_json().unwrap(), la);
+        }
+    }
+
+    #[test]
+    fn test_node_zapzap_outcome_is_read_from_last_action() {
+        let mut v: serde_json::Value = serde_json::from_str(&node_state(serde_json::json!({
+            "type": "zapzap", "playerIndex": 1, "wasCounterActed": true,
+            "counterActedByPlayerIndex": 0, "callerHandPoints": 3,
+            "roundScores": {"0": 0, "1": 13, "2": 6}, "timestamp": 1_758_000_000_003u64
+        })))
+        .unwrap();
+        v["currentAction"] = "finished".into();
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.zapzap_caller, Some(1));
+        assert_eq!(state.was_counter_acted, Some(true));
+        assert_eq!(state.counter_acted_by_player_index, Some(0));
+        assert_eq!(state.round_scores.unwrap()[..3], [0, 13, 6]);
+        assert_eq!(
+            state.get_last_action_json().unwrap(),
+            v["lastAction"],
+            "the zapzap's lastAction reads back whole"
+        );
+    }
+
+    #[test]
+    fn test_older_rust_last_action_still_reads() {
+        // Rust before this format: `{type, playerIndex, wasCounterActed, callerHandPoints}`
+        let json = node_state(serde_json::json!({
+            "type": "draw", "playerIndex": 2, "wasCounterActed": false, "callerHandPoints": 0
+        }));
+        let state = GameState::from_json(&json).unwrap();
+        let la = state.get_last_action_json().unwrap();
+        assert_eq!(la["type"], "draw");
+        assert_eq!(la["playerIndex"], 2);
+        // An unknown source reads as a deck draw, which names no card
+        assert_eq!(la["source"], "deck");
+        assert_eq!(la["deckReshuffled"], false);
+        assert!(la.get("cardId").is_none());
+        assert!(la.get("timestamp").is_none());
+
+        let none = GameState::from_json(&node_state(serde_json::Value::Null)).unwrap();
+        assert!(none.get_last_action_json().is_none());
+    }
+
+    #[test]
+    fn test_node_eliminated_players_become_the_mask() {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&node_state(serde_json::Value::Null)).unwrap();
+        v["eliminatedPlayers"] = serde_json::json!([1]);
+        assert!(v.get("eliminatedMask").is_none());
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert!(state.is_eliminated(1));
+        assert!(!state.is_eliminated(0) && !state.is_eliminated(2));
+
+        // Rust's own storage keeps the mask, and writes Node's list beside it
+        let json = state.to_json();
+        let stored: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(stored["eliminatedPlayers"], serde_json::json!([1]));
+        let again = GameState::from_json(&json).unwrap();
+        assert_eq!(again.eliminated_mask, state.eliminated_mask);
+        assert_eq!(again.active_players().to_vec(), vec![0, 2]);
+    }
+
+    #[test]
+    fn test_node_golden_score_zapzap_recovers_the_lowest_hand() {
+        // Node's golden score: seats 1 and 2 left (seat 0 out, no cards); seat 1 calls
+        // with A♥ 2♥ = 3 and seat 2 ties with A♣ 2♣: seat 2 counteracts and wins. Node
+        // stores no lowestHandPlayerIndex: it is recomputed from the hands.
+        let mut v: serde_json::Value = serde_json::from_str(&node_state(serde_json::json!({
+            "type": "zapzap", "playerIndex": 1, "wasCounterActed": true,
+            "counterActedByPlayerIndex": 2, "callerHandPoints": 3,
+            "roundScores": {"1": 3, "2": 0}, "timestamp": 1_758_000_000_004u64
+        })))
+        .unwrap();
+        v["currentAction"] = "finished".into();
+        v["isGoldenScore"] = true.into();
+        v["eliminatedPlayers"] = serde_json::json!([0]);
+        v["hands"] = serde_json::json!({"0": [], "1": [13, 14], "2": [26, 27]});
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, Some(2));
+        assert_eq!(crate::domain::services::is_game_over(&state), Some(2));
+
+        // Seat 0 holding the lowest hand is found too (not mistaken for "none")
+        v["eliminatedPlayers"] = serde_json::json!([2]);
+        v["hands"] = serde_json::json!({"0": [0], "1": [13, 14], "2": []});
+        v["lastAction"]["counterActedByPlayerIndex"] = 0.into();
+        v["lastAction"]["roundScores"] = serde_json::json!({"0": 0, "1": 13});
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, Some(0));
+        assert_eq!(crate::domain::services::is_game_over(&state), Some(0));
+
+        // A round still being played recovers nothing
+        v["currentAction"] = "play".into();
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, None);
     }
 }

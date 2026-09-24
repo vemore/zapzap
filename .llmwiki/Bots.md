@@ -40,7 +40,7 @@ Mapping done once, in `BotBrain::for_difficulty` (`zapzap-rust/src/application/b
 - **Hard** (`hard_bot.rs`): hand size 4 in golden score else random 4-5 (`:28-38`); play maximising `points_removed*2 + cards_removed*3` (`:74-85`); discard if it completes a pair/sequence or is worth ≤2 (`:95-110`); ZapZap at ≤2, ≤4 in golden score, or one card (`:116-141`).
 
 ### Thibot (`strategies/thibot.rs`)
-- Probability-based, tracks played/taken cards via `GameState.card_tracker` (`thibot.rs:1-9`; tracker `zapzap-rust/src/domain/value_objects/game_state.rs:62`).
+- Probability-based, tracks played/taken cards via `GameState.card_tracker` (`thibot.rs:1-9`; tracker `zapzap-rust/src/domain/value_objects/game_state.rs:112`).
 - 33 tunable `ThibotParams` (`thibot.rs:23-68`); defaults hard-coded (`:70-115`), comment "44.25% winrate vs 40.55% baseline" (`:72`). Values equal the `optimized.params` block of `data/thibot_genetic_params.json` (e.g. jokerKeepScore 705, holdPairForThreeBonus 226, discardThreshold 8; file winRate 0.4425).
 - Defensive mode when an opponent has ≤ `defensive_threshold` (3) cards: play max points (`thibot.rs:621-627`).
 - ZapZap: always at 0 (`:719`), else `can_safely_zapzap` (`:159-204`).
