@@ -245,4 +245,7 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   > (the Rust binary and `zapzap-rust/docker-compose.yml` refuse to start without it), and the
   > database must have been opened once by the Node app after `scripts/docker-entrypoint.js`
   > rebuilt `users` — the Rust schema step does not port Node's `ADD COLUMN` upgrades and
-  > refuses to start, leaving the file untouched, on a `users` table without `google_id`.
+  > refuses to start, leaving the file untouched, on a `users` table without `google_id`. And the
+  > React `GameBoard` and `PartyLobby` must pass `?token=` to `/suscribeupdate`: Rust sends a
+  > game's moves and a private party's events only to its players' streams, so tokenless
+  > streams would miss them (tracked in `wip/`).

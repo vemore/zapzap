@@ -13,6 +13,17 @@ use crate::infrastructure::app_state::AppState;
 // Re-export Claims for use in route handlers
 pub use crate::infrastructure::auth::Claims;
 
+/// Whether the token's user is still in the database; a lookup error counts as no.
+pub async fn user_exists(state: &AppState, user_id: &str) -> bool {
+    match state.user_repo.find_by_id(user_id).await {
+        Ok(user) => user.is_some(),
+        Err(e) => {
+            tracing::error!("Auth user lookup failed: {}", e);
+            false
+        }
+    }
+}
+
 /// Extract authenticated user from request
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
@@ -36,6 +47,11 @@ pub async fn auth_middleware(
         .verify(token)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
+    // The user must still exist (Node: ValidateToken.js), one primary-key lookup
+    if !user_exists(&state, &claims.user_id).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
     // Add claims to request extensions
     request.extensions_mut().insert(claims);
 
@@ -56,7 +72,9 @@ pub async fn optional_auth_middleware(
     {
         if let Some(token) = auth_header.strip_prefix("Bearer ") {
             if let Ok(claims) = state.jwt_service.verify(token) {
-                request.extensions_mut().insert(claims);
+                if user_exists(&state, &claims.user_id).await {
+                    request.extensions_mut().insert(claims);
+                }
             }
         }
     }

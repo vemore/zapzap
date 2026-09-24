@@ -450,18 +450,21 @@ pub async fn join_party(
         .await
         .map_err(|e| {
             let err_msg = e.to_string();
-            let (status, code) =
-                if err_msg.contains("not found") || err_msg.contains("does not exist") {
-                    (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-                } else if err_msg.contains("full") {
-                    (StatusCode::CONFLICT, "PARTY_FULL")
-                } else if err_msg.contains("already in party") {
-                    (StatusCode::CONFLICT, "ALREADY_IN_PARTY")
-                } else if err_msg.contains("already started") {
-                    (StatusCode::CONFLICT, "PARTY_STARTED")
-                } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, "JOIN_PARTY_ERROR")
-                };
+            let (status, code) = if err_msg.starts_with("Party is private") {
+                (StatusCode::FORBIDDEN, "PRIVATE_PARTY")
+            } else if err_msg == "Invalid invite code" {
+                (StatusCode::FORBIDDEN, "INVALID_INVITE_CODE")
+            } else if err_msg.contains("not found") || err_msg.contains("does not exist") {
+                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
+            } else if err_msg.contains("full") {
+                (StatusCode::CONFLICT, "PARTY_FULL")
+            } else if err_msg.contains("already in party") {
+                (StatusCode::CONFLICT, "ALREADY_IN_PARTY")
+            } else if err_msg.contains("already started") {
+                (StatusCode::CONFLICT, "PARTY_STARTED")
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, "JOIN_PARTY_ERROR")
+            };
             (
                 status,
                 Json(ErrorResponse {
@@ -655,7 +658,8 @@ pub async fn delete_party(
     )
     .with_action("partyDeleted")
     .with_data(serde_json::json!({
-        "partyName": result.deleted_party_name
+        "partyName": result.deleted_party_name,
+        "visibility": result.deleted_party_visibility
     }));
     state.broadcast_event(event);
 

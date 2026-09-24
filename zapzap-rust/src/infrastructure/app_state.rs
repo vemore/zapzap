@@ -24,8 +24,8 @@ pub const PUBLIC_JWT_SECRETS: [&str; 4] = [
 /// The JWT signing secret, from the value of `JWT_SECRET`. There is no default: a missing,
 /// blank or publicly known secret is an error, and the server refuses to start.
 pub fn jwt_secret_from(value: Option<String>) -> anyhow::Result<String> {
-    let secret = value.unwrap_or_default();
-    if secret.trim().is_empty() {
+    let secret = value.unwrap_or_default().trim().to_string();
+    if secret.is_empty() {
         anyhow::bail!(
             "JWT_SECRET is not set: the server refuses to start without a secret to sign \
              tokens with (generate one with `openssl rand -hex 32`)"
@@ -274,6 +274,18 @@ mod tests {
                 .to_string();
             assert!(err.contains("placeholder"), "{secret}: {err}");
         }
+    }
+
+    #[test]
+    fn jwt_secret_is_trimmed_before_checks_and_use() {
+        let err = jwt_secret_from(Some(" zapzap-secret-key-change-in-production\n".into()))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("placeholder"), "{err}");
+        assert_eq!(
+            jwt_secret_from(Some("  4f1c0e9a\n".into())).unwrap(),
+            "4f1c0e9a"
+        );
     }
 
     #[test]

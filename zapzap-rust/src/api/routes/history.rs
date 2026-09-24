@@ -284,6 +284,7 @@ pub async fn get_public_history(
         FROM game_results gr
         JOIN parties p ON p.id = gr.party_id
         JOIN users wu ON wu.id = gr.winner_user_id
+        WHERE p.visibility = 'public'
         ORDER BY gr.finished_at DESC
         LIMIT ? OFFSET ?
         "#,
@@ -319,18 +320,21 @@ pub async fn get_public_history(
         )
         .collect();
 
-    // Get total count
-    let total: (i32,) = sqlx::query_as("SELECT COUNT(*) FROM game_results")
-        .fetch_one(state.party_repo.get_db())
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    // Get total count (public games only, as the list)
+    let total: (i32,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM game_results gr JOIN parties p ON p.id = gr.party_id \
+         WHERE p.visibility = 'public'",
+    )
+    .fetch_one(state.party_repo.get_db())
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(HistoryResponse {
         success: true,

@@ -540,16 +540,16 @@ async fn test_join_private_party_requires_its_invite_code() {
     let (party_id, invite_code) = create_party(&mut app, &owner, "private").await;
     let path = format!("/api/party/{party_id}/join");
 
-    // Node (JoinParty.js + partyRoutes.js): neither message has a branch, both answer 500
+    // Node answers 500 here (its messages have no branch): a Node bug, Rust says 403
     let (status, body) = post_json_auth(&mut app, &path, json!({}), &guest).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
-    assert_eq!(body["code"], "JOIN_PARTY_ERROR");
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["code"], "PRIVATE_PARTY");
     assert_eq!(body["error"], "Party is private. Use invite code to join.");
 
     let (status, body) =
         post_json_auth(&mut app, &path, json!({ "inviteCode": "WRONG1" }), &guest).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
-    assert_eq!(body["code"], "JOIN_PARTY_ERROR");
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["code"], "INVALID_INVITE_CODE");
     assert_eq!(body["error"], "Invalid invite code");
 
     let (status, body) = post_json_auth(
@@ -689,7 +689,7 @@ async fn test_private_history_refused_to_non_member() {
 async fn test_admin_routes_require_a_token_and_an_admin() {
     let (mut app, state) = create_test_app_with_state().await;
     let (user, _) = register(&mut app, "plainuser").await;
-    let (_, admin_id) = register(&mut app, "theadmin").await;
+    let (admin, admin_id) = register(&mut app, "theadmin").await;
 
     let routes = [
         ("GET", "/api/admin/users"),
@@ -714,23 +714,17 @@ async fn test_admin_routes_require_a_token_and_an_admin() {
     assert_eq!(body["code"], "ADMIN_REQUIRED");
     assert_eq!(body["error"], "Admin access required");
 
-    // An admin (flag set in the database, then a fresh login) gets in
+    // Made admin in the database: gets in at once, with the token it already had (the
+    // middleware reads the flag from the database, the handlers no longer check the token)
     sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
         .bind(&admin_id)
         .execute(&state.db)
         .await
         .unwrap();
-    let (_, login) = post_json(
-        &mut app,
-        "/api/auth/login",
-        json!({ "username": "theadmin", "password": "password123" }),
-    )
-    .await;
-    let admin = login["token"].as_str().unwrap().to_string();
     let (status, body) = get_auth(&mut app, "/api/admin/statistics", &admin).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
-    // Revoked in the database: refused at once, although the token still says admin
+    // Revoked in the database: refused at once
     sqlx::query("UPDATE users SET is_admin = 0 WHERE id = ?")
         .bind(&admin_id)
         .execute(&state.db)
@@ -813,4 +807,137 @@ async fn test_sse_client_receives_only_its_parties_events() {
 
     let anonymous_saw = read_sse_until(&mut anonymous_stream, "global-sentinel").await;
     assert!(!anonymous_saw.contains("party-event"), "{anonymous_saw}");
+}
+
+#[tokio::test]
+async fn test_sse_public_party_lifecycle_reaches_every_stream() {
+    use zapzap_backend::infrastructure::app_state::GameEvent;
+
+    let (mut app, state) = create_test_app_with_state().await;
+    let (alice, _) = register(&mut app, "lifealice").await;
+    let (bob, bob_id) = register(&mut app, "lifebob").await;
+    let (public_party, _) = create_party(&mut app, &bob, "public").await;
+    let (private_party, _) = create_party(&mut app, &bob, "private").await;
+
+    // Alice plays in neither party
+    let (_, mut alice_stream) = open_sse(&mut app, Some(&alice)).await;
+    let (_, mut anonymous_stream) = open_sse(&mut app, None).await;
+
+    let event = |event_type: &str, party: &str, action: &str, data: Value| {
+        GameEvent::new(event_type, Some(party.to_string()), Some(bob_id.clone()))
+            .with_action(action)
+            .with_data(data)
+    };
+    state.broadcast_event(event(
+        "partyUpdate",
+        &public_party,
+        "playerJoined",
+        json!({ "marker": "public-joined" }),
+    ));
+    state.broadcast_event(event(
+        "gameUpdate",
+        &public_party,
+        "play",
+        json!({ "marker": "public-move" }),
+    ));
+    state.broadcast_event(event(
+        "partyUpdate",
+        &private_party,
+        "playerJoined",
+        json!({ "marker": "private-joined" }),
+    ));
+    state.broadcast_event(event(
+        "partyUpdate",
+        "gone-public",
+        "partyDeleted",
+        json!({ "marker": "public-deleted", "visibility": "public" }),
+    ));
+    state.broadcast_event(event(
+        "partyUpdate",
+        "gone-private",
+        "partyDeleted",
+        json!({ "marker": "private-deleted", "visibility": "private" }),
+    ));
+    state.broadcast_event(
+        GameEvent::new("userStatusChanged", None, None)
+            .with_data(json!({ "marker": "global-sentinel" })),
+    );
+
+    for saw in [
+        read_sse_until(&mut alice_stream, "global-sentinel").await,
+        read_sse_until(&mut anonymous_stream, "global-sentinel").await,
+    ] {
+        assert!(saw.contains("public-joined"), "{saw}");
+        assert!(saw.contains("public-deleted"), "{saw}");
+        assert!(!saw.contains("public-move"), "{saw}");
+        assert!(!saw.contains("private-joined"), "{saw}");
+        assert!(!saw.contains("private-deleted"), "{saw}");
+    }
+}
+
+#[tokio::test]
+async fn test_public_history_lists_public_games_only() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "pubhistowner").await;
+    let (private_id, _) = create_party(&mut app, &owner, "private").await;
+    let (public_id, _) = create_party(&mut app, &owner, "public").await;
+    for party_id in [&private_id, &public_id] {
+        sqlx::query(
+            "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds,
+                                       was_golden_score, player_count, finished_at, created_at)
+             VALUES (?, ?, 12, 3, 0, 1, 1700000500, 1700000500)",
+        )
+        .bind(party_id)
+        .bind(&owner_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+
+    let (status, body) = request_no_auth(&mut app, "GET", "/api/history/public").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<&str> = body["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["partyId"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [public_id.as_str()], "{body}");
+    assert_eq!(body["total"], 1);
+}
+
+#[tokio::test]
+async fn test_deleted_users_token_is_refused() {
+    use zapzap_backend::infrastructure::app_state::GameEvent;
+
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, user_id) = register(&mut app, "goneuser").await;
+    let (other, _) = register(&mut app, "stayinguser").await;
+    let (private_party, _) = create_party(&mut app, &other, "private").await;
+
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    let (status, _) =
+        post_json_auth(&mut app, "/api/party", json!({ "name": "Table" }), &token).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // SSE: the token names nobody, so not even the user's own private-party action reaches
+    // the stream, and the user is not marked online
+    let (_, mut stream) = open_sse(&mut app, Some(&token)).await;
+    state.broadcast_event(
+        GameEvent::new("partyUpdate", Some(private_party), Some(user_id.clone()))
+            .with_action("playerLeft")
+            .with_data(json!({ "marker": "own-action" })),
+    );
+    state.broadcast_event(
+        GameEvent::new("userStatusChanged", None, None)
+            .with_data(json!({ "marker": "global-sentinel" })),
+    );
+    let saw = read_sse_until(&mut stream, "global-sentinel").await;
+    assert!(!saw.contains("own-action"), "{saw}");
+    assert!(!saw.contains("userConnected"), "{saw}");
 }

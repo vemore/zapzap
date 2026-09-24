@@ -3,6 +3,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::api::middleware::user_exists;
+use crate::domain::entities::PartyVisibility;
 use crate::domain::repositories::PartyRepository;
 use crate::infrastructure::app_state::{AppState, GameEvent};
 use axum::{
@@ -20,14 +22,43 @@ pub struct SseParams {
     token: Option<String>,
 }
 
+/// The party actions every stream receives when the party is public: what changes a row
+/// of the public party list (seats, status, the party being there at all), which the
+/// Flutter `PartyListProvider` reloads on. None carries more than names, indexes and ids.
+const PUBLIC_LIFECYCLE_ACTIONS: [&str; 5] = [
+    "playerJoined",
+    "playerLeft",
+    "partyStarted",
+    "partyDeleted",
+    "gameFinished",
+];
+
+/// Whether the party `event` is about is public. A deleted party is gone from the
+/// database, so its `partyDeleted` event carries the visibility it had.
+async fn is_public_party(state: &AppState, party_id: &str, event: &GameEvent) -> bool {
+    if event.action.as_deref() == Some("partyDeleted") {
+        return event.data.get("visibility").and_then(|v| v.as_str()) == Some("public");
+    }
+    match state.party_repo.find_by_id(party_id).await {
+        Ok(Some(party)) => party.visibility == PartyVisibility::Public,
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!("SSE: party {} lookup failed: {}", party_id, e);
+            false
+        }
+    }
+}
+
 /// Whether a client receives `event`.
 ///
-/// An event without a party (`userConnected`, `userDisconnected`, ...) goes to everyone,
-/// as Node sends it. A party event goes only to an authenticated client that is a player
-/// of that party, or whose own action it reports (the player who just left); and its
-/// `partyDeleted` goes to the clients that were players of it when the stream opened or
-/// since (the membership rows are gone by the time it goes out). `known_parties` holds
-/// those parties, and is kept up to date here.
+/// - An event without a party (`userConnected`, `userDisconnected`, ...) goes to everyone,
+///   as Node sends it.
+/// - A public party's lifecycle event (`PUBLIC_LIFECYCLE_ACTIONS`) goes to everyone too.
+/// - Any other party event (`gameUpdate` moves, every event of a private party) goes only
+///   to an authenticated client that is a player of that party, or whose own action it
+///   reports (the player who just left); and a `partyDeleted` to the clients that were
+///   players of it when the stream opened or since (the membership rows are gone by the
+///   time it goes out). `known_parties` holds those parties, and is kept up to date here.
 async fn should_deliver(
     state: &AppState,
     user_id: Option<&str>,
@@ -37,23 +68,38 @@ async fn should_deliver(
     let Some(party_id) = event.party_id.as_deref() else {
         return true;
     };
+    let lifecycle = event
+        .action
+        .as_deref()
+        .is_some_and(|a| PUBLIC_LIFECYCLE_ACTIONS.contains(&a));
+    if lifecycle && is_public_party(state, party_id, event).await {
+        return true;
+    }
     let Some(user_id) = user_id else {
         return false;
     };
-    let is_member = state
-        .party_repo
-        .is_player_in_party(party_id, user_id)
-        .await
-        .unwrap_or(false);
-    if is_member {
-        known_parties.insert(party_id.to_string());
-        return true;
+    let own_action = event.user_id.as_deref() == Some(user_id);
+    match state.party_repo.is_player_in_party(party_id, user_id).await {
+        Ok(true) => {
+            known_parties.insert(party_id.to_string());
+            true
+        }
+        Ok(false) => {
+            // No longer a player: forget the party, but still hear of the own action that
+            // ended the membership (leaving) and of the party's deletion
+            let was_member = known_parties.remove(party_id);
+            own_action || (was_member && event.action.as_deref() == Some("partyDeleted"))
+        }
+        Err(e) => {
+            // Membership unknown: go by what the stream already knew, change nothing
+            tracing::warn!(
+                "SSE: membership lookup for party {} failed: {}",
+                party_id,
+                e
+            );
+            own_action || known_parties.contains(party_id)
+        }
     }
-    // No longer a player: forget the party, but still hear of the own action that ended the
-    // membership (leaving) and of the party's deletion
-    let was_member = known_parties.remove(party_id);
-    event.user_id.as_deref() == Some(user_id)
-        || (was_member && event.action.as_deref() == Some("partyDeleted"))
 }
 
 /// The parties `user_id` plays in, when the stream opens.
@@ -71,23 +117,30 @@ pub async fn sse_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SseParams>,
 ) -> impl IntoResponse {
-    // Validate token if provided
-    let user_info = params.token.and_then(|token| {
-        state.jwt_service.verify(&token).ok().map(|claims| {
-            // Connect user to session manager
-            state
-                .session_manager
-                .connect(&claims.user_id, &claims.username);
+    // Validate token if provided; a deleted user's token names nobody (Node: ValidateToken.js)
+    let claims = match params.token {
+        Some(token) => state.jwt_service.verify(&token).ok(),
+        None => None,
+    };
+    let claims = match claims {
+        Some(claims) if user_exists(&state, &claims.user_id).await => Some(claims),
+        _ => None,
+    };
+    let user_info = claims.map(|claims| {
+        // Connect user to session manager
+        state
+            .session_manager
+            .connect(&claims.user_id, &claims.username);
 
-            // Broadcast user connected event
-            let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone()))
-                .with_data(serde_json::json!({
-                    "username": claims.username
-                }));
-            state.broadcast_event(event);
+        // Broadcast user connected event
+        let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone())).with_data(
+            serde_json::json!({
+                "username": claims.username
+            }),
+        );
+        state.broadcast_event(event);
 
-            (claims.user_id, claims.username)
-        })
+        (claims.user_id, claims.username)
     });
 
     let mut known_parties = match &user_info {

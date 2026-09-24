@@ -180,20 +180,8 @@ pub struct ErrorResponse {
 /// GET /api/admin/users - List all human users with stats
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Query(params): Query<ListUsersQuery>,
 ) -> Result<Json<UsersListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Get users with stats
     let users = sqlx::query_as::<
         _,
@@ -305,17 +293,6 @@ pub async fn delete_user(
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Cannot delete self
     if user_id == claims.user_id {
         return Err((
@@ -387,17 +364,6 @@ pub async fn set_user_admin(
     Path(user_id): Path<String>,
     Json(body): Json<SetAdminRequest>,
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Cannot modify self
     if user_id == claims.user_id {
         return Err((
@@ -455,20 +421,8 @@ pub async fn set_user_admin(
 /// GET /api/admin/parties - List all parties
 pub async fn list_parties(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Query(params): Query<ListPartiesQuery>,
 ) -> Result<Json<PartiesListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Build query with optional status filter
     let (parties, total) = if let Some(status) = &params.status {
         let parties = sqlx::query_as::<_, (String, String, String, i32, i64, String)>(
@@ -591,20 +545,8 @@ pub async fn list_parties(
 /// POST /api/admin/parties/:partyId/stop - Force stop a party
 pub async fn stop_party(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Check party exists
     let party = state
         .party_repo
@@ -661,20 +603,8 @@ pub async fn stop_party(
 /// DELETE /api/admin/parties/:partyId - Delete a party
 pub async fn admin_delete_party(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Check party exists
     state
         .party_repo
@@ -734,19 +664,7 @@ pub async fn admin_delete_party(
 /// GET /api/admin/statistics - Get platform statistics
 pub async fn get_statistics(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
 ) -> Result<Json<StatisticsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Verify admin
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                success: false,
-                error: "Admin access required".to_string(),
-            }),
-        ));
-    }
-
     // Get user count
     let total_users: i32 =
         sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
