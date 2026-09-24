@@ -44,6 +44,7 @@
 ### Frontend (`frontend/`)
 - vitest config inside `frontend/vite.config.js:19-30` (`happy-dom`, globals, setup `src/test/setup.js` mocking `EventSource` and `localStorage`). Details in [[Frontend]].
 - Component and flow tests render the real components against a mocked `services/api` (`apiClient.get`/`post`), a mocked `useAuth` or a real `AuthProvider` over a mocked `services/auth`, and a mocked `useSSE`; `src/test/gameState.js` builds the `GET /game/:partyId/state` body the `GameBoard` and `GameFlow` tests serve.
+- A mocked state load resolves outside `act()`: React commits the DOM, then runs the passive effects (`useEffect`) in a later task, so a `findBy…` can return and a `fireEvent` land in between, first under CI load. A component must not undo, in an effect, what a click right after the first render did: `PlayerHand` resets its selection on a hand-size change during render (`frontend/src/components/Game/PlayerHand.jsx`), and `PlayerHand.test.jsx` › "should keep a card clicked as soon as the hand appears" reproduces the window without load. `fireEvent` itself is wrapped in `act()`, so an assertion right after it sees the synchronous state it set.
 - Lint: `npm run lint` exits 0; the 9 remaining findings are `react-hooks/exhaustive-deps` warnings, which do not fail it. Rule set and its JSX exceptions at `frontend/eslint.config.js`.
 - CI gate (`frontend` job): Node 24, `npm ci`, `npm run lint`, `npx vitest run`, `npm run build`. The job keeps its `name:` "Frontend — build", which branch protection pins.
 
@@ -261,3 +262,12 @@
   and master): a backend change that breaks the client shows on master, and the parity
   suite covers the HTTP contract on every backend change. A deliberately failing assertion
   turned the job red before merge (the pull request cites the run).
+- **2026-09-24 (fix/react-flaky-tests): two React flakes were one component bug.** The
+  GameFlow full turn posted `cardIds: [13]` instead of `[0, 13]` (CI runs 35871008309,
+  36035892492) and GameBoard's selection test saw A♠ unselected (36021063517): the first
+  card clicked was lost. `PlayerHand` cleared its selection in a `useEffect` on
+  `hand.length`; after a load rendered outside `act()`, that mount effect could run after
+  the first click and wipe it (seen with a sequence counter: click, reset, click). The
+  reset moved into render, which runs before any click can; raising timeouts would not
+  have helped, since the lost click never comes back. Reproduced with 16 vitest processes
+  pinned to one CPU (`taskset -c 0`); 50 runs in a row of each file pass that way since.
