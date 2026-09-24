@@ -420,6 +420,20 @@ void main() {
       }
     });
 
+    test('my games carry my place and score (Node), public games do not', () {
+      GameHistoryEntry only(String name) => Page.fromJson(
+        fixture(name),
+        'games',
+        GameHistoryEntry.fromJson,
+      ).items.single;
+      final mine = only('history_list');
+      expect(mine.userPlacement, 3);
+      expect(mine.userScore, 122);
+      final public = only('history_public');
+      expect(public.userPlacement, isNull);
+      expect(public.userScore, isNull);
+    });
+
     test('an entry (Rust: roundsPlayed, userPlacement)', () {
       final page = Page.fromJson(
         {
