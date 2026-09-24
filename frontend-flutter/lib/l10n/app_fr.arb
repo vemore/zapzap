@@ -56,6 +56,14 @@
   "@loginRegisterLink": {
     "description": "Link from the login screen to the register screen"
   },
+  "loginWithGoogle": "Continuer avec Google",
+  "@loginWithGoogle": {
+    "description": "Google sign-in button of the login and register screens (Android; the web shows Google's own button)"
+  },
+  "loginOr": "ou",
+  "@loginOr": {
+    "description": "Word on the rule between the Google button and the username/password fields"
+  },
   "authPitch": "Vide ta main : à 5 points ou moins, crie ZapZap !",
   "@authPitch": {
     "description": "One line under the logo of the login and register screens that says what the game is about"
@@ -180,6 +188,10 @@
   "authErrorUsernameExists": "Ce pseudo est déjà pris",
   "@authErrorUsernameExists": {
     "description": "Register refused (USERNAME_EXISTS)"
+  },
+  "authErrorGoogle": "La connexion Google a échoué. Réessaie.",
+  "@authErrorGoogle": {
+    "description": "Google sign-in failed, on Google's side or refused by the backend (GOOGLE_AUTH_FAILED, GOOGLE_AUTH_ERROR)"
   },
   "partiesTitle": "Parties",
   "@partiesTitle": {

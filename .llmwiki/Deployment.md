@@ -45,7 +45,10 @@ services) and has never been deployed.
 - The image (`frontend-flutter/Dockerfile`) downloads the Flutter SDK **pinned to 3.47.2**
   and checks its sha256 (the version `.github/workflows/ci.yml` pins), runs
   `flutter build web --release --base-href /app/`, and copies the bundle into
-  `/usr/share/nginx/html/app` behind `frontend-flutter/nginx.conf`.
+  `/usr/share/nginx/html/app` behind `frontend-flutter/nginx.conf`. Its build argument
+  `GOOGLE_CLIENT_ID` comes from the clone's `.env` `VITE_GOOGLE_OAUTH_CLIENT_ID`, the key the
+  React image already reads (`docker-compose.yml`, service `frontend-flutter`): no new `.env`
+  key; empty, the PWA shows no Google button ([[FrontendFlutter]]).
 - That conf: the SPA fallback `try_files $uri $uri/ /app/index.html` (a deep link such as
   `/app/parties` is served the app, never a 404); `index.html`, `flutter_bootstrap.js` and
   `flutter_service_worker.js` answer with `Cache-Control: no-cache, no-store,
