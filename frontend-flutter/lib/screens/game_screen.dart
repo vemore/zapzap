@@ -316,6 +316,7 @@ class _GameScreenState extends State<GameScreen> {
       penaltyValue: values.penalty,
       disabled: !_game.isMyTurn || _game.currentAction != GameAction.play,
       onCardTap: _game.toggleCard,
+      onSelectCards: _game.selectCards,
       onClearSelection: _game.hasSelection ? _game.clearSelection : null,
     );
   }
