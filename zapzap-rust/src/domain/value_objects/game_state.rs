@@ -70,9 +70,9 @@ pub struct LastAction {
     pub hand_size: u8,
     /// play: the cards played
     pub card_ids: SmallVec<[u8; 8]>,
-    /// draw: `Some(true)` from the played pile, `Some(false)` from the deck, `None` when
-    /// a state written before the source was kept does not say
-    pub from_played: Option<bool>,
+    /// draw: from the played pile, else from the deck (also when a state written before
+    /// the source was kept does not say: then no card is named)
+    pub from_played: bool,
     /// draw from the played pile: the card taken, which every player saw on the table.
     /// A card drawn from the deck is never kept: naming it would show it to everyone
     /// (Node's `cardId` leak, `2026-09-22-node-play-draw-leak-all-hands`)
@@ -168,6 +168,32 @@ pub struct GameState {
     pub lowest_hand_player_index: Option<u8>,
     pub was_counter_acted: Option<bool>,
     pub counter_acted_by_player_index: Option<u8>,
+}
+
+/// The seat holding the lowest hand of a finished round, as `execute_zapzap` decides it
+/// (`zapzap-rust/src/domain/services/game_service.rs`): from the caller's value, the last
+/// other seat, in seat order, whose hand is as low or lower; the caller when none is.
+/// Seats without cards (eliminated before the round) take no part. `None` when no seat
+/// holds a card.
+fn lowest_hand_of(
+    hands: &[SmallVec<[u8; MAX_HAND_SIZE]>; MAX_PLAYERS],
+    player_count: u8,
+    caller: Option<u8>,
+) -> Option<u8> {
+    use crate::infrastructure::bot::card_analyzer::calculate_hand_value;
+    let seats = (0..player_count.min(MAX_PLAYERS as u8)).filter(|&i| !hands[i as usize].is_empty());
+    let mut lowest: Option<(u8, u16)> = caller
+        .filter(|&c| (c as usize) < MAX_PLAYERS && !hands[c as usize].is_empty())
+        .map(|c| (c, calculate_hand_value(&hands[c as usize])));
+    for seat in seats.filter(|&i| Some(i) != caller) {
+        let value = calculate_hand_value(&hands[seat as usize]);
+        match lowest {
+            // Without a caller the first lowest seat holds it; after one, ties go on
+            Some((_, low)) if value > low || (caller.is_none() && value == low) => {}
+            _ => lowest = Some((seat, value)),
+        }
+    }
+    lowest.map(|(seat, _)| seat)
 }
 
 impl Default for GameState {
@@ -429,9 +455,9 @@ impl GameState {
                 obj.insert("cardIds".into(), json!(la.card_ids.to_vec()));
             }
             LAST_ACTION_DRAW => {
-                let source = la.from_played.map(|p| if p { "played" } else { "deck" });
+                let source = if la.from_played { "played" } else { "deck" };
                 obj.insert("source".into(), json!(source));
-                if la.from_played == Some(true) {
+                if la.from_played {
                     if let Some(card) = la.card_id {
                         obj.insert("cardId".into(), json!(card));
                     }
@@ -528,6 +554,9 @@ impl GameState {
             "playerCount": self.player_count,
             "isGoldenScore": self.is_golden_score,
             "eliminatedMask": self.eliminated_mask,
+            "eliminatedPlayers": (0..self.player_count)
+                .filter(|&i| self.is_eliminated(i))
+                .collect::<Vec<u8>>(),
             "lastAction": last_action_json,
             "roundScores": round_scores_map,
             "zapZapCaller": self.zapzap_caller,
@@ -623,7 +652,20 @@ impl GameState {
             .unwrap_or(GameAction::SelectHandSize);
         let round_number = v["roundNumber"].as_u64().unwrap_or(1) as u16;
         let is_golden_score = v["isGoldenScore"].as_bool().unwrap_or(false);
-        let eliminated_mask = v["eliminatedMask"].as_u64().unwrap_or(0) as u8;
+        // Node stores `eliminatedPlayers: [index…]` and no mask
+        let eliminated_mask = match v["eliminatedMask"].as_u64() {
+            Some(mask) => mask as u8,
+            None => v["eliminatedPlayers"]
+                .as_array()
+                .map(|seats| {
+                    seats
+                        .iter()
+                        .filter_map(|x| x.as_u64())
+                        .filter(|&i| (i as usize) < MAX_PLAYERS)
+                        .fold(0u8, |mask, i| mask | (1 << i))
+                })
+                .unwrap_or(0),
+        };
 
         // Parse lastAction: Node's format, which this one follows, and the older Rust one
         // `{type, playerIndex, wasCounterActed, callerHandPoints}`
@@ -637,11 +679,7 @@ impl GameState {
                 _ => LAST_ACTION_NONE,
             };
             let u8_of = |key: &str| la.get(key).and_then(|x| x.as_u64()).map(|n| n as u8);
-            let from_played = match la.get("source").and_then(|s| s.as_str()) {
-                Some("played") => Some(true),
-                Some("deck") => Some(false),
-                _ => None,
-            };
+            let from_played = la.get("source").and_then(|s| s.as_str()) == Some("played");
             LastAction {
                 action_type,
                 player_index: u8_of("playerIndex").unwrap_or(0),
@@ -662,11 +700,7 @@ impl GameState {
                     .unwrap_or_default(),
                 from_played,
                 // Node also names the card drawn from the deck: dropped, never shown
-                card_id: if from_played == Some(true) {
-                    u8_of("cardId")
-                } else {
-                    None
-                },
+                card_id: if from_played { u8_of("cardId") } else { None },
                 deck_reshuffled: la
                     .get("deckReshuffled")
                     .and_then(|d| d.as_bool())
@@ -707,7 +741,12 @@ impl GameState {
         let lowest_hand_player_index = v
             .get("lowestHandPlayerIndex")
             .and_then(|l| l.as_u64())
-            .map(|l| l as u8);
+            .map(|l| l as u8)
+            .or_else(|| {
+                (current_action == GameAction::Finished)
+                    .then(|| lowest_hand_of(&hands, player_count, zapzap_caller))
+                    .flatten()
+            });
         let was_counter_acted = top_or_zapzap("wasCounterActed").and_then(|w| w.as_bool());
         let counter_acted_by_player_index = top_or_zapzap("counterActedByPlayerIndex")
             .and_then(|c| c.as_u64())
@@ -871,10 +910,66 @@ mod tests {
         let la = state.get_last_action_json().unwrap();
         assert_eq!(la["type"], "draw");
         assert_eq!(la["playerIndex"], 2);
-        assert!(la["source"].is_null());
+        // An unknown source reads as a deck draw, which names no card
+        assert_eq!(la["source"], "deck");
+        assert_eq!(la["deckReshuffled"], false);
+        assert!(la.get("cardId").is_none());
         assert!(la.get("timestamp").is_none());
 
         let none = GameState::from_json(&node_state(serde_json::Value::Null)).unwrap();
         assert!(none.get_last_action_json().is_none());
+    }
+
+    #[test]
+    fn test_node_eliminated_players_become_the_mask() {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&node_state(serde_json::Value::Null)).unwrap();
+        v["eliminatedPlayers"] = serde_json::json!([1]);
+        assert!(v.get("eliminatedMask").is_none());
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert!(state.is_eliminated(1));
+        assert!(!state.is_eliminated(0) && !state.is_eliminated(2));
+
+        // Rust's own storage keeps the mask, and writes Node's list beside it
+        let json = state.to_json();
+        let stored: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(stored["eliminatedPlayers"], serde_json::json!([1]));
+        let again = GameState::from_json(&json).unwrap();
+        assert_eq!(again.eliminated_mask, state.eliminated_mask);
+        assert_eq!(again.active_players().to_vec(), vec![0, 2]);
+    }
+
+    #[test]
+    fn test_node_golden_score_zapzap_recovers_the_lowest_hand() {
+        // Node's golden score: seats 1 and 2 left (seat 0 out, no cards); seat 1 calls
+        // with A♥ 2♥ = 3 and seat 2 ties with A♣ 2♣: seat 2 counteracts and wins. Node
+        // stores no lowestHandPlayerIndex: it is recomputed from the hands.
+        let mut v: serde_json::Value = serde_json::from_str(&node_state(serde_json::json!({
+            "type": "zapzap", "playerIndex": 1, "wasCounterActed": true,
+            "counterActedByPlayerIndex": 2, "callerHandPoints": 3,
+            "roundScores": {"1": 3, "2": 0}, "timestamp": 1_758_000_000_004u64
+        })))
+        .unwrap();
+        v["currentAction"] = "finished".into();
+        v["isGoldenScore"] = true.into();
+        v["eliminatedPlayers"] = serde_json::json!([0]);
+        v["hands"] = serde_json::json!({"0": [], "1": [13, 14], "2": [26, 27]});
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, Some(2));
+        assert_eq!(crate::domain::services::is_game_over(&state), Some(2));
+
+        // Seat 0 holding the lowest hand is found too (not mistaken for "none")
+        v["eliminatedPlayers"] = serde_json::json!([2]);
+        v["hands"] = serde_json::json!({"0": [0], "1": [13, 14], "2": []});
+        v["lastAction"]["counterActedByPlayerIndex"] = 0.into();
+        v["lastAction"]["roundScores"] = serde_json::json!({"0": 0, "1": 13});
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, Some(0));
+        assert_eq!(crate::domain::services::is_game_over(&state), Some(0));
+
+        // A round still being played recovers nothing
+        v["currentAction"] = "play".into();
+        let state = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(state.lowest_hand_player_index, None);
     }
 }

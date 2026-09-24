@@ -137,7 +137,9 @@
   Card ids stay `int` (0-53); no model is named `Card`.
 - **Parsing rules** (`models/json.dart`), because the two backends disagree on types:
   maps keyed by player index arrive with string keys (`{"0": 28}`) and become `Map<int, …>`;
-  Rust sends some of them as `[{playerIndex, score}]` (zapzap `scores`, nextRound), read too.
+  Rust sent some of them as `[{playerIndex, score}]` (zapzap `scores`, nextRound) and nextRound's
+  `eliminatedPlayers`/`winner` as bare indexes until 2026-09-24; both backends now send Node's
+  shapes, and the tolerant parsing stays for such older responses.
   A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
   can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,
@@ -153,7 +155,7 @@
   they read Rust's former admin party subset); Node `join` has no `playerIndex`; Node
   `zapzap` adds a `handPoints` map, Rust sends one number; zapzap `scores` are the running
   **totals** after the round on Node (an object, `src/use-cases/game/CallZapZap.js:121-125`)
-  but the **round's own points** on Rust (a list, `zapzap-rust/src/domain/services/game_service.rs:228`),
+  but the **round's own points** on Rust (a list, before the change noted below),
   so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
   `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
   the deck, deliberately not parsed.

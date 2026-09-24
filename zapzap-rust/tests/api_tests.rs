@@ -3139,4 +3139,73 @@ async fn test_next_round_at_the_end_of_the_game_answers_nodes_keys() {
             {"userId": user_of(2), "playerIndex": 2, "score": 130}
         ])
     );
+
+    // The branch finished the party: a second call is refused, the results saved once
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "INVALID_PARTY_STATE",
+    );
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
+}
+
+async fn game_results_rows(state: &AppState, party_id: &str) -> i64 {
+    let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_results WHERE party_id = ?")
+        .bind(party_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    rows
+}
+
+#[tokio::test]
+async fn test_next_round_after_the_game_ending_zapzap_is_refused() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "ge").await;
+
+    // Player 0 calls with 3 points; players 1 and 2 go past 100: the zapzap ends the game
+    let hands: [&[u8]; 3] = [&[0, 1], &[13, 14, 15, 16, 17], &[26, 27, 28, 29, 30]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 95, 95],
+        0,
+        GameAction::Play,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameFinished"], true);
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
+
+    // The party is over: nextRound's game-over branch is not reached
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "INVALID_PARTY_STATE",
+    );
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
 }

@@ -172,7 +172,7 @@ pub fn execute_draw(
     state.last_action = LastAction {
         action_type: LAST_ACTION_DRAW,
         player_index: state.current_turn,
-        from_played: Some(from_discard),
+        from_played: from_discard,
         card_id: from_discard.then_some(card),
         deck_reshuffled,
         timestamp: now_millis(),

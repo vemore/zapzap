@@ -68,8 +68,8 @@ class ZapZapResult {
 
   factory ZapZapResult.fromJson(JsonMap json) {
     final by = json['counteractedBy'];
-    // The backends put different numbers under the same key: Node sends the
-    // running totals as an object, Rust this round's points as a list.
+    // Both backends send the running totals as an object; a list of this
+    // round's points is what Rust sent before 2026-09-24, still read.
     final scores = json['scores'];
     return ZapZapResult(
       zapzapSuccess: Json.boolean(json, 'zapzapSuccess'),
@@ -92,15 +92,15 @@ class ZapZapResult {
   /// Who counteracted, when the backend sent a player index (Node does).
   final int? counteractedByPlayerIndex;
 
-  /// Who counteracted, as sent (Rust sends a string).
+  /// Who counteracted, as sent (older Rust responses sent a string).
   final String? counteractedBy;
 
-  /// Node only (`scores` as an object): each player's total score after
-  /// this round.
+  /// `scores` as an object (both backends): each player's total score
+  /// after this round.
   final Map<int, int>? totalScores;
 
-  /// Rust only (`scores` as a list of `{playerIndex, score}`): the points
-  /// each player scored this round.
+  /// Older Rust responses only (`scores` as a list of `{playerIndex,
+  /// score}`, before 2026-09-24): the points each player scored this round.
   ///
   /// Exactly one of [totalScores] and [roundScores] is set. Either way the
   /// finished round's `GET /game/:id/state` carries both (`scores` and
@@ -153,8 +153,8 @@ class NextRoundResult {
   /// When the game is over.
   final Map<int, int>? finalScores;
 
-  /// Player indexes (Node sends objects with `playerIndex`, Rust bare
-  /// indexes).
+  /// Player indexes. Both backends send objects with `playerIndex`; the
+  /// bare indexes of older Rust responses are read too.
   final List<int> eliminatedPlayers;
 
   /// Node only.

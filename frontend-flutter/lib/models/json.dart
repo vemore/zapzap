@@ -72,7 +72,7 @@ abstract final class Json {
 
   /// A list of integers (card ids, player indexes). Also accepts a
   /// JSON-encoded string (`"[17,28,1]"`, the Node history's `handCards`) and
-  /// a list of objects carrying `playerIndex` (the Node `nextRound`'s
+  /// a list of objects carrying `playerIndex` (the `nextRound`'s
   /// `eliminatedPlayers`).
   static List<int> ints(Object? value) {
     if (value is String) {
@@ -94,8 +94,8 @@ abstract final class Json {
   }
 
   /// A map keyed by player index. JSON object keys are strings (`{"0": 28}`);
-  /// the Rust `zapzap` and `nextRound` send a list of
-  /// `{playerIndex, score}` instead, accepted too.
+  /// a list of `{playerIndex, score}`, which the Rust `zapzap` and
+  /// `nextRound` sent before 2026-09-24, is accepted too.
   static Map<int, int> intMap(Object? value) {
     final result = <int, int>{};
     if (value is Map) {

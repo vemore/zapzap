@@ -83,7 +83,12 @@ impl<P: PartyRepository> NextRound<P> {
             return Err(NextRoundError::RoundNotFinished);
         }
 
-        // Check if game is over
+        // Check if game is over. Unreachable in normal play: the zapzap that ends the game
+        // finishes the party (`call_zapzap.rs`), and a finished party is refused above.
+        // It recovers a zapzap stopped between saving the round and finishing the party;
+        // that zapzap finishes the party before it saves the game results, so they are
+        // not saved yet, and this branch finishes the party first too: a second call is
+        // refused. (Both writes are upserts on `party_id` besides.)
         if let Some(winner) = is_game_over(&game_state) {
             // Mark party as finished
             party.finish();
