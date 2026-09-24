@@ -192,6 +192,75 @@ void main() {
     }
   }
 
+  // The hand in the draw step (found smoke-testing #64 on production at
+  // 360x740, 2026-09-24): once the felt came first, the hand kept a strip
+  // that showed only the top of each card's rank. It is then read, not
+  // played: one row of small cards, each showing its corner — rank and
+  // suit, the top quarter of the card's left edge — and most of its height.
+  for (final size in const [Size(360, 740), Size(390, 844)]) {
+    for (final scale in const [1.0, 1.5]) {
+      for (final count in const [7, 10]) {
+        testWidgets('Piocher at ${size.width.toInt()}x${size.height.toInt()}, '
+            'text x$scale, $count cards: every hand card shows its corner '
+            'and most of its height', (tester) async {
+          await pumpGame(
+            tester,
+            FakeGameBackend(
+              state: gameSnapshotJson(
+                gameState: gameStateJson(
+                  currentTurn: 0,
+                  currentAction: 'draw',
+                  isGoldenScore: count > 7,
+                  playerHand: [for (var i = 0; i < count; i++) i * 5],
+                  cardsPlayed: const [34],
+                  lastCardsPlayed: const [47],
+                ),
+              ),
+            ),
+            size: size,
+            textScale: scale,
+          );
+
+          // One row of small cards, and none of the play step's controls.
+          expect(find.byKey(const Key('clear-selection')), findsNothing);
+          expect(find.byKey(const Key('zapzapGauge')), findsNothing);
+          expect(
+            tester.getSize(find.byKey(CardFan.itemKey(0))).width,
+            CardSizes.handCompact,
+          );
+
+          for (var i = 0; i < count; i++) {
+            final card = find.byKey(CardFan.itemKey(i));
+            final rect = tester.getRect(card);
+            final shown = shownRect(tester, card);
+            final next = i + 1 < count
+                ? tester.getRect(find.byKey(CardFan.itemKey(i + 1))).left
+                : rect.right;
+            final corner = Rect.fromLTWH(
+              rect.left,
+              rect.top,
+              rect.width * 0.15,
+              rect.height * 0.27,
+            );
+            expect(
+              shown.top <= corner.top &&
+                  shown.bottom >= corner.bottom &&
+                  next >= corner.right,
+              isTrue,
+              reason: 'card $i: its corner $corner is cut, shown $shown',
+            );
+            expect(
+              shown.height,
+              greaterThanOrEqualTo(rect.height * 0.6),
+              reason: 'card $i shows $shown of $rect',
+            );
+          }
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
+
   testWidgets('Jouer at 390x844: the felt shows whole and the hand keeps '
       'its share', (tester) async {
     await pumpGame(

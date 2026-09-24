@@ -17,7 +17,9 @@ enum PhoneBoardSlot { players, felt, hand, actions }
 ///
 /// While this player draws ([feltFirst]) the hand, which cannot be played
 /// then, keeps at most [drawHandShare] of the height and scrolls, and the
-/// felt, where the draw is played, gets the rest.
+/// felt, where the draw is played, gets the rest. The hand is then one row
+/// of small cards (`GameHand.compact`), which that share holds whole at
+/// 360x740: #64's two rows of big cards showed only a strip of rank.
 class PhoneBoardLayout extends MultiChildLayoutDelegate {
   PhoneBoardLayout({required this.feltFirst});
 
@@ -33,7 +35,7 @@ class PhoneBoardLayout extends MultiChildLayoutDelegate {
   static const feltFloor = 0.2;
 
   /// The hand's largest share while the felt is served first.
-  static const drawHandShare = 0.15;
+  static const drawHandShare = 0.2;
 
   @override
   void performLayout(Size size) {

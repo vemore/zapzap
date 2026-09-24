@@ -9,6 +9,7 @@ import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/providers/game_provider.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/utils/app_theme.dart';
 import 'package:zapzap/widgets/card_fan.dart';
 import 'package:zapzap/widgets/game_hand.dart';
 import 'package:zapzap/widgets/game_hand_size_selector.dart';
@@ -816,13 +817,19 @@ void main() {
       }
     });
 
-    testWidgets('at 360×740 the pile and the played cards are 70 px wide', (
-      tester,
-    ) async {
+    testWidgets('at 360×740 the pile is 70 px wide, and the played cards '
+        '49 in the draw step, which leaves the hand its room', (tester) async {
       await pumpGame(tester, turn('draw'), size: phone);
-      final widths = feltCards(tester).map((card) => card.width).toSet();
       expect(feltCards(tester), hasLength(6));
-      expect(widths.every((width) => width >= 70), isTrue, reason: '$widths');
+      final pile = [
+        for (final id in const [32, 33, 34])
+          tester.widget<PlayingCard>(find.byKey(GameTableArea.discardKey(id))),
+      ];
+      expect(pile.every((card) => card.width >= 70), isTrue);
+      final played = feltCards(tester).where((card) => card.cardId < 32);
+      expect(played.map((card) => card.width).toSet(), {
+        CardSizes.tablePlayedDraw,
+      });
     });
 
     testWidgets('on a wide screen they are 84 px wide', (tester) async {
