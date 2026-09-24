@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -10,6 +9,7 @@ import '../providers/sse_provider.dart';
 import '../repositories/game_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/navigation.dart';
 import '../utils/rules.dart';
 import '../widgets/game_action_buttons.dart';
 import '../widgets/game_error_text.dart';
@@ -86,7 +86,7 @@ class _GameScreenState extends State<GameScreen> {
     if (_game.outcome == GameOutcome.closed && !_left) {
       _left = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go(AppRoutes.parties);
+        if (mounted) context.leaveFor(AppRoutes.parties);
       });
     }
   }
@@ -110,7 +110,7 @@ class _GameScreenState extends State<GameScreen> {
             key: const Key('game-back'),
             tooltip: l10n.lobbyBack,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go(AppRoutes.parties),
+            onPressed: () => context.leaveFor(AppRoutes.parties),
           ),
         ),
         body: SafeArea(child: _body(context, l10n)),
@@ -227,7 +227,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             OutlinedButton(
               key: const Key('game-back-body'),
-              onPressed: () => context.go(AppRoutes.parties),
+              onPressed: () => context.leaveFor(AppRoutes.parties),
               child: Text(l10n.lobbyBack),
             ),
           ],
@@ -288,7 +288,7 @@ class _GameScreenState extends State<GameScreen> {
     };
   }
 
-  Widget _tableArea({double cardWidth = 45}) => GameTableArea(
+  Widget _tableArea({double cardWidth = CardSizes.tablePhone}) => GameTableArea(
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
@@ -367,13 +367,9 @@ class _GameScreenState extends State<GameScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // The felt scrolls inside its own edge (`GameTableArea`).
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: _tableArea(cardWidth: 60),
-                ),
-              ),
+              // The felt fills the height the hand leaves, and scrolls
+              // inside its own edge past it (`GameTableArea`).
+              Expanded(child: _tableArea(cardWidth: CardSizes.tableWide)),
               const SizedBox(height: 12),
               Flexible(child: _scroll(_hand())),
               const SizedBox(height: 12),
@@ -506,7 +502,7 @@ class _GameScreenState extends State<GameScreen> {
       winnerScore: winner?.score,
       busy: _game.busy,
       onNextRound: _game.nextRound,
-      onBackToParties: () => context.go(AppRoutes.parties),
+      onBackToParties: () => context.leaveFor(AppRoutes.parties),
     );
   }
 }

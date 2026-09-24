@@ -21,6 +21,27 @@ abstract final class AppColors {
   static const error = Color(0xFFEF4444);
 }
 
+/// The sizes of the cards on the board, in logical pixels: big enough to
+/// read a rank and tap a card on a phone, with 48 px of every card in the
+/// hand left uncovered — the least tap target Material asks for.
+abstract final class CardSizes {
+  /// The hand's cards take a quarter of its width, within these bounds.
+  static const handMin = 76.0;
+  static const handMax = 96.0;
+
+  /// The least width of a hand card the next one leaves visible; a hand
+  /// that cannot keep it on one row goes onto two.
+  static const handMinVisible = 48.0;
+
+  /// The discard pile and the cards played, on a phone and a wide screen.
+  static const tablePhone = 70.0;
+  static const tableWide = 84.0;
+
+  /// How far a selected card rises, and its amber edge.
+  static const selectedLift = 20.0;
+  static const selectedBorder = 2.0;
+}
+
 /// The one theme of the app: dark, like the React client.
 abstract final class AppTheme {
   static ThemeData dark() {
