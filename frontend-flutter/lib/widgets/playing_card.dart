@@ -22,6 +22,7 @@ class PlayingCard extends StatelessWidget {
     this.disabled = false,
     this.onTap,
     this.width = 80,
+    this.dimmed,
   });
 
   final int cardId;
@@ -29,6 +30,10 @@ class PlayingCard extends StatelessWidget {
   final bool disabled;
   final VoidCallback? onTap;
   final double width;
+
+  /// Half transparent; by default when [disabled]. A hand only read, whose
+  /// cards overlap, stays opaque: the cards under would show through.
+  final bool? dimmed;
 
   /// The standard playing-card ratio of the React client.
   static const aspectRatio = 1.4;
@@ -57,7 +62,7 @@ class PlayingCard extends StatelessWidget {
       child: GestureDetector(
         onTap: tap,
         child: Opacity(
-          opacity: disabled ? 0.5 : 1,
+          opacity: (dimmed ?? disabled) ? 0.5 : 1,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: width,

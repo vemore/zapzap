@@ -62,6 +62,14 @@ void main() {
   bool enabled(WidgetTester tester, String key) =>
       tester.widget<ButtonStyleButton>(find.byKey(Key(key))).onPressed != null;
 
+  /// Delete is an entry of the app bar's ⋮ menu (S4 of the UX study).
+  Future<void> openDelete(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('app-bar-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('delete-party')));
+    await tester.pumpAndSettle();
+  }
+
   group('parties', () {
     testWidgets('each party shows its seats, its status and the one thing '
         'to do with it', (tester) async {
@@ -479,8 +487,7 @@ void main() {
         initialLocation: AppRoutes.partyPath('p1'),
       );
 
-      await tester.tap(find.byKey(const Key('delete-party')));
-      await tester.pumpAndSettle();
+      await openDelete(tester);
       expect(find.byKey(const Key('delete-confirm')), findsOneWidget);
       await tester.tap(find.text('Annuler'));
       await tester.pumpAndSettle();
@@ -489,8 +496,7 @@ void main() {
         isEmpty,
       );
 
-      await tester.tap(find.byKey(const Key('delete-party')));
-      await tester.pumpAndSettle();
+      await openDelete(tester);
       await tester.tap(find.byKey(const Key('delete-confirm-ok')));
       await tester.pumpAndSettle();
 
@@ -573,8 +579,10 @@ void main() {
       );
 
       expect(find.byKey(const Key('start-party')), findsNothing);
-      expect(find.byKey(const Key('delete-party')), findsNothing);
       expect(find.byKey(const Key('leave-party')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('delete-party')), findsNothing);
     });
 
     testWidgets('the only human at a table of bots may delete it', (
@@ -600,6 +608,8 @@ void main() {
       );
 
       expect(find.byKey(const Key('start-party')), findsNothing);
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('delete-party')), findsOneWidget);
     });
   });
@@ -724,13 +734,26 @@ void main() {
           textScale: scale,
         );
         // A ListView lays out — and can overflow — only what is scrolled
-        // into view: scroll down to its last button.
+        // into view: scroll down to a bot's seat, then to the last seat.
+        // The buttons are pinned under the list.
+        final list = find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        expect(find.byKey(const Key('leave-party')), findsOneWidget);
         await tester.scrollUntilVisible(
-          find.byKey(const Key('leave-party')),
-          200,
+          find.byKey(const Key('seat-b1')),
+          100,
+          scrollable: list,
         );
         expect(find.byKey(const Key('lobby-seats-header')), findsOneWidget);
-        expect(find.byKey(const Key('seat-b1')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('empty-seat-2')),
+          100,
+          scrollable: list,
+        );
       });
 
       testWidgets('the create form fits at a $scale text scale', (
