@@ -1968,7 +1968,7 @@ async fn test_public_history_lists_public_games_only() {
         .map(|g| g["partyId"].as_str().unwrap())
         .collect();
     assert_eq!(ids, [public_id.as_str()], "{body}");
-    assert_eq!(body["total"], 1);
+    assert_eq!(body["pagination"]["hasMore"], false, "{body}");
 }
 
 #[tokio::test]
@@ -2007,6 +2007,241 @@ async fn test_deleted_users_token_is_refused() {
     assert!(!saw.contains("userConnected"), "{saw}");
 }
 
+/// Record a finished game won by `winner_id`, with each player's (id, score, position, won)
+async fn record_finished_game(
+    state: &AppState,
+    party_id: &str,
+    winner_id: &str,
+    results: &[(&str, i32, i32, bool)],
+    golden: bool,
+    finished_at: i64,
+) {
+    sqlx::query(
+        "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds,
+                                   was_golden_score, player_count, finished_at, created_at)
+         VALUES (?, ?, 12, 7, ?, ?, ?, ?)",
+    )
+    .bind(party_id)
+    .bind(winner_id)
+    .bind(golden)
+    .bind(results.len() as i32)
+    .bind(finished_at)
+    .bind(finished_at)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    for (user_id, score, position, winner) in results {
+        sqlx::query(
+            "INSERT INTO player_game_results (party_id, user_id, final_score, finish_position,
+                                              rounds_played, is_winner, created_at)
+             VALUES (?, ?, ?, ?, 7, ?, ?)",
+        )
+        .bind(party_id)
+        .bind(user_id)
+        .bind(score)
+        .bind(position)
+        .bind(winner)
+        .bind(finished_at)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn test_history_listings_carry_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "keyhistowner").await;
+    let (_, rival_id) = register(&mut app, "keyhistrival").await;
+    let (older, _) = create_party_visible(&mut app, &owner, "public").await;
+    let (newer, _) = create_party_visible(&mut app, &owner, "public").await;
+    let results = [
+        (owner_id.as_str(), 12, 1, true),
+        (rival_id.as_str(), 80, 2, false),
+    ];
+    record_finished_game(&state, &older, &owner_id, &results, false, 1700000100).await;
+    record_finished_game(&state, &newer, &owner_id, &results, true, 1700000200).await;
+
+    // Mine, one per page: the newest game, with Node's keys and the caller's own result
+    let (status, body) = get_auth(&mut app, "/api/history?limit=1", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let game = &body["games"][0];
+    assert!(game["id"].is_i64(), "{body}");
+    assert_eq!(game["partyId"], newer.as_str());
+    assert_eq!(game["winnerUserId"], owner_id.as_str());
+    assert_eq!(game["winnerUsername"], "keyhistowner");
+    assert_eq!(game["winnerFinalScore"], 12);
+    assert_eq!(game["totalRounds"], 7);
+    assert_eq!(game["wasGoldenScore"], true);
+    assert_eq!(game["playerCount"], 2);
+    assert_eq!(game["visibility"], "public");
+    assert_eq!(game["userPlacement"], 1);
+    assert_eq!(game["userScore"], 12);
+    assert!(game.get("roundsPlayed").is_none(), "{body}");
+    assert!(body.get("total").is_none(), "{body}");
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 1, "offset": 0, "hasMore": true })
+    );
+
+    let (_, body) = get_auth(&mut app, "/api/history?limit=1&offset=1", &owner).await;
+    assert_eq!(body["games"][0]["partyId"], older.as_str());
+    assert_eq!(body["games"][0]["wasGoldenScore"], false);
+
+    // Public: the same entry, without visibility or a caller's result
+    let (status, body) = request_no_auth(&mut app, "GET", "/api/history/public").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let game = &body["games"][0];
+    assert!(game["id"].is_i64(), "{body}");
+    assert_eq!(game["winnerUserId"], owner_id.as_str());
+    for absent in ["visibility", "userPlacement", "userScore", "roundsPlayed"] {
+        assert!(game.get(absent).is_none(), "{absent}: {body}");
+    }
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 20, "offset": 0, "hasMore": false })
+    );
+}
+
+#[tokio::test]
+async fn test_leaderboard_carries_average_score_criteria_and_pagination() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "boardowner").await;
+    let (_, rival_id) = register(&mut app, "boardrival").await;
+    for (i, finished_at) in [1700000100, 1700000200].into_iter().enumerate() {
+        let (party, _) = create_party_visible(&mut app, &owner, "public").await;
+        let rival_score = 40 + 20 * i as i32;
+        let results = [
+            (owner_id.as_str(), 10, 1, true),
+            (rival_id.as_str(), rival_score, 2, false),
+        ];
+        record_finished_game(&state, &party, &owner_id, &results, false, finished_at).await;
+    }
+
+    let (status, body) =
+        request_no_auth(&mut app, "GET", "/api/stats/leaderboard?minGames=2&limit=1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let first = &body["leaderboard"][0];
+    assert_eq!(first["userId"], owner_id.as_str());
+    assert_eq!(first["winRate"], 1.0);
+    assert_eq!(first["averageScore"], 10.0);
+    assert_eq!(
+        body["criteria"],
+        json!({ "minGames": 2, "sortBy": "winRate" })
+    );
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 1, "offset": 0, "hasMore": true })
+    );
+    assert!(body.get("total").is_none(), "{body}");
+
+    let (_, body) = request_no_auth(
+        &mut app,
+        "GET",
+        "/api/stats/leaderboard?minGames=2&offset=1",
+    )
+    .await;
+    assert_eq!(body["leaderboard"][0]["userId"], rival_id.as_str());
+    assert_eq!(body["leaderboard"][0]["rank"], 2);
+    assert_eq!(body["leaderboard"][0]["averageScore"], 50.0);
+    assert_eq!(body["pagination"]["hasMore"], false);
+}
+
+/// An admin: registered, then made admin in the database; returns (token, user id)
+async fn register_admin(app: &mut Router, state: &AppState, username: &str) -> (String, String) {
+    let (token, user_id) = register(app, username).await;
+    sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    (token, user_id)
+}
+
+#[tokio::test]
+async fn test_admin_parties_carry_nodes_fields() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "partyadmin").await;
+    let (owner, owner_id) = register(&mut app, "listedowner").await;
+    let (party_id, invite_code) = create_party_visible(&mut app, &owner, "private").await;
+
+    let (status, body) = get_auth(&mut app, "/api/admin/parties", &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let party = &body["parties"][0];
+    assert_eq!(party["id"], party_id.as_str());
+    assert_eq!(party["ownerId"], owner_id.as_str());
+    assert_eq!(party["ownerUsername"], "listedowner");
+    assert_eq!(party["inviteCode"], invite_code.as_str());
+    assert_eq!(party["visibility"], "private");
+    assert_eq!(party["status"], "waiting");
+    // JSON-encoded, as Node sends it and the React admin parses it
+    let settings: Value = serde_json::from_str(party["settings"].as_str().unwrap()).unwrap();
+    assert!(settings.is_object(), "{body}");
+    assert!(party["currentRoundId"].is_null(), "{body}");
+    assert_eq!(party["playerCount"], 1);
+    assert!(party["createdAt"].is_i64(), "{body}");
+    assert!(party["updatedAt"].is_i64(), "{body}");
+    assert_eq!(body["pagination"]["total"], 1);
+}
+
+#[tokio::test]
+async fn test_admin_set_admin_answers_the_user_and_the_new_right() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "grantadmin").await;
+    let (_, user_id) = register(&mut app, "granted").await;
+    let path = format!("/api/admin/users/{user_id}/admin");
+
+    for is_admin in [true, false] {
+        let (status, body) =
+            post_json_auth(&mut app, &path, json!({ "isAdmin": is_admin }), &admin).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body,
+            json!({ "success": true, "userId": user_id, "username": "granted", "isAdmin": is_admin })
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_admin_delete_user_answers_who_was_deleted() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "deleteadmin").await;
+    let (_, user_id) = register(&mut app, "deleted").await;
+
+    let path = format!("/api/admin/users/{user_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "deletedUserId": user_id, "deletedUsername": "deleted" })
+    );
+}
+
+#[tokio::test]
+async fn test_admin_stop_and_delete_party_answer_the_party() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "stopadmin").await;
+    let (owner, _) = register(&mut app, "stoppedowner").await;
+    let party_id = create_party(&mut app, &owner, "Stopped table").await;
+
+    let path = format!("/api/admin/parties/{party_id}/stop");
+    let (status, body) = post_json_auth(&mut app, &path, json!({}), &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "partyId": party_id, "partyName": "Stopped table", "stopped": true })
+    );
+
+    let path = format!("/api/admin/parties/{party_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "partyId": party_id, "partyName": "Stopped table", "deleted": true })
+    );
+}
+
+// ============================================================================
 // Google login and bot administration
 // ============================================================================
 

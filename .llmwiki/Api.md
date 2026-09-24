@@ -67,26 +67,26 @@ Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedB
 |---|---|---|---|---|
 | GET | `/me` | JWT | `zapzap-rust/src/api/routes/stats.rs:174` | 404 user not found |
 | GET | `/user/:userId` | none | `stats.rs:182` | public stats for any id |
-| GET | `/leaderboard` | none | `stats.rs:284` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only |
-| GET | `/bots` | none | `stats.rs:370` | per-difficulty bot stats |
+| GET | `/leaderboard` | none | `stats.rs:304` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only, by win rate then wins, as Node. Node's body: `{success, leaderboard[{rank, userId, username, gamesPlayed, wins, winRate, averageScore}], criteria{minGames, sortBy:"winRate"}, pagination{limit, offset, hasMore}}` — `hasMore` is "the page is full", no total |
+| GET | `/bots` | none | `stats.rs:378` | per-difficulty bot stats |
 
 ### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:198-223`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
-| GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:164` | same handler; `limit` default 20 (`history.rs:28-30`) |
-| GET | `/public` | none | `history.rs:271` | finished public games: list and `total` both filter `visibility = 'public'`, as Node (`src/infrastructure/database/sqlite/repositories/PartyRepository.js:760`, `:1028`) |
-| GET | `/:partyId` | JWT | `history.rs:343` | 404 `Game not found`; 403 `{error:"Access denied. Party is private."}` for a **private** game to a user in neither `party_players` nor `player_game_results`. Node checks nothing here; public games stay readable by any signed-in user |
+| GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:259` | same handler; `limit` default 20 (`history.rs:28-30`). Node's body: `{success, games[{id, partyId, partyName, winnerUserId, winnerUsername, winnerFinalScore, totalRounds, wasGoldenScore, playerCount, finishedAt, visibility, userPlacement, userScore}], pagination{limit, offset, hasMore}}` |
+| GET | `/public` | none | `history.rs:281` | finished public games only (`visibility = 'public'`, as Node, `src/infrastructure/database/sqlite/repositories/PartyRepository.js:760`); the same body without `visibility`, `userPlacement`, `userScore` |
+| GET | `/:partyId` | JWT | `history.rs:301` | 404 `Game not found`; 403 `{error:"Access denied. Party is private."}` for a **private** game to a user in neither `party_players` nor `player_game_results`. Node checks nothing here; public games stay readable by any signed-in user |
 
 ### Admin — `/api/admin` (`create_admin_router`, `zapzap-rust/src/api/routes/mod.rs`), all admin: 401 without a token, 403 `ADMIN_REQUIRED` for a non-admin
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:181` | humans only, `limit` 50 (`admin.rs:38-40`) |
-| DELETE | `/users/:userId` | `admin.rs:303` | 400 self-delete (`admin.rs:320`) or target is admin (`admin.rs:355`), 404 |
-| POST | `/users/:userId/admin` | `admin.rs:384` | body `{isAdmin}`; 404 |
-| GET | `/parties` | `admin.rs:456` | `status`, `limit`, `offset` |
-| POST | `/parties/:partyId/stop` | `admin.rs:592` | 404, 400 already finished (`admin.rs:632`) |
-| DELETE | `/parties/:partyId` | `admin.rs:662` | 404 |
-| GET | `/statistics` | `admin.rs:735` | counts |
+| GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:244` | humans only, `limit` 50 (`admin.rs:38-40`) |
+| DELETE | `/users/:userId` | `admin.rs:354` | `{success, deletedUserId, deletedUsername}`; 400 self-delete (`admin.rs:359`) or target is admin (`admin.rs:394`, Node deletes it: a `node-bug` divergence), 404 |
+| POST | `/users/:userId/admin` | `admin.rs:428` | body `{isAdmin}` → `{success, userId, username, isAdmin}`; 404 |
+| GET | `/parties` | `admin.rs:494` | `status`, `limit`, `offset` → `parties[{id, name, ownerId, ownerUsername, inviteCode, visibility, status, settings, currentRoundId, playerCount, createdAt, updatedAt}]`, `pagination{total, limit, offset}`; `settings` is the stored settings **JSON-encoded as a string**, as Node sends it (the React admin `JSON.parse`s it) |
+| POST | `/parties/:partyId/stop` | `admin.rs:579` | `{success, partyId, partyName, stopped:true}`; 404, 400 already finished (`admin.rs:612`) |
+| DELETE | `/parties/:partyId` | `admin.rs:642` | `{success, partyId, partyName, deleted:true}`; 404 |
+| GET | `/statistics` | `admin.rs:708` | counts |
 
 ### Misc
 | Method | Path | Auth | Handler | Notes |
@@ -138,6 +138,7 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 - Deliberate difference: Node serves the two bot mutations **without any authentication** (`src/api/routes/botRoutes.js`, mounted without middleware); Rust requires an admin.
 
 ## Decisions & History
+- 2026-09-24 (fix/rust-history-admin-contract): the history, leaderboard and admin bodies took Node's keys (`src/use-cases/history/GetGameHistory.js`, `stats/GetLeaderboard.js`, `admin/*`). Rust's own `games[].roundsPlayed` and top-level `total` were dropped rather than kept as additions: no client needs them (Flutter reads `totalRounds` first and never shows a history or leaderboard total; React reads Node's keys).
 - 2026-09-24 (fix/rust-security): the authorization holes listed on this page were closed. Where Node refuses correctly, Rust answers as Node does (state 403 `NOT_IN_PARTY`, admin 401/403); where Node is lax or buggy (details and join refusals answer 500, `trigger-bot` and history unchecked), Rust refuses with 403 — the user's rule: a Node 500 on a client error is a Node bug, Rust keeps the correct 4xx. So a private join without the code is 403 `PRIVATE_PARTY`, with a wrong code 403 `INVALID_INVITE_CODE`. `/history/public` had lost Node's public-only filter and listed private games; it filters again.
 - 2026-09-24 (fix/rust-api-errors-contract): the substring matching of use-case error messages was replaced by typed errors (`zapzap-rust/src/api/error.rs`), after six of its branches were found answering 500 for client errors (join already-in-party and not-waiting, start, delete, leave, and `NOT_IN_PARTY` on every game action). The zapzap `scores` were aligned on Node's meaning (running totals, user decision), with round points under `roundScores`; `partyCreated`, `isMyTurn` and `POST /party/:id/bots` were added on the Rust side first, Node and the clients following in their own changes.
 - Routes and JSON shapes were ported from the Node backend in `e4f83da` (2025-12-23, "rewrite backend in Rust"); handlers carry "matching JS behavior"/"like JS" comments (`zapzap-rust/src/api/routes/auth.rs:105`, `game.rs:311`). The substring-based error mapping appears to mimic the Node error-message checks, and the mismatches date from porting messages without re-aligning the matchers.
