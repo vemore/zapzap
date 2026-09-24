@@ -72,12 +72,7 @@ impl<P: PartyRepository> PlayCards<P> {
         }
 
         // Each card once: [c, c, c] would take one card from the hand and put three down
-        if let Some((_, &card)) = input
-            .card_ids
-            .iter()
-            .enumerate()
-            .find(|(i, c)| input.card_ids[..*i].contains(c))
-        {
+        if let Some(card) = card_analyzer::first_repeated_card(&input.card_ids) {
             return Err(PlayCardsError::RepeatedCard(card));
         }
 

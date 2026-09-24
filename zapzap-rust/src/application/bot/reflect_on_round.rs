@@ -61,7 +61,7 @@ impl ReflectOnRound {
         let decisions = memory
             .read()
             .await
-            .get_decisions_for_round(input.round_number)
+            .get_decisions_for_round(&input.party_id, input.round_number)
             .to_vec();
 
         if decisions.is_empty() {
@@ -100,7 +100,7 @@ impl ReflectOnRound {
                 }
 
                 // Clear round decisions and increment counter
-                memory_guard.clear_round_decisions(input.round_number);
+                memory_guard.clear_round_decisions(&input.party_id, input.round_number);
                 memory_guard.increment_rounds_analyzed();
 
                 if let Err(e) = memory_guard.save().await {
@@ -398,7 +398,15 @@ mod tests {
     async fn test_reflection_releases_the_memory_during_the_llm_call() {
         let dir = std::env::temp_dir().join(format!("zapzap-reflect-{}", uuid::Uuid::new_v4()));
         let memory = Arc::new(RwLock::new(LlmBotMemory::new("bot", Some(dir.clone()))));
-        memory.write().await.track_decision(1, decision("play"));
+        memory
+            .write()
+            .await
+            .track_decision("party", 1, decision("play"));
+        // The same round number in another party is not this reflection's
+        memory
+            .write()
+            .await
+            .track_decision("other", 1, decision("play"));
 
         let llm = Arc::new(HeldLlm {
             called: Notify::new(),
@@ -427,7 +435,7 @@ mod tests {
         llm.called.notified().await;
         let write = tokio::time::timeout(Duration::from_secs(1), memory.write()).await;
         let mut guard = write.expect("the memory is locked during the LLM call");
-        guard.track_decision(2, decision("draw"));
+        guard.track_decision("party", 2, decision("draw"));
         drop(guard);
 
         llm.release.notify_one();
@@ -435,8 +443,9 @@ mod tests {
         assert!(output.success);
         assert_eq!(output.insights_generated, 1);
         let memory = memory.read().await;
-        assert!(memory.get_decisions_for_round(1).is_empty());
-        assert_eq!(memory.get_decisions_for_round(2).len(), 1);
+        assert!(memory.get_decisions_for_round("party", 1).is_empty());
+        assert_eq!(memory.get_decisions_for_round("party", 2).len(), 1);
+        assert_eq!(memory.get_decisions_for_round("other", 1).len(), 1);
         assert!(memory.has_strategies());
         drop(memory);
         let _ = std::fs::remove_dir_all(dir);

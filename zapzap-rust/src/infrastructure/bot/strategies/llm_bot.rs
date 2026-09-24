@@ -30,6 +30,8 @@ pub struct LlmBotStrategy {
     fallback: HardBotStrategy,
     memory: Option<Arc<RwLock<LlmBotMemory>>>,
     system_prompt: String,
+    /// The party this instance plays in: its decisions are kept per party and round
+    party_id: String,
 }
 
 impl LlmBotStrategy {
@@ -44,7 +46,14 @@ impl LlmBotStrategy {
             fallback: HardBotStrategy::new(),
             memory,
             system_prompt,
+            party_id: String::new(),
         }
+    }
+
+    /// The same strategy, recording its decisions under `party_id`
+    pub fn for_party(mut self, party_id: &str) -> Self {
+        self.party_id = party_id.to_string();
+        self
     }
 
     /// Create with just LLM service (no memory)
@@ -379,7 +388,11 @@ Respond with ONLY the cards to play (e.g., "KS, KH" for a pair of Kings)."#,
                             };
 
                             let mut memory = memory.write().await;
-                            memory.track_decision(state.round_number as u32, decision);
+                            memory.track_decision(
+                                &self.party_id,
+                                state.round_number as u32,
+                                decision,
+                            );
                         }
 
                         return cards;
@@ -483,7 +496,7 @@ Respond with ONLY "YES" or "NO"."#,
                     };
 
                     let mut memory = memory.write().await;
-                    memory.track_decision(state.round_number as u32, decision);
+                    memory.track_decision(&self.party_id, state.round_number as u32, decision);
                 }
 
                 should_call
@@ -611,7 +624,7 @@ Respond with ONLY "DECK" or "DISCARD"."#,
                     };
 
                     let mut memory = memory.write().await;
-                    memory.track_decision(state.round_number as u32, decision);
+                    memory.track_decision(&self.party_id, state.round_number as u32, decision);
                 }
 
                 source

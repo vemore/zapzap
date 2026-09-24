@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use tower::{Service, ServiceExt};
 
 use zapzap_backend::api;
-use zapzap_backend::application::bot::{trigger_bot_turns, BotBrain, Roster};
+use zapzap_backend::application::bot::{run_bot_turns_now, trigger_bot_turns, BotBrain, Roster};
 use zapzap_backend::domain::entities::{BotDifficulty, User};
 use zapzap_backend::domain::repositories::{PartyRepository, UserRepository};
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
@@ -393,25 +393,96 @@ async fn test_a_bot_keeps_its_strategy_for_the_game() {
     let mut party_b = Roster::default();
 
     let play = party_a
-        .brain(&state, "thibot", Some(BotDifficulty::Thibot))
+        .brain(&state, "party", "thibot", Some(BotDifficulty::Thibot))
         .await;
     let draw = party_a
-        .brain(&state, "thibot", Some(BotDifficulty::Thibot))
+        .brain(&state, "party", "thibot", Some(BotDifficulty::Thibot))
         .await;
     // The instance that chose the play is the one asked for the draw (and the next turns)
     assert!(same_brain(&play, &draw));
 
     // Another bot, or the same bot in another party, has its own
     let vince = party_a
-        .brain(&state, "vince", Some(BotDifficulty::HardVince))
+        .brain(&state, "party", "vince", Some(BotDifficulty::HardVince))
         .await;
     assert!(!same_brain(&play, &vince));
     let elsewhere = party_b
-        .brain(&state, "thibot", Some(BotDifficulty::Thibot))
+        .brain(&state, "other", "thibot", Some(BotDifficulty::Thibot))
         .await;
     assert!(!same_brain(&play, &elsewhere));
 
-    let llm = party_a.brain(&state, "llm", Some(BotDifficulty::Llm)).await;
-    let llm_again = party_a.brain(&state, "llm", Some(BotDifficulty::Llm)).await;
+    let llm = party_a
+        .brain(&state, "party", "llm", Some(BotDifficulty::Llm))
+        .await;
+    let llm_again = party_a
+        .brain(&state, "party", "llm", Some(BotDifficulty::Llm))
+        .await;
     assert!(same_brain(&llm, &llm_again));
+}
+
+#[tokio::test]
+async fn test_trigger_during_a_manual_loop_is_served_after_it() {
+    let (mut app, state) = test_app().await;
+    let (party_id, _) = started_party(
+        &mut app,
+        &state,
+        "lost",
+        0,
+        &[BotDifficulty::Easy, BotDifficulty::Easy],
+    )
+    .await;
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[&[9, 10, 11, 12], &[22, 23, 24, 25], &[35, 36, 37, 38]],
+    );
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+
+    // The manual trigger-bot loop runs the two bots' turns ...
+    let manual = tokio::spawn({
+        let (state, party_id) = (state.clone(), party_id.clone());
+        async move { run_bot_turns_now(&state, &party_id).await }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // ... while a poll's trigger comes: the lock is taken, the trigger waits as pending
+    trigger_bot_turns(&state, &party_id).await.unwrap();
+    assert!(state.bot_runner.has_pending_trigger(&party_id));
+
+    assert_eq!(manual.await.unwrap().expect("manual loop"), 4);
+
+    // Once the manual loop lets go, the pending trigger is served, not dropped
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while state.bot_runner.has_pending_trigger(&party_id) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the trigger that came during the manual loop was lost"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn test_hand_size_fits_the_deck_with_eight_players() {
+    let (mut app, state) = test_app().await;
+    let (party_id, tokens) = started_party(&mut app, &state, "eight", 7, &[]).await;
+    let path = format!("/api/game/{party_id}/selectHandSize");
+
+    // 8 x 7 = 56 cards: more than the deck holds
+    let (status, body) = send(&mut app, "POST", &path, json!({"handSize": 7}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "INVALID_HAND_SIZE");
+    assert_eq!(
+        game_state(&state, &party_id).await.current_action,
+        GameAction::SelectHandSize
+    );
+
+    // 8 x 6 + the flipped card = 49: dealt
+    let (status, body) = send(&mut app, "POST", &path, json!({"handSize": 6}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let gs = game_state(&state, &party_id).await;
+    assert!((0..8).all(|p| gs.hands[p].len() == 6));
+    assert_eq!(gs.last_cards_played.len(), 1);
 }

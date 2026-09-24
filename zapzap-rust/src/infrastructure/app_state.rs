@@ -119,7 +119,7 @@ impl AppState {
             // Check for AWS Bedrock configuration
             #[cfg(feature = "bedrock")]
             {
-                if env_on("AWS_BEDROCK_ENABLED") || env_on("AWS_ACCESS_KEY_ID") {
+                if llm_enabled("AWS_BEDROCK_ENABLED", "AWS_ACCESS_KEY_ID") {
                     let config = BedrockConfig::default();
                     let service = BedrockService::new(config).await;
                     if service.health_check().await {
@@ -142,7 +142,7 @@ impl AppState {
         // Fall back to Ollama if Bedrock not configured/available
         let llm_service: Option<Arc<dyn LlmService>> = if llm_service.is_some() {
             llm_service
-        } else if env_on("OLLAMA_BASE_URL") || env_on("ENABLE_LLM_BOTS") {
+        } else if llm_enabled("ENABLE_LLM_BOTS", "OLLAMA_BASE_URL") {
             let service = OllamaService::new(OllamaConfig::default());
             // Check if Ollama is available
             if service.health_check().await {
@@ -216,13 +216,23 @@ impl AppState {
     }
 }
 
-/// Whether an LLM switch is set: present, not empty, not `false` or `0` (a compose file
-/// that passes `AWS_BEDROCK_ENABLED=false` means off)
-fn env_on(name: &str) -> bool {
-    std::env::var(name).is_ok_and(|v| {
-        let v = v.trim();
-        !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
-    })
+/// Whether an LLM service is switched on. The switch (`AWS_BEDROCK_ENABLED`,
+/// `ENABLE_LLM_BOTS`), when present, decides alone: off when empty, `false` or `0`, so a
+/// compose file passing `AWS_BEDROCK_ENABLED=false` keeps Bedrock off even with AWS keys.
+/// Only without a switch does its key (`AWS_ACCESS_KEY_ID`, `OLLAMA_BASE_URL`), set and
+/// not empty, turn the service on.
+fn llm_enabled(switch: &str, key: &str) -> bool {
+    llm_switch(std::env::var(switch).ok(), std::env::var(key).ok())
+}
+
+fn llm_switch(switch: Option<String>, key: Option<String>) -> bool {
+    match switch {
+        Some(v) => {
+            let v = v.trim();
+            !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+        }
+        None => key.is_some_and(|k| !k.trim().is_empty()),
+    }
 }
 
 /// Game event for SSE broadcasting
@@ -267,6 +277,28 @@ impl GameEvent {
 
 #[cfg(test)]
 mod tests {
+    fn some(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    #[test]
+    fn test_llm_switch_present_decides_alone() {
+        // AWS_BEDROCK_ENABLED=false with AWS keys set: off
+        assert!(!llm_switch(some("false"), some("AKIA123")));
+        assert!(!llm_switch(some("0"), some("AKIA123")));
+        assert!(!llm_switch(some(""), some("http://ollama:11434")));
+        assert!(llm_switch(some("true"), None));
+        assert!(llm_switch(some("1"), some("")));
+    }
+
+    #[test]
+    fn test_llm_switch_absent_falls_back_on_the_key() {
+        assert!(llm_switch(None, some("AKIA123")));
+        assert!(llm_switch(None, some("http://ollama:11434")));
+        assert!(!llm_switch(None, some("  ")));
+        assert!(!llm_switch(None, None));
+    }
+
     use super::*;
 
     #[test]

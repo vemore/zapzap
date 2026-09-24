@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{PartyRepository, RepositoryError};
+use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::GameAction;
 
 /// Select hand size input
@@ -65,9 +66,8 @@ impl<P: PartyRepository> SelectHandSize<P> {
             return Err(SelectHandSizeError::NotYourTurn);
         }
 
-        // Validate hand size based on game mode
-        // Normal mode: 4-7 cards, Golden Score mode: 4-10 cards
-        let (min, max) = (4, if game_state.is_golden_score { 10 } else { 7 });
+        // 4-7 cards, 4-10 in Golden Score, and no more than the deck can deal
+        let (min, max) = hand_size_bounds(&game_state);
         if input.hand_size < min || input.hand_size > max {
             return Err(SelectHandSizeError::InvalidHandSize { min, max });
         }

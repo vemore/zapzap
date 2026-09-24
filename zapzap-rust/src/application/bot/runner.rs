@@ -22,6 +22,7 @@ use crate::application::game::{
 };
 use crate::domain::entities::{BotDifficulty, PartyStatus};
 use crate::domain::repositories::{PartyRepository, UserRepository};
+use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::{GameAction, GameState};
 use crate::infrastructure::app_state::{AppState, GameEvent};
 use crate::infrastructure::bot::card_analyzer::calculate_hand_value;
@@ -62,9 +63,9 @@ impl BotBrain {
             Self::Rules(s) => s.select_hand_size(state, player_index),
             Self::Llm(s) => s.select_hand_size(state, player_index),
         };
-        // The strategy picks, the rules bound it (select_hand_size.rs)
-        let max = if state.is_golden_score { 10 } else { 7 };
-        wanted.clamp(4, max)
+        // The strategy picks, the rules and the deck bound it, as SelectHandSize checks
+        let (min, max) = hand_size_bounds(state);
+        wanted.clamp(min, max)
     }
 
     async fn should_call_zapzap(&self, state: &GameState, player_index: u8) -> bool {
@@ -100,6 +101,7 @@ impl Roster {
     pub async fn brain(
         &mut self,
         state: &AppState,
+        party_id: &str,
         user_id: &str,
         difficulty: Option<BotDifficulty>,
     ) -> BotBrain {
@@ -108,10 +110,9 @@ impl Roster {
         }
         let brain = if difficulty == Some(BotDifficulty::Llm) {
             let memory = state.get_llm_memory(user_id).await;
-            BotBrain::Llm(Arc::new(LlmBotStrategy::new(
-                state.llm_service.clone(),
-                Some(memory),
-            )))
+            BotBrain::Llm(Arc::new(
+                LlmBotStrategy::new(state.llm_service.clone(), Some(memory)).for_party(party_id),
+            ))
         } else {
             BotBrain::Rules(BotBrain::for_difficulty(difficulty))
         };
@@ -165,6 +166,14 @@ impl BotRunner {
     pub fn party_count(&self) -> usize {
         self.parties.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
+
+    /// Whether a trigger of `party_id` waits for a loop that has not run yet
+    pub fn has_pending_trigger(&self, party_id: &str) -> bool {
+        let parties = self.parties.lock().unwrap_or_else(|e| e.into_inner());
+        parties
+            .get(party_id)
+            .is_some_and(|slot| slot.pending.load(Ordering::SeqCst))
+    }
 }
 
 /// Trigger the bots of `party_id` after `delay`, in the background
@@ -181,50 +190,70 @@ pub fn spawn_bot_turns(state: &Arc<AppState>, party_id: String, delay: Duration)
 /// Let the bots of `party_id` play until a human is to move. Returns at once when a loop
 /// already runs for the party: that loop goes round again before it ends.
 pub async fn trigger_bot_turns(state: &Arc<AppState>, party_id: &str) -> Result<(), String> {
-    let runner = &state.bot_runner;
-    let slot = runner.slot(party_id);
+    let slot = state.bot_runner.slot(party_id);
     slot.pending.store(true, Ordering::SeqCst);
+    serve_pending(state, party_id, &slot).await
+}
+
+/// Run loops while the party has a pending trigger and its lock is free. A trigger that
+/// comes while a loop runs finds the lock taken and only sets `pending`: whoever holds
+/// the lock checks `pending` again after unlocking, so no trigger is lost.
+async fn serve_pending(
+    state: &Arc<AppState>,
+    party_id: &str,
+    slot: &Arc<PartySlot>,
+) -> Result<(), String> {
+    let mut last = Ok(());
     loop {
         let Ok(mut roster) = slot.roster.try_lock() else {
-            // The running loop sees `pending` before it lets go
-            return Ok(());
+            // The holder sees `pending` before it lets go
+            return last;
         };
         while slot.pending.swap(false, Ordering::SeqCst) {
-            let end = run_bot_loop(state, party_id, &mut roster).await;
-            match end {
+            match run_bot_loop(state, party_id, &mut roster).await {
                 Ok((LoopEnd::GameOver, _)) => {
-                    drop(roster);
-                    runner.forget(party_id, &slot);
-                    return Ok(());
+                    state.bot_runner.forget(party_id, slot);
+                    last = Ok(());
                 }
-                Ok(_) => {}
+                Ok(_) => last = Ok(()),
                 Err(e) => {
-                    slot.pending.store(false, Ordering::SeqCst);
-                    return Err(e);
+                    // Stop here; a trigger that comes meanwhile tries again
+                    last = Err(e);
+                    break;
                 }
             }
         }
         drop(roster);
-        // A trigger that came between the last check and the unlock found the lock taken
         if !slot.pending.load(Ordering::SeqCst) {
-            return Ok(());
+            return last;
+        }
+        if let Err(e) = &last {
+            tracing::error!("Bot turns of party {} failed: {}", party_id, e);
         }
     }
 }
 
 /// Run the bots of `party_id` now, waiting for a running loop to end first (the manual
-/// `trigger-bot` route). Returns the number of actions taken.
+/// `trigger-bot` route). Returns the number of actions taken. A trigger that came while
+/// this loop ran is served after it, in the background.
 pub async fn run_bot_turns_now(state: &Arc<AppState>, party_id: &str) -> Result<usize, String> {
-    let runner = &state.bot_runner;
-    let slot = runner.slot(party_id);
+    let slot = state.bot_runner.slot(party_id);
     let mut roster = slot.roster.lock().await;
     slot.pending.store(false, Ordering::SeqCst);
-    let (end, actions) = run_bot_loop(state, party_id, &mut roster).await?;
+    let result = run_bot_loop(state, party_id, &mut roster).await;
     drop(roster);
-    if end == LoopEnd::GameOver {
-        runner.forget(party_id, &slot);
+    if let Ok((LoopEnd::GameOver, _)) = result {
+        state.bot_runner.forget(party_id, &slot);
     }
-    Ok(actions)
+    if slot.pending.load(Ordering::SeqCst) {
+        let (state, party_id) = (state.clone(), party_id.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = serve_pending(&state, &party_id, &slot).await {
+                tracing::error!("Bot turns of party {} failed: {}", party_id, e);
+            }
+        });
+    }
+    result.map(|(_, actions)| actions)
 }
 
 /// Whether a human who is not eliminated sits in the party
@@ -335,7 +364,9 @@ async fn run_bot_loop(
 
         let player_index = current.player_index;
         let user_id = user.id.clone();
-        let brain = roster.brain(state, &user_id, user.bot_difficulty).await;
+        let brain = roster
+            .brain(state, party_id, &user_id, user.bot_difficulty)
+            .await;
 
         match game_state.current_action {
             GameAction::SelectHandSize => {
@@ -607,6 +638,11 @@ mod tests {
         gs.is_golden_score = true;
         for _ in 0..20 {
             assert!((4..=10).contains(&brain.select_hand_size(&gs, 0)));
+        }
+        // Eight players: the deck bounds VinceBot's 6-7 to 6
+        let gs = GameState::new(8);
+        for _ in 0..20 {
+            assert!((4..=6).contains(&brain.select_hand_size(&gs, 0)));
         }
     }
 }

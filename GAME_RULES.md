@@ -79,6 +79,8 @@ Each player's turn consists of **two mandatory phases** in sequence:
 #### First Round
 - The **party owner** (first player to join) starts the game
 - The starting player chooses the **hand size** (4-7 cards, or 4-10 in Golden Score)
+  — never more than the deck can deal to every active player while leaving a card to
+  flip: at most (54 − 1) ÷ players, so **6 with 8 players**
 - Cards are dealt to all players
 - **One card is flipped** from the deck to the discard pile (visible for drawing)
 

@@ -166,6 +166,18 @@ pub fn execute_draw(
     Ok(card)
 }
 
+/// Cards in the deck
+pub const DECK_SIZE: u8 = 54;
+
+/// The hand sizes the round's starter may choose: 4-7, 4-10 in Golden Score
+/// (GAME_RULES.md "Round Start"), and never more than the deck can deal to every active
+/// player while keeping the card flipped to the played pile: with 8 players, 6 at most
+pub fn hand_size_bounds(state: &GameState) -> (u8, u8) {
+    let rule_max = if state.is_golden_score { 10 } else { 7 };
+    let deck_max = (DECK_SIZE - 1) / state.active_player_count().max(1);
+    (4, rule_max.min(deck_max))
+}
+
 /// Points a counteracted ZapZap caller takes per other active player, on top of their hand
 pub const COUNTERACT_PENALTY_PER_OPPONENT: u16 = 5;
 
@@ -490,5 +502,19 @@ mod tests {
         assert_eq!(counteract_penalty(5), 4 * COUNTERACT_PENALTY_PER_OPPONENT);
         assert_eq!(counteract_penalty(2), COUNTERACT_PENALTY_PER_OPPONENT);
         assert_eq!(counteract_penalty(0), 0);
+    }
+
+    #[test]
+    fn test_hand_size_bounds_keep_the_deal_within_the_deck() {
+        let mut state = GameState::new(8);
+        // 8 × 7 = 56 cards: more than the deck; 8 × 6 + the flipped card = 49
+        assert_eq!(hand_size_bounds(&state), (4, 6));
+        state = GameState::new(7);
+        assert_eq!(hand_size_bounds(&state), (4, 7));
+        state = GameState::new(3);
+        assert_eq!(hand_size_bounds(&state), (4, 7));
+        state.eliminate_player(2);
+        state.is_golden_score = true;
+        assert_eq!(hand_size_bounds(&state), (4, 10));
     }
 }

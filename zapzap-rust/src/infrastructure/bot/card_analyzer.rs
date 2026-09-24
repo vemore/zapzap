@@ -143,12 +143,13 @@ pub fn is_valid_sequence(cards: &[u8]) -> bool {
     gaps_needed <= joker_count
 }
 
-/// Whether a card id appears twice in `cards`: a play names each card once
-pub fn has_repeated_card(cards: &[u8]) -> bool {
+/// The first card id that appears a second time in `cards`: a play names each card once
+pub fn first_repeated_card(cards: &[u8]) -> Option<u8> {
     cards
         .iter()
         .enumerate()
-        .any(|(i, c)| cards[i + 1..].contains(c))
+        .find(|(i, c)| cards[..*i].contains(c))
+        .map(|(_, &c)| c)
 }
 
 /// Check if a play is valid
@@ -156,7 +157,7 @@ pub fn is_valid_play(cards: &[u8]) -> bool {
     match cards.len() {
         0 => false,
         1 => true,
-        _ if has_repeated_card(cards) => false,
+        _ if first_repeated_card(cards).is_some() => false,
         _ => is_valid_same_rank(cards) || is_valid_sequence(cards),
     }
 }
@@ -508,9 +509,9 @@ mod tests {
     #[test]
     fn test_repeated_card_is_no_valid_play() {
         // [c, c] used to pass as a pair and [c, c, c] as a sequence
-        assert!(has_repeated_card(&[5, 5]));
-        assert!(has_repeated_card(&[0, 1, 0]));
-        assert!(!has_repeated_card(&[0, 13, 26]));
+        assert_eq!(first_repeated_card(&[5, 5]), Some(5));
+        assert_eq!(first_repeated_card(&[0, 1, 2, 1, 0]), Some(1));
+        assert_eq!(first_repeated_card(&[0, 13, 26]), None);
         assert!(!is_valid_play(&[5, 5]));
         assert!(!is_valid_play(&[5, 5, 5]));
         assert!(!is_valid_play(&[52, 52]));

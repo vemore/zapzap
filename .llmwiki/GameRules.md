@@ -20,7 +20,7 @@
 | Joker = 25 at scoring unless holder has the lowest hand | `calculate_hand_score` `card_analyzer.rs:58-73` |
 
 ### Combinations
-- `is_valid_play`: 1 card always valid; ≥2 cards must name each card once (`has_repeated_card`) and be same-rank or sequence (`card_analyzer.rs`).
+- `is_valid_play`: 1 card always valid; ≥2 cards must name each card once (`first_repeated_card`, also used by `PlayCards`) and be same-rank or sequence (`card_analyzer.rs`).
 - Same rank: ≥2 cards, all non-jokers share a rank, jokers wild; all-joker sets are valid (`card_analyzer.rs:81-100`). So "5 + Joker" is a valid pair (the doc only shows a joker as third card).
 - Sequence: ≥3 cards, one suit, jokers fill gaps (`gaps_needed <= joker_count`); no Ace-high wrap (`card_analyzer.rs:103-144`).
 - A card named twice is refused: `PlayCards` answers 400 `INVALID_CARDS` ("Card c played more than once", `PlayCardsError::RepeatedCard`, `zapzap-rust/src/application/game/play_cards.rs`) before any other card check, and `is_valid_play` refuses it too, so `execute_play` never sees one. Before 2026-09-24 `[c, c, c]` passed as a sequence and put three copies of one card on the table. Node still accepts it (`src/use-cases/game/PlayCards.js`; parity item `invariant:illegal.repeated-card-refused@node`). Tests `test_repeated_card_is_no_valid_play` (`card_analyzer.rs`), `test_play_naming_a_card_twice_is_refused_and_plays_nothing` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
@@ -30,7 +30,7 @@
 ### Round start
 - Party start: 3-8 players (`zapzap-rust/src/domain/entities/party.rs:105-107`); round 1, player index 0 starts (`zapzap-rust/src/application/party/start_party.rs:66-74`).
 - `initialize_round` deals `party.settings.hand_size` (default 5, clamped 4-7, `zapzap-rust/src/domain/value_objects/party_settings.rs:20`, `:31`) and sets phase `SelectHandSize` (`game_service.rs:13-60`); this deal is thrown away by the next step.
-- `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score (`zapzap-rust/src/application/game/select_hand_size.rs:61-64`); gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
+- `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score, and never more than the deck can deal with one card left to flip: at most (54 − 1) / active players, so 6 with 8 players (`hand_size_bounds`, `game_service.rs`; 400 `INVALID_HAND_SIZE` otherwise, test `test_hand_size_fits_the_deck_with_eight_players`). Node does not check the deck and deals short hands; gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
 - Next round: starter = `next_starting_player` (`zapzap-rust/src/application/game/next_round.rs`), the seat after this round's starter, clockwise, skipping eliminated seats, as `GAME_RULES.md` "Subsequent Rounds" says; the starter picks the hand size and eliminated seats get no cards. Tests: unit tests in `next_round.rs`, `test_eliminated_player_never_starts_a_round` and `test_starter_rotation_wraps_to_seat_zero` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
 
 ### Turn flow
