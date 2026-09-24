@@ -15,7 +15,13 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 
-vi.mock('../../../hooks/useSSE', () => ({ default: () => ({ connected: true }) }));
+const sseHook = vi.hoisted(() => ({ urls: [] }));
+vi.mock('../../../hooks/useSSE', () => ({
+  default: (url) => {
+    sseHook.urls.push(url);
+    return { connected: true };
+  },
+}));
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -49,6 +55,22 @@ describe('Phase 5: GameBoard Component Tests', () => {
     vi.clearAllMocks();
     authState.user = { id: userIdOfSeat(0), username: 'Alice' };
     apiClient.post = vi.fn().mockResolvedValue({ data: { success: true } });
+  });
+
+  describe('Real-time stream', () => {
+    it('opens /suscribeupdate with the URL-encoded token of the signed-in user', async () => {
+      localStorage.setItem('token', 'a.b/c+d=');
+      sseHook.urls = [];
+      serveState({ myHand: [0] });
+
+      renderBoard();
+
+      await waitFor(() => expect(sseHook.urls.length).toBeGreaterThan(0));
+      expect(sseHook.urls.at(-1)).toBe(
+        `${window.location.origin}/suscribeupdate?token=a.b%2Fc%2Bd%3D`
+      );
+      localStorage.removeItem('token');
+    });
   });
 
   describe('Component Integration', () => {

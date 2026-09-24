@@ -4,6 +4,7 @@ import { Zap, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Tras
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import useSSE from '../../hooks/useSSE';
+import { sseUrl } from '../../services/sse';
 
 function PartyLobby() {
   const { partyId } = useParams();
@@ -37,11 +38,8 @@ function PartyLobby() {
     }
   }, [partyId, navigate]);
 
-  // Set up SSE connection for real-time updates
-  // Use VITE_API_URL if set (dev), otherwise use current origin (production)
-  const baseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || window.location.origin;
-  const sseUrl = `${baseUrl}/suscribeupdate`;
-  const { connected: sseConnected } = useSSE(sseUrl, {
+  // Set up SSE connection for real-time updates (the stream carries the user's token)
+  const { connected: sseConnected } = useSSE(sseUrl(), {
     onMessage: handleSSEMessage
   });
 
