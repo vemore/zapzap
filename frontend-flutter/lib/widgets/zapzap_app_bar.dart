@@ -59,9 +59,8 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// on Android there is no URL bar, and four more icons would not fit a 360 px
 /// bar at a large system font.
 ///
-/// There is no Admin entry: `/admin` ([AppRoutes.admin]) has no screen yet —
-/// only the router guard — so the entry would land on the not-found screen.
-/// It belongs here once the admin screen exists.
+/// Admins get an Admin entry too ([AppRoutes.admin]); for anyone else the
+/// router would send it back to the parties.
 class _NavigationMenu extends StatelessWidget {
   const _NavigationMenu({required this.actions});
 
@@ -97,6 +96,13 @@ class _NavigationMenu extends StatelessWidget {
           icon: Icons.bar_chart,
           label: l10n.statsTitle,
         ),
+        if (context.read<AuthProvider>().isAdmin)
+          _item(
+            key: const Key('menu-admin'),
+            route: AppRoutes.admin,
+            icon: Icons.admin_panel_settings,
+            label: l10n.adminTitle,
+          ),
         if (actions.isNotEmpty) const PopupMenuDivider(),
         for (final action in actions)
           _item(
