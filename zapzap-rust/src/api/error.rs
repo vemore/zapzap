@@ -142,10 +142,9 @@ where
                 "Request body too large",
             ));
         }
-        Err(ApiError {
-            details: Some(rejection.body_text()),
-            ..ApiError::bad_request(T::INVALID_CODE, T::INVALID_MESSAGE)
-        })
+        // Node's body for a missing field: `{error, code}`, no parser message in `details`
+        tracing::debug!("unreadable request body: {}", rejection.body_text());
+        Err(ApiError::bad_request(T::INVALID_CODE, T::INVALID_MESSAGE))
     }
 }
 

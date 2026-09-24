@@ -86,7 +86,7 @@
 
 ### Error mapping
 - The party and game handlers return `Result<_, ApiError>` (`zapzap-rust/src/api/error.rs`): one `From<UseCaseError> for ApiError` per use case maps each variant to Node's status and `code`; no handler reads an error's message. A repository failure is a 500 in Node's shape (`{error: "Failed to …", code: "<ROUTE>_ERROR", details}`), logged by `IntoResponse`.
-- JSON bodies go through `ApiJson<T>`: a body that does not parse (malformed JSON, a missing or mistyped field) answers 400 `{error, code, details}` with the code the route gives a missing field (`ApiBody::INVALID_CODE`), never axum's 422 plain text; a request without a JSON content type reads as `{}`, as Express does.
+- JSON bodies go through `ApiJson<T>`: a body that does not parse (malformed JSON, a missing or mistyped field) answers 400 `{error, code}` (Node's body: no parser message in `details`, which the parity suite compares) with the code the route gives a missing field (`ApiBody::INVALID_CODE`), never axum's 422 plain text; a request without a JSON content type reads as `{}`, as Express does.
 - The auth, admin, bots, stats and history handlers still build their errors inline (no message matching there).
 
 ## Decisions & History
