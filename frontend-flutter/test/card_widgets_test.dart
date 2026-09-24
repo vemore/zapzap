@@ -198,22 +198,64 @@ void main() {
       expect(taps, 1);
     });
 
-    testWidgets('a disabled card is half transparent and ignores taps', (
+    testWidgets('a disabled card is greyed, opaque, and ignores taps', (
       tester,
     ) async {
       var taps = 0;
       await tester.pumpWidget(
         _app(PlayingCard(cardId: 0, disabled: true, onTap: () => taps++)),
       );
-      final opacity = tester.widget<Opacity>(
+      final inCard = find.descendant(
+        of: find.byType(PlayingCard),
+        matching: find.byType(Opacity),
+      );
+      expect(
+        tester.widgetList<Opacity>(inCard).where((o) => o.opacity < 1),
+        isEmpty,
+      );
+      final filter = tester.widget<ColorFiltered>(
         find.descendant(
           of: find.byType(PlayingCard),
-          matching: find.byType(Opacity),
+          matching: find.byType(ColorFiltered),
         ),
       );
-      expect(opacity.opacity, 0.5);
+      expect(filter.colorFilter, PlayingCard.greyed);
+      // The white face stays behind the grey: nothing shows through.
+      final box = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byType(PlayingCard),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      expect((box.decoration! as BoxDecoration).color, Colors.white);
       await tester.tap(find.byType(PlayingCard), warnIfMissed: false);
       expect(taps, 0);
+    });
+
+    testWidgets('an active card is not greyed', (tester) async {
+      await tester.pumpWidget(_app(PlayingCard(cardId: 0, onTap: () {})));
+      expect(
+        find.descendant(
+          of: find.byType(PlayingCard),
+          matching: find.byType(ColorFiltered),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a disabled card with dimmed: false keeps its colours', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(const PlayingCard(cardId: 0, disabled: true, dimmed: false)),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(PlayingCard),
+          matching: find.byType(ColorFiltered),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('screen readers get the localised card name', (tester) async {

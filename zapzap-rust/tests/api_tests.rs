@@ -25,6 +25,8 @@ async fn create_test_app_with_state() -> (Router, Arc<AppState>) {
     // Set test environment
     std::env::set_var("DATABASE_URL", "sqlite::memory:");
     std::env::set_var("JWT_SECRET", "test-secret-key");
+    // Bots pause 200 ms between actions, not production's seconds
+    std::env::set_var("BOT_ACTION_DELAY_MS", "200");
 
     let state = AppState::new().await.expect("Failed to create app state");
     let state = Arc::new(state);
@@ -3757,5 +3759,168 @@ async fn test_delete_party_by_a_non_member_answers_not_in_party() {
     // Then the owner (or the only human): a member who is neither, even during a game
     let path = format!("/api/party/{playing_id}");
     let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&tokens[1])).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
+}
+
+/// The user ids `GET /api/players/connected` lists
+async fn connected_ids(app: &mut Router, token: &str) -> Vec<String> {
+    let (status, body) = get_auth(app, "/api/players/connected", token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["userId"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The `userConnected` / `userDisconnected` events of `user_id` broadcast so far
+fn presence_events(
+    events: &mut async_broadcast::Receiver<zapzap_backend::infrastructure::app_state::GameEvent>,
+    user_id: &str,
+) -> Vec<String> {
+    let mut seen = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        let presence =
+            event.event_type == "userConnected" || event.event_type == "userDisconnected";
+        if presence && event.user_id.as_deref() == Some(user_id) {
+            seen.push(event.event_type);
+        }
+    }
+    seen
+}
+
+#[tokio::test]
+async fn test_sse_disconnect_unlists_the_user_after_the_last_stream() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (alice, alice_id) = register(&mut app, "presalice").await;
+    let (bob, _) = register(&mut app, "presbob").await;
+    let mut events = state.event_sender.new_receiver();
+
+    // One stream: alice is listed, and her arrival broadcast
+    let (_, first) = open_sse(&mut app, Some(&alice)).await;
+    assert!(connected_ids(&mut app, &bob).await.contains(&alice_id));
+    assert_eq!(presence_events(&mut events, &alice_id), ["userConnected"]);
+
+    // A second stream (another tab, a reconnection) is no new arrival, and keeps her status
+    state.session_manager.update_status(
+        &alice_id,
+        zapzap_backend::infrastructure::services::SessionStatus::Game,
+        Some("some-party".to_string()),
+    );
+    let (_, mut second) = open_sse(&mut app, Some(&alice)).await;
+    read_sse_until(&mut second, "Connected to SSE stream").await;
+    assert!(presence_events(&mut events, &alice_id).is_empty());
+
+    // The client drops its first stream: she stays listed, with her status
+    drop(first);
+    assert!(connected_ids(&mut app, &bob).await.contains(&alice_id));
+    let session = state.session_manager.get_session(&alice_id).unwrap();
+    assert_eq!(session.status.as_str(), "game");
+    assert!(presence_events(&mut events, &alice_id).is_empty());
+
+    // It drops the last one: she is gone, and her departure broadcast once
+    drop(second);
+    assert!(!connected_ids(&mut app, &bob).await.contains(&alice_id));
+    assert_eq!(
+        presence_events(&mut events, &alice_id),
+        ["userDisconnected"]
+    );
+
+    // An anonymous stream registers nobody
+    let before = state.session_manager.count();
+    let (_, anonymous) = open_sse(&mut app, None).await;
+    drop(anonymous);
+    assert_eq!(state.session_manager.count(), before);
+}
+
+#[tokio::test]
+async fn test_only_human_deletes_a_playing_party_against_bots() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (human, _) = register(&mut app, "solo_human").await;
+    let party_id = create_party_with_seats(&mut app, &human, "Solo vs bots", 3).await;
+    for name in ["solo_bot1", "solo_bot2"] {
+        let bot_id = create_bot(&state, name).await;
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/bots"),
+            json!({"botId": bot_id}),
+            &human,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "add bot: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &human,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+    // Let the bots' loop take the party, as a game in progress does
+    zapzap_backend::application::bot::trigger_bot_turns(&state, &party_id)
+        .await
+        .unwrap();
+
+    let path = format!("/api/party/{party_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&human)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["deletedPartyId"], party_id.as_str());
+
+    // The party, its game state and its bot loop are gone
+    assert!(state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .is_none());
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while state.bot_runner.party_count() > 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the deleted party's bots are still kept"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    // An owner with another human in a playing party still waits for its end
+    let (owner, _) = register(&mut app, "duo_owner").await;
+    let (other, _) = register(&mut app, "duo_other").await;
+    let duo_id = create_party_with_seats(&mut app, &owner, "Duo and a bot", 3).await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/join"),
+        json!({}),
+        &other,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    let bot_id = create_bot(&state, "duo_bot").await;
+    post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/bots"),
+        json!({"botId": bot_id}),
+        &owner,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+    let path = format!("/api/party/{duo_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&owner)).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_PLAYING");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&other)).await;
     assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
 }

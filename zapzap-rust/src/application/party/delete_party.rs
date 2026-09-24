@@ -49,28 +49,29 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
             return Err(DeletePartyError::NotInParty);
         }
 
-        if party.owner_id != input.user_id {
-            let mut is_human = false;
-            let mut other_humans = 0;
-            for p in &players {
-                let Some(u) = self.user_repo.find_by_id(&p.user_id).await? else {
-                    continue;
-                };
-                if u.is_bot() {
-                    continue;
-                }
-                if p.user_id == input.user_id {
-                    is_human = true;
-                } else {
-                    other_humans += 1;
-                }
+        let mut is_human = false;
+        let mut other_humans = 0;
+        for p in &players {
+            let Some(u) = self.user_repo.find_by_id(&p.user_id).await? else {
+                continue;
+            };
+            if u.is_bot() {
+                continue;
             }
-            if !(is_human && other_humans == 0) {
-                return Err(DeletePartyError::NotOwner);
+            if p.user_id == input.user_id {
+                is_human = true;
+            } else {
+                other_humans += 1;
             }
         }
+        let is_only_human = is_human && other_humans == 0;
 
-        if party.status == PartyStatus::Playing {
+        if party.owner_id != input.user_id && !is_only_human {
+            return Err(DeletePartyError::NotOwner);
+        }
+
+        // The only human in a game against bots may end it; anyone else waits for its end
+        if party.status == PartyStatus::Playing && !is_only_human {
             return Err(DeletePartyError::PartyInProgress);
         }
 

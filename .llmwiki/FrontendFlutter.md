@@ -599,9 +599,9 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   (`GameTableArea.feltPadding`) and two 4 px gaps to 2, so the draw step still fits
   390x844 at text scale 1.5. `test/game_felt_test.dart`.
 - **The discard pile and the deck** (J5, `GameTableArea.step`, `TableStep`): the pile is
-  labelled "À prendre ensuite" and dimmed while the player plays; in the draw step the
-  felt takes an amber edge, says "Touche une carte pour la prendre, ou la pioche", the pile
-  goes to full opacity, the card the draw will take (`takeCard`, the one the button names —
+  labelled "À prendre ensuite" and greyed, as the deck is, while the player plays; in the
+  draw step the felt takes an amber edge, says "Touche une carte pour la prendre, ou la
+  pioche", the pile and the deck take back their colours, the card the draw will take (`takeCard`, the one the button names —
   never a pick the pile no longer holds) adds "Prendre 7♥ ajoute 7 points à ta main", or for
   a joker "0 point pour ZapZap, mais 25 en fin de manche si ta main n'est pas la plus
   basse", and the deck (`Key('draw-deck')`, moved from the hand onto the felt) is a target
@@ -913,8 +913,9 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 - `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring is not ported (the backend
   computes it); `counteractPenalty(activePlayers)` is, only to warn before a call (above).
 - Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2; selected: a 2 px
-  amber edge drawn in front of the face and a small amber glow; opacity 0.5 and no tap when
-  disabled; a localised semantics label whose `onTap` is the card's tap — none when
+  amber edge drawn in front of the face and a small amber glow; greyed and no tap when
+  disabled — `PlayingCard.greyed`, an opaque desaturating `ColorFiltered` on the face, never
+  an `Opacity`: a half-transparent card let the felt and the card under it show through; a localised semantics label whose `onTap` is the card's tap — none when
   disabled, so a screen reader selects a card as a finger does);
   `CardBack` (sizes `xxs` 16 … `lg` 80 px, as `CardBack.jsx`; a painted red lattice, no
   asset); `CardFan` (the hand — no longer the arc of `CardFan.jsx`: cards a quarter of the
