@@ -18,14 +18,14 @@ pub struct PartyListItem {
     pub name: String,
     pub owner_id: String,
     pub invite_code: String,
-    pub visibility: String,
     pub status: String,
     pub player_count: usize,
     pub max_players: u8,
     pub is_member: bool,
     /// The caller is a member of this playing party and the current turn is theirs
     pub is_my_turn: bool,
-    pub created_at: String,
+    /// Unix seconds
+    pub created_at: i64,
 }
 
 /// List parties output
@@ -80,15 +80,12 @@ impl<P: PartyRepository> ListPublicParties<P> {
                 name: pwc.party.name.clone(),
                 owner_id: pwc.party.owner_id.clone(),
                 invite_code: pwc.party.invite_code.clone(),
-                visibility: pwc.party.visibility.as_str().to_string(),
                 status: pwc.party.status.as_str().to_string(),
                 player_count: pwc.player_count,
-                max_players: 8, // Max players in game
+                max_players: pwc.party.settings.player_count,
                 is_member,
                 is_my_turn,
-                created_at: chrono::DateTime::from_timestamp(pwc.party.created_at, 0)
-                    .map(|dt| dt.to_rfc3339())
-                    .unwrap_or_default(),
+                created_at: pwc.party.created_at,
             });
         }
 

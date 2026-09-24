@@ -20,13 +20,6 @@ use crate::domain::entities::PartyVisibility;
 use crate::domain::value_objects::PartySettings;
 use crate::infrastructure::app_state::GameEvent;
 
-/// Convert timestamp to ISO 8601 string
-fn timestamp_to_rfc3339(ts: i64) -> String {
-    chrono::DateTime::from_timestamp(ts, 0)
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-}
-
 // ============================================================================
 // Request/Response DTOs
 // ============================================================================
@@ -56,16 +49,16 @@ impl ApiBody for AddBotRequest {
     const INVALID_MESSAGE: &'static str = "Bot ID is required";
 }
 
+/// Node's settings keys; other keys are ignored. `playerCount` is required when
+/// `settings` is sent, as Node's `PartySettings` requires it.
 #[derive(Debug, Deserialize)]
 pub struct PartySettingsDto {
-    #[serde(rename = "handSize")]
-    pub hand_size: Option<u8>,
-    #[serde(rename = "maxScore")]
-    pub max_score: Option<u16>,
-    #[serde(rename = "enableGoldenScore")]
-    pub enable_golden_score: Option<bool>,
-    #[serde(rename = "goldenScoreThreshold")]
-    pub golden_score_threshold: Option<u16>,
+    #[serde(rename = "playerCount")]
+    pub player_count: Option<u8>,
+    #[serde(rename = "allowSpectators")]
+    pub allow_spectators: Option<bool>,
+    #[serde(rename = "roundTimeLimit")]
+    pub round_time_limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,21 +85,10 @@ pub struct PartyResponse {
     pub invite_code: String,
     pub visibility: String,
     pub status: String,
-    pub settings: PartySettingsResponse,
+    pub settings: PartySettings,
+    /// Unix seconds, as Node
     #[serde(rename = "createdAt")]
-    pub created_at: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PartySettingsResponse {
-    #[serde(rename = "handSize")]
-    pub hand_size: u8,
-    #[serde(rename = "maxScore")]
-    pub max_score: u16,
-    #[serde(rename = "enableGoldenScore")]
-    pub enable_golden_score: bool,
-    #[serde(rename = "goldenScoreThreshold")]
-    pub golden_score_threshold: u16,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,7 +107,6 @@ pub struct PartyListItem {
     pub owner_id: String,
     #[serde(rename = "inviteCode")]
     pub invite_code: String,
-    pub visibility: String,
     pub status: String,
     #[serde(rename = "playerCount")]
     pub player_count: usize,
@@ -137,7 +118,7 @@ pub struct PartyListItem {
     #[serde(rename = "isMyTurn")]
     pub is_my_turn: bool,
     #[serde(rename = "createdAt")]
-    pub created_at: String,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,7 +132,8 @@ pub struct ListPartiesResponse {
 
 #[derive(Debug, Serialize)]
 pub struct PlayerInfo {
-    pub id: String,
+    /// The `party_players` row id, an integer as on Node
+    pub id: i64,
     #[serde(rename = "userId")]
     pub user_id: String,
     pub username: String,
@@ -163,7 +145,7 @@ pub struct PlayerInfo {
     #[serde(rename = "playerIndex")]
     pub player_index: u8,
     #[serde(rename = "joinedAt")]
-    pub joined_at: String,
+    pub joined_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -187,13 +169,13 @@ pub struct PartyDetailInfo {
     pub invite_code: String,
     pub visibility: String,
     pub status: String,
-    pub settings: PartySettingsResponse,
+    pub settings: PartySettings,
     #[serde(rename = "currentRoundId")]
     pub current_round_id: Option<String>,
     #[serde(rename = "createdAt")]
-    pub created_at: String,
+    pub created_at: i64,
     #[serde(rename = "updatedAt")]
-    pub updated_at: String,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -284,15 +266,17 @@ pub async fn create_party(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| ApiError::bad_request("MISSING_PARTY_NAME", "Party name is required"))?;
 
-    let settings = body
-        .settings
-        .map(|s| PartySettings {
-            hand_size: s.hand_size.unwrap_or(5),
-            max_score: s.max_score.unwrap_or(100),
-            enable_golden_score: s.enable_golden_score.unwrap_or(true),
-            golden_score_threshold: s.golden_score_threshold.unwrap_or(100),
-        })
-        .unwrap_or_default();
+    // No settings: Node's PartySettings.createDefault() (Node itself answers 500 here)
+    let settings = match body.settings {
+        None => PartySettings::default(),
+        Some(s) => PartySettings {
+            player_count: s.player_count.ok_or_else(|| {
+                ApiError::bad_request("VALIDATION_ERROR", "Player count must be between 3 and 8")
+            })?,
+            allow_spectators: s.allow_spectators.unwrap_or(false),
+            round_time_limit: s.round_time_limit.unwrap_or(0),
+        },
+    };
 
     let use_case = CreateParty::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
@@ -331,13 +315,8 @@ pub async fn create_party(
                 invite_code: result.party.invite_code.clone(),
                 visibility: result.party.visibility.as_str().to_string(),
                 status: result.party.status.as_str().to_string(),
-                settings: PartySettingsResponse {
-                    hand_size: result.party.settings.hand_size,
-                    max_score: result.party.settings.max_score,
-                    enable_golden_score: result.party.settings.enable_golden_score,
-                    golden_score_threshold: result.party.settings.golden_score_threshold,
-                },
-                created_at: timestamp_to_rfc3339(result.party.created_at),
+                settings: result.party.settings.clone(),
+                created_at: result.party.created_at,
             },
             bots_joined: result.bots_joined,
         }),
@@ -370,7 +349,6 @@ pub async fn list_parties(
                 name: p.name,
                 owner_id: p.owner_id,
                 invite_code: p.invite_code,
-                visibility: p.visibility,
                 status: p.status,
                 player_count: p.player_count,
                 max_players: p.max_players,
@@ -408,15 +386,10 @@ pub async fn get_party_details(
             invite_code: result.party.invite_code.clone(),
             visibility: result.party.visibility.as_str().to_string(),
             status: result.party.status.as_str().to_string(),
-            settings: PartySettingsResponse {
-                hand_size: result.party.settings.hand_size,
-                max_score: result.party.settings.max_score,
-                enable_golden_score: result.party.settings.enable_golden_score,
-                golden_score_threshold: result.party.settings.golden_score_threshold,
-            },
+            settings: result.party.settings.clone(),
             current_round_id: result.party.current_round_id.clone(),
-            created_at: timestamp_to_rfc3339(result.party.created_at),
-            updated_at: timestamp_to_rfc3339(result.party.updated_at),
+            created_at: result.party.created_at,
+            updated_at: result.party.updated_at,
         },
         players: result
             .players

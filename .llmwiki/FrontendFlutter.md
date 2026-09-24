@@ -142,13 +142,15 @@
   A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
   can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,
-  `connectedAt`), or numeric/RFC 3339 strings (Rust `createdAt`); all become UTC `DateTime`.
-  Ids are strings even when Node sends an integer (party seat `id`). Node's history
+  `connectedAt`), or numeric/RFC 3339 strings (what Rust sent before 2026-09-24); all
+  become UTC `DateTime`. Ids are strings even when a backend sends an integer (party seat
+  `id`). Node's history
   `handCards` and admin party `settings` are JSON-encoded strings, decoded.
 - **Node vs Rust shapes seen** (fixtures vs `zapzap-rust/src/api/routes/*.rs`): party
-  settings are `{playerCount, allowSpectators, roundTimeLimit}` on Node — which **requires**
-  `playerCount` 3-8 on create, else 500 `CREATE_PARTY_ERROR` — and `{handSize, maxScore,
-  enableGoldenScore, goldenScoreThreshold}` on Rust, so `PartySettings` has both, all
+  settings are `{playerCount, allowSpectators, roundTimeLimit}` on both backends since
+  2026-09-24 — `playerCount` 3-8 is required on create (Node: else 500
+  `CREATE_PARTY_ERROR`; Rust: 400 `VALIDATION_ERROR`); Rust sent `{handSize, maxScore,
+  enableGoldenScore, goldenScoreThreshold}` before, which `PartySettings` still reads, all
   optional; history entries carry Node's keys on both backends since 2026-09-24 (Rust
   sent `roundsPlayed` and no `winnerFinalScore` before; the models still read both, as
   they read Rust's former admin party subset); Node `join` has no `playerIndex`; Node

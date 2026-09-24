@@ -192,7 +192,10 @@ async fn test_register_success() {
     assert_eq!(body["success"], true);
     assert!(body["user"]["id"].is_string());
     assert_eq!(body["user"]["username"], "testuser");
-    assert!(body["user"]["createdAt"].is_string());
+    assert!(
+        body["user"]["createdAt"].is_i64(),
+        "Unix seconds as Node: {body}"
+    );
     assert!(body["token"].is_string());
 }
 
@@ -359,10 +362,9 @@ async fn test_create_party_success() {
             "name": "My Test Party",
             "visibility": "public",
             "settings": {
-                "handSize": 5,
-                "maxScore": 100,
-                "enableGoldenScore": true,
-                "goldenScoreThreshold": 100
+                "playerCount": 4,
+                "allowSpectators": true,
+                "roundTimeLimit": 90
             }
         }),
         token,
@@ -377,9 +379,15 @@ async fn test_create_party_success() {
     assert!(body["party"]["inviteCode"].is_string());
     assert_eq!(body["party"]["visibility"], "public");
     assert_eq!(body["party"]["status"], "waiting");
-    assert_eq!(body["party"]["settings"]["handSize"], 5);
-    assert_eq!(body["party"]["settings"]["maxScore"], 100);
-    assert!(body["party"]["createdAt"].is_string());
+    // Node's settings keys, and only them
+    assert_eq!(
+        body["party"]["settings"],
+        json!({"playerCount": 4, "allowSpectators": true, "roundTimeLimit": 90})
+    );
+    assert!(
+        body["party"]["createdAt"].is_i64(),
+        "Unix seconds as Node: {body}"
+    );
     assert!(body["botsJoined"].is_number());
 }
 
@@ -447,6 +455,19 @@ async fn register(app: &mut Router, username: &str) -> (String, String) {
 /// Create a public party owned by `token`; returns its id
 async fn create_party(app: &mut Router, token: &str, name: &str) -> String {
     let (status, body) = post_json_auth(app, "/api/party", json!({"name": name}), token).await;
+    assert_eq!(status, StatusCode::CREATED, "create party: {body}");
+    body["party"]["id"].as_str().unwrap().to_string()
+}
+
+/// Create a public party of `seats` (settings.playerCount) owned by `token`; returns its id
+async fn create_party_with_seats(app: &mut Router, token: &str, name: &str, seats: u8) -> String {
+    let (status, body) = post_json_auth(
+        app,
+        "/api/party",
+        json!({"name": name, "settings": {"playerCount": seats}}),
+        token,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "create party: {body}");
     body["party"]["id"].as_str().unwrap().to_string()
 }
@@ -599,7 +620,7 @@ async fn test_join_full_party_is_409() {
     let (mut app, state) = create_test_app_with_state().await;
     let (owner, _) = register(&mut app, "full_owner").await;
     let (late, _) = register(&mut app, "full_late").await;
-    let party_id = create_party(&mut app, &owner, "Full party").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Full party", 8).await;
     for i in 0..7 {
         let bot_id = create_bot(&state, &format!("full_bot_{i}")).await;
         let (status, body) = post_json_auth(
@@ -781,7 +802,7 @@ async fn test_create_party_unreadable_body_is_400_json() {
     let (status, body) = post_json_auth(
         &mut app,
         "/api/party",
-        json!({"name": "Typed", "settings": {"handSize": "five"}}),
+        json!({"name": "Typed", "settings": {"playerCount": "five"}}),
         &token,
     )
     .await;
@@ -898,7 +919,7 @@ async fn test_add_bot_errors() {
     let (mut app, state) = create_test_app_with_state().await;
     let (owner, _) = register(&mut app, "bote_owner").await;
     let (member, member_id) = register(&mut app, "bote_member").await;
-    let party_id = create_party(&mut app, &owner, "Bot errors").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Bot errors", 8).await;
     post_json_auth(
         &mut app,
         &format!("/api/party/{party_id}/join"),
@@ -2532,4 +2553,260 @@ mod google_and_bot_admin {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
     }
+}
+
+// ============================================================================
+// Party settings (Node's playerCount), name bounds, Node's JSON types
+// ============================================================================
+
+#[tokio::test]
+async fn test_join_past_player_count_is_409_party_full() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "pc_owner").await;
+    let (second, _) = register(&mut app, "pc_second").await;
+    let (third, _) = register(&mut app, "pc_third").await;
+    let (fourth, _) = register(&mut app, "pc_fourth").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Three seats", 3).await;
+    let join = format!("/api/party/{party_id}/join");
+    for token in [&second, &third] {
+        let (status, body) = post_json_auth(&mut app, &join, json!({}), token).await;
+        assert_eq!(status, StatusCode::OK, "join: {body}");
+    }
+
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &fourth).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+    assert_eq!(seats(&mut app, &party_id, &owner).await, vec![0, 1, 2]);
+
+    // The list shows the seats as Node: maxPlayers is settings.playerCount
+    let (_, list) = get_auth(&mut app, "/api/party", &owner).await;
+    let row = list["parties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == party_id.as_str())
+        .unwrap();
+    assert_eq!(row["maxPlayers"], 3, "{row}");
+    assert_eq!(row["playerCount"], 3, "{row}");
+
+    // A full party starts
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+}
+
+#[tokio::test]
+async fn test_add_bot_past_player_count_is_409_party_full() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "pcb_owner").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Bot seats 3", 3).await;
+    let path = format!("/api/party/{party_id}/bots");
+    for i in 0..2 {
+        let id = create_bot(&state, &format!("pcb_bot_{i}")).await;
+        let (status, body) = post_json_auth(&mut app, &path, json!({"botId": id}), &owner).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let extra = create_bot(&state, "pcb_extra").await;
+    let (status, body) = post_json_auth(&mut app, &path, json!({"botId": extra}), &owner).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_create_party_player_count_validation() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "pc_validator").await;
+
+    // Outside 3-8, or missing from the settings: 400, and no party is created
+    for settings in [
+        json!({"playerCount": 2}),
+        json!({"playerCount": 9}),
+        json!({"allowSpectators": true}),
+    ] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Bad seats", "settings": settings}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+
+    // No settings at all: Node's PartySettings.createDefault()
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", json!({"name": "Defaults"}), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        body["party"]["settings"],
+        json!({"playerCount": 5, "allowSpectators": false, "roundTimeLimit": 0})
+    );
+
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    let names: Vec<&str> = list["parties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["Defaults"]);
+}
+
+#[tokio::test]
+async fn test_create_party_name_bounds() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "name_bounds").await;
+    let create = |name: String| json!({"name": name, "settings": {"playerCount": 3}});
+
+    // Shorter than 3 characters once trimmed, or longer than 50: 400 VALIDATION_ERROR
+    for name in ["P".to_string(), "  ab  ".to_string(), "x".repeat(51)] {
+        let (status, body) = post_json_auth(&mut app, "/api/party", create(name), &token).await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+
+    // 3 and 50 characters are accepted; the name is stored trimmed
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        create("  abc  ".to_string()),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["party"]["name"], "abc");
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("é".repeat(50)), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn test_create_party_with_more_bots_than_seats_is_400() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "bots_seats").await;
+    let mut bots = Vec::new();
+    for i in 0..8 {
+        bots.push(create_bot(&state, &format!("bs_bot_{i}")).await);
+    }
+
+    // The owner and 8 bots do not fit in 8 seats, nor the owner and 3 bots in 3
+    for (seats, count) in [(8, 8), (3, 3)] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Crowded", "settings": {"playerCount": seats}, "botIds": &bots[..count]}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    assert_eq!(list["parties"], json!([]), "no party is left behind");
+
+    // 7 bots fill an 8-seat party
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Full house", "settings": {"playerCount": 8}, "botIds": &bots[..7]}),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["botsJoined"], 7);
+}
+
+#[tokio::test]
+async fn test_party_timestamps_and_player_ids_are_numbers() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "types_owner").await;
+    let (other, _) = register(&mut app, "types_other").await;
+    let (status, created) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Typed party", "settings": {"playerCount": 4}}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert!(created["party"]["createdAt"].is_i64(), "{created}");
+    let party_id = created["party"]["id"].as_str().unwrap().to_string();
+
+    // Details, for a member and for a non-member of a public party
+    for token in [&owner, &other] {
+        let (status, details) = get_auth(&mut app, &format!("/api/party/{party_id}"), token).await;
+        assert_eq!(status, StatusCode::OK, "{details}");
+        let party = &details["party"];
+        assert!(party["createdAt"].is_i64(), "{details}");
+        assert!(party["updatedAt"].is_i64(), "{details}");
+        assert_eq!(
+            party["settings"],
+            json!({"playerCount": 4, "allowSpectators": false, "roundTimeLimit": 0})
+        );
+        let player = &details["players"][0];
+        assert!(player["id"].is_i64(), "{details}");
+        assert!(player["joinedAt"].is_i64(), "{details}");
+    }
+
+    // The list: Unix seconds, and Node's keys (no visibility: only public parties are listed)
+    for list in [
+        get_auth(&mut app, "/api/party", &owner).await.1,
+        request_no_auth(&mut app, "GET", "/api/party").await.1,
+    ] {
+        let row = &list["parties"][0];
+        assert!(row["createdAt"].is_i64(), "{list}");
+        assert!(row.get("visibility").is_none(), "{list}");
+    }
+}
+
+#[tokio::test]
+async fn test_party_with_node_written_settings() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "node_owner").await;
+    let (second, _) = register(&mut app, "node_second").await;
+    let (third, _) = register(&mut app, "node_third").await;
+    let (late, _) = register(&mut app, "node_late").await;
+
+    // A party row as Node's PartyRepository writes it (PartySettings.toJSON())
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query(
+        "INSERT INTO parties (id, name, owner_id, invite_code, visibility, status,
+                              settings_json, current_round_id, created_at, updated_at)
+         VALUES ('node-party', 'Node table', ?, 'NODE1234', 'public', 'waiting',
+                 '{\"playerCount\":3,\"allowSpectators\":false,\"roundTimeLimit\":0}',
+                 NULL, ?, ?)",
+    )
+    .bind(&owner_id)
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO party_players (party_id, user_id, player_index, joined_at)
+         VALUES ('node-party', ?, 0, ?)",
+    )
+    .bind(&owner_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+
+    let (status, details) = get_auth(&mut app, "/api/party/node-party", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{details}");
+    assert_eq!(
+        details["party"]["settings"],
+        json!({"playerCount": 3, "allowSpectators": false, "roundTimeLimit": 0})
+    );
+    assert_eq!(details["party"]["createdAt"], now);
+
+    // Its playerCount holds: two more join, a fourth player is refused
+    let join = "/api/party/node-party/join";
+    for token in [&second, &third] {
+        let (status, body) = post_json_auth(&mut app, join, json!({}), token).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let (status, body) = post_json_auth(&mut app, join, json!({}), &late).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
 }

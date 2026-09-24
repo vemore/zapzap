@@ -6,6 +6,10 @@ use crate::domain::entities::{generate_invite_code, Party, PartyVisibility};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 use crate::domain::value_objects::PartySettings;
 
+/// Party name bounds, in characters, once trimmed (Node: CreateParty.js)
+pub const MIN_NAME_LENGTH: usize = 3;
+pub const MAX_NAME_LENGTH: usize = 50;
+
 /// Create party input
 pub struct CreatePartyInput {
     pub owner_id: String,
@@ -52,11 +56,32 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             ));
         }
 
-        // Validate name
-        if input.name.trim().is_empty() {
+        // Validate name, trimmed, as Node's CreateParty.js
+        let name = input.name.trim().to_string();
+        let name_length = name.chars().count();
+        if name_length < MIN_NAME_LENGTH {
             return Err(CreatePartyError::Validation(
-                "Party name is required".into(),
+                "Party name must be at least 3 characters long".into(),
             ));
+        }
+        if name_length > MAX_NAME_LENGTH {
+            return Err(CreatePartyError::Validation(
+                "Party name must not exceed 50 characters".into(),
+            ));
+        }
+
+        input
+            .settings
+            .validate()
+            .map_err(|e| CreatePartyError::Validation(e.into()))?;
+
+        // The owner and the bots must fit in the seats (Node: CreateParty.js)
+        let total_players = input.bot_ids.len() + 1;
+        if total_players > input.settings.player_count as usize {
+            return Err(CreatePartyError::Validation(format!(
+                "Total players ({total_players}) exceeds party player count ({})",
+                input.settings.player_count
+            )));
         }
 
         // Parse visibility
@@ -69,7 +94,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
 
         let party = Party::new(
             party_id.clone(),
-            input.name,
+            name,
             input.owner_id.clone(),
             invite_code,
             visibility,
