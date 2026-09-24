@@ -13,6 +13,13 @@ pub enum RepositoryError {
     Database(String),
 }
 
+impl RepositoryError {
+    /// A UNIQUE constraint refused the write (SQLite's message)
+    pub fn is_unique_violation(&self) -> bool {
+        matches!(self, RepositoryError::Database(m) if m.contains("UNIQUE constraint failed"))
+    }
+}
+
 /// User repository trait
 #[async_trait]
 pub trait UserRepository: Send + Sync {
@@ -40,8 +47,11 @@ pub trait UserRepository: Send + Sync {
     /// Save user (create or update)
     async fn save(&self, user: &User) -> Result<(), RepositoryError>;
 
-    /// Delete user
-    async fn delete(&self, id: &str) -> Result<(), RepositoryError>;
+    /// Delete user; `false` when no row was deleted
+    async fn delete(&self, id: &str) -> Result<bool, RepositoryError>;
+
+    /// Whether the user holds a seat in a waiting or playing party
+    async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError>;
 
     /// Update last login timestamp
     async fn update_last_login(&self, id: &str) -> Result<(), RepositoryError>;

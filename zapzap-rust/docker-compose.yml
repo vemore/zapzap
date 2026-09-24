@@ -25,6 +25,7 @@ services:
       - OLLAMA_MODEL
       - ENABLE_LLM_BOTS
       - BOT_STRATEGIES_DIR=/app/data/bot-strategies
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
     volumes:
       - ../data:/app/data
     ports:
