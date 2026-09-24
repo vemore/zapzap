@@ -42,41 +42,36 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
             .await?
             .ok_or(DeletePartyError::PartyNotFound)?;
 
-        // Check party status
-        if party.status == PartyStatus::Playing {
-            return Err(DeletePartyError::PartyInProgress);
+        // Node's order (DeleteParty.js): a member, then the owner or the only human
+        // player, then a party not in play
+        let players = self.party_repo.get_party_players(&input.party_id).await?;
+        if !players.iter().any(|p| p.user_id == input.user_id) {
+            return Err(DeletePartyError::NotInParty);
         }
 
-        // Check if user is owner
         if party.owner_id != input.user_id {
-            // Check if user is the only human player
-            let players = self.party_repo.get_party_players(&input.party_id).await?;
-            let mut is_only_human = false;
-
-            for player in &players {
-                if player.user_id == input.user_id {
-                    if let Some(user) = self.user_repo.find_by_id(&player.user_id).await? {
-                        if !user.is_bot() {
-                            // Count other humans
-                            let mut other_humans = 0;
-                            for p in &players {
-                                if p.user_id != input.user_id {
-                                    if let Some(u) = self.user_repo.find_by_id(&p.user_id).await? {
-                                        if !u.is_bot() {
-                                            other_humans += 1;
-                                        }
-                                    }
-                                }
-                            }
-                            is_only_human = other_humans == 0;
-                        }
-                    }
+            let mut is_human = false;
+            let mut other_humans = 0;
+            for p in &players {
+                let Some(u) = self.user_repo.find_by_id(&p.user_id).await? else {
+                    continue;
+                };
+                if u.is_bot() {
+                    continue;
+                }
+                if p.user_id == input.user_id {
+                    is_human = true;
+                } else {
+                    other_humans += 1;
                 }
             }
-
-            if !is_only_human {
+            if !(is_human && other_humans == 0) {
                 return Err(DeletePartyError::NotOwner);
             }
+        }
+
+        if party.status == PartyStatus::Playing {
+            return Err(DeletePartyError::PartyInProgress);
         }
 
         let party_id = party.id.clone();
@@ -98,6 +93,8 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
 pub enum DeletePartyError {
     #[error("Party not found")]
     PartyNotFound,
+    #[error("User is not in this party")]
+    NotInParty,
     #[error("Not the party owner")]
     NotOwner,
     #[error("Cannot delete party in progress")]

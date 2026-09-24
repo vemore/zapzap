@@ -110,9 +110,15 @@ impl IntoResponse for ApiError {
 pub trait ApiBody: DeserializeOwned {
     const INVALID_CODE: &'static str;
     const INVALID_MESSAGE: &'static str;
+
+    /// That 400: `{error, code}`, the body of the party and game routes. A route whose
+    /// Node handler answers another shape (the admin routes) overrides it.
+    fn invalid_body() -> Response {
+        ApiError::bad_request(Self::INVALID_CODE, Self::INVALID_MESSAGE).into_response()
+    }
 }
 
-/// `Json<T>` that rejects with `ApiError` (400, JSON body) instead of axum's 422 plain text.
+/// `Json<T>` that rejects with `T::invalid_body()` (400, JSON body) instead of axum's 422 plain text.
 /// A request without a JSON content type reads as `{}`, as Express does.
 pub struct ApiJson<T>(pub T);
 
@@ -122,7 +128,7 @@ where
     T: ApiBody,
     S: Send + Sync,
 {
-    type Rejection = ApiError;
+    type Rejection = Response;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let rejection = match Json::<T>::from_request(req, state).await {
@@ -140,11 +146,12 @@ where
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "PAYLOAD_TOO_LARGE",
                 "Request body too large",
-            ));
+            )
+            .into_response());
         }
         // Node's body for a missing field: `{error, code}`, no parser message in `details`
         tracing::debug!("unreadable request body: {}", rejection.body_text());
-        Err(ApiError::bad_request(T::INVALID_CODE, T::INVALID_MESSAGE))
+        Err(T::invalid_body())
     }
 }
 
@@ -258,6 +265,7 @@ impl From<DeletePartyError> for ApiError {
     fn from(e: DeletePartyError) -> Self {
         match e {
             DeletePartyError::PartyNotFound => Self::party_not_found(),
+            DeletePartyError::NotInParty => Self::not_in_party(),
             DeletePartyError::NotOwner => Self::forbidden(
                 "NOT_AUTHORIZED",
                 "Only the party owner or the only human player can delete the party",
