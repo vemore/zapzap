@@ -81,6 +81,32 @@ class PartyListProvider extends ChangeNotifier {
 
   List<PartySummary> get parties => _parties;
 
+  /// The parties the caller is in, the "My games" section: a running game
+  /// first, then the lobbies, then the finished ones, each in the
+  /// backend's order.
+  ///
+  /// Not "your turn first": neither backend's `GET /party` says whose turn
+  /// it is, and one state call per party is not worth it.
+  List<PartySummary> get myParties {
+    int rank(PartySummary party) => switch (party.status) {
+      PartyStatus.playing => 0,
+      PartyStatus.finished => 2,
+      _ => 1,
+    };
+    final mine = _parties.where((party) => party.isMember).toList();
+    // `List.sort` is not stable: sort on (rank, index).
+    final index = {for (final (i, party) in mine.indexed) party.id: i};
+    return mine..sort(
+      (a, b) =>
+          rank(a) != rank(b) ? rank(a) - rank(b) : index[a.id]! - index[b.id]!,
+    );
+  }
+
+  /// The parties the caller is not in, the "Open games" section, in the
+  /// backend's order.
+  List<PartySummary> get openParties =>
+      _parties.where((party) => !party.isMember).toList();
+
   /// `true` until the first answer, and again while a spinner-showing load
   /// runs; a pull-to-refresh does not set it.
   bool get loading => _loading;

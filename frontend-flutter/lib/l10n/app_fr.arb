@@ -377,6 +377,38 @@
   "@partyReturnToLobbyButton": {
     "description": "Button that opens the lobby of a party the user is in"
   },
+  "partiesMine": "Mes parties",
+  "@partiesMine": {
+    "description": "Section heading: the parties the signed-in user is in"
+  },
+  "partiesOpenEmpty": "Pas d'autre partie ouverte.",
+  "@partiesOpenEmpty": {
+    "description": "Shown under the open games heading when there is none but the user has games of their own"
+  },
+  "partiesEmptyCreate": "Crée la tienne",
+  "@partiesEmptyCreate": {
+    "description": "Link in the empty open-games box that opens the create-party screen"
+  },
+  "partiesPullToRefresh": "Tire vers le bas pour actualiser.",
+  "@partiesPullToRefresh": {
+    "description": "Hint under the empty open-games box"
+  },
+  "partyInProgressBadge": "En cours",
+  "@partyInProgressBadge": {
+    "description": "Badge on a party the user is in whose game is running"
+  },
+  "partyCardHost": "tu es l'hôte",
+  "@partyCardHost": {
+    "description": "On a party card: the signed-in user created this party"
+  },
+  "partyResumeButton": "Reprendre",
+  "@partyResumeButton": {
+    "description": "Button that opens the running game of a party the user is in"
+  },
+  "partyLobbyButton": "Salon",
+  "@partyLobbyButton": {
+    "description": "Button that opens the lobby of a party the user is in"
+  },
   "createPartyTitle": "Nouvelle partie",
   "@createPartyTitle": {
     "description": "Title of the create-party screen"

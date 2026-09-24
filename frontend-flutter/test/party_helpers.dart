@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -136,6 +137,10 @@ class FakeLobbyBackend {
 
   final List<http.Request> requests = [];
 
+  /// When set, `GET /party` answers only once it completes: the list's
+  /// loading state stays on screen until then.
+  Completer<void>? partiesGate;
+
   /// The last body sent to [path], decoded.
   JsonMap bodyOf(String method, String path) => (jsonDecode(
     requests
@@ -156,6 +161,7 @@ class FakeLobbyBackend {
       return _json(failure.body, failure.status);
     }
     if (path == '/api/party' && request.method == 'GET') {
+      await partiesGate?.future;
       return _json({'success': true, 'parties': parties});
     }
     if (path == '/api/party' && request.method == 'POST') {
