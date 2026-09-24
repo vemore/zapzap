@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_broadcast::{broadcast, Receiver, Sender};
@@ -70,6 +71,8 @@ pub struct AppState {
 
     /// LLM bot memories (keyed by bot user ID)
     pub llm_memories: Arc<RwLock<HashMap<String, Arc<RwLock<LlmBotMemory>>>>>,
+    /// Where the LLM bot memories are saved (`BOT_STRATEGIES_DIR`)
+    pub bot_strategies_dir: PathBuf,
 
     /// Bot turns: one loop at a time per party, and each bot's strategy for the game
     pub bot_runner: Arc<BotRunner>,
@@ -179,7 +182,8 @@ impl AppState {
             event_receiver,
             llm_service,
             llm_memories,
-            bot_runner: Arc::new(BotRunner::new()),
+            bot_strategies_dir: bot_strategies_dir(),
+            bot_runner: Arc::new(BotRunner::from_env()),
             google_oauth,
         })
     }
@@ -192,11 +196,9 @@ impl AppState {
         }
         drop(memories);
 
-        // Create new memory
-        let mut memory = LlmBotMemory::new(bot_user_id, None);
-        if let Err(e) = memory.load().await {
-            tracing::warn!("Failed to load LLM memory for {}: {}", bot_user_id, e);
-        }
+        // Create new memory; one that cannot be read starts empty (`load` says why)
+        let mut memory = LlmBotMemory::new(bot_user_id, Some(self.bot_strategies_dir.clone()));
+        memory.load().await;
 
         let memory = Arc::new(RwLock::new(memory));
         let mut memories = self.llm_memories.write().await;
@@ -224,6 +226,14 @@ impl AppState {
             }
         }
     }
+}
+
+/// The directory of the LLM bot memories: `BOT_STRATEGIES_DIR`, `data/bot-strategies`
+/// by default
+fn bot_strategies_dir() -> PathBuf {
+    PathBuf::from(
+        std::env::var("BOT_STRATEGIES_DIR").unwrap_or_else(|_| "data/bot-strategies".to_string()),
+    )
 }
 
 /// Whether an LLM service is switched on. The switch (`AWS_BEDROCK_ENABLED`,
