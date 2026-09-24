@@ -2,7 +2,7 @@
 
 > Scope: the Rust backend in `zapzap-rust/` (axum 0.7, sqlx 0.8 sqlite, tokio) — layout, state, config, auth, SSE, sessions, bot triggering, LLM service, DB schema situation. Routes are in [[Api]].
 > Related: [[Architecture]] · [[Api]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -17,8 +17,8 @@
 ### Module layout (`zapzap-rust/src/`)
 | Layer | Contents |
 |---|---|
-| `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `middleware/auth_middleware.rs`, `sse.rs`, `dto/` (empty mod, 1 line) |
-| `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/reflect_on_round`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
+| `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `error.rs` (typed `ApiError` and the `ApiJson` body extractor, see Error mapping), `middleware/auth_middleware.rs`, `sse.rs`, `dto/` (empty mod, 1 line) |
+| `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `party/add_bot_to_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/reflect_on_round`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
 | `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 679 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
 | `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{llm_service,session_manager}` |
 | `training/` | **empty directory**, untracked by git |
@@ -67,7 +67,7 @@
 
 ### Event broadcaster / SSE
 - `broadcast(1000)` with `set_overflow(true)`: when full, oldest events are dropped instead of blocking (`app_state.rs:80-81`). `broadcast_event` uses `try_broadcast` and only logs errors (`:168-186`).
-- `GameEvent` JSON: `type`, `partyId`, `userId`, optional `action`, flattened `data`, `timestamp` ms (`app_state.rs:190-204`). Event types emitted: `partyUpdate` (actions `playerJoined`, `playerLeft`, `partyStarted`, `partyDeleted`; party creation emits nothing), `gameUpdate` (`selectHandSize`, `play`, `draw`, `zapzap`, `roundStarted`, `gameFinished`), `userConnected`, `userDisconnected`.
+- `GameEvent` JSON: `type`, `partyId`, `userId`, optional `action`, flattened `data`, `timestamp` ms (`app_state.rs:190-204`). Event types emitted: `partyUpdate` (actions `partyCreated`, `playerJoined` — also when the owner adds a bot, with the bot as `userId` —, `playerLeft`, `partyStarted`, `partyDeleted`), `gameUpdate` (`selectHandSize`, `play`, `draw`, `zapzap`, `roundStarted`, `gameFinished`), `userConnected`, `userDisconnected`.
 - `GET /suscribeupdate?token=<jwt>` (`zapzap-rust/src/api/sse.rs:18`): token optional, passed in the query string. Sends an initial `connected` event (`:52`), then each GameEvent as SSE event `event` (`:73`), a `heartbeat` comment every 20 s (`:58`), plus axum default keep-alive (`:95`). **Every client receives every party's events**; filtering is client-side.
 - On a receiver error (e.g. lagging) the stream breaks and the client must reconnect (`sse.rs:76-80`).
 
@@ -77,17 +77,20 @@
 - `GET /api/players/connected` returns at most 5 sessions, newest first (`zapzap-rust/src/api/routes/players.rs:39`).
 
 ### Bot triggering
-- No bot scheduler: bots are driven by `trigger_bot_internal` (`zapzap-rust/src/api/routes/game.rs:1313`) spawned with `tokio::spawn` after `GET state` (100 ms delay, `:345-351`), `selectHandSize`, `play`, `draw`, `nextRound` (300 ms, `:436`, `:523`, `:610`, `:803`). It loops while the current player is a bot, sleeping 200 ms between actions (`:1668`).
-- Iteration cap: 50 if an active human remains, 500 if only bots (`game.rs:1346`). Hand size for bots always chosen by `HardBotStrategy` (`game.rs:1426`).
+- No bot scheduler: bots are driven by `trigger_bot_internal` (`zapzap-rust/src/api/routes/game.rs:1209`) spawned with `tokio::spawn` after `GET state` (100 ms delay, `:367-373`), `selectHandSize`, `play`, `draw`, `nextRound` (300 ms, `:434`, `:487`, `:542`, `:699`). It loops while the current player is a bot, sleeping 200 ms between actions (`:1564`).
+- Iteration cap: 50 if an active human remains, 500 if only bots (`game.rs:1242`). Hand size for bots always chosen by `HardBotStrategy` (`game.rs:1322`).
 - **No per-party lock**: every state poll spawns a new loop, so concurrent loops can act on the same bot turn (read-modify-write on `game_state`).
-- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs:846`) duplicates the loop inline with a cap of 50 (`:856`).
-- After a human ZapZap, `trigger_llm_reflection` (`game.rs:1675`) runs `ReflectOnRound` for each LLM bot if an LLM service exists; `score_change` is hard-coded 0 (`game.rs:1736`).
+- Manual `POST /api/game/:partyId/trigger-bot` (`game.rs:742`) duplicates the loop inline with a cap of 50 (`:752`).
+- After a human ZapZap, `trigger_llm_reflection` (`game.rs:1571`) runs `ReflectOnRound` for each LLM bot if an LLM service exists; `score_change` is hard-coded 0 (`game.rs:1632`).
 - Pending bot turns are not recovered at startup (the Node `BotOrchestrator.recoverPendingBotTurns`, `src/infrastructure/bot/BotOrchestrator.js:59`, has no Rust equivalent); the next `GET state` restarts them.
 
 ### Error mapping
-- Handlers map use-case errors to HTTP codes by **substring-matching `e.to_string()`**; several messages do not match their intended branch and fall to 500 (details in [[Api]]).
+- The party and game handlers return `Result<_, ApiError>` (`zapzap-rust/src/api/error.rs`): one `From<UseCaseError> for ApiError` per use case maps each variant to Node's status and `code`; no handler reads an error's message. A repository failure is a 500 in Node's shape (`{error: "Failed to …", code: "<ROUTE>_ERROR", details}`), logged by `IntoResponse`.
+- JSON bodies go through `ApiJson<T>`: a body that does not parse (malformed JSON, a missing or mistyped field) answers 400 `{error, code, details}` with the code the route gives a missing field (`ApiBody::INVALID_CODE`), never axum's 422 plain text; a request without a JSON content type reads as `{}`, as Express does.
+- The auth, admin, bots, stats and history handlers still build their errors inline (no message matching there).
 
 ## Decisions & History
+- 2026-09-24 (fix/rust-api-errors-contract): the substring matching of error messages was replaced by typed errors, after six of its branches were found answering 500 for client errors ([[Api]] keeps the list of cases where Rust answers a 4xx and Node a 500). The play and draw use cases gained typed variants (`CardNotInHand`, `DeckEmpty`, `NoCardsAvailable`, `CardNotAvailable`) checked before the domain call, so that no error code depends on the domain's message strings.
 - Backend rewritten from Node/Express to Rust in `e4f83da` (2025-12-23), keeping the Node JSON shapes ("matching JS behavior" comments, `zapzap-rust/src/api/routes/auth.rs:83`) and the SQLite file, which explains the bcrypt fallback and the absence of Rust-side schema creation.
 - 2026-09-23 (fix/rust-api-schema): the backend got its own schema step so that `tests/api_tests.rs` could run on an in-memory DB and join CI. The Node DDL was copied rather than written as sqlx migrations, because a migration runner on the production file (no `_sqlx_migrations` table) would either refuse it or re-run `CREATE TABLE` on it; `IF NOT EXISTS` DDL is a no-op there. The same change made `POST /api/party` without `name` answer 400 `MISSING_PARTY_NAME` like Node (it answered axum's 422), which `test_create_party_missing_name` had caught.
 - `8a3509b` added the background bot triggers and the 50/500 iteration limit; `c9ac7a7` enabled broadcaster overflow after SSE sends blocked on a full channel (commit title).

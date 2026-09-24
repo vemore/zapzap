@@ -18,12 +18,21 @@ pub struct CallZapZapInput {
 pub struct CallZapZapOutput {
     pub success: bool,
     pub counteracted: bool,
-    pub counteracted_by: Option<String>,
-    pub scores: Vec<(u8, u16)>,
+    /// Player index of the counteracting player
+    pub counteracted_by: Option<u8>,
+    /// Running totals after this round, one per seat (Node's `scores`)
+    pub total_scores: Vec<(u8, u16)>,
+    /// Points this round, active players only
+    pub round_scores: Vec<(u8, u16)>,
+    /// Hand value with Joker = 25, active players only (Node's `handPoints`)
+    pub hand_points: Vec<(u8, u16)>,
+    /// Caller's hand value with Joker = 0 (Node's `callerPoints`)
     pub caller_hand_points: u16,
     pub eliminated_players: Vec<u8>,
     pub game_finished: bool,
     pub winner: Option<u8>,
+    /// Winner's user id, when the game is finished
+    pub winner_user_id: Option<String>,
 }
 
 /// Call zapzap use case
@@ -236,21 +245,38 @@ impl<P: PartyRepository> CallZapZap<P> {
                 .await?;
         }
 
-        // Get counteracted by username
-        let counteracted_by_id = result.counteracted_by.map(|idx| {
-            // Would need to look up user, for now just return index as string
-            format!("player_{}", idx)
+        let total_scores = (0..game_state.player_count)
+            .map(|i| (i, game_state.get_score(i)))
+            .collect();
+        let hand_points = result
+            .scores
+            .iter()
+            .map(|&(i, _)| {
+                (
+                    i,
+                    card_analyzer::calculate_hand_score(game_state.get_hand(i), false),
+                )
+            })
+            .collect();
+        let winner_user_id = winner.and_then(|w| {
+            players
+                .iter()
+                .find(|p| p.player_index == w)
+                .map(|p| p.user_id.clone())
         });
 
         Ok(CallZapZapOutput {
             success: !result.counteracted,
             counteracted: result.counteracted,
-            counteracted_by: counteracted_by_id,
-            scores: result.scores,
+            counteracted_by: result.counteracted_by,
+            total_scores,
+            round_scores: result.scores,
+            hand_points,
             caller_hand_points: result.caller_hand_value,
             eliminated_players: eliminated,
             game_finished: winner.is_some(),
             winner,
+            winner_user_id,
         })
     }
 }

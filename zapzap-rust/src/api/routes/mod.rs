@@ -88,6 +88,13 @@ fn create_party_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
                 auth_middleware,
             )),
         )
+        .route(
+            "/:partyId/bots",
+            post(party::add_bot).layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            )),
+        )
         .with_state(state)
 }
 

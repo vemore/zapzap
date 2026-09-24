@@ -1,3 +1,4 @@
+mod add_bot_to_party;
 mod create_party;
 mod delete_party;
 mod get_party_details;
@@ -6,6 +7,7 @@ mod leave_party;
 mod list_parties;
 mod start_party;
 
+pub use add_bot_to_party::*;
 pub use create_party::*;
 pub use delete_party::*;
 pub use get_party_details::*;

@@ -40,18 +40,17 @@ impl<U: UserRepository, P: PartyRepository> LeaveParty<U, P> {
             .await?
             .ok_or(LeavePartyError::PartyNotFound)?;
 
-        // Check party status
-        if party.status != PartyStatus::Waiting {
-            return Err(LeavePartyError::PartyNotWaiting);
-        }
-
-        // Check if user is in party
+        // Membership, then status: the order of Node's LeaveParty
         if !self
             .party_repo
             .is_player_in_party(&input.party_id, &input.user_id)
             .await?
         {
             return Err(LeavePartyError::NotInParty);
+        }
+
+        if party.status != PartyStatus::Waiting {
+            return Err(LeavePartyError::PartyNotWaiting);
         }
 
         // Remove player from party

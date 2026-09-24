@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::error::{ApiBody, ApiError, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
 use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
@@ -38,6 +39,21 @@ pub struct DrawCardRequest {
 pub struct SelectHandSizeRequest {
     #[serde(rename = "handSize")]
     pub hand_size: u8,
+}
+
+impl ApiBody for PlayCardsRequest {
+    const INVALID_CODE: &'static str = "MISSING_CARDS";
+    const INVALID_MESSAGE: &'static str = "Card IDs are required";
+}
+
+impl ApiBody for DrawCardRequest {
+    const INVALID_CODE: &'static str = "INVALID_SOURCE";
+    const INVALID_MESSAGE: &'static str = "Source must be \"deck\" or \"played\"";
+}
+
+impl ApiBody for SelectHandSizeRequest {
+    const INVALID_CODE: &'static str = "INVALID_HAND_SIZE";
+    const INVALID_MESSAGE: &'static str = "Hand size must be an integer";
 }
 
 // Response types
@@ -181,21 +197,43 @@ pub struct SelectHandSizeResponse {
     pub game_state: Option<GameStateInfo>,
 }
 
+/// Node's zapzap contract: `scores` are the running totals after the round, keyed by
+/// player index; this round's points go under `roundScores`, the key `/state` uses.
 #[derive(Debug, Serialize)]
 pub struct ZapZapResponse {
     pub success: bool,
     #[serde(rename = "zapzapSuccess")]
     pub zapzap_success: bool,
     pub counteracted: bool,
+    /// Player index of the counteracting player, `null` when none
     #[serde(rename = "counteractedBy")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub counteracted_by: Option<String>,
-    pub scores: Vec<ScoreEntry>,
+    pub counteracted_by: Option<u8>,
+    pub scores: std::collections::BTreeMap<String, u16>,
+    #[serde(rename = "roundScores")]
+    pub round_scores: std::collections::BTreeMap<String, u16>,
     #[serde(rename = "handPoints")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hand_points: Option<u16>,
+    pub hand_points: std::collections::BTreeMap<String, u16>,
     #[serde(rename = "callerPoints")]
     pub caller_points: u16,
+    #[serde(rename = "gameFinished")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_finished: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub winner: Option<ZapZapWinner>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ZapZapWinner {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    #[serde(rename = "playerIndex")]
+    pub player_index: u8,
+    pub score: u16,
+}
+
+/// `[(index, value)]` as a JSON object keyed by the index, like Node's maps
+fn index_map(entries: &[(u8, u16)]) -> std::collections::BTreeMap<String, u16> {
+    entries.iter().map(|(i, v)| (i.to_string(), *v)).collect()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -256,30 +294,14 @@ pub async fn get_game_state(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<GameStateResponse>, ApiError> {
     let use_case = GetGameState::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
         .execute(GetGameStateInput {
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = match err_msg.as_str() {
-                "Party not found" => (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND"),
-                "User is not in this party" => (StatusCode::FORBIDDEN, "NOT_IN_PARTY"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "GET_STATE_ERROR"),
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Get current player's index
     let my_player_index = result.player_index.unwrap_or(0);
@@ -382,8 +404,8 @@ pub async fn select_hand_size(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<SelectHandSizeRequest>,
-) -> Result<Json<SelectHandSizeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    ApiJson(body): ApiJson<SelectHandSizeRequest>,
+) -> Result<Json<SelectHandSizeResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let party_id_for_bot = party_id.clone();
     let use_case = SelectHandSize::new(state.party_repo.clone());
@@ -393,31 +415,7 @@ pub async fn select_hand_size(
             user_id: claims.user_id.clone(),
             hand_size: body.hand_size,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("selection phase") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("must be") || err_msg.contains("Invalid") {
-                (StatusCode::BAD_REQUEST, "INVALID_HAND_SIZE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "SELECT_HAND_SIZE_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -453,16 +451,12 @@ pub async fn play_cards(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<PlayCardsRequest>,
-) -> Result<Json<PlayCardsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    ApiJson(body): ApiJson<PlayCardsRequest>,
+) -> Result<Json<PlayCardsResponse>, ApiError> {
     if body.card_ids.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Card IDs are required".to_string(),
-                code: "MISSING_CARDS".to_string(),
-                details: None,
-            }),
+        return Err(ApiError::bad_request(
+            "MISSING_CARDS",
+            "Card IDs are required",
         ));
     }
 
@@ -474,37 +468,7 @@ pub async fn play_cards(
             user_id: claims.user_id.clone(),
             card_ids: body.card_ids.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("not PLAY") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("not in hand") {
-                (StatusCode::BAD_REQUEST, "INVALID_CARDS")
-            } else if err_msg.contains("at least 2")
-                || err_msg.contains("No cards")
-                || err_msg.contains("Invalid")
-                || err_msg.contains("combination")
-            {
-                (StatusCode::BAD_REQUEST, "INVALID_PLAY")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "PLAY_CARDS_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -541,16 +505,12 @@ pub async fn draw_card(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-    Json(body): Json<DrawCardRequest>,
-) -> Result<Json<DrawCardResponse>, (StatusCode, Json<ErrorResponse>)> {
+    ApiJson(body): ApiJson<DrawCardRequest>,
+) -> Result<Json<DrawCardResponse>, ApiError> {
     if body.source != "deck" && body.source != "played" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Source must be \"deck\" or \"played\"".to_string(),
-                code: "INVALID_SOURCE".to_string(),
-                details: None,
-            }),
+        return Err(ApiError::bad_request(
+            DrawCardRequest::INVALID_CODE,
+            DrawCardRequest::INVALID_MESSAGE,
         ));
     }
 
@@ -563,35 +523,7 @@ pub async fn draw_card(
             source: body.source.clone(),
             card_id: body.card_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("not DRAW") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else if err_msg.contains("empty") {
-                (StatusCode::BAD_REQUEST, "DECK_EMPTY")
-            } else if err_msg.contains("No cards available") {
-                (StatusCode::BAD_REQUEST, "NO_CARDS_AVAILABLE")
-            } else if err_msg.contains("not available") {
-                (StatusCode::BAD_REQUEST, "CARD_NOT_AVAILABLE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "DRAW_CARD_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -629,7 +561,7 @@ pub async fn call_zapzap(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<ZapZapResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ZapZapResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let use_case = CallZapZap::new(state.party_repo.clone());
     let result = use_case
@@ -637,31 +569,7 @@ pub async fn call_zapzap(
             party_id,
             user_id: claims.user_id.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("Not your turn") {
-                (StatusCode::FORBIDDEN, "NOT_YOUR_TURN")
-            } else if err_msg.contains("too high") || err_msg.contains("Hand value") {
-                (StatusCode::BAD_REQUEST, "HAND_TOO_HIGH")
-            } else if err_msg.contains("Cannot call") || err_msg.contains("Wrong action") {
-                (StatusCode::BAD_REQUEST, "INVALID_ACTION_STATE")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "ZAPZAP_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let event = GameEvent::new(
@@ -721,21 +629,31 @@ pub async fn call_zapzap(
         });
     }
 
+    let winner = match (result.winner, result.winner_user_id) {
+        (Some(player_index), Some(user_id)) => Some(ZapZapWinner {
+            user_id,
+            player_index,
+            score: result
+                .total_scores
+                .iter()
+                .find(|(i, _)| *i == player_index)
+                .map(|(_, s)| *s)
+                .unwrap_or(0),
+        }),
+        _ => None,
+    };
+
     Ok(Json(ZapZapResponse {
         success: true,
         zapzap_success: result.success,
         counteracted: result.counteracted,
         counteracted_by: result.counteracted_by,
-        scores: result
-            .scores
-            .into_iter()
-            .map(|(idx, score)| ScoreEntry {
-                player_index: idx,
-                score,
-            })
-            .collect(),
-        hand_points: None,
+        scores: index_map(&result.total_scores),
+        round_scores: index_map(&result.round_scores),
+        hand_points: index_map(&result.hand_points),
         caller_points: result.caller_hand_points,
+        game_finished: result.game_finished.then_some(true),
+        winner,
     }))
 }
 
@@ -744,7 +662,7 @@ pub async fn next_round(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<NextRoundResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<NextRoundResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let party_id_for_bot = party_id.clone();
     let use_case = NextRound::new(state.party_repo.clone());
@@ -753,29 +671,7 @@ pub async fn next_round(
             party_id,
             user_id: claims.user_id.clone(),
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("not in playing") || err_msg.contains("not playing") {
-                (StatusCode::BAD_REQUEST, "INVALID_PARTY_STATE")
-            } else if err_msg.contains("not finished") {
-                (StatusCode::BAD_REQUEST, "ROUND_NOT_FINISHED")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "NEXT_ROUND_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event
     let action = if result.game_finished {

@@ -155,6 +155,11 @@
   so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
   `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
   the deck, deliberately not parsed.
+  > **Status: Outdated** (2026-09-24) — Rust's `zapzap` now answers Node's shape
+  > (`fix/rust-api-errors-contract`, [[Api]]): `scores` the running totals as an object,
+  > `handPoints` a map, `counteractedBy` an index or `null`, plus the round's points under
+  > `roundScores`. `ZapZapResult` so gets `totalScores` from both backends; it does not read
+  > `roundScores` yet.
   > **Status: Outdated** (2026-09-24) — Node's `GET /history` now sends `userPlacement` and
   > `userScore` too (`src/use-cases/history/GetGameHistory.js`, from
   > `player_game_results`); `/history/public` carries neither, on both backends.
@@ -529,8 +534,8 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
 
 The port of `frontend/src/components/Game/RoundEnd.jsx`, fed by `GameBoard.jsx:374-400`.
 `GameScreen._roundOver` builds it from `GameState` alone — never from the answer of
-`zapzap`, whose `scores` are the running totals on Node and the round's own points on Rust
-(API layer, above). It is the `finished` mode of the board, not a route: the phase is
+`zapzap`, whose `scores` were the running totals on Node and the round's own points on Rust
+(API layer, above; both send the totals since 2026-09-24). It is the `finished` mode of the board, not a route: the phase is
 reached and left by `currentAction`, which every move and the other clients' `roundStarted`
 change. A failed refresh leaves it on screen under the stale banner, as any other mode.
 
