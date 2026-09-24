@@ -19,7 +19,7 @@
 | Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
-| Flutter end to end (`frontend-flutter/integration_test/`) | `flutter drive` against a live Node backend, below | green (2026-09-24) | no — local only; CI is its own wip entry (`2026-09-23-flutter-e2e-in-ci`) |
+| Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand against either backend, below | green (2026-09-24) | yes (`flutter-e2e` job) |
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
 | Backend parity, Node vs Rust (`tests/parity`, `node --test`, outside jest) | `cd zapzap-rust && cargo build --release`, then `npm run test:parity` (root), about 30 s | green with the differences `tests/parity/divergences.json` lists (2026-09-24) | yes (`parity` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
@@ -123,9 +123,23 @@
   the text on screen.
 - `test_driver/integration_test.dart` is the host side (`integrationDriver()`); the steps
   land in `frontend-flutter/build/integration_response_data.json`. `flutter test` runs
-  `test/` only, so CI does not run it; `flutter analyze` covers it (dev dependencies
+  `test/` only, so the `flutter` job does not run it (the `flutter-e2e` job does); `flutter analyze` covers it (dev dependencies
   `integration_test` and `flutter_driver`, from the SDK).
-- **Procedure** (checked 2026-09-24, Chrome 153, Node backend):
+- **`scripts/flutter_e2e.sh`** runs it end to end, as CI does: in a `mktemp -d` directory
+  it seeds the bot accounts (`DB_PATH=<dir>/e2e.db node scripts/init-bots.js`, the Node
+  DDL, which the Rust backend takes as is), starts the Rust backend's debug build from
+  `zapzap-rust/` with a generated `JWT_SECRET` (`openssl rand -hex 32`), waits for
+  `/api/health` (60 s), starts chromedriver and waits for its `/status` (30 s), then runs
+  the `flutter drive` of step 3 below, headless. It exits with `flutter drive`'s status,
+  stops what it started by process id, prints the backend log's last 80 lines on a
+  failure, and removes the directory. Environment: `E2E_BACKEND_BIN` (default
+  `${CARGO_TARGET_DIR:-zapzap-rust/target}/debug/zapzap-backend`), `E2E_API_PORT` (9921),
+  `E2E_DRIVER_PORT` (4461), `CHROMEDRIVER` (default `$CHROMEWEBDRIVER/chromedriver`, which
+  a GitHub runner sets, else `chromedriver` on the PATH). Needs `cargo build --locked` in
+  `zapzap-rust/`, `npm ci` at the root and `flutter pub get`. Locally (2026-09-24, Chrome
+  153): `CHROMEDRIVER=<cft>/chromedriver E2E_API_PORT=9551 E2E_DRIVER_PORT=9552
+  scripts/flutter_e2e.sh`, about 3.5 min, one minute of it the web compile.
+- **Procedure by hand** (checked 2026-09-24, Chrome 153, Node backend):
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
      (`DB_PATH`, [[Architecture]]): `npm ci && DB_PATH=/tmp/e2e.db npm run init-bots &&
      DB_PATH=/tmp/e2e.db PORT=9921 NODE_ENV=development node app.js` (development allows
@@ -157,6 +171,7 @@
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` production runs: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
+| `flutter-e2e` | `flutter != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `npm ci`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 | `node` | `node != 'false'` | Node 20 (`actions/setup-node`, npm cache), `npm ci`, `npm test` | 15 min |
 | `parity` | `parity != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, `cargo build --release --locked` in `zapzap-rust`, `npm ci`, `npm run test:parity` | 30 min |
 
@@ -169,8 +184,9 @@
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
   `native`. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The `node` job's
-  `Node backend — jest`, the `parity` job's `Backend parity — Node vs Rust` and the
-  `flutter` job's name are not pinned: adding them to branch protection is the user's
+  `Node backend — jest`, the `parity` job's `Backend parity — Node vs Rust`, the
+  `flutter` job's name and the `flutter-e2e` job's `Flutter end to end — a round against
+  the Rust backend` are not pinned: adding them to branch protection is the user's
   call. Changing a pinned name
   on purpose means changing branch protection in the same breath, which is the user's
   setting to change.
@@ -233,3 +249,13 @@
   ignores `tests/parity/`). The Node backend now reads `DB_PATH`, which the scratch
   databases needed.
 - **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production runs; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.
+- **2026-09-24 (chore/flutter-e2e-ci): the Flutter end-to-end test runs in CI**, job
+  `flutter-e2e`, against the Rust backend (the target) rather than the Node one the local
+  procedure used: since #42 it builds its own schema and since #73 it only needs a
+  `JWT_SECRET`, so the job needs no database file. The bots are still seeded by the Node
+  script, which is what the local procedure and production use. A debug build: it compiles
+  faster than the parity job's release build and plays a round of easy bots just as well.
+  The job runs on the `flutter` flag only (a pull request touching `frontend-flutter/`,
+  and master): a backend change that breaks the client shows on master, and the parity
+  suite covers the HTTP contract on every backend change. A deliberately failing assertion
+  turned the job red before merge (the pull request cites the run).
