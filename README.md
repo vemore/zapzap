@@ -309,7 +309,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics, the admin users tab (parties and statistics tabs to come); Android (debug) + PWA deployed under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register, the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 | Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
 
@@ -323,7 +323,8 @@ flutter build apk --debug                    # Android, needs the Android SDK
 ```
 
 An end-to-end test plays a round through the client against a live backend and a
-chromedriver (`integration_test/`, `flutter drive`); the procedure is in
+chromedriver (`integration_test/`, `flutter drive`). `scripts/flutter_e2e.sh` starts the
+Rust backend on a fresh database and runs it, as CI does; the procedure is in
 `.llmwiki/Testing.md`.
 
 The PWA image (`frontend-flutter/Dockerfile`, service `frontend-flutter`) builds that
