@@ -163,7 +163,7 @@ After **each** merge, so a regression points at one pull request:
 
 | Paths changed | Do |
 |---|---|
-| `frontend/`, `nginx/`, `docker-compose.yml`, `Dockerfile`, `src/`, `package*.json`, `data/` | `deploy` skill |
+| `frontend/`, `frontend-flutter/`, `nginx/`, `docker-compose.yml`, `Dockerfile`, `src/`, `package*.json`, `data/` | `deploy` skill |
 | `zapzap-rust/` | nothing yet — production runs the Node backend (`.llmwiki/Deployment.md`); the switch is a wip entry |
 | `native/`, docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
 

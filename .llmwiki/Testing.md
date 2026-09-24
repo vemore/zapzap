@@ -18,6 +18,7 @@
 | Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
+| Flutter end to end (`frontend-flutter/integration_test/`) | `flutter drive` against a live Node backend, below | green (2026-09-24) | no — local only; CI is its own wip entry (`2026-09-23-flutter-e2e-in-ci`) |
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
 | Docker images and the proxy config | `docker build zapzap-rust`, `docker build .` (the Node backend production runs), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
@@ -51,6 +52,43 @@
 - `npm run test:e2e` → Playwright (`package.json:11-15`): `testDir: './tests/e2e/scenarios'` (only `smoke.spec.js`, 8 tests), 1 worker, 30 s timeout, `headless: false`, chromium only (`playwright.config.js:10-88`). It starts `node tests/e2e/setup/test-server.js` on 9999 — an Express server wiring the legacy `src/` DI container (`tests/e2e/setup/test-server.js:6-18`) — and `npm run dev` in `frontend/` on 5173 (`playwright.config.js:91-110`). It therefore tests the React frontend against the **Node** backend — which is, in fact, the one in production ([[Deployment]]).
 - `node scripts/test-api.js` hits `http://localhost:9999` (`scripts/test-api.js:9`); usable against either backend.
 - CI runs jest in the `node` job (Node 20, the major of the production image) and builds the root `Dockerfile` in the `image` job. The Playwright suite runs nowhere.
+
+### Flutter end to end (`frontend-flutter/integration_test/`)
+- `integration_test/play_round_test.dart`: the real client, no fake and no fixture, against
+  a live backend — registers a fresh user (`e2e_<base-36 time>`), creates a party of three
+  with two easy bots (`Bot — Facile`), starts it, then plays until the end-of-round screen
+  shows: the hand size when it is its pick, the first card of the hand, a draw from the
+  deck, ZapZap as soon as it is enabled. It checks `roundOver`, the three
+  `roundEndPlayer-<i>` rows, `roundEndMe`, the `zapZapBanner` (a round only ends on a
+  call) and Next round (or Back to games). It drives widget keys only, in French
+  (`locale: fr`, the bot option's label). A round is a few dozen turns; the test gives it
+  5 min (`roundTimeout`) and each screen 30 s, and a timeout fails with the steps taken and
+  the text on screen.
+- `test_driver/integration_test.dart` is the host side (`integrationDriver()`); the steps
+  land in `frontend-flutter/build/integration_response_data.json`. `flutter test` runs
+  `test/` only, so CI does not run it; `flutter analyze` covers it (dev dependencies
+  `integration_test` and `flutter_driver`, from the SDK).
+- **Procedure** (checked 2026-09-24, Chrome 153, Node backend):
+  1. A backend with the bot accounts, on a port of your choice. Node's database is always
+     `data/zapzap.db` of the checkout it runs from
+     (`src/infrastructure/database/sqlite/DatabaseConnection.js:13`), so run it from a
+     worktree for a throwaway one: `npm ci && npm run init-bots && PORT=9921
+     NODE_ENV=development node app.js` (development allows any `http://localhost:` origin,
+     `src/api/server.js:32-45`; the test page is served from another port). Delete that
+     worktree's `data/zapzap.db` afterwards. Each run adds a user and a party, so reusing
+     a development database works too.
+  2. A chromedriver of Chrome's major version, on a free port:
+     `npx @puppeteer/browsers install chromedriver@<google-chrome --version>`, then
+     `chromedriver --port=4461`.
+  3. From `frontend-flutter/`:
+     `flutter drive --driver=test_driver/integration_test.dart
+     --target=integration_test/play_round_test.dart -d web-server --browser-name=chrome
+     --driver-port=4461 --browser-dimension=390x844
+     --dart-define=API_BASE_URL=http://localhost:9921` — headless, a phone-sized page.
+     It ends on `All tests passed.`, in about 1.5 min (most of it the compile).
+  4. Kill both by port (`lsof -ti:9921 | xargs kill`, the same for 4461).
+- On the web a focused text field swallows the next tap, so a dropdown tapped just after
+  typing never opens: the test types the party's name after choosing the seats.
 
 ### CI workflow (`.github/workflows/ci.yml`)
 - Triggers: push to `master`, any pull request, manual dispatch (`on:`). PR runs are cancelled when superseded, master runs never (`concurrency:`). `permissions: contents: read` (workflow level).
@@ -121,3 +159,4 @@
 - **2026-09-23: the Node backend is gated** (user decision). #39 went green and then failed to build on the NAS (npm 10 in `node:20-alpine` rejected a lockfile npm 11 accepted): the `image` job now builds the root `Dockerfile`. jest was 59/314 red on master, every failure test drift, none a bug in `src/`: messages translated to French, `handSize` moved out of `PartySettings` to a per-round choice, `JoinParty` no longer auto-starting a full party (commit 9712a26: the owner starts it), a single card being a legal play, mocks missing `updateLastLogin`/`recordGameAction`, and the repository suites opening the older `connection.js` whose schema lacks `users.user_type`. The tests were realigned with the code, none deleted or skipped, and the `node` job runs them. `deploy.sh` and `rebuild.sh` were classified as `hooks`, so a change to them no longer rebuilds every image.
 - 2026-09-23 (fix/rust-api-schema): `--tests` joined the `rust` job once the backend created its own schema; `api_tests` had also caught `POST /api/party` without `name` answering 422 instead of Node's 400 `MISSING_PARTY_NAME`, fixed in the handler rather than in the test.
 - **Frontend lint and vitest made green and gated (2026-09-23).** The 122 red tests were written against an older UI: English labels (the auth forms are French now), class-name hooks (`.player-card`, `.player-row`) that no longer exist, a prop-driven `GameBoard` that became the `/game/:partyId` route loading its own state, `ActionButtons`' `onDraw` split into `onDrawFromDeck`/`onDrawFromDiscard`, and a hand size that moved from party creation to `HandSizeSelector`. They were rewritten against the current components with their intent kept; the five counteract assertions were aligned on `GAME_RULES.md`'s `hand + (active players − 1) × 5`, which the code already applied. Only the three `CreateParty` hand-size tests were dropped (the field is gone), replaced by `HandSizeSelector.test.jsx`.
+- **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production runs; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.

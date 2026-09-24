@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built and started, where its data and secrets
 > live, and the gap between what is deployed and what the project targets.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -30,8 +30,9 @@ part of this deployment.
 | `zapzap-proxy` | `nginx:alpine` | nginx | `nginx/nginx.conf → /etc/nginx/conf.d/default.conf` |
 
 All four come from the root `docker-compose.yml`; the backend and frontend containers were
-created 2026-04-23, and `zapzap-frontend-flutter` was declared 2026-09-23 — it is **not on
-the NAS until that change is deployed**. **Production runs the legacy Node backend (`src/`),
+created 2026-04-23, and `zapzap-frontend-flutter` has served the PWA under `/app/` since #36
+(2026-09-23); every Flutter merge since (#62, #63, #64) went out through the `deploy` skill.
+**Production runs the legacy Node backend (`src/`),
 not `zapzap-rust/`**, which has its own `Dockerfile` and `docker-compose.yml` (the same four
 services) and has never been deployed.
 

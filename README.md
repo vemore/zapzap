@@ -322,6 +322,10 @@ flutter build web --base-href /app/          # the PWA, served under /app/
 flutter build apk --debug                    # Android, needs the Android SDK
 ```
 
+An end-to-end test plays a round through the client against a live backend and a
+chromedriver (`integration_test/`, `flutter drive`); the procedure is in
+`.llmwiki/Testing.md`.
+
 The PWA image (`frontend-flutter/Dockerfile`, service `frontend-flutter`) builds that
 bundle with a pinned Flutter SDK and serves it under `/app/`; the proxy routes `/app/` to
 it. Its own smoke test, against the built image:

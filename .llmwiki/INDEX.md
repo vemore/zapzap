@@ -31,12 +31,12 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Deployment]] | The NAS, the three containers (Node backend in production), `deploy.sh`, the tracked-database trap | 2026-09-23 |
-| [[Testing]] | Each suite, what CI runs and skips, the `scope` job | 2026-09-23 |
+| [[Deployment]] | The NAS, the three containers (Node backend in production), `deploy.sh`, the tracked-database trap | 2026-09-24 |
+| [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-24 |
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-23 |
-| [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser, lanes A–D, cleanup, local `wip/` | 2026-09-23 |
+| [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser, lanes A–D, cleanup, local `wip/` | 2026-09-24 |
 | [[Documentation]] | Which documents a change implicates; the `CLAUDE.md` budget | 2026-09-22 |
-| [[KnownLimits]] | What is deliberately left out of the gates, and why | 2026-09-23 |
+| [[KnownLimits]] | What is deliberately left out of the gates, and why | 2026-09-24 |
 
 ## Procedures live in skills, not here
 

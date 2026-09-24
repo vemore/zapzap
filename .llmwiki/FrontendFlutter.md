@@ -814,6 +814,7 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
 | `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`). Add `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a device on the LAN; without it the APK talks to production over HTTPS |
+| `flutter drive --driver=test_driver/integration_test.dart --target=integration_test/play_round_test.dart -d web-server --dart-define=API_BASE_URL=http://localhost:<port>` | the end-to-end test: a fresh user plays a round against two bots on a live backend; needs the backend and a chromedriver — procedure in [[Testing]] |
 | `docker build -t zapzap-frontend-flutter:ci .` then `scripts/pwa_image_smoke.sh` (from the repository root) | the PWA image and its smoke test |
 
 Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root and the
