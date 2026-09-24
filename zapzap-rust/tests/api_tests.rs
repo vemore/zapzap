@@ -29,10 +29,8 @@ async fn create_test_app_with_state() -> (Router, Arc<AppState>) {
     let state = AppState::new().await.expect("Failed to create app state");
     let state = Arc::new(state);
 
-    let app = Router::new()
-        .nest("/api", api::routes::create_api_router(state.clone()))
-        .route("/suscribeupdate", axum::routing::get(api::sse::sse_handler))
-        .with_state(state.clone());
+    // The application main.rs serves, fallbacks and root routes included
+    let app = api::build_app(state.clone());
     (app, state)
 }
 
@@ -1968,7 +1966,7 @@ async fn test_public_history_lists_public_games_only() {
         .map(|g| g["partyId"].as_str().unwrap())
         .collect();
     assert_eq!(ids, [public_id.as_str()], "{body}");
-    assert_eq!(body["total"], 1);
+    assert_eq!(body["pagination"]["hasMore"], false, "{body}");
 }
 
 #[tokio::test]
@@ -2005,6 +2003,533 @@ async fn test_deleted_users_token_is_refused() {
     let saw = read_sse_until(&mut stream, "global-sentinel").await;
     assert!(!saw.contains("own-action"), "{saw}");
     assert!(!saw.contains("userConnected"), "{saw}");
+}
+
+/// Record a finished game won by `winner_id`, with each player's (id, score, position, won)
+async fn record_finished_game(
+    state: &AppState,
+    party_id: &str,
+    winner_id: &str,
+    results: &[(&str, i32, i32, bool)],
+    golden: bool,
+    finished_at: i64,
+) {
+    sqlx::query(
+        "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds,
+                                   was_golden_score, player_count, finished_at, created_at)
+         VALUES (?, ?, 12, 7, ?, ?, ?, ?)",
+    )
+    .bind(party_id)
+    .bind(winner_id)
+    .bind(golden)
+    .bind(results.len() as i32)
+    .bind(finished_at)
+    .bind(finished_at)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    for (user_id, score, position, winner) in results {
+        sqlx::query(
+            "INSERT INTO player_game_results (party_id, user_id, final_score, finish_position,
+                                              rounds_played, is_winner, created_at)
+             VALUES (?, ?, ?, ?, 7, ?, ?)",
+        )
+        .bind(party_id)
+        .bind(user_id)
+        .bind(score)
+        .bind(position)
+        .bind(winner)
+        .bind(finished_at)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn test_history_listings_carry_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "keyhistowner").await;
+    let (_, rival_id) = register(&mut app, "keyhistrival").await;
+    let (older, _) = create_party_visible(&mut app, &owner, "public").await;
+    let (newer, _) = create_party_visible(&mut app, &owner, "public").await;
+    let results = [
+        (owner_id.as_str(), 12, 1, true),
+        (rival_id.as_str(), 80, 2, false),
+    ];
+    record_finished_game(&state, &older, &owner_id, &results, false, 1700000100).await;
+    record_finished_game(&state, &newer, &owner_id, &results, true, 1700000200).await;
+
+    // Mine, one per page: the newest game, with Node's keys and the caller's own result
+    let (status, body) = get_auth(&mut app, "/api/history?limit=1", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let game = &body["games"][0];
+    assert!(game["id"].is_i64(), "{body}");
+    assert_eq!(game["partyId"], newer.as_str());
+    assert_eq!(game["winnerUserId"], owner_id.as_str());
+    assert_eq!(game["winnerUsername"], "keyhistowner");
+    assert_eq!(game["winnerFinalScore"], 12);
+    assert_eq!(game["totalRounds"], 7);
+    assert_eq!(game["wasGoldenScore"], true);
+    assert_eq!(game["playerCount"], 2);
+    assert_eq!(game["visibility"], "public");
+    assert_eq!(game["userPlacement"], 1);
+    assert_eq!(game["userScore"], 12);
+    assert!(game.get("roundsPlayed").is_none(), "{body}");
+    assert!(body.get("total").is_none(), "{body}");
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 1, "offset": 0, "hasMore": true })
+    );
+
+    let (_, body) = get_auth(&mut app, "/api/history?limit=1&offset=1", &owner).await;
+    assert_eq!(body["games"][0]["partyId"], older.as_str());
+    assert_eq!(body["games"][0]["wasGoldenScore"], false);
+
+    // Public: the same entry, without visibility or a caller's result
+    let (status, body) = request_no_auth(&mut app, "GET", "/api/history/public").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let game = &body["games"][0];
+    assert!(game["id"].is_i64(), "{body}");
+    assert_eq!(game["winnerUserId"], owner_id.as_str());
+    for absent in ["visibility", "userPlacement", "userScore", "roundsPlayed"] {
+        assert!(game.get(absent).is_none(), "{absent}: {body}");
+    }
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 20, "offset": 0, "hasMore": false })
+    );
+}
+
+#[tokio::test]
+async fn test_leaderboard_carries_average_score_criteria_and_pagination() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "boardowner").await;
+    let (_, rival_id) = register(&mut app, "boardrival").await;
+    for (i, finished_at) in [1700000100, 1700000200].into_iter().enumerate() {
+        let (party, _) = create_party_visible(&mut app, &owner, "public").await;
+        let rival_score = 40 + 20 * i as i32;
+        let results = [
+            (owner_id.as_str(), 10, 1, true),
+            (rival_id.as_str(), rival_score, 2, false),
+        ];
+        record_finished_game(&state, &party, &owner_id, &results, false, finished_at).await;
+    }
+
+    let (status, body) =
+        request_no_auth(&mut app, "GET", "/api/stats/leaderboard?minGames=2&limit=1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let first = &body["leaderboard"][0];
+    assert_eq!(first["userId"], owner_id.as_str());
+    assert_eq!(first["winRate"], 1.0);
+    assert_eq!(first["averageScore"], 10.0);
+    assert_eq!(
+        body["criteria"],
+        json!({ "minGames": 2, "sortBy": "winRate" })
+    );
+    assert_eq!(
+        body["pagination"],
+        json!({ "limit": 1, "offset": 0, "hasMore": true })
+    );
+    assert!(body.get("total").is_none(), "{body}");
+
+    let (_, body) = request_no_auth(
+        &mut app,
+        "GET",
+        "/api/stats/leaderboard?minGames=2&offset=1",
+    )
+    .await;
+    assert_eq!(body["leaderboard"][0]["userId"], rival_id.as_str());
+    assert_eq!(body["leaderboard"][0]["rank"], 2);
+    assert_eq!(body["leaderboard"][0]["averageScore"], 50.0);
+    assert_eq!(body["pagination"]["hasMore"], false);
+}
+
+/// An admin: registered, then made admin in the database; returns (token, user id)
+async fn register_admin(app: &mut Router, state: &AppState, username: &str) -> (String, String) {
+    let (token, user_id) = register(app, username).await;
+    sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    (token, user_id)
+}
+
+#[tokio::test]
+async fn test_admin_parties_carry_nodes_fields() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "partyadmin").await;
+    let (owner, owner_id) = register(&mut app, "listedowner").await;
+    let (party_id, invite_code) = create_party_visible(&mut app, &owner, "private").await;
+
+    let (status, body) = get_auth(&mut app, "/api/admin/parties", &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let party = &body["parties"][0];
+    assert_eq!(party["id"], party_id.as_str());
+    assert_eq!(party["ownerId"], owner_id.as_str());
+    assert_eq!(party["ownerUsername"], "listedowner");
+    assert_eq!(party["inviteCode"], invite_code.as_str());
+    assert_eq!(party["visibility"], "private");
+    assert_eq!(party["status"], "waiting");
+    // JSON-encoded, as Node sends it and the React admin parses it
+    let settings: Value = serde_json::from_str(party["settings"].as_str().unwrap()).unwrap();
+    assert!(settings.is_object(), "{body}");
+    assert!(party["currentRoundId"].is_null(), "{body}");
+    assert_eq!(party["playerCount"], 1);
+    assert!(party["createdAt"].is_i64(), "{body}");
+    assert!(party["updatedAt"].is_i64(), "{body}");
+    assert_eq!(body["pagination"]["total"], 1);
+}
+
+#[tokio::test]
+async fn test_admin_set_admin_answers_the_user_and_the_new_right() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "grantadmin").await;
+    let (_, user_id) = register(&mut app, "granted").await;
+    let path = format!("/api/admin/users/{user_id}/admin");
+
+    for is_admin in [true, false] {
+        let (status, body) =
+            post_json_auth(&mut app, &path, json!({ "isAdmin": is_admin }), &admin).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body,
+            json!({ "success": true, "userId": user_id, "username": "granted", "isAdmin": is_admin })
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_admin_delete_user_answers_who_was_deleted() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "deleteadmin").await;
+    let (_, user_id) = register(&mut app, "deleted").await;
+
+    let path = format!("/api/admin/users/{user_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "deletedUserId": user_id, "deletedUsername": "deleted" })
+    );
+}
+
+#[tokio::test]
+async fn test_admin_stop_and_delete_party_answer_the_party() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "stopadmin").await;
+    let (owner, _) = register(&mut app, "stoppedowner").await;
+    let party_id = create_party(&mut app, &owner, "Stopped table").await;
+
+    let path = format!("/api/admin/parties/{party_id}/stop");
+    let (status, body) = post_json_auth(&mut app, &path, json!({}), &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "partyId": party_id, "partyName": "Stopped table", "stopped": true })
+    );
+
+    let path = format!("/api/admin/parties/{party_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "partyId": party_id, "partyName": "Stopped table", "deleted": true })
+    );
+}
+
+// ============================================================================
+// Google login and bot administration
+// ============================================================================
+
+mod google_and_bot_admin {
+    use super::*;
+    use jsonwebtoken::jwk::JwkSet;
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use zapzap_backend::infrastructure::services::GoogleOAuthService;
+
+    /// Test-only RSA key; its public half is the JWK below. No network: the service gets
+    /// this key set instead of Google's certs.
+    const TEST_KEY_PEM: &str = include_str!("fixtures/google_oauth_test_rsa.pem");
+    const TEST_KEY_N: &str = "ru3qPMAYvaU0HR8RHvqgNiQlq-XRKFtj5IkfTZaIfdiU5r_RyjSXi4Jx826eUZt38mjTFKgVd_apxmwjPxY-Odal5arEXdNuxxkHUI6_lJiZOv2qJrTRiylyipOobKWmQUrGamIT6F4tSx4wggUL7jST-EVUrI4jmdZqbx9BtYZoOUXBVK0QxEjNG4Zj7InwYEup64F7gC4nKyiFrfOQI3rsL85P7fFPttxFaZuyurMCSditw_VkAul88pIRmpf6ZvKjP6aMrTdxAuy4iaUbWyUOmPKRgG9fAWYwHptvHjyH8rjFJH2Q6SFE38Mup51QeVakOVGILMg8ZzFsl4k0Sw";
+    const CLIENT_ID: &str = "api-test.apps.googleusercontent.com";
+
+    /// The test app, with its state, and a Google verifier when `google` is true
+    async fn app_with_state(google: bool) -> (Router, Arc<AppState>) {
+        std::env::set_var("DATABASE_URL", "sqlite::memory:");
+        std::env::set_var("JWT_SECRET", "test-secret-key");
+        let mut state = AppState::new().await.expect("Failed to create app state");
+        state.google_oauth = if google {
+            let keys: JwkSet = serde_json::from_value(json!({
+                "keys": [{"kty": "RSA", "alg": "RS256", "kid": "k1", "n": TEST_KEY_N, "e": "AQAB"}]
+            }))
+            .unwrap();
+            Some(Arc::new(GoogleOAuthService::with_keys(
+                CLIENT_ID.to_string(),
+                keys,
+            )))
+        } else {
+            None
+        };
+        let state = Arc::new(state);
+        let app = Router::new()
+            .nest("/api", api::routes::create_api_router(state.clone()))
+            .with_state(state.clone());
+        (app, state)
+    }
+
+    fn google_token(sub: &str, aud: &str) -> String {
+        let now = chrono::Utc::now().timestamp();
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("k1".to_string());
+        encode(
+            &header,
+            &json!({
+                "iss": "accounts.google.com", "aud": aud, "sub": sub,
+                "email": "ada@example.com", "email_verified": true, "name": "Ada Lovelace",
+                "iat": now, "exp": now + 600
+            }),
+            &EncodingKey::from_rsa_pem(TEST_KEY_PEM.as_bytes()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    async fn delete_auth(app: &mut Router, path: &str, token: Option<&str>) -> (StatusCode, Value) {
+        send_raw(app, "DELETE", path, "", None, token).await
+    }
+
+    /// Register a human and return (id, token); `admin` makes it an admin (read from the
+    /// database by admin_middleware)
+    async fn user_token(
+        app: &mut Router,
+        state: &AppState,
+        name: &str,
+        admin: bool,
+    ) -> (String, String) {
+        let (token, id) = register(app, name).await;
+        if admin {
+            state.user_repo.set_admin(&id, true).await.unwrap();
+        }
+        (id, token)
+    }
+
+    #[tokio::test]
+    async fn test_google_missing_credential() {
+        let (mut app, _) = app_with_state(true).await;
+        for body in [
+            json!({}),
+            json!({"credential": ""}),
+            json!({"credential": null}),
+        ] {
+            let (status, body) = post_json(&mut app, "/api/auth/google", body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(body["code"], "MISSING_CREDENTIAL");
+            assert_eq!(body["error"], "Token Google requis");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_google_forged_token_is_refused() {
+        let (mut app, state) = app_with_state(true).await;
+        for credential in [
+            "forged.token.value".to_string(),
+            google_token("g-1", "another-client"),
+        ] {
+            let (status, body) = post_json(
+                &mut app,
+                "/api/auth/google",
+                json!({"credential": credential}),
+            )
+            .await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+            assert_eq!(body["code"], "GOOGLE_AUTH_FAILED");
+        }
+        assert!(state
+            .user_repo
+            .find_by_google_id("g-1")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_google_not_configured() {
+        // Node without GOOGLE_OAUTH_CLIENT_ID: the placeholder use case throws
+        // "Google OAuth non configuré sur ce serveur", which its route answers with 401
+        let (mut app, _) = app_with_state(false).await;
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-1", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(body["code"], "GOOGLE_AUTH_FAILED");
+        assert_eq!(body["error"], "Google OAuth non configuré sur ce serveur");
+    }
+
+    #[tokio::test]
+    async fn test_google_login_creates_then_logs_in() {
+        let (mut app, _) = app_with_state(true).await;
+        let credential = google_token("g-42", CLIENT_ID);
+
+        let (status, first) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": credential}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        assert_eq!(first["success"], true);
+        assert_eq!(first["isNewUser"], true);
+        assert_eq!(first["user"]["username"], "ada_lovelace");
+        assert_eq!(first["user"]["email"], "ada@example.com");
+        assert_eq!(first["user"]["isAdmin"], false);
+        assert_eq!(first["user"]["isGoogleUser"], true);
+        let token = first["token"].as_str().unwrap();
+        let (status, _) = get_auth(&mut app, "/api/stats/me", token).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, second) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": credential}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(second["isNewUser"], false);
+        assert_eq!(second["user"]["id"], first["user"]["id"]);
+    }
+
+    #[tokio::test]
+    async fn test_bot_admin_requires_admin() {
+        let (mut app, state) = app_with_state(false).await;
+        let body = json!({"username": "RoboBot", "difficulty": "easy"});
+
+        let (status, _) = post_json(&mut app, "/api/bots", body.clone()).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = delete_auth(&mut app, "/api/bots/whatever", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (_, token) = user_token(&mut app, &state, "plainuser", false).await;
+        let (status, _) = post_json_auth(&mut app, "/api/bots", body, &token).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = delete_auth(&mut app, "/api/bots/whatever", Some(&token)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(state
+            .user_repo
+            .find_by_username("RoboBot")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_bot_admin_create_and_delete() {
+        let (mut app, state) = app_with_state(false).await;
+        let (human_id, token) = user_token(&mut app, &state, "adminuser", true).await;
+
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "  RoboBot ", "difficulty": "HARD"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["success"], true);
+        let bot = &body["bot"];
+        assert_eq!(bot["username"], "RoboBot");
+        assert_eq!(bot["userType"], "bot");
+        assert_eq!(bot["botDifficulty"], "hard");
+        assert_eq!(bot["isAdmin"], false);
+        assert_eq!(bot["isGoogleUser"], false);
+        assert!(bot["createdAt"].is_i64());
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+
+        let (status, body) = get_auth(&mut app, "/api/bots?difficulty=hard", &token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body["bots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["id"] == bot_id));
+
+        // Duplicate username
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "RoboBot", "difficulty": "easy"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body,
+            json!({"success": false, "error": "Username \"RoboBot\" already exists"})
+        );
+
+        // Unknown difficulty (thibot is listable but not creatable, as in Node)
+        for difficulty in [json!("insane"), json!("thibot"), Value::Null] {
+            let (status, body) = post_json_auth(
+                &mut app,
+                "/api/bots",
+                json!({"username": "OtherBot", "difficulty": difficulty}),
+                &token,
+            )
+            .await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(
+                body["error"],
+                "Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm"
+            );
+        }
+
+        // Missing and invalid usernames
+        let (status, body) =
+            post_json_auth(&mut app, "/api/bots", json!({"difficulty": "easy"}), &token).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "Username is required");
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/bots",
+            json!({"username": "no spaces", "difficulty": "easy"}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body["error"],
+            "Username can only contain alphanumeric characters, hyphens, and underscores"
+        );
+
+        // A human cannot be deleted here
+        let (status, body) =
+            delete_auth(&mut app, &format!("/api/bots/{}", human_id), Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body["error"],
+            "User is not a bot - cannot delete human users via this endpoint"
+        );
+        assert!(state
+            .user_repo
+            .find_by_id(&human_id)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Delete, then the same id is unknown
+        let path = format!("/api/bots/{}", bot_id);
+        let (status, body) = delete_auth(&mut app, &path, Some(&token)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!({"success": true, "deletedBotId": bot_id}));
+        assert!(state.user_repo.find_by_id(&bot_id).await.unwrap().is_none());
+
+        let (status, body) = delete_auth(&mut app, &path, Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
+    }
 }
 
 // ============================================================================
@@ -2096,15 +2621,13 @@ async fn test_auth_malformed_header_answers_invalid_auth_format() {
 #[tokio::test]
 async fn test_auth_bad_token_answers_invalid_token() {
     let mut app = create_test_app().await;
-    for header in ["Bearer not-a-jwt", "Bearer "] {
-        let (status, body) = get_with_auth_header(&mut app, "/api/stats/me", Some(header)).await;
-        assert_eq!(status, StatusCode::UNAUTHORIZED, "{header}: {body}");
-        assert_eq!(
-            body,
-            json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"}),
-            "{header}"
-        );
-    }
+    let (status, body) =
+        get_with_auth_header(&mut app, "/api/stats/me", Some("Bearer not-a-jwt")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(
+        body,
+        json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"})
+    );
 }
 
 #[tokio::test]
@@ -2174,12 +2697,8 @@ async fn test_api_health_answers_status_timestamp_uptime() {
 
 #[tokio::test]
 async fn test_root_health_and_unknown_root_path_answer_nodes_bodies() {
-    use zapzap_backend::api::{not_found::route_not_found, routes::health};
-
-    // main.rs mounts these two outside /api
-    let mut app = Router::new()
-        .route("/health", axum::routing::get(health::root_health_handler))
-        .fallback(route_not_found);
+    // create_test_app is api::build_app, the router main.rs serves
+    let mut app = create_test_app().await;
 
     let (status, body) = request_no_auth(&mut app, "GET", "/health").await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -2192,4 +2711,65 @@ async fn test_root_health_and_unknown_root_path_answer_nodes_bodies() {
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["code"], "ROUTE_NOT_FOUND");
     assert_eq!(body["path"], "/nowhere");
+}
+
+/// Node routes by method and path together, so a served path asked with another method
+/// falls through to its 404 like an unknown path; axum's bare 405 must not show.
+#[tokio::test]
+async fn test_unserved_method_answers_route_not_found() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "methoduser").await;
+    for (method, path) in [
+        ("PUT", "/api/party"),
+        // Only POST is behind auth_middleware there: no 401 for a GET, as on Node
+        ("GET", "/api/party/some-party/join"),
+        ("PATCH", "/api/game/some-party/play"),
+        ("PUT", "/api/bots"),
+        ("POST", "/api/stats/leaderboard"),
+        ("DELETE", "/api/health"),
+        ("POST", "/health"),
+        ("POST", "/suscribeupdate"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method} {path}");
+        assert_eq!(body["path"], path, "{method} {path}");
+    }
+    // With a token too
+    let (status, body) = send_raw(&mut app, "PUT", "/api/party", "", None, Some(&token)).await;
+    assert_error(status, &body, StatusCode::NOT_FOUND, "ROUTE_NOT_FOUND");
+}
+
+/// Node checks the token and the admin flag on every `/api/admin` path before routing
+/// (`router.use` in `adminRoutes.js`): only an admin learns that a path does not exist.
+#[tokio::test]
+async fn test_unknown_admin_path_is_behind_auth_and_admin() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (user, _) = register(&mut app, "plainadminprobe").await;
+    let (admin, admin_id) = register(&mut app, "realadminprobe").await;
+    sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
+        .bind(&admin_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    for (method, path) in [
+        ("GET", "/api/admin/nope"),
+        ("GET", "/api/admin/users/someone/nothing"),
+        // A served path with an unserved method
+        ("PUT", "/api/admin/users"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}: {body}");
+        assert_eq!(body["code"], "MISSING_AUTH_HEADER", "{method} {path}");
+
+        let (status, body) = send_raw(&mut app, method, path, "", None, Some(&user)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ADMIN_REQUIRED", "{method} {path}");
+
+        let (status, body) = send_raw(&mut app, method, path, "", None, Some(&admin)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method} {path}");
+        assert_eq!(body["path"], path, "{method} {path}");
+    }
 }

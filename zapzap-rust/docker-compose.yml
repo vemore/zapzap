@@ -11,6 +11,7 @@ services:
       - DATABASE_URL=sqlite:/app/data/zapzap.db
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set (openssl rand -hex 32)}
       - RUST_LOG=${RUST_LOG:-info,zapzap_backend=debug}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
     volumes:
       - ../data:/app/data
     ports:

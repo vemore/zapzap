@@ -168,14 +168,27 @@ impl UserRepository for SqliteUserRepository {
         Ok(())
     }
 
-    async fn delete(&self, id: &str) -> Result<(), RepositoryError> {
-        sqlx::query("DELETE FROM users WHERE id = ?")
+    async fn delete(&self, id: &str) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("DELETE FROM users WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await
             .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        Ok(())
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError> {
+        let row = sqlx::query(
+            "SELECT 1 FROM party_players pp JOIN parties p ON p.id = pp.party_id \
+             WHERE pp.user_id = ? AND p.status IN ('waiting', 'playing') LIMIT 1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(row.is_some())
     }
 
     async fn update_last_login(&self, id: &str) -> Result<(), RepositoryError> {

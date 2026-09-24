@@ -10,7 +10,9 @@ use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
 #[cfg(feature = "bedrock")]
 use crate::infrastructure::services::{BedrockConfig, BedrockService};
-use crate::infrastructure::services::{LlmService, OllamaConfig, OllamaService, SessionManager};
+use crate::infrastructure::services::{
+    GoogleOAuthService, LlmService, OllamaConfig, OllamaService, SessionManager,
+};
 
 /// Placeholder secrets published in this repository (code defaults, `.env.example`,
 /// README): a token signed with one of them can be forged by anyone.
@@ -67,6 +69,9 @@ pub struct AppState {
 
     /// LLM bot memories (keyed by bot user ID)
     pub llm_memories: Arc<RwLock<HashMap<String, Arc<RwLock<LlmBotMemory>>>>>,
+
+    /// Google ID token verifier; `None` when `GOOGLE_OAUTH_CLIENT_ID` is unset
+    pub google_oauth: Option<Arc<GoogleOAuthService>>,
 }
 
 impl AppState {
@@ -160,6 +165,11 @@ impl AppState {
         // Initialize LLM memories storage
         let llm_memories = Arc::new(RwLock::new(HashMap::new()));
 
+        let google_oauth = GoogleOAuthService::from_env().map(Arc::new);
+        if google_oauth.is_none() {
+            tracing::warn!("GOOGLE_OAUTH_CLIENT_ID not configured, Google auth disabled");
+        }
+
         Ok(Self {
             db,
             jwt_service,
@@ -170,6 +180,7 @@ impl AppState {
             event_receiver,
             llm_service,
             llm_memories,
+            google_oauth,
         })
     }
 

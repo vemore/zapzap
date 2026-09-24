@@ -107,6 +107,25 @@ impl User {
         }
     }
 
+    /// Create a new human user signed up with Google (no password)
+    pub fn new_google(id: String, username: String, google_id: String, email: String) -> Self {
+        let now = chrono::Utc::now().timestamp();
+        Self {
+            id,
+            username,
+            password_hash: None,
+            user_type: UserType::Human,
+            bot_difficulty: None,
+            is_admin: false,
+            google_id: Some(google_id),
+            email: Some(email),
+            last_login_at: None,
+            total_play_time_seconds: 0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     /// Create a new bot user
     pub fn new_bot(id: String, username: String, difficulty: BotDifficulty) -> Self {
         let now = chrono::Utc::now().timestamp();
