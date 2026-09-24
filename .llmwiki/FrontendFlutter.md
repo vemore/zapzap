@@ -228,8 +228,12 @@
 
 ### Real-time channel (SSE)
 
-The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`, one global
-stream for every client; an initial `event: connected`, then every broadcast as `event:
+The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`. Node sends
+every event to every stream; Rust filters per user ([[Backend]]): events without a party and
+a public party's lifecycle events (`playerJoined`, `playerLeft`, `partyStarted`,
+`partyDeleted`, `gameFinished`, what `PartyListProvider` reloads on) go to every stream, a
+game's moves and every event of a private party only to its players' streams — so the
+token matters; an initial `event: connected`, then every broadcast as `event:
 event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `retry: 1000`
 (`src/api/server.js:69-130`), Rust a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,
 `GameEvent`, `zapzap-rust/src/infrastructure/app_state.rs:189-204`).
@@ -257,8 +261,9 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
   JSON object (the `connected` greeting is dropped).
 - **`SseEvent`** (`models/sse_event.dart`): the payload (`data`) plus `type`, `partyId`,
   `userId`, `action`, `timestamp` through the lenient `Json` readers; `isPresence` for
-  `userConnected`/`userDisconnected`/`userStatusChanged`. Every client gets every event: a
-  screen keeps those of its `partyId`.
+  `userConnected`/`userDisconnected`/`userStatusChanged`. A client may get events of other
+  parties (all of them on Node, public lifecycle ones on Rust): a screen keeps those of its
+  `partyId`.
 - **`SseProvider`** (`providers/sse_provider.dart`, a `ChangeNotifier`): `connect(token)`,
   `disconnect()`, `follow(token?)`, `events`, `connected` (notifies on change). One for the
   whole signed-in session: in `appProviders` a `ChangeNotifierProxyProvider<AuthProvider,
