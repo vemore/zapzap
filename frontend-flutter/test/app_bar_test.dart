@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/screens/admin_screen.dart';
 import 'package:zapzap/screens/history_screen.dart';
 import 'package:zapzap/screens/stats_screen.dart';
 import 'package:zapzap/widgets/connection_indicator.dart';
@@ -148,17 +149,22 @@ void main() {
       expect(find.text('Administration'), findsNothing);
     });
 
-    testWidgets('nor does an admin one, while no admin screen exists', (
-      tester,
-    ) async {
-      // `/admin` has the router guard of #29 but no screen: an entry would
-      // land on the not-found screen. This fails the day one is added, which
-      // is when the entry belongs in the menu.
-      await pumpApp(tester, isAdmin: true);
-      await openMenu(tester);
+    testWidgets(
+      'an admin session leads to the admin screen, and Back returns',
+      (tester) async {
+        await pumpApp(tester, isAdmin: true);
+        await openMenu(tester);
+        expect(find.text('Administration'), findsOneWidget);
 
-      expect(find.byKey(const Key('menu-admin')), findsNothing);
-    });
+        await tester.tap(find.byKey(const Key('menu-admin')));
+        await tester.pumpAndSettle();
+        expect(locationOf(tester), AppRoutes.admin);
+        expect(find.byType(AdminScreen), findsOneWidget);
+
+        await systemBack(tester);
+        expect(locationOf(tester), AppRoutes.parties);
+      },
+    );
   });
 
   group('phone width', () {
