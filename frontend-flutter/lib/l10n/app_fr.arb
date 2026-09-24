@@ -1650,6 +1650,18 @@
       }
     }
   },
+  "gameActionTookDiscardCard": "{player} a pris dans la défausse : {card}",
+  "@gameActionTookDiscardCard": {
+    "description": "Table message: a player took a card from the discard pile, which lay face up for all, named by cardName (\"7 de Cœur\", \"Joker rouge\"). Never used for a deck draw: that card stays hidden",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
   "gameActionSelectedHandSize": "{player} distribue {count} cartes",
   "@gameActionSelectedHandSize": {
     "description": "Table message: the starting player picked the hand size",
