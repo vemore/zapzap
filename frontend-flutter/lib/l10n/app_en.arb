@@ -317,6 +317,7 @@
   "gameActionDrewDeck": "{player} drew from the deck",
   "gameActionDrewReshuffled": "{player} drew from the deck (reshuffled!)",
   "gameActionTookDiscard": "{player} took a card from the discard pile",
+  "gameActionTookDiscardCard": "{player} took the {card} from the discard pile",
   "gameActionSelectedHandSize": "{player} deals {count} cards",
   "gameActionCalledZapZap": "{player} called ZapZap!",
   "gameHandCards": "{count, plural, =1{1 card} other{{count} cards}}",
