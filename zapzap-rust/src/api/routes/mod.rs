@@ -31,6 +31,7 @@ pub fn create_api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/bots", get(bots::list_bots))
         .route("/players/connected", get(players::get_connected_players))
         .route("/health", get(health::health_handler))
+        .fallback(crate::api::not_found::route_not_found)
         .with_state(state)
 }
 

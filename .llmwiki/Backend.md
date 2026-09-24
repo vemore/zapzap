@@ -17,7 +17,7 @@
 ### Module layout (`zapzap-rust/src/`)
 | Layer | Contents |
 |---|---|
-| `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `error.rs` (typed `ApiError` and the `ApiJson` body extractor, see Error mapping), `middleware/auth_middleware.rs`, `sse.rs`, `dto/` (empty mod, 1 line) |
+| `api/` | `routes/{admin,auth,bots,game,health,history,party,players,stats}.rs`, `error.rs` (typed `ApiError` and the `ApiJson` body extractor, see Error mapping), `middleware/auth_middleware.rs`, `not_found.rs` (the `ROUTE_NOT_FOUND` fallback), `sse.rs`, `dto/` (empty mod, 1 line) |
 | `application/` | use cases: `auth/{login_user,register_user}`, `party/{create,list,get_details,join,leave,start,delete}_party`, `party/add_bot_to_party`, `game/{get_game_state,select_hand_size,play_cards,draw_card,call_zapzap,next_round}`, `bot/reflect_on_round`. `admin/`, `history/`, `stats/` are **empty directories** — those routes run raw SQL in the handlers |
 | `domain/` | `entities/` (User, Party, Round, Player), `value_objects/` (GameState 679 lines, PartySettings), `repositories/` (traits), `services/game_service.rs` |
 | `infrastructure/` | `app_state.rs`, `auth/{jwt_service,password}`, `bot/{card_analyzer,llm_memory,strategies/*}`, `database/repositories/{user_repo,party_repo}`, `services/{llm_service,session_manager}` |
@@ -25,13 +25,13 @@
 
 ### Startup (`zapzap-rust/src/main.rs`)
 - `dotenvy::dotenv()` loads `.env` (`:23`). Tracing filter from `RUST_LOG`, default `zapzap_backend=debug,tower_http=debug` (`:28-29`).
-- Router: `/api` nested from `create_api_router` (`:40`), `/suscribeupdate` SSE (`:41`), `/health` (`:42-45`), `CorsLayer::permissive()` (`:46`), `TraceLayer` (`:47`). No timeout layer although `tower-http` `timeout` feature is enabled.
+- `health::start_clock()` starts the uptime `/api/health` reports. Router: `/api` nested from `create_api_router`, `/suscribeupdate` SSE, `/health`, the fallback `route_not_found` (Node's 404 body, also the `/api` router's fallback), `CorsLayer::permissive()`, `TraceLayer`. No timeout layer although `tower-http` `timeout` feature is enabled.
 - Binds `0.0.0.0:$PORT`, default 9999 (`:51-56`).
 
 ### Configuration (environment variables)
 | Var | Default | Where |
 |---|---|---|
-| `PORT` | `9999` | `zapzap-rust/src/main.rs:51-54` |
+| `PORT` | `9999` | `zapzap-rust/src/main.rs:54-57` |
 | `RUST_LOG` | `zapzap_backend=debug,tower_http=debug` | `zapzap-rust/src/main.rs:28-29` |
 | `DATABASE_URL`, then `DB_PATH` | `sqlite:./data/zapzap.db` (a `sqlite:` prefix is added if missing) | `zapzap-rust/src/infrastructure/app_state.rs:47-56` |
 | `JWT_SECRET` | **none — required.** `AppState::new()` reads it first and returns an error (the binary exits with `Error: JWT_SECRET is not set ...`) when it is unset, blank, or one of the placeholders published in the repository (`PUBLIC_JWT_SECRETS`: the old code default `zapzap-secret-key-change-in-production`, the `.env.example` and README values) | `jwt_secret_from` in `zapzap-rust/src/infrastructure/app_state.rs` |
@@ -63,7 +63,7 @@
 
 ### Auth
 - JWT HS256 (`Header::default()`), claims `userId`, `username`, `isAdmin` (default false), `exp`, `iat` (`zapzap-rust/src/infrastructure/auth/jwt_service.rs:7-15`). Lifetime `7 * 24 * 60 * 60` s = 7 days (`:28`). `decode_without_verify` exists, unused (`:60`).
-- `auth_middleware` requires `Authorization: Bearer <token>` whose user **still exists** in the database (one primary-key lookup, `user_exists`; Node: `src/use-cases/auth/ValidateToken.js`), else bare 401 with empty body (`zapzap-rust/src/api/middleware/auth_middleware.rs`). `optional_auth_middleware` attaches claims under the same two conditions. `admin_middleware` is mounted on every `/api/admin` route, inside `auth_middleware` (`create_admin_router`, `zapzap-rust/src/api/routes/mod.rs`): it reads `is_admin` **from the database**, as Node's `adminMiddleware.js` does, and answers 401 `AUTH_REQUIRED` / 403 `ADMIN_REQUIRED` with `{success:false, error, code}`. It is the only admin check (the handlers in `admin.rs` no longer read `claims.is_admin`, as in Node): a promotion or a revocation takes effect at once, whatever the token says.
+- `auth_middleware` requires `Authorization: Bearer <token>` whose user **still exists** in the database (one primary-key lookup, `user_exists`; Node: `src/use-cases/auth/ValidateToken.js`), else 401 with Node's body and code (`MISSING_AUTH_HEADER`, `INVALID_AUTH_FORMAT`, `INVALID_TOKEN`, [[Api]]; `zapzap-rust/src/api/middleware/auth_middleware.rs`). `optional_auth_middleware` attaches claims under the same two conditions. `admin_middleware` is mounted on every `/api/admin` route, inside `auth_middleware` (`create_admin_router`, `zapzap-rust/src/api/routes/mod.rs`): it reads `is_admin` **from the database**, as Node's `adminMiddleware.js` does, and answers 401 `AUTH_REQUIRED` / 403 `ADMIN_REQUIRED` with `{success:false, error, code}`. It is the only admin check (the handlers in `admin.rs` no longer read `claims.is_admin`, as in Node): a promotion or a revocation takes effect at once, whatever the token says.
 - Party membership: the game use cases check the caller themselves; `nextRound` and `trigger-bot` check it in the handler through `require_party_member` (`zapzap-rust/src/api/access.rs`: 404 `PARTY_NOT_FOUND`, 403 `NOT_IN_PARTY`). Private parties: join needs the invite code, details and history are for members only ([[Api]]).
 - Passwords: new hashes Argon2 default params (`zapzap-rust/src/infrastructure/auth/password.rs:11`); `verify` dispatches on prefix `$argon2` vs `$2` (bcrypt, legacy Node hashes), anything else → `UnknownFormat` (`:38-50`). Login rehashes bcrypt to Argon2 after a successful login (`zapzap-rust/src/application/auth/login_user.rs:71-77`).
 

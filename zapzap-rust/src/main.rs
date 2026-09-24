@@ -35,14 +35,17 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new().await?;
     let state = Arc::new(state);
 
-    // Build router
+    api::routes::health::start_clock();
+
+    // Build router; an unknown path answers Node's ROUTE_NOT_FOUND 404
     let app = Router::new()
         .nest("/api", api::routes::create_api_router(state.clone()))
         .route("/suscribeupdate", axum::routing::get(api::sse::sse_handler))
         .route(
             "/health",
-            axum::routing::get(api::routes::health::health_handler),
+            axum::routing::get(api::routes::health::root_health_handler),
         )
+        .fallback(api::not_found::route_not_found)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);

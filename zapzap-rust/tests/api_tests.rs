@@ -2006,3 +2006,190 @@ async fn test_deleted_users_token_is_refused() {
     assert!(!saw.contains("own-action"), "{saw}");
     assert!(!saw.contains("userConnected"), "{saw}");
 }
+
+// ============================================================================
+// Auth refusals, unknown routes and health answer Node's bodies
+// ============================================================================
+
+/// A GET with a raw Authorization header value (None: no header at all).
+async fn get_with_auth_header(
+    app: &mut Router,
+    path: &str,
+    header: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method("GET").uri(path);
+    if let Some(value) = header {
+        builder = builder.header("Authorization", value);
+    }
+    let response = ServiceExt::<Request<Body>>::ready(app)
+        .await
+        .unwrap()
+        .call(builder.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&body_bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn test_auth_missing_header_answers_missing_auth_header() {
+    let mut app = create_test_app().await;
+    for path in ["/api/stats/me", "/api/history", "/api/admin/users"] {
+        for header in [None, Some("")] {
+            let (status, body) = get_with_auth_header(&mut app, path, header).await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "{path} {header:?}: {body}"
+            );
+            assert_eq!(
+                body,
+                json!({"error": "Missing authorization header", "code": "MISSING_AUTH_HEADER"}),
+                "{path} {header:?}"
+            );
+        }
+    }
+    let (status, body) = request_no_auth(&mut app, "POST", "/api/party").await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::UNAUTHORIZED,
+        "MISSING_AUTH_HEADER",
+    );
+}
+
+#[tokio::test]
+async fn test_auth_malformed_header_answers_invalid_auth_format() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "formatuser").await;
+    let bad = [
+        token.clone(),
+        format!("Basic {token}"),
+        format!("bearer {token}"),
+        "Bearer".to_string(),
+        format!("Bearer  {token}"),
+        format!("Bearer {token} extra"),
+    ];
+    for header in bad {
+        let (status, body) = get_with_auth_header(&mut app, "/api/stats/me", Some(&header)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{header}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Invalid authorization header format",
+                "code": "INVALID_AUTH_FORMAT",
+                "details": {"expected": "Bearer <token>"}
+            }),
+            "{header}"
+        );
+    }
+    // The well-formed header with the same token gets in
+    let (status, body) =
+        get_with_auth_header(&mut app, "/api/stats/me", Some(&format!("Bearer {token}"))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn test_auth_bad_token_answers_invalid_token() {
+    let mut app = create_test_app().await;
+    for header in ["Bearer not-a-jwt", "Bearer "] {
+        let (status, body) = get_with_auth_header(&mut app, "/api/stats/me", Some(header)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{header}: {body}");
+        assert_eq!(
+            body,
+            json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"}),
+            "{header}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_auth_token_of_deleted_user_answers_invalid_token() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, user_id) = register(&mut app, "vanisheduser").await;
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    let (status, body) = get_auth(&mut app, "/api/stats/me", &token).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(
+        body,
+        json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"})
+    );
+    // Behind the admin routes too: the token check comes before the admin check
+    let (status, body) = get_auth(&mut app, "/api/admin/users", &token).await;
+    assert_error(status, &body, StatusCode::UNAUTHORIZED, "INVALID_TOKEN");
+}
+
+#[tokio::test]
+async fn test_unknown_api_route_answers_route_not_found() {
+    let mut app = create_test_app().await;
+    for (method, path, want_path) in [
+        ("GET", "/api/nope", "/api/nope"),
+        ("POST", "/api/party/abc/nothing", "/api/party/abc/nothing"),
+        ("GET", "/api/nope?x=1", "/api/nope"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Not Found",
+                "code": "ROUTE_NOT_FOUND",
+                "path": want_path,
+                "message": "The requested endpoint does not exist"
+            }),
+            "{method} {path}"
+        );
+    }
+}
+
+/// A timestamp as JavaScript's `toISOString()` writes it: UTC, milliseconds, `Z`.
+fn assert_iso_timestamp(value: &Value) {
+    let text = value.as_str().expect("timestamp is a string");
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(text).is_ok() && text.ends_with('Z'),
+        "{text}"
+    );
+    assert_eq!(text.len(), "2026-09-24T12:00:00.000Z".len(), "{text}");
+}
+
+#[tokio::test]
+async fn test_api_health_answers_status_timestamp_uptime() {
+    let mut app = create_test_app().await;
+    let (status, body) = request_no_auth(&mut app, "GET", "/api/health").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_object().unwrap().len(), 3, "{body}");
+    assert_eq!(body["status"], "ok");
+    assert_iso_timestamp(&body["timestamp"]);
+    assert!(body["uptime"].as_f64().unwrap() >= 0.0, "{body}");
+}
+
+#[tokio::test]
+async fn test_root_health_and_unknown_root_path_answer_nodes_bodies() {
+    use zapzap_backend::api::{not_found::route_not_found, routes::health};
+
+    // main.rs mounts these two outside /api
+    let mut app = Router::new()
+        .route("/health", axum::routing::get(health::root_health_handler))
+        .fallback(route_not_found);
+
+    let (status, body) = request_no_auth(&mut app, "GET", "/health").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_object().unwrap().len(), 3, "{body}");
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["api"], "v2 (Clean Architecture)");
+    assert_iso_timestamp(&body["timestamp"]);
+
+    let (status, body) = request_no_auth(&mut app, "GET", "/nowhere").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["code"], "ROUTE_NOT_FOUND");
+    assert_eq!(body["path"], "/nowhere");
+}

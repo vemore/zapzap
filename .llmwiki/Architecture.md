@@ -30,12 +30,12 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
               └─ /               -> frontend:80           (nginx serving the Vite build)
 ```
 
-- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`zapzap-rust/src/main.rs:39-48`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:51-56`). Route list: [[Api]].
+- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`zapzap-rust/src/main.rs:40-51`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:54-59`). Route list: [[Api]].
 - Dev mode: Vite proxies `/api` and `/suscribeupdate` to `http://localhost:9999` (`frontend/vite.config.js:7-17`).
 
 ### Real-time updates (SSE)
 
-- Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:41`, handler `zapzap-rust/src/api/sse.rs:18`.
+- Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:43`, handler `zapzap-rust/src/api/sse.rs:18`.
 - Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A game's moves and every event of a private party reach only its players' streams; events without a party and a public party's lifecycle events (joined, left, started, deleted, finished) reach every stream ([[Backend]]).
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).

@@ -24,38 +24,53 @@ pub async fn user_exists(state: &AppState, user_id: &str) -> bool {
     }
 }
 
-/// Extract authenticated user from request
+/// A 401 in Node's shape (`authMiddleware.js`): `{error, code}`, plus `details` for a
+/// malformed header.
+fn unauthorized(error: &str, code: &str) -> Response {
+    let mut body = serde_json::json!({ "error": error, "code": code });
+    if code == "INVALID_AUTH_FORMAT" {
+        body["details"] = serde_json::json!({ "expected": "Bearer <token>" });
+    }
+    (StatusCode::UNAUTHORIZED, Json(body)).into_response()
+}
+
+/// Extract authenticated user from request. Refusals match Node's `authMiddleware.js`:
+/// no header is `MISSING_AUTH_HEADER`, a header that is not exactly `Bearer <token>` is
+/// `INVALID_AUTH_FORMAT`, and a bad or expired token, or one whose user no longer exists
+/// (Node: `ValidateToken.js` throws, the middleware answers the same), is `INVALID_TOKEN`.
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
-    // Get authorization header
-    let auth_header = request
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok());
-
-    let token = match auth_header {
-        Some(h) if h.starts_with("Bearer ") => &h[7..],
-        _ => return Err(StatusCode::UNAUTHORIZED),
+) -> Response {
+    // Express reads an empty header as absent
+    let auth_header = match request.headers().get("Authorization") {
+        Some(h) if !h.is_empty() => h,
+        _ => return unauthorized("Missing authorization header", "MISSING_AUTH_HEADER"),
     };
 
-    // Verify token
-    let claims = state
-        .jwt_service
-        .verify(token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    // Node splits on single spaces and wants exactly two parts, the first `Bearer`
+    let parts: Option<Vec<&str>> = auth_header.to_str().ok().map(|h| h.split(' ').collect());
+    let token = match parts.as_deref() {
+        Some(["Bearer", token]) => *token,
+        _ => return unauthorized("Invalid authorization header format", "INVALID_AUTH_FORMAT"),
+    };
+
+    let invalid_token = || unauthorized("Invalid or expired token", "INVALID_TOKEN");
+
+    let Ok(claims) = state.jwt_service.verify(token) else {
+        return invalid_token();
+    };
 
     // The user must still exist (Node: ValidateToken.js), one primary-key lookup
     if !user_exists(&state, &claims.user_id).await {
-        return Err(StatusCode::UNAUTHORIZED);
+        return invalid_token();
     }
 
     // Add claims to request extensions
     request.extensions_mut().insert(claims);
 
-    Ok(next.run(request).await)
+    next.run(request).await
 }
 
 /// Optional auth middleware - doesn't fail if no token

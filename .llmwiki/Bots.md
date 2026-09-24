@@ -76,7 +76,7 @@ Mapping done inline, twice per trigger function, in `zapzap-rust/src/api/routes/
 - The manual `trigger-bot` path never triggers reflection.
 
 ### How bot turns are triggered
-- No scheduler and no startup recovery (`zapzap-rust/src/main.rs:20-63`): bots move only when some request spawns `trigger_bot_internal` (`game.rs:1224`):
+- No scheduler and no startup recovery (`zapzap-rust/src/main.rs:20-66`): bots move only when some request spawns `trigger_bot_internal` (`game.rs:1224`):
   - after `GET /api/game/:id/state` (100 ms delay, `game.rs:366-373`) — i.e. every client poll;
   - after select-hand-size, play, draw (300 ms, `game.rs:435-440`, `:502-507`, `:557-562`) and next-round when the starter is a bot (`:714-719`).
 - Loop: up to 50 iterations if an active human remains, else 500 (`game.rs:1243-1257`); stops on human turn or finished round; 200 ms between bot actions (`:1579`). Eliminated bots are skipped by advancing `current_turn` (`:1306-1322`). A failed discard draw falls back to deck (`:1549-1563`). Each action broadcasts a `gameUpdate` SSE with `isBot: true` (e.g. `:1357-1363`).
