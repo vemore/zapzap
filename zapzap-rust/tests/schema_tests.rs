@@ -243,6 +243,7 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
 
     // The Rust schema step, as the server runs it at startup, twice.
     std::env::set_var("DATABASE_URL", &url);
+    std::env::set_var("JWT_SECRET", "schema-test-secret");
     let state = AppState::new()
         .await
         .expect("AppState::new on a Node database");
@@ -262,4 +263,55 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
 
     state.db.close().await;
     let _ = std::fs::remove_file(&path);
+}
+
+/// A `users` table rebuilt by `scripts/docker-entrypoint.js` (its `users_new` has no
+/// `google_id`/`email`) and not yet opened by the Node app: the schema step cannot create
+/// `idx_users_google_id` on it. It must fail as a whole, leaving the database unchanged —
+/// not commit the tables it created before the failing statement.
+#[tokio::test]
+async fn schema_step_failure_leaves_the_database_unchanged() {
+    let db = memory_pool().await;
+    sqlx::raw_sql(
+        "CREATE TABLE users (
+             id TEXT PRIMARY KEY,
+             username TEXT UNIQUE NOT NULL,
+             password_hash TEXT NOT NULL,
+             user_type TEXT DEFAULT 'human' CHECK(user_type IN ('human', 'bot')),
+             bot_difficulty TEXT CHECK(bot_difficulty IN ('easy', 'medium', 'hard', 'hard_vince')),
+             is_admin INTEGER DEFAULT 0,
+             last_login_at INTEGER,
+             total_play_time_seconds INTEGER DEFAULT 0,
+             created_at INTEGER NOT NULL,
+             updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+         CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type);
+         INSERT INTO users (id, username, password_hash, created_at, updated_at)
+           VALUES ('u1', 'alice', '$2b$10$hash', 1700000000, 1700000000);",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let objects_before = schema_objects(&db).await;
+    let rows_before: Vec<String> =
+        sqlx::query_scalar("SELECT id || '|' || username FROM users ORDER BY rowid")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+
+    let err = ensure_schema(&db)
+        .await
+        .expect_err("the schema step cannot index a column the table lacks");
+    assert!(err.to_string().contains("google_id"), "{err}");
+
+    // Nothing the step ran before the failing index survived: no parties table, no index.
+    assert_eq!(schema_objects(&db).await, objects_before);
+    let rows_after: Vec<String> =
+        sqlx::query_scalar("SELECT id || '|' || username FROM users ORDER BY rowid")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(rows_after, rows_before);
 }
