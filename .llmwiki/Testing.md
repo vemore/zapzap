@@ -23,7 +23,7 @@
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
 | Backend parity, Node vs Rust (`tests/parity`, `node --test`, outside jest) | `cd zapzap-rust && cargo build --release`, then `npm run test:parity` (root), about 30 s | green with the differences `tests/parity/divergences.json` lists, all `node-bug` (2026-09-24) | yes (`parity` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
-| Docker images and the proxy config | `docker build zapzap-rust`, `docker build .` (the Node backend production runs), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
+| Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes), `docker build .` (the Node backend a rollback builds), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
 
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
@@ -48,17 +48,17 @@
 - Lint: `npm run lint` exits 0; the 9 remaining findings are `react-hooks/exhaustive-deps` warnings, which do not fail it. Rule set and its JSX exceptions at `frontend/eslint.config.js`.
 - CI gate (`frontend` job): Node 24, `npm ci`, `npm run lint`, `npx vitest run`, `npm run build`. The job keeps its `name:` "Frontend — build", which branch protection pins.
 
-### Node backend (root; production runs it)
-- `npm test` → `jest` (`package.json:10`); `jest.config.js` sets `clearMocks`, `collectCoverage: true` (writes `coverage/` at the root on every run), `coverageProvider: "v8"`, `roots: ["<rootDir>/tests"]` and ignores `<rootDir>/tests/e2e/`. Without those two, jest also collected `frontend/`'s vitest files, the Playwright spec and every copy under `.claude/worktrees/` (~600 suites). Tests: `tests/unit/**` (entities, use cases, JwtService, DB connection, SSE presence over a real `createApp` on port 0 — `tests/unit/api/presence.test.js`) and `tests/integration/**` (repositories, migrations) — all against `src/`, the code production runs.
+### Node backend (root; production's rollback)
+- `npm test` → `jest` (`package.json:10`); `jest.config.js` sets `clearMocks`, `collectCoverage: true` (writes `coverage/` at the root on every run), `coverageProvider: "v8"`, `roots: ["<rootDir>/tests"]` and ignores `<rootDir>/tests/e2e/`. Without those two, jest also collected `frontend/`'s vitest files, the Playwright spec and every copy under `.claude/worktrees/` (~600 suites). Tests: `tests/unit/**` (entities, use cases, JwtService, DB connection, SSE presence over a real `createApp` on port 0 — `tests/unit/api/presence.test.js`) and `tests/integration/**` (repositories, migrations) — all against `src/`, the code a rollback runs ([[Deployment]]).
 - The repository suites (`tests/integration/repositories/`) open `src/infrastructure/database/sqlite/DatabaseConnection.js`, the class `src/api/bootstrap.js` opens in production, with its schema. `connection.test.js` and `migrations.test.js` test `src/infrastructure/database/sqlite/connection.js`, an older connection whose only caller is `src/infrastructure/di/container.js`, which nothing requires.
 - The integration suites write SQLite files under `data/` (`data/test-*.db`) and delete them after.
-- `npm run test:e2e` → Playwright (`package.json:11-15`): `testDir: './tests/e2e/scenarios'` (only `smoke.spec.js`, 8 tests), 1 worker, 30 s timeout, `headless: false`, chromium only (`playwright.config.js:10-88`). It starts `node tests/e2e/setup/test-server.js` on 9999 — an Express server wiring the legacy `src/` DI container (`tests/e2e/setup/test-server.js:6-18`) — and `npm run dev` in `frontend/` on 5173 (`playwright.config.js:91-110`). It therefore tests the React frontend against the **Node** backend — which is, in fact, the one in production ([[Deployment]]).
+- `npm run test:e2e` → Playwright (`package.json:11-15`): `testDir: './tests/e2e/scenarios'` (only `smoke.spec.js`, 8 tests), 1 worker, 30 s timeout, `headless: false`, chromium only (`playwright.config.js:10-88`). It starts `node tests/e2e/setup/test-server.js` on 9999 — an Express server wiring the legacy `src/` DI container (`tests/e2e/setup/test-server.js:6-18`) — and `npm run dev` in `frontend/` on 5173 (`playwright.config.js:91-110`). It therefore tests the React frontend against the **Node** backend — production's rollback, not what production runs since 2026-09-24 ([[Deployment]]).
 - `node scripts/test-api.js` hits `http://localhost:9999` (`scripts/test-api.js:9`); usable against either backend.
-- CI runs jest in the `node` job (Node 20, the major of the production image) and builds the root `Dockerfile` in the `image` job. The Playwright suite runs nowhere.
+- CI runs jest in the `node` job (Node 20, the major of the rollback image) and builds the root `Dockerfile` in the `image` job, so a rollback's build is known to work. The Playwright suite runs nowhere.
 
 ### Backend parity (`tests/parity/`)
-- **What**: the same HTTP scenarios against the Node backend (the reference: production
-  runs it) and the Rust backend (the target), compared. `parity.test.js` starts `node
+- **What**: the same HTTP scenarios against the Node backend (the reference, and
+  production's rollback) and the Rust backend (production since 2026-09-24), compared. `parity.test.js` starts `node
   app.js` and the release binary (`zapzap-rust/target/release/zapzap-backend`,
   `PARITY_RUST_BIN` overrides it) on two free ports, each on its own scratch SQLite file
   (Node `DB_PATH`, Rust `DATABASE_URL=sqlite:<file>?mode=rwc`) under `/dev/shm` when it
@@ -180,10 +180,10 @@
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
-| `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`, `docker build -t zapzap-rust-backend:ci zapzap-rust`, `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` production runs: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
+| `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`; `docker compose config` of the root compose file (valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check is `healthy`, and uid 1000 asserted); `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` a rollback builds: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
-| `flutter-e2e` | `flutter != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `npm ci`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
+| `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `npm ci`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 | `node` | `node != 'false'` | Node 20 (`actions/setup-node`, npm cache), `npm ci`, `npm test` | 15 min |
 | `parity` | `parity != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, `cargo build --release --locked` in `zapzap-rust`, `npm ci`, `npm run test:parity` | 30 min |
 
@@ -207,28 +207,29 @@
 
 ### The scope job (`scripts/ci_scope.sh`)
 - On push/dispatch every flag is `true` (step "Which jobs this change needs"). On a PR it lists changed files with `gh api .../pulls/$PR/files --paginate`, including `previous_filename` so renames count on both sides; ≥ 3000 files → everything; otherwise pipes the list into `scripts/ci_scope.sh` — all in that step.
-- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter= node= parity=`, in the order `ci.yml` declares the jobs. Per path, first match wins; the last case is the catch-all:
+- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter= node= parity= e2e=`, in the order `ci.yml` declares the jobs (`e2e` last: the `flutter-e2e` job). Per path, first match wins; the last case is the catch-all:
 
 | Pattern | Flags |
 |---|---|
 | `*.md`, `.llmwiki/*`, `docs/*`, `LICENSE`, `image.png` | none |
-| `zapzap-rust/*` | rust, image, parity |
+| `zapzap-rust/*` | rust, image, parity, e2e (production's backend: its image, its parity with Node, a round played through the Flutter client) |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
 | `frontend/*` | frontend, image |
-| `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]) |
+| `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]), e2e |
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `deploy.sh`, `rebuild.sh` | hooks |
-| `scripts/pwa_image_smoke.sh` | image |
+| `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
+| `scripts/flutter_e2e.sh` | e2e |
 | `src/infrastructure/database/sqlite/DatabaseConnection.js` | rust, node, image, parity (`zapzap-rust/tests/schema_tests.rs` compares it with the Rust schema) |
-| Node backend: `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image, parity (the root `Dockerfile` copies them) |
+| Node backend (the rollback): `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image, parity (the root `Dockerfile` copies them) |
 | `views/*`, `public/*`, root `Dockerfile`, `.dockerignore` | image |
 | `tests/parity/*` | parity |
 | `tests/*`, `jest.config.js` | node |
 | `playwright.config.js`, `eslint.config.mjs` | none |
 | anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
 
-- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl no pa>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
+- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl no pa e2e>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
@@ -242,7 +243,7 @@
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."
 - Rust 1.92 pinned because the latest stable clippy added a lint 1.92 lacks (`sort_by_key`) and the image's former `rust:1.83` could not parse `base64ct` 1.8.1 (edition 2024) — commit message of the toolchain pin, folded into 1e063d6; comment `zapzap-rust/rust-toolchain.toml:1-2`.
 - The scope classifier fails open by design: "Being wrong must cost a slow run, never an untested merge" (`scripts/ci_scope.sh:10-12`).
-- The legacy Node suites were excluded from CI (`scripts/ci_scope.sh`) on the premise that the Rust backend is the target. Production still runs Node, so its changes reached production ungated.
+- The legacy Node suites were excluded from CI (`scripts/ci_scope.sh`) on the premise that the Rust backend is the target. Production still ran Node, so its changes reached production ungated.
 - **2026-09-23: the Node backend is gated** (user decision). #39 went green and then failed to build on the NAS (npm 10 in `node:20-alpine` rejected a lockfile npm 11 accepted): the `image` job now builds the root `Dockerfile`. jest was 59/314 red on master, every failure test drift, none a bug in `src/`: messages translated to French, `handSize` moved out of `PartySettings` to a per-round choice, `JoinParty` no longer auto-starting a full party (commit 9712a26: the owner starts it), a single card being a legal play, mocks missing `updateLastLogin`/`recordGameAction`, and the repository suites opening the older `connection.js` whose schema lacks `users.user_type`. The tests were realigned with the code, none deleted or skipped, and the `node` job runs them. `deploy.sh` and `rebuild.sh` were classified as `hooks`, so a change to them no longer rebuilds every image.
 - 2026-09-23 (fix/rust-api-schema): `--tests` joined the `rust` job once the backend created its own schema; `api_tests` had also caught `POST /api/party` without `name` answering 422 instead of Node's 400 `MISSING_PARTY_NAME`, fixed in the handler rather than in the test.
 - **Frontend lint and vitest made green and gated (2026-09-23).** The 122 red tests were written against an older UI: English labels (the auth forms are French now), class-name hooks (`.player-card`, `.player-row`) that no longer exist, a prop-driven `GameBoard` that became the `/game/:partyId` route loading its own state, `ActionButtons`' `onDraw` split into `onDrawFromDeck`/`onDrawFromDiscard`, and a hand size that moved from party creation to `HandSizeSelector`. They were rewritten against the current components with their intent kept; the five counteract assertions were aligned on `GAME_RULES.md`'s `hand + (active players − 1) × 5`, which the code already applied. Only the three `CreateParty` hand-size tests were dropped (the field is gone), replaced by `HandSizeSelector.test.jsx`.
@@ -261,7 +262,7 @@
   `sometimes`. `node --test`, no dependency, kept out of `npm test` (`jest.config.js`
   ignores `tests/parity/`). The Node backend now reads `DB_PATH`, which the scratch
   databases needed.
-- **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production runs; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.
+- **2026-09-24 (test/flutter-e2e): the Flutter client is proved against a live backend**, locally. Widget tests use fixtures, and nothing had played a game through the client since the manual checks of 2026-09-23. Local first, against the Node backend production then ran; CI (a job starting the Rust backend) is its own entry. `flutter drive` on `web-server` rather than an emulator: Chrome is on every development machine, and the PWA is what production serves.
 - **2026-09-24 (chore/flutter-e2e-ci): the Flutter end-to-end test runs in CI**, job
   `flutter-e2e`, against the Rust backend (the target) rather than the Node one the local
   procedure used: since #42 it builds its own schema and since #73 it only needs a
@@ -281,3 +282,12 @@
   reset moved into render, which runs before any click can; raising timeouts would not
   have helped, since the lost click never comes back. Reproduced with 16 vitest processes
   pinned to one CPU (`taskset -c 0`); 50 runs in a row of each file pass that way since.
+- **2026-09-24 (chore/switch-prod-to-rust): production runs the Rust backend, so CI tests the
+  image production runs.** The `image` job used to build `zapzap-rust/` without the Bedrock
+  feature, which is not what the root compose builds; it now builds the compose service
+  itself and starts it until its health check passes (`scripts/backend_image_smoke.sh`), and
+  keeps building the Node image, which a rollback needs. The `flutter-e2e` job moved to a flag
+  of its own, `e2e`, set by `frontend-flutter/` **and** `zapzap-rust/`: a round played through
+  the real client is the only end-to-end test of the production backend, and a debug build
+  plus one round costs a few minutes, while the `flutter` flag would also have run the
+  analyzer, the widget tests and the apk build on every backend change.

@@ -18,7 +18,7 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Architecture]] | The five code bases (Rust backend, React frontend, Flutter client, native engine, legacy Node), runtime topology, SSE, `data/`, the compose files | 2026-09-24 |
+| [[Architecture]] | The five code bases (Rust backend in production, React frontend, Flutter client, native engine, legacy Node as the rollback), runtime topology, SSE, `data/`, the compose files | 2026-09-24 |
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-24 |
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (the Node DDL) | 2026-09-24 |
 | [[Api]] | Every Rust route, its auth and failure codes (typed, with the cases where Node answers 500), the zapzap response contract; where the Node/Rust differences are listed | 2026-09-24 |
@@ -31,9 +31,9 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Deployment]] | The NAS, the three containers (Node backend in production), `deploy.sh`, the tracked-database trap | 2026-09-24 |
+| [[Deployment]] | The NAS, the four containers (the Rust backend in production since 2026-09-24), its environment and `data/` ownership, `deploy.sh`, the rollback to Node and what it loses, the tracked-database trap | 2026-09-24 |
 | [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Node vs Rust parity suite, the Flutter end-to-end procedure | 2026-09-24 |
-| [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-23 |
+| [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-24 |
 | [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser, lanes A–D, cleanup, local `wip/` | 2026-09-24 |
 | [[Documentation]] | Which documents a change implicates; the `CLAUDE.md` budget | 2026-09-22 |
 | [[KnownLimits]] | What is deliberately left out of the gates, and why | 2026-09-24 |

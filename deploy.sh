@@ -125,7 +125,17 @@ echo ""
 # The pull may have renamed or dropped a service, and ESSENTIAL_SERVICES above would then
 # quietly treat a service that serves the site as optional — the health gate would pass
 # over an outage. Check the two lists agree now, while nothing has been built or stopped.
-declared=$(docker-compose config --services)
+# A compose file docker-compose cannot read is refused here too, with its reason: the Rust
+# backend's JWT_SECRET has no default (`${JWT_SECRET:?...}`), so a .env without one stops
+# the deploy at this point rather than at a crash-looping container.
+if ! declared=$(docker-compose config --services); then
+    echo "" >&2
+    echo "✗ REFUSING TO DEPLOY: docker-compose cannot read the compose file — its reason is above." >&2
+    echo "  Nothing was built and nothing was stopped. The usual cause: a variable the" >&2
+    echo "  compose file requires is missing from .env — JWT_SECRET, which the Rust backend" >&2
+    echo "  refuses to start without. Fix .env (never print it), then retry." >&2
+    exit 1
+fi
 for service in $ESSENTIAL_SERVICES; do
     case " $(printf '%s\n' "$declared" | tr '\n' ' ') " in
         *" $service "*) ;;

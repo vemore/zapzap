@@ -23,8 +23,9 @@ hooks=false
 flutter=false
 node=false
 parity=false
+e2e=false
 
-everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; parity=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; parity=true; e2e=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -32,9 +33,10 @@ while IFS= read -r path; do
         # Documentation. A case glob's `*` crosses `/`, so `*.md` is `**/*.md`.
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 
-        # The Rust backend -- the deployed server -- and the image built from it; the
-        # parity suite runs its release build against the Node backend.
-        zapzap-rust/*) rust=true; image=true; parity=true ;;
+        # The Rust backend -- what production runs (.llmwiki/Deployment.md) -- and the
+        # image built from it; the parity suite runs its release build against the Node
+        # backend, and the Flutter end-to-end run plays a round against it.
+        zapzap-rust/*) rust=true; image=true; parity=true; e2e=true ;;
 
         # Bot parameters and models: zapzap-rust/data is a symlink to data/.
         data/*) rust=true ;;
@@ -45,9 +47,10 @@ while IFS= read -r path; do
         # The React client, and its own image.
         frontend/*) frontend=true; image=true ;;
 
-        # The Flutter client (Android + PWA), and the image the PWA is served from
-        # (.llmwiki/Deployment.md). `frontend/*` does not match it: the slash.
-        frontend-flutter/*) flutter=true; image=true ;;
+        # The Flutter client (Android + PWA), the image the PWA is served from
+        # (.llmwiki/Deployment.md), and its end-to-end run. `frontend/*` does not match
+        # it: the slash.
+        frontend-flutter/*) flutter=true; image=true; e2e=true ;;
 
         # The reverse proxy configuration, baked into no image but mounted by compose.
         nginx/*) image=true ;;
@@ -57,19 +60,20 @@ while IFS= read -r path; do
         .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|deploy.sh|rebuild.sh)
             hooks=true ;;
 
-        # The Flutter end-to-end run, which the flutter-e2e job (on the flutter flag) runs.
-        scripts/flutter_e2e.sh) flutter=true ;;
+        # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.
+        scripts/flutter_e2e.sh) e2e=true ;;
 
-        # The smoke test the image job runs against the Flutter PWA image.
-        scripts/pwa_image_smoke.sh) image=true ;;
+        # The smoke tests the image job runs: the Flutter PWA image, the production backend.
+        scripts/pwa_image_smoke.sh|scripts/backend_image_smoke.sh) image=true ;;
 
         # The Node schema, which zapzap-rust/tests/schema_tests.rs reads and compares
         # with the Rust backend's copy: a change to it needs the rust job too.
         src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true; parity=true ;;
 
-        # The Node backend, which production runs (.llmwiki/Deployment.md): its code and
-        # dependencies are tested by jest, baked into the root Dockerfile's image, and
-        # compared with the Rust backend by the parity suite.
+        # The Node backend, production's rollback since the switch to Rust
+        # (.llmwiki/Deployment.md): its code and dependencies are tested by jest, baked into
+        # the root Dockerfile's image (which a rollback builds), and compared with the Rust
+        # backend by the parity suite.
         src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true; parity=true ;;
 
         # What the Node image holds but jest does not load, and the image's own recipe.
@@ -90,4 +94,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\nparity=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node" "$parity"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\nparity=%s\ne2e=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node" "$parity" "$e2e"

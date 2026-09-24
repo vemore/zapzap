@@ -1,33 +1,43 @@
 services:
-  # Backend API Service
+  # Backend API Service: the Rust backend (zapzap-rust/). The service and container names
+  # stay `backend`/`zapzap-backend`: nginx/nginx.conf proxies to `backend:9999` and
+  # deploy.sh's ESSENTIAL_SERVICES names it. The Node backend (root Dockerfile, src/) is the
+  # rollback: the commit before the switch declares it here (.llmwiki/Deployment.md).
   backend:
     build:
-      context: .
+      context: ./zapzap-rust
       dockerfile: Dockerfile
+      args:
+        # `bedrock` builds the AWS Bedrock client of the LLM bots; production enables them
+        - CARGO_FEATURES=bedrock
     container_name: zapzap-backend
     restart: unless-stopped
     environment:
-      - NODE_ENV=${NODE_ENV:-production}
       - PORT=9999
-      - JWT_SECRET=${JWT_SECRET}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-      - DB_PATH=/app/data/zapzap.db
-      - LOG_DIR=/app/logs
-      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DATABASE_URL=sqlite:/app/data/zapzap.db
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env (openssl rand -hex 32)}
+      - RUST_LOG=${RUST_LOG:-info}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      # Node's default (src/api/bootstrap.js): the pause between two bot actions
       - BOT_ACTION_DELAY_MS=${BOT_ACTION_DELAY_MS:-1000}
-      - AWS_BEDROCK_ENABLED=${AWS_BEDROCK_ENABLED:-false}
-      - AWS_BEDROCK_REGION=${AWS_BEDROCK_REGION}
-      - AWS_BEDROCK_MODEL_ID=${AWS_BEDROCK_MODEL_ID}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # LLM bots (.llmwiki/Bots.md): passed only when set in .env, because a variable that
+      # is present, even empty, changes what the backend does — AWS_BEDROCK_ENABLED decides
+      # alone when present, and an empty AWS_BEDROCK_REGION would replace the default.
+      - AWS_BEDROCK_ENABLED
+      - AWS_BEDROCK_REGION
+      - AWS_BEDROCK_MODEL_ID
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - BOT_STRATEGIES_DIR=/app/data/bot-strategies
     volumes:
+      # The image runs as uid 1000: data/, data/zapzap.db and data/bot-strategies/ must be
+      # writable by it (the deploy skill's one-time chown).
       - ./data:/app/data
-      - ./logs:/app/logs
     networks:
       - zapzap-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:9999/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:9999/api/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -104,4 +114,3 @@ networks:
 
 volumes:
   data:
-  logs:
