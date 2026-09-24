@@ -3,8 +3,9 @@ import 'json.dart';
 /// A finished game in a history listing (`GET /history`, `/history/public`).
 ///
 /// The backends differ: Node sends `id`, `winnerUserId`, `winnerFinalScore`,
-/// `totalRounds`, `wasGoldenScore`, `visibility`; Rust sends `roundsPlayed`,
-/// `userPlacement`, `userScore`. Fields one side lacks are `null`.
+/// `totalRounds`, `wasGoldenScore`, `visibility`; Rust sends `roundsPlayed`.
+/// Both send `userPlacement` and `userScore` on `GET /history` only (Node
+/// since 2026-09-24). Fields one side lacks are `null`.
 class GameHistoryEntry {
   const GameHistoryEntry({
     required this.partyId,
