@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users, Circle, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import useSSE from '../../hooks/useSSE';
+import { sseUrl } from '../../services/sse';
 
 /**
  * Status badge colors and labels
@@ -76,10 +77,7 @@ function ConnectedPlayers() {
   }, []);
 
   // Connect to SSE with token
-  const token = localStorage.getItem('token');
-  const sseUrl = token ? `/suscribeupdate?token=${encodeURIComponent(token)}` : null;
-
-  useSSE(sseUrl, {
+  useSSE(sseUrl(), {
     onMessage: handleSSEMessage
   });
 
