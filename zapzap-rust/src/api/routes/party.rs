@@ -8,13 +8,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::error::{ApiBody, ApiError, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
 use crate::application::party::{
-    CreateParty, CreatePartyInput, DeleteParty, DeletePartyInput, GetPartyDetails,
-    GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty, LeavePartyInput, ListPartiesInput,
-    ListPublicParties, StartParty, StartPartyInput,
+    AddBotToParty, AddBotToPartyInput, CreateParty, CreatePartyInput, DeleteParty,
+    DeletePartyInput, GetPartyDetails, GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty,
+    LeavePartyInput, ListPartiesInput, ListPublicParties, StartParty, StartPartyInput,
 };
+use crate::domain::entities::PartyVisibility;
 use crate::domain::value_objects::PartySettings;
 use crate::infrastructure::app_state::GameEvent;
 
@@ -36,6 +38,22 @@ pub struct CreatePartyRequest {
     pub settings: Option<PartySettingsDto>,
     #[serde(rename = "botIds")]
     pub bot_ids: Option<Vec<String>>,
+}
+
+impl ApiBody for CreatePartyRequest {
+    const INVALID_CODE: &'static str = "VALIDATION_ERROR";
+    const INVALID_MESSAGE: &'static str = "Invalid party data";
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddBotRequest {
+    #[serde(rename = "botId")]
+    pub bot_id: Option<String>,
+}
+
+impl ApiBody for AddBotRequest {
+    const INVALID_CODE: &'static str = "MISSING_BOT_ID";
+    const INVALID_MESSAGE: &'static str = "Bot ID is required";
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,6 +133,9 @@ pub struct PartyListItem {
     pub max_players: u8,
     #[serde(rename = "isMember")]
     pub is_member: bool,
+    /// The caller is a member of this playing party and the current turn is theirs
+    #[serde(rename = "isMyTurn")]
+    pub is_my_turn: bool,
     #[serde(rename = "createdAt")]
     pub created_at: String,
 }
@@ -222,6 +243,23 @@ pub struct RoundInfo {
 }
 
 #[derive(Debug, Serialize)]
+pub struct AddBotResponse {
+    pub success: bool,
+    pub party: JoinPartyInfo,
+    pub bot: AddedBotInfo,
+    #[serde(rename = "playerIndex")]
+    pub player_index: u8,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AddedBotInfo {
+    pub id: String,
+    pub username: String,
+    #[serde(rename = "botDifficulty")]
+    pub bot_difficulty: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct DeletePartyResponse {
     pub success: bool,
     pub message: String,
@@ -229,14 +267,6 @@ pub struct DeletePartyResponse {
     pub deleted_party_id: String,
     #[serde(rename = "deletedPartyName")]
     pub deleted_party_name: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
 }
 
 // ============================================================================
@@ -247,18 +277,12 @@ pub struct ErrorResponse {
 pub async fn create_party(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
-    Json(body): Json<CreatePartyRequest>,
-) -> Result<(StatusCode, Json<CreatePartyResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let name = body.name.filter(|s| !s.is_empty()).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Party name is required".to_string(),
-                code: "MISSING_PARTY_NAME".to_string(),
-                details: None,
-            }),
-        )
-    })?;
+    ApiJson(body): ApiJson<CreatePartyRequest>,
+) -> Result<(StatusCode, Json<CreatePartyResponse>), ApiError> {
+    let name = body
+        .name
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ApiError::bad_request("MISSING_PARTY_NAME", "Party name is required"))?;
 
     let settings = body
         .settings
@@ -279,17 +303,22 @@ pub async fn create_party(
             settings,
             bot_ids: body.bot_ids.unwrap_or_default(),
         })
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to create party".to_string(),
-                    code: "CREATE_PARTY_ERROR".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            )
-        })?;
+        .await?;
+
+    // Emit SSE event for partyCreated, so that live party lists show the new party.
+    // A private party is not in GET /party: announcing it would only leak it.
+    if result.party.visibility == PartyVisibility::Public {
+        let event = GameEvent::new(
+            "partyUpdate",
+            Some(result.party.id.clone()),
+            Some(claims.user_id.clone()),
+        )
+        .with_action("partyCreated")
+        .with_data(serde_json::json!({
+            "partyName": result.party.name
+        }));
+        state.broadcast_event(event);
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -320,7 +349,7 @@ pub async fn list_parties(
     State(state): State<Arc<AppState>>,
     claims: Option<Extension<Claims>>,
     Query(query): Query<ListPartiesQuery>,
-) -> Result<Json<ListPartiesResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ListPartiesResponse>, ApiError> {
     let use_case = ListPublicParties::new(state.party_repo.clone());
     let result = use_case
         .execute(ListPartiesInput {
@@ -329,17 +358,7 @@ pub async fn list_parties(
             limit: query.limit.unwrap_or(50),
             offset: query.offset.unwrap_or(0),
         })
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get parties".to_string(),
-                    code: "GET_PARTIES_ERROR".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            )
-        })?;
+        .await?;
 
     Ok(Json(ListPartiesResponse {
         success: true,
@@ -356,6 +375,7 @@ pub async fn list_parties(
                 player_count: p.player_count,
                 max_players: p.max_players,
                 is_member: p.is_member,
+                is_my_turn: p.is_my_turn,
                 created_at: p.created_at,
             })
             .collect(),
@@ -370,29 +390,14 @@ pub async fn get_party_details(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<PartyDetailsResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<PartyDetailsResponse>, ApiError> {
     let use_case = GetPartyDetails::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
         .execute(GetPartyDetailsInput {
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let (status, code) = match e.to_string().as_str() {
-                "Party not found" => (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND"),
-                "User is not in this party" => (StatusCode::FORBIDDEN, "NOT_IN_PARTY"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "GET_PARTY_ERROR"),
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     Ok(Json(PartyDetailsResponse {
         success: true,
@@ -437,7 +442,7 @@ pub async fn join_party(
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
     body: Option<Json<JoinPartyRequest>>,
-) -> Result<Json<JoinPartyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<JoinPartyResponse>, ApiError> {
     let invite_code = body.and_then(|b| b.invite_code.clone());
 
     let use_case = JoinParty::new(state.user_repo.clone(), state.party_repo.clone());
@@ -447,30 +452,7 @@ pub async fn join_party(
             party_id: party_id.clone(),
             invite_code,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) =
-                if err_msg.contains("not found") || err_msg.contains("does not exist") {
-                    (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-                } else if err_msg.contains("full") {
-                    (StatusCode::CONFLICT, "PARTY_FULL")
-                } else if err_msg.contains("already in party") {
-                    (StatusCode::CONFLICT, "ALREADY_IN_PARTY")
-                } else if err_msg.contains("already started") {
-                    (StatusCode::CONFLICT, "PARTY_STARTED")
-                } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, "JOIN_PARTY_ERROR")
-                };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event for playerJoined
     let event = GameEvent::new(
@@ -501,7 +483,7 @@ pub async fn leave_party(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<LeavePartyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<LeavePartyResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let use_case = LeaveParty::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
@@ -509,23 +491,7 @@ pub async fn leave_party(
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = match err_msg.as_str() {
-                "Party not found" => (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND"),
-                "User is not in this party" => (StatusCode::FORBIDDEN, "NOT_IN_PARTY"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "LEAVE_PARTY_ERROR"),
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event for playerLeft
     let event = GameEvent::new(
@@ -552,7 +518,7 @@ pub async fn start_party(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<StartPartyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<StartPartyResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let use_case = StartParty::new(state.party_repo.clone());
     let result = use_case
@@ -560,27 +526,7 @@ pub async fn start_party(
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("owner") {
-                (StatusCode::FORBIDDEN, "NOT_OWNER")
-            } else if err_msg.contains("already playing") {
-                (StatusCode::CONFLICT, "PARTY_ALREADY_PLAYING")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "START_PARTY_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event for partyStarted
     let event = GameEvent::new(
@@ -615,7 +561,7 @@ pub async fn delete_party(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
-) -> Result<Json<DeletePartyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<DeletePartyResponse>, ApiError> {
     let party_id_for_event = party_id.clone();
     let use_case = DeleteParty::new(state.user_repo.clone(), state.party_repo.clone());
     let result = use_case
@@ -623,29 +569,7 @@ pub async fn delete_party(
             user_id: claims.user_id.clone(),
             party_id,
         })
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            let (status, code) = if err_msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
-            } else if err_msg.contains("not in this party") {
-                (StatusCode::FORBIDDEN, "NOT_IN_PARTY")
-            } else if err_msg.contains("owner") || err_msg.contains("authorized") {
-                (StatusCode::FORBIDDEN, "NOT_AUTHORIZED")
-            } else if err_msg.contains("active game") {
-                (StatusCode::CONFLICT, "PARTY_PLAYING")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "DELETE_PARTY_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: err_msg,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            )
-        })?;
+        .await?;
 
     // Emit SSE event for partyDeleted
     let event = GameEvent::new(
@@ -665,4 +589,56 @@ pub async fn delete_party(
         deleted_party_id: result.deleted_party_id,
         deleted_party_name: result.deleted_party_name,
     }))
+}
+
+/// POST /api/party/:partyId/bots - The owner adds a bot to a waiting party
+pub async fn add_bot(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    Path(party_id): Path<String>,
+    ApiJson(body): ApiJson<AddBotRequest>,
+) -> Result<(StatusCode, Json<AddBotResponse>), ApiError> {
+    let bot_id = body.bot_id.filter(|s| !s.is_empty()).ok_or_else(|| {
+        ApiError::bad_request(AddBotRequest::INVALID_CODE, AddBotRequest::INVALID_MESSAGE)
+    })?;
+
+    let use_case = AddBotToParty::new(state.user_repo.clone(), state.party_repo.clone());
+    let result = use_case
+        .execute(AddBotToPartyInput {
+            user_id: claims.user_id.clone(),
+            party_id,
+            bot_id,
+        })
+        .await?;
+
+    // Same event as a human joining: the lobby and the party lists refresh on it
+    let event = GameEvent::new(
+        "partyUpdate",
+        Some(result.party.id.clone()),
+        Some(result.bot.id.clone()),
+    )
+    .with_action("playerJoined")
+    .with_data(serde_json::json!({
+        "username": result.bot.username,
+        "playerIndex": result.player_index
+    }));
+    state.broadcast_event(event);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(AddBotResponse {
+            success: true,
+            party: JoinPartyInfo {
+                id: result.party.id,
+                name: result.party.name,
+                status: result.party.status.as_str().to_string(),
+            },
+            bot: AddedBotInfo {
+                id: result.bot.id,
+                username: result.bot.username,
+                bot_difficulty: result.bot.bot_difficulty.map(|d| d.as_str().to_string()),
+            },
+            player_index: result.player_index,
+        }),
+    ))
 }

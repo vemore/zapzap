@@ -71,6 +71,12 @@ impl<P: PartyRepository> PlayCards<P> {
             return Err(PlayCardsError::NoCardsSelected);
         }
 
+        // Every card in hand before the combination check, as Node's PlayCards does
+        let hand = game_state.get_hand(player_index);
+        if let Some(&card) = input.card_ids.iter().find(|c| !hand.contains(c)) {
+            return Err(PlayCardsError::CardNotInHand(card));
+        }
+
         if !card_analyzer::is_valid_play(&input.card_ids) {
             return Err(PlayCardsError::InvalidCombination);
         }
@@ -116,6 +122,8 @@ pub enum PlayCardsError {
     WrongAction,
     #[error("No cards selected")]
     NoCardsSelected,
+    #[error("Card {0} not in hand")]
+    CardNotInHand(u8),
     #[error("Invalid card combination")]
     InvalidCombination,
     #[error("Game error: {0}")]

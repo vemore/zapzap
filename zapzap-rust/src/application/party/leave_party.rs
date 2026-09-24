@@ -40,18 +40,18 @@ impl<U: UserRepository, P: PartyRepository> LeaveParty<U, P> {
             .await?
             .ok_or(LeavePartyError::PartyNotFound)?;
 
-        // Check party status
-        if party.status != PartyStatus::Waiting {
-            return Err(LeavePartyError::PartyNotWaiting);
-        }
-
-        // Check if user is in party
+        // Membership, then status: the order of Node's LeaveParty
         if !self
             .party_repo
             .is_player_in_party(&input.party_id, &input.user_id)
             .await?
         {
             return Err(LeavePartyError::NotInParty);
+        }
+
+        // Only a game under way holds its players; a finished party can be left, as on Node
+        if party.status == PartyStatus::Playing {
+            return Err(LeavePartyError::PartyPlaying);
         }
 
         // Remove player from party
@@ -106,8 +106,8 @@ impl<U: UserRepository, P: PartyRepository> LeaveParty<U, P> {
 pub enum LeavePartyError {
     #[error("Party not found")]
     PartyNotFound,
-    #[error("Party is not in waiting state")]
-    PartyNotWaiting,
+    #[error("Cannot leave party during active game")]
+    PartyPlaying,
     #[error("Not in party")]
     NotInParty,
     #[error("Repository error: {0}")]

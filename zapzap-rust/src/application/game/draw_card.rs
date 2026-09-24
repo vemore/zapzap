@@ -67,9 +67,28 @@ impl<P: PartyRepository> DrawCard<P> {
             return Err(DrawCardError::WrongAction);
         }
 
-        // Execute draw
+        // Client errors of the draw itself, typed before the domain call
         let from_discard = input.source == "played";
-        let card_drawn = execute_draw(&mut game_state, from_discard, input.card_id)
+        let card_id = if from_discard {
+            // No cardId: the top played card, as Node's DrawCard does
+            let top = *game_state
+                .last_cards_played
+                .last()
+                .ok_or(DrawCardError::NoCardsAvailable)?;
+            let card = input.card_id.unwrap_or(top);
+            if !game_state.last_cards_played.contains(&card) {
+                return Err(DrawCardError::CardNotAvailable);
+            }
+            Some(card)
+        } else {
+            if game_state.deck.is_empty() && game_state.discard_pile.is_empty() {
+                return Err(DrawCardError::DeckEmpty);
+            }
+            input.card_id
+        };
+
+        // Execute draw
+        let card_drawn = execute_draw(&mut game_state, from_discard, card_id)
             .map_err(|e| DrawCardError::GameError(e.to_string()))?;
 
         // Save game state
@@ -108,6 +127,12 @@ pub enum DrawCardError {
     NotYourTurn,
     #[error("Wrong action phase")]
     WrongAction,
+    #[error("Deck is empty and no cards to reshuffle")]
+    DeckEmpty,
+    #[error("No cards available to draw from played cards")]
+    NoCardsAvailable,
+    #[error("Card not available in played cards")]
+    CardNotAvailable,
     #[error("Game error: {0}")]
     GameError(String),
     #[error("Repository error: {0}")]

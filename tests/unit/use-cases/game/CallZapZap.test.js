@@ -162,6 +162,44 @@ describe('CallZapZap Use Case', () => {
             expect(result.scores[0]).toBe(13);
         });
 
+        it('should answer scores as running totals and handPoints per player', async () => {
+            // The contract the Rust backend matches (zapzap-rust/tests/api_tests.rs,
+            // test_zapzap_scores_are_running_totals): `scores` = totals after the round
+            const players = [
+                { id: 'p0', userId: mockUser.id, playerIndex: 0 },
+                { id: 'p1', userId: 'user1', playerIndex: 1 },
+                { id: 'p2', userId: 'user2', playerIndex: 2 }
+            ];
+            const stateWithTotals = new GameState({
+                ...mockGameState.toObject(),
+                hands: {
+                    0: [0, 1],       // 3 points
+                    1: [13, 14, 15], // 6 points
+                    2: [26, 27, 28]  // 6 points
+                },
+                scores: { 0: 10, 1: 20, 2: 30 }
+            });
+
+            mockUserRepository.findById.mockResolvedValue(mockUser);
+            mockPartyRepository.findById.mockResolvedValue(mockParty);
+            mockPartyRepository.getRoundById.mockResolvedValue(mockRound);
+            mockPartyRepository.getGameState.mockResolvedValue(stateWithTotals);
+            mockPartyRepository.getPartyPlayers.mockResolvedValue(players);
+            mockPartyRepository.saveGameState.mockResolvedValue(true);
+            mockPartyRepository.saveRound.mockResolvedValue(true);
+
+            const result = await callZapZap.execute({
+                userId: mockUser.id,
+                partyId: mockParty.id
+            });
+
+            expect(result.zapzapSuccess).toBe(true);
+            expect(result.counteractedBy).toBeNull();
+            expect(result.scores).toEqual({ 0: 10, 1: 26, 2: 36 });
+            expect(result.handPoints).toEqual({ 0: 3, 1: 6, 2: 6 });
+            expect(result.callerPoints).toBe(3);
+        });
+
         it('should finish the round', async () => {
             const players = [
                 { id: 'p0', userId: mockUser.id, playerIndex: 0 },

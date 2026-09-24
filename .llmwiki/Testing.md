@@ -10,7 +10,7 @@
 | Suite | Run | State 2026-09-22 | In CI |
 |---|---|---|---|
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
-| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 10 tests) | `cargo test --test api_tests` | green | yes |
+| Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 35 tests) | `cargo test --test api_tests` | green | yes |
 | Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 2 tests) | `cargo test --test schema_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
@@ -27,7 +27,7 @@
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
 - Unit tests (34 `#[test]`/`#[tokio::test]`) live next to the code: `domain/services/game_service.rs` (6), `infrastructure/bot/card_analyzer.rs` (5), `strategies/thibot.rs` (4), `strategies/vince_bot.rs` (4), `domain/value_objects/game_state.rs` (3), `application/bot/reflect_on_round.rs` (3), `bot/llm_memory.rs` (3), `auth/password.rs` (2), `strategies/llm_bot.rs` (2), `services/llm_service.rs` (2).
-- Integration tests: `zapzap-rust/tests/api_tests.rs:19-31` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key`, then drives it with tower `oneshot` (register, login, create/list party — `api_tests.rs:111-348`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (`zapzap-rust/src/infrastructure/app_state.rs:64`).
+- Integration tests: `zapzap-rust/tests/api_tests.rs:19-36` builds the axum router with `DATABASE_URL=sqlite::memory:` and `JWT_SECRET=test-secret-key` (`create_test_app_with_state` also hands back the `AppState`, to set a game state or read SSE events), then drives it with tower `oneshot`: auth and party basics, then the error contract — tests per party and game route family asserting Node's status and `code` (`assert_error`, `api_tests.rs:539`), unreadable bodies answering 400, `partyCreated`, `isMyTurn`, adding a bot and the zapzap scores, on a started three-human party (`started_party`, `api_tests.rs:462`). Each test gets a fresh in-memory DB, whose tables `AppState::new()` creates (`zapzap-rust/src/infrastructure/app_state.rs:64`).
 - Schema tests: `zapzap-rust/tests/schema_tests.rs` reads the Node DDL from `src/infrastructure/database/sqlite/DatabaseConnection.js` at compile time (`include_str!`) and checks that `schema.sql` creates the same objects (`rust_schema_matches_node_schema`) and that the startup step leaves a filled Node-built DB unchanged (`schema_step_is_a_noop_on_a_node_built_database`). See [[Backend]].
 - CI gate (`rust` job): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --lib --bins --tests` (unit and integration tests).
 - `scripts/ci_scope.sh` sends a change to `src/` to `node` and `image`, and a change to `src/infrastructure/database/sqlite/DatabaseConnection.js` (the Node DDL `schema_tests` reads) to `rust` as well, so a PR that edits only the Node schema still runs the parity test.

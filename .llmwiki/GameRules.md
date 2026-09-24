@@ -2,7 +2,7 @@
 
 > Scope: where the ZapZap rules (`GAME_RULES.md` at repo root = the reference) are implemented in the Rust backend, and where code and doc disagree.
 > Related: [[Bots]] · [[Backend]] · [[Api]] · [[NativeEngine]]
-> Updated: 2026-09-22
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -31,7 +31,7 @@
 - Party start: 3-8 players (`zapzap-rust/src/domain/entities/party.rs:105-107`); round 1, player index 0 starts (`zapzap-rust/src/application/party/start_party.rs:66-74`).
 - `initialize_round` deals `party.settings.hand_size` (default 5, clamped 4-7, `zapzap-rust/src/domain/value_objects/party_settings.rs:20`, `:31`) and sets phase `SelectHandSize` (`game_service.rs:13-60`); this deal is thrown away by the next step.
 - `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score (`zapzap-rust/src/application/game/select_hand_size.rs:61-64`); gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
-- Next round: starter = `(starting_player + 1) % player_count` (`zapzap-rust/src/application/game/next_round.rs:175`) — **does not skip eliminated players**, contrary to `GAME_RULES.md:86`. Eliminated bots are skipped later by the bot loop (`zapzap-rust/src/api/routes/game.rs:1395-1411`); an eliminated **human** starter is not skipped, so the round waits on a player who cannot act.
+- Next round: starter = `(starting_player + 1) % player_count` (`zapzap-rust/src/application/game/next_round.rs:175`) — **does not skip eliminated players**, contrary to `GAME_RULES.md:86`. Eliminated bots are skipped later by the bot loop (`zapzap-rust/src/api/routes/game.rs:1306-1322`); an eliminated **human** starter is not skipped, so the round waits on a player who cannot act.
 
 ### Turn flow
 - Phases `SelectHandSize → Play → Draw → Play…`, terminal `Finished` (`zapzap-rust/src/domain/value_objects/game_state.rs:17-24`).

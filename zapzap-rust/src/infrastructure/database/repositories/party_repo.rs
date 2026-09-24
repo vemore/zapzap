@@ -352,7 +352,33 @@ impl PartyRepository for SqlitePartyRepository {
         .bind(now)
         .execute(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| {
+            let seat_taken_by_user = e.as_database_error().is_some_and(|d| {
+                d.is_unique_violation() && d.message().contains("party_players.user_id")
+            });
+            if seat_taken_by_user {
+                RepositoryError::AlreadyExists(format!("{user_id} in party {party_id}"))
+            } else {
+                RepositoryError::Database(e.to_string())
+            }
+        })?;
+
+        Ok(())
+    }
+
+    async fn set_player_index(
+        &self,
+        party_id: &str,
+        user_id: &str,
+        player_index: u8,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query("UPDATE party_players SET player_index = ? WHERE party_id = ? AND user_id = ?")
+            .bind(player_index as i32)
+            .bind(party_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         Ok(())
     }
