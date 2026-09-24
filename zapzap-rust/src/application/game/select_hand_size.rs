@@ -90,7 +90,7 @@ impl<P: PartyRepository> SelectHandSize<P> {
         // Shuffle the deck
         {
             use rand::seq::SliceRandom;
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             all_cards.shuffle(&mut rng);
         }
 

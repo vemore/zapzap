@@ -2,9 +2,9 @@
 //!
 //! This module contains the core game simulation logic.
 
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 
 use crate::domain::value_objects::{GameAction, GameState};
 use crate::infrastructure::bot::card_analyzer;
@@ -36,8 +36,8 @@ pub fn initialize_round(
     // Create and shuffle deck
     let mut deck: Vec<u8> = (0..54).collect();
     let mut rng = match seed {
-        Some(s) => ChaCha8Rng::seed_from_u64(s),
-        None => ChaCha8Rng::from_entropy(),
+        Some(s) => StdRng::seed_from_u64(s),
+        None => rand::make_rng(),
     };
     deck.shuffle(&mut rng);
 
@@ -146,7 +146,7 @@ pub fn execute_draw(
                 return Err("No cards to draw");
             }
             state.deck.append(&mut state.discard_pile);
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             state.deck.shuffle(&mut rng);
         }
         state.deck.pop().ok_or("Deck is empty")?

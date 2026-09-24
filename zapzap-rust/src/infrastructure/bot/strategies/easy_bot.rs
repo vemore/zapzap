@@ -2,8 +2,8 @@
 //!
 //! Simple bot that makes random but valid plays.
 
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::seq::IndexedRandom;
+use rand::RngExt;
 
 use super::{BotAction, BotStrategy, DrawSource};
 use crate::domain::value_objects::GameState;
@@ -58,7 +58,7 @@ impl BotStrategy for EasyBotStrategy {
         }
 
         // Just pick a random valid play
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let play = plays.choose(&mut rng).cloned().unwrap_or_default();
 
         play.into_iter().collect()
@@ -67,9 +67,9 @@ impl BotStrategy for EasyBotStrategy {
     fn decide_draw_source(&self, state: &GameState, _player_index: u8) -> DrawSource {
         // Easy bot mostly draws from deck (doesn't analyze discard pile)
         // 20% chance to take from discard if available
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
-        if !state.last_cards_played.is_empty() && rng.gen_bool(0.2) {
+        if !state.last_cards_played.is_empty() && rng.random_bool(0.2) {
             // Take random card from discard
             if let Some(&card) = state.last_cards_played.choose(&mut rng) {
                 return DrawSource::Discard(card);
