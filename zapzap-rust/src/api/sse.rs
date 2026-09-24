@@ -1,13 +1,18 @@
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::domain::repositories::PartyRepository;
 use crate::infrastructure::app_state::{AppState, GameEvent};
 use axum::{
     extract::{Query, State},
-    response::sse::{Event, KeepAlive, Sse},
+    http::header,
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse,
+    },
 };
-use futures::stream::Stream;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -15,10 +20,57 @@ pub struct SseParams {
     token: Option<String>,
 }
 
+/// Whether a client receives `event`.
+///
+/// An event without a party (`userConnected`, `userDisconnected`, ...) goes to everyone,
+/// as Node sends it. A party event goes only to an authenticated client that is a player
+/// of that party, or whose own action it reports (the player who just left); and its
+/// `partyDeleted` goes to the clients that were players of it when the stream opened or
+/// since (the membership rows are gone by the time it goes out). `known_parties` holds
+/// those parties, and is kept up to date here.
+async fn should_deliver(
+    state: &AppState,
+    user_id: Option<&str>,
+    known_parties: &mut HashSet<String>,
+    event: &GameEvent,
+) -> bool {
+    let Some(party_id) = event.party_id.as_deref() else {
+        return true;
+    };
+    let Some(user_id) = user_id else {
+        return false;
+    };
+    let is_member = state
+        .party_repo
+        .is_player_in_party(party_id, user_id)
+        .await
+        .unwrap_or(false);
+    if is_member {
+        known_parties.insert(party_id.to_string());
+        return true;
+    }
+    // No longer a player: forget the party, but still hear of the own action that ended the
+    // membership (leaving) and of the party's deletion
+    let was_member = known_parties.remove(party_id);
+    event.user_id.as_deref() == Some(user_id)
+        || (was_member && event.action.as_deref() == Some("partyDeleted"))
+}
+
+/// The parties `user_id` plays in, when the stream opens.
+async fn parties_of(state: &AppState, user_id: &str) -> HashSet<String> {
+    sqlx::query_scalar::<_, String>("SELECT party_id FROM party_players WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
+}
+
 pub async fn sse_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SseParams>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> impl IntoResponse {
     // Validate token if provided
     let user_info = params.token.and_then(|token| {
         state.jwt_service.verify(&token).ok().map(|claims| {
@@ -38,17 +90,24 @@ pub async fn sse_handler(
         })
     });
 
+    let mut known_parties = match &user_info {
+        Some((user_id, _)) => parties_of(&state, user_id).await,
+        None => HashSet::new(),
+    };
+
     // Subscribe to events - use new_receiver() to get an active receiver
     let mut receiver = state.event_sender.new_receiver();
     let session_manager = state.session_manager.clone();
     let event_sender = state.event_sender.clone();
     let user_info_clone = user_info.clone();
+    let state_for_stream = state.clone();
 
     let stream = async_stream::stream! {
         tracing::debug!("SSE stream started");
+        let user_id = user_info_clone.as_ref().map(|(id, _)| id.as_str());
 
         // Send initial connected event
-        yield Ok(Event::default()
+        yield Ok::<_, Infallible>(Event::default()
             .event("connected")
             .data(serde_json::json!({
                 "message": "Connected to SSE stream",
@@ -67,6 +126,9 @@ pub async fn sse_handler(
                 result = receiver.recv() => {
                     match result {
                         Ok(event) => {
+                            if !should_deliver(&state_for_stream, user_id, &mut known_parties, &event).await {
+                                continue;
+                            }
                             tracing::debug!("SSE broadcasting event: {:?}", event.event_type);
                             let json = serde_json::to_string(&event).unwrap_or_default();
                             yield Ok(Event::default()
@@ -92,5 +154,11 @@ pub async fn sse_handler(
         }
     };
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    // No proxy buffering (nginx honours X-Accel-Buffering; axum's Sse sets
+    // `Cache-Control: no-cache`); the 20 s heartbeat
+    // and axum's keep-alive comment keep idle proxies from timing the stream out.
+    (
+        [(header::HeaderName::from_static("x-accel-buffering"), "no")],
+        Sse::new(stream).keep_alive(KeepAlive::default()),
+    )
 }

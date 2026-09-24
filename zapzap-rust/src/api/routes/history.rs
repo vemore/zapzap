@@ -342,7 +342,7 @@ pub async fn get_public_history(
 /// GET /api/history/:partyId - Get detailed information about a finished game
 pub async fn get_game_details(
     State(state): State<Arc<AppState>>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(party_id): Path<String>,
 ) -> Result<Json<GameDetailsResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Get game result with party info and winner info
@@ -384,6 +384,36 @@ pub async fn get_game_details(
         winner_username,
         winner_final_score,
     ) = game_result;
+
+    // A private game's history is readable by its players only
+    if visibility == "private" {
+        let is_player: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM party_players WHERE party_id = ? AND user_id = ?) \
+             OR EXISTS(SELECT 1 FROM player_game_results WHERE party_id = ? AND user_id = ?)",
+        )
+        .bind(&party_id)
+        .bind(&claims.user_id)
+        .bind(&party_id)
+        .bind(&claims.user_id)
+        .fetch_one(state.party_repo.get_db())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        if !is_player {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(ErrorResponse {
+                    error: "Access denied. Party is private.".to_string(),
+                }),
+            ));
+        }
+    }
 
     // Get player results with stats calculated from round_scores
     let player_results = sqlx::query_as::<_, (String, String, i32, i32, bool, i32, i32, i32)>(

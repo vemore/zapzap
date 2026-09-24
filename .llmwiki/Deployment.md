@@ -240,3 +240,9 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   > **Status: Outdated** (2026-09-23) — the schema bootstrap gap is closed: the Rust backend
   > creates the Node schema itself, and on the production file that step is a no-op
   > ([[Backend]]). The other gaps stand.
+  > **Status: Outdated** (2026-09-24) — the authorization gap is closed (fix/rust-security). The
+  > switch now has two preconditions of its own: `JWT_SECRET` must be set to a private value
+  > (the Rust binary and `zapzap-rust/docker-compose.yml` refuse to start without it), and the
+  > database must have been opened once by the Node app after `scripts/docker-entrypoint.js`
+  > rebuilt `users` — the Rust schema step does not port Node's `ADD COLUMN` upgrades and
+  > refuses to start, leaving the file untouched, on a `users` table without `google_id`.

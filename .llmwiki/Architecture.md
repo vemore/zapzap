@@ -2,7 +2,7 @@
 
 > Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -37,9 +37,9 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 
 - Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/main.rs:41`, handler `zapzap-rust/src/api/sse.rs:18`.
 - Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
-- Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and every broadcast as SSE event name `event` with JSON payload (`zapzap-rust/src/api/sse.rs:51-74`).
+- Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A party's events reach only its players' streams; events without a party reach every stream ([[Backend]]).
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:78-81`).
-- Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Details: [[Backend]], [[Frontend]].
+- Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Against the Rust backend those two tokenless streams receive no party event, since it filters per user; the switch needs them to pass the token (tracked in `wip/`). Details: [[Backend]], [[Frontend]].
 - Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
@@ -66,7 +66,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 | File | Era | Services |
 |------|-----|----------|
 | `docker-compose.yml` (root) | Node | `backend` built from root `Dockerfile` (node:20-alpine, `CMD node scripts/docker-entrypoint.js`, `Dockerfile:1-37`), container `zapzap-backend`; `frontend`; `frontend-flutter` from `./frontend-flutter` (container `zapzap-frontend-flutter`); `nginx` = `zapzap-proxy`. Passes `GOOGLE_OAUTH_CLIENT_ID`, `BOT_ACTION_DELAY_MS`, `AWS_BEDROCK_*` (`docker-compose.yml:9-23`) |
-| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `frontend-flutter` from `../frontend-flutter`; `nginx` from `../nginx/nginx.conf`. Env only `PORT`, `DATABASE_URL`, `JWT_SECRET` (default `zapzap-secret-key-change-in-production`), `RUST_LOG` (`zapzap-rust/docker-compose.yml:1-25`) |
+| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `frontend-flutter` from `../frontend-flutter`; `nginx` from `../nginx/nginx.conf`. Env only `PORT`, `DATABASE_URL`, `JWT_SECRET` (required, no default: `${JWT_SECRET:?...}`), `RUST_LOG` (`zapzap-rust/docker-compose.yml:1-25`) |
 
 - Both compose files mount the shared `data/` (`./data` resp. `../data`) at `/app/data`.
 - In both, `nginx` waits for `backend` and `frontend` to be healthy but **not** for `frontend-flutter`: `/app/` is resolved per request through Docker's DNS, so a broken PWA is a 502 on `/app/` and never an outage of `/` and `/api/`. [[Deployment]].

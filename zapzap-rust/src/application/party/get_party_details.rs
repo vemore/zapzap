@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::entities::Party;
+use crate::domain::entities::{Party, PartyVisibility};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Get party details input
@@ -62,6 +62,11 @@ impl<U: UserRepository, P: PartyRepository> GetPartyDetails<U, P> {
             .find(|p| p.user_id == input.user_id)
             .map(|p| p.player_index);
 
+        // A private party, its invite code included, is visible to its members only
+        if party.visibility == PartyVisibility::Private && user_player_index.is_none() {
+            return Err(GetPartyDetailsError::NotInParty);
+        }
+
         // Batch fetch all users (avoids N+1 queries)
         let user_ids: Vec<String> = party_players.iter().map(|pp| pp.user_id.clone()).collect();
         let users = self.user_repo.find_by_ids(&user_ids).await?;
@@ -105,6 +110,8 @@ impl<U: UserRepository, P: PartyRepository> GetPartyDetails<U, P> {
 pub enum GetPartyDetailsError {
     #[error("Party not found")]
     PartyNotFound,
+    #[error("User is not in this party")]
+    NotInParty,
     #[error("Repository error: {0}")]
     Repository(#[from] RepositoryError),
 }

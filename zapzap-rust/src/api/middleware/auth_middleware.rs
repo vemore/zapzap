@@ -4,9 +4,10 @@ use axum::{
     extract::{Request, State},
     http::StatusCode,
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Json, Response},
 };
 
+use crate::domain::repositories::UserRepository;
 use crate::infrastructure::app_state::AppState;
 
 // Re-export Claims for use in route handlers
@@ -63,21 +64,42 @@ pub async fn optional_auth_middleware(
     next.run(request).await
 }
 
-/// Admin middleware - requires authenticated admin user
+/// Admin middleware - requires an authenticated user who is an admin *now*: the flag is
+/// read from the database, not from the token, so a revoked admin loses access at once
+/// (Node: `adminMiddleware.js`, same statuses, messages and codes). Mounted inside
+/// `auth_middleware`, which sets the claims.
 pub async fn admin_middleware(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
-    // Get claims from request extensions (set by auth_middleware)
-    let claims = request
-        .extensions()
-        .get::<Claims>()
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+) -> Response {
+    let refuse = |status: StatusCode, error: &str, code: &str| {
+        let body = serde_json::json!({ "success": false, "error": error, "code": code });
+        (status, Json(body)).into_response()
+    };
 
-    if !claims.is_admin {
-        return Err(StatusCode::FORBIDDEN);
+    let Some(claims) = request.extensions().get::<Claims>() else {
+        return refuse(
+            StatusCode::UNAUTHORIZED,
+            "Authentication required",
+            "AUTH_REQUIRED",
+        );
+    };
+
+    match state.user_repo.find_by_id(&claims.user_id).await {
+        Ok(Some(user)) if user.is_admin => next.run(request).await,
+        Ok(_) => refuse(
+            StatusCode::FORBIDDEN,
+            "Admin access required",
+            "ADMIN_REQUIRED",
+        ),
+        Err(e) => {
+            tracing::error!("Admin middleware error: {}", e);
+            refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                "INTERNAL_ERROR",
+            )
+        }
     }
-
-    Ok(next.run(request).await)
 }
