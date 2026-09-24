@@ -8,8 +8,8 @@ import 'stats_common.dart';
 
 /// Where [userId] finished [game], or `null` when the entry does not say.
 ///
-/// Rust sends `userPlacement`; Node does not, but its `winnerUserId` still
-/// tells a win apart.
+/// Both backends send `userPlacement`; a Node older than 2026-09-24 does
+/// not, but its `winnerUserId` still tells a win apart.
 int? myPlacement(GameHistoryEntry game, String? userId) =>
     game.userPlacement ??
     (userId != null && game.winnerUserId == userId ? 1 : null);

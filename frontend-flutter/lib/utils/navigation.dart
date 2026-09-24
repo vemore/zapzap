@@ -17,6 +17,14 @@ extension BackNavigation on BuildContext {
     }
   }
 
+  /// [popOrGo], replacing the screen left in the browser's history too: a
+  /// pop is reported to the browser as a new entry, so its Back would
+  /// return to the screen left. For a screen that must not be come back to
+  /// that way — the game, over or left.
+  void leaveFor(String fallback) {
+    Router.neglect(this, () => popOrGo(fallback));
+  }
+
   /// Replaces the screen on show with [location], in the browser's history
   /// too: the address bar shows [location], and the browser's Back skips the
   /// replaced screen as the system Back does. A plain `pushReplacement` would

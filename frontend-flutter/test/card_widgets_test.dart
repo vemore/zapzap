@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -125,14 +123,70 @@ void main() {
       expect(PlayingCard.radiusFor(80), 4);
     });
 
-    testWidgets('a selected card glows amber', (tester) async {
+    testWidgets('a selected card takes an amber edge and glows', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _app(const PlayingCard(cardId: 0, selected: true)),
       );
+      final box = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byType(PlayingCard),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      final edge = (box.foregroundDecoration! as BoxDecoration).border!;
+      expect(edge.top.color, AppColors.amber400);
+      expect(edge.top.width, CardSizes.selectedBorder);
       final shadow = _decoration(tester, find.byType(PlayingCard)).boxShadow!;
       expect(shadow.single.color, AppColors.amber400.withValues(alpha: 0.7));
-      expect(shadow.single.blurRadius, 20);
-      expect(shadow.single.spreadRadius, 8);
+
+      await tester.pumpWidget(_app(const PlayingCard(cardId: 0)));
+      expect(
+        tester
+            .widget<AnimatedContainer>(find.byType(AnimatedContainer))
+            .foregroundDecoration,
+        isNull,
+      );
+    });
+
+    testWidgets('a screen reader selects the card as a tap does', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(
+        _app(PlayingCard(cardId: 19, onTap: () => taps++)),
+      );
+      final card = find.bySemanticsLabel('7 de Cœur');
+      expect(
+        tester.getSemantics(card),
+        matchesSemantics(
+          label: '7 de Cœur',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasSelectedState: true,
+          hasTapAction: true,
+        ),
+      );
+      tester.semantics.tap(find.semantics.byLabel('7 de Cœur'));
+      expect(taps, 1);
+
+      // Disabled, it offers no tap at all.
+      await tester.pumpWidget(
+        _app(PlayingCard(cardId: 19, disabled: true, onTap: () => taps++)),
+      );
+      expect(
+        tester.getSemantics(card),
+        matchesSemantics(
+          label: '7 de Cœur',
+          isButton: true,
+          hasEnabledState: true,
+          hasSelectedState: true,
+        ),
+      );
+      semantics.dispose();
     });
 
     testWidgets('a tap calls onTap', (tester) async {
@@ -199,67 +253,89 @@ void main() {
   group('CardFan', () {
     const hand = [0, 13, 26, 39, 52];
 
-    /// The rotation of the card at [index], in degrees.
-    double angleOf(WidgetTester tester, int index) {
-      final m = tester.widget<Transform>(find.byKey(CardFan.itemKey(index)));
-      final t = m.transform;
-      return math.atan2(t.entry(1, 0), t.entry(0, 0)) * 180 / math.pi;
-    }
-
     Finder cardAt(int index) => find.descendant(
       of: find.byKey(CardFan.itemKey(index)),
       matching: find.byType(PlayingCard),
     );
+
+    /// A fan in a box [width] wide, as the hand gives it.
+    Widget fan(double width, CardFan child) =>
+        _app(SizedBox(width: width, child: child));
 
     testWidgets('renders nothing for an empty hand', (tester) async {
       await tester.pumpWidget(_app(const CardFan(cards: [])));
       expect(find.byType(PlayingCard), findsNothing);
     });
 
-    testWidgets('desktop: 70 px cards on a 150 px fan, spread both ways', (
-      tester,
-    ) async {
-      await tester.pumpWidget(_app(const CardFan(cards: hand)));
-      expect(find.byType(PlayingCard), findsNWidgets(5));
-      expect(tester.getSize(find.byType(CardFan)).height, 150);
-      final card = tester.widget<PlayingCard>(find.byType(PlayingCard).first);
-      expect(card.width, 70);
-      expect(angleOf(tester, 0), lessThan(0));
-      expect(angleOf(tester, 2).abs(), lessThan(1e-9));
-      expect(angleOf(tester, 4), greaterThan(0));
+    test('cards are a quarter of the width, from 76 to 96 px', () {
+      expect(CardFan.layoutFor(5, 328).cardWidth, 82);
+      expect(CardFan.layoutFor(5, 280).cardWidth, CardSizes.handMin);
+      expect(CardFan.layoutFor(5, 900).cardWidth, CardSizes.handMax);
     });
 
-    testWidgets('mobile (< 640 px): 50 px cards on a 100 px fan', (
+    test('a hand that cannot leave 48 px of each card goes onto two rows, '
+        'balanced', () {
+      // 360 px phone: 328 px for the hand.
+      expect(CardFan.layoutFor(6, 328).rowLengths, [6]);
+      expect(CardFan.layoutFor(7, 328).rowLengths, [4, 3]);
+      expect(CardFan.layoutFor(10, 328).rowLengths, [5, 5]);
+      expect(CardFan.layoutFor(13, 328).rowLengths, [5, 4, 4]);
+      for (final count in [1, 4, 5, 6, 7, 10, 13]) {
+        for (final width in [300.0, 328.0, 358.0, 600.0]) {
+          final fan = CardFan.layoutFor(count, width);
+          for (var i = 0; i < count; i++) {
+            final visible = fan.visibleRect(i);
+            expect(
+              visible.width,
+              greaterThanOrEqualTo(CardSizes.handMinVisible),
+              reason: '$count cards on $width px, card $i',
+            );
+            expect(
+              visible.height,
+              greaterThanOrEqualTo(CardSizes.handMinVisible),
+            );
+            expect(fan.cardRect(i).left, greaterThanOrEqualTo(0));
+            expect(fan.cardRect(i).right, lessThanOrEqualTo(width + 0.01));
+          }
+        }
+      }
+    });
+
+    testWidgets('each card takes a tap at the centre of its visible part', (
       tester,
     ) async {
+      const seven = [0, 13, 26, 40, 51, 6, 19];
+      final tapped = <int>[];
       await tester.pumpWidget(
-        _app(const CardFan(cards: hand), size: const Size(400, 800)),
+        fan(328, CardFan(cards: seven, onCardTap: tapped.add)),
       );
-      expect(tester.getSize(find.byType(CardFan)).height, 100);
-      final card = tester.widget<PlayingCard>(find.byType(PlayingCard).first);
-      expect(card.width, 50);
+      final layout = CardFan.layoutFor(seven.length, 328);
+      final origin = tester.getTopLeft(find.byType(CardFan));
+      for (var i = 0; i < seven.length; i++) {
+        expect(tester.getSize(cardAt(i)).width, greaterThanOrEqualTo(76));
+        await tester.tapAt(origin + layout.visibleRect(i).center);
+      }
+      expect(tapped, seven);
     });
 
-    testWidgets('a selected card is lifted, drawn on top and glows', (
+    testWidgets('a selected card rises 20 px and keeps its place', (
       tester,
     ) async {
+      await tester.pumpWidget(fan(328, const CardFan(cards: hand)));
+      final resting = tester.getRect(cardAt(2));
       await tester.pumpWidget(
-        _app(const CardFan(cards: hand, selectedCards: {26})),
+        fan(328, const CardFan(cards: hand, selectedCards: {26})),
       );
       final lifted = tester.getRect(cardAt(2));
-      await tester.pumpWidget(_app(const CardFan(cards: hand)));
-      final resting = tester.getRect(cardAt(2));
-      expect(resting.top - lifted.top, closeTo(25, 0.01));
+      expect(resting.top - lifted.top, CardSizes.selectedLift);
+      expect(lifted.left, resting.left);
 
-      await tester.pumpWidget(
-        _app(const CardFan(cards: hand, selectedCards: {26})),
-      );
+      // Still under the card after it: that one's visible part stays whole.
       final stack = tester.widget<Stack>(
         find.descendant(of: find.byType(CardFan), matching: find.byType(Stack)),
       );
-      expect(stack.children.last.key, CardFan.itemKey(2));
-      final selected = tester.widget<PlayingCard>(cardAt(2));
-      expect(selected.selected, isTrue);
+      expect(stack.children[2].key, CardFan.itemKey(2));
+      expect(tester.widget<PlayingCard>(cardAt(2)).selected, isTrue);
     });
 
     testWidgets('a tap reports the card id; disabled reports nothing', (
@@ -267,24 +343,16 @@ void main() {
     ) async {
       final tapped = <int>[];
       await tester.pumpWidget(
-        _app(CardFan(cards: hand, onCardTap: tapped.add)),
+        fan(328, CardFan(cards: hand, onCardTap: tapped.add)),
       );
       await tester.tap(cardAt(4));
       expect(tapped, [52]);
 
       await tester.pumpWidget(
-        _app(CardFan(cards: hand, onCardTap: tapped.add, disabled: true)),
+        fan(328, CardFan(cards: hand, onCardTap: tapped.add, disabled: true)),
       );
       await tester.tap(cardAt(4), warnIfMissed: false);
       expect(tapped, [52]);
-    });
-
-    testWidgets('the spread is capped at maxSpreadAngle', (tester) async {
-      final many = List.generate(10, (i) => i);
-      await tester.pumpWidget(_app(CardFan(cards: many)));
-      // 10 × 12° > 75°, so the fan runs from -37.5° to +37.5°.
-      expect(angleOf(tester, 0), closeTo(-37.5, 1e-6));
-      expect(angleOf(tester, 9), closeTo(37.5, 1e-6));
     });
   });
 }

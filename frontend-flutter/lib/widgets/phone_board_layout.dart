@@ -7,17 +7,17 @@ enum PhoneBoardSlot { players, felt, hand, actions }
 
 /// How the board shares a phone's height between its sections.
 ///
-/// Each section but the moves is a scroll view laid out with a loose height:
-/// it takes what its content needs, up to the height it is given, and
-/// scrolls past that. The moves take what they need, against the bottom.
-/// The players get up to 3/11 of what is left, the hand up to 4/11, and the
-/// felt everything the other two do not use — a `Column` of `Flexible`s
-/// would leave that unused share as an empty band and cut the felt.
+/// The players, the hand and the moves each take what their content needs:
+/// the moves against the bottom, the players up to [playersShare] of what is
+/// left, the hand as much as leaves the felt [feltFloor] of it — each but
+/// the moves a scroll view that scrolls past that. The felt fills everything
+/// between the players and the hand, so no empty band ever lies between the
+/// felt and the hand; its own content scrolls inside its edge when it needs
+/// more.
 ///
-/// While this player draws ([feltFirst]) the felt is served before the
-/// hand: the draw is played on the felt, and the hand, which cannot be
-/// played then, keeps at least [handFloor] of the height and scrolls.
-/// Whatever the sections leave lies between the felt and the hand.
+/// While this player draws ([feltFirst]) the hand, which cannot be played
+/// then, keeps at most [drawHandShare] of the height and scrolls, and the
+/// felt, where the draw is played, gets the rest.
 class PhoneBoardLayout extends MultiChildLayoutDelegate {
   PhoneBoardLayout({required this.feltFirst});
 
@@ -26,12 +26,14 @@ class PhoneBoardLayout extends MultiChildLayoutDelegate {
   /// The space between two sections.
   static const gap = 6.0;
 
-  /// The players' and the hand's largest shares of the height.
+  /// The players' largest share of the height.
   static const playersShare = 3 / 11;
-  static const handShare = 4 / 11;
 
-  /// The least of the height the hand keeps while the felt is served first.
-  static const handFloor = 0.2;
+  /// The least share of the height the hand leaves the felt.
+  static const feltFloor = 0.2;
+
+  /// The hand's largest share while the felt is served first.
+  static const drawHandShare = 0.15;
 
   @override
   void performLayout(Size size) {
@@ -49,32 +51,23 @@ class PhoneBoardLayout extends MultiChildLayoutDelegate {
       PhoneBoardSlot.players,
       upTo(space * playersShare),
     ).height;
-    final double felt;
-    final double hand;
-    if (feltFirst) {
-      final handKeeps = math.min(space * handShare, space * handFloor);
-      felt = layoutChild(
-        PhoneBoardSlot.felt,
-        upTo(math.max(0, space - players - handKeeps)),
-      ).height;
-      hand = layoutChild(
-        PhoneBoardSlot.hand,
-        upTo(math.max(0, math.min(space * handShare, space - players - felt))),
-      ).height;
-    } else {
-      hand = layoutChild(PhoneBoardSlot.hand, upTo(space * handShare)).height;
-      felt = layoutChild(
-        PhoneBoardSlot.felt,
-        upTo(math.max(0, space - players - hand)),
-      ).height;
-    }
+    final hand = layoutChild(
+      PhoneBoardSlot.hand,
+      upTo(
+        feltFirst
+            ? space * drawHandShare
+            : math.max(0, space * (1 - feltFloor) - players),
+      ),
+    ).height;
+    final felt = math.max(0.0, space - players - hand);
+    layoutChild(
+      PhoneBoardSlot.felt,
+      BoxConstraints.tightFor(width: width, height: felt),
+    );
 
     positionChild(PhoneBoardSlot.players, Offset.zero);
     positionChild(PhoneBoardSlot.felt, Offset(0, players + gap));
-    positionChild(
-      PhoneBoardSlot.hand,
-      Offset(0, size.height - actions - gap - hand),
-    );
+    positionChild(PhoneBoardSlot.hand, Offset(0, players + felt + 2 * gap));
     positionChild(PhoneBoardSlot.actions, Offset(0, size.height - actions));
   }
 

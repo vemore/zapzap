@@ -8,6 +8,7 @@ import '../providers/party_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/field_touch.dart';
 import '../utils/navigation.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/player_slot_selector.dart';
@@ -15,7 +16,9 @@ import '../widgets/zapzap_app_bar.dart';
 
 /// The create-party form (`CreateParty.jsx`): a name, the number of seats,
 /// the visibility, and one selector per seat — a human, or a bot of a
-/// difficulty. The creator always holds the first seat.
+/// difficulty. The creator always holds the first seat. The name shows its
+/// refusal once edited and left, or on submit ([FieldTouch]), never on a
+/// form that just opened; Create stays active and says what is missing.
 class CreatePartyScreen extends StatefulWidget {
   const CreatePartyScreen({super.key});
 
@@ -26,6 +29,9 @@ class CreatePartyScreen extends StatefulWidget {
 class _CreatePartyScreenState extends State<CreatePartyScreen> {
   late final CreatePartyProvider _create;
   final _name = TextEditingController();
+  late final _nameTouch = FieldTouch(() {
+    if (mounted) setState(() {});
+  });
 
   @override
   void initState() {
@@ -37,11 +43,18 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _nameTouch.dispose();
     _create.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    _nameTouch.submitted();
+    if (_name.text.trim().length < partyNameMinLength) {
+      setState(() {});
+      _nameTouch.focus.requestFocus();
+      return;
+    }
     final partyId = await _create.submit(_name.text);
     // The lobby takes the form's place: Back from it returns to the list,
     // not to a form whose party already exists.
@@ -56,8 +69,9 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
     final name = _name.text.trim();
     // Node refuses a name outside 3-50 characters with a generic 500
     // (`src/use-cases/party/CreateParty.js:47-53`): refuse it here instead.
-    final named = name.length >= partyNameMinLength;
-    final nameError = name.isEmpty
+    final nameError = !_nameTouch.touched
+        ? null
+        : name.isEmpty
         ? l10n.createPartyNameRequired
         : name.length < partyNameMinLength
         ? l10n.createPartyNameTooShort(partyNameMinLength)
@@ -80,6 +94,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
             TextField(
               key: const Key('party-name'),
               controller: _name,
+              focusNode: _nameTouch.focus,
               enabled: !_create.busy,
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
@@ -88,6 +103,8 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
                 border: const OutlineInputBorder(),
                 errorText: nameError,
               ),
+              onChanged: (_) => _nameTouch.edited(),
+              onSubmitted: (_) => _submit(),
               inputFormatters: [
                 LengthLimitingTextInputFormatter(partyNameMaxLength),
               ],
@@ -199,7 +216,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
             const SizedBox(height: 24),
             FilledButton(
               key: const Key('create-submit'),
-              onPressed: named && !_create.busy ? _submit : null,
+              onPressed: _create.busy ? null : _submit,
               child: Text(
                 _create.busy
                     ? l10n.createPartySubmitting

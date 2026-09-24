@@ -56,6 +56,18 @@
   "@loginRegisterLink": {
     "description": "Link from the login screen to the register screen"
   },
+  "authPitch": "Vide ta main : à 5 points ou moins, crie ZapZap !",
+  "@authPitch": {
+    "description": "One line under the logo of the login and register screens that says what the game is about"
+  },
+  "authShowPassword": "Afficher le mot de passe",
+  "@authShowPassword": {
+    "description": "Tooltip of the eye button that reveals the password (login and register)"
+  },
+  "authHidePassword": "Masquer le mot de passe",
+  "@authHidePassword": {
+    "description": "Tooltip of the eye button that hides the password again (login and register)"
+  },
   "registerTitle": "Créer un compte",
   "@registerTitle": {
     "description": "Title of the register screen"

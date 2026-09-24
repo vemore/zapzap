@@ -29,8 +29,10 @@ enum TableStep {
 /// the felt takes an amber edge and says what to tap, the pile goes to full
 /// opacity and the deck becomes a target too.
 ///
-/// It takes the height its content needs, up to the height it is given, and
-/// its content scrolls inside the edge past that.
+/// Given a height it must fill (tight constraints), it fills it, its
+/// content centred; given a loose one, it takes the height its content
+/// needs up to that. Either way its content scrolls inside the edge past
+/// that.
 class GameTableArea extends StatefulWidget {
   const GameTableArea({
     super.key,
@@ -44,7 +46,7 @@ class GameTableArea extends StatefulWidget {
     this.onDeckTap,
     this.selectedDiscardCard,
     this.takeCard,
-    this.cardWidth = 45,
+    this.cardWidth = CardSizes.tablePhone,
   });
 
   final List<int> cardsPlayed;
@@ -154,10 +156,14 @@ class _GameTableAreaState extends State<GameTableArea> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final message = _message(l10n);
     final drawing = widget.step == TableStep.draw;
+    // While this player draws, the last action is their own play, which
+    // the "Posées" row shows already: the draw hint takes the line.
+    final message = drawing ? null : _message(l10n);
     final take = widget.takeCard;
     return Stack(
+      // Passes a tight height down to the felt, which then fills it.
+      fit: StackFit.passthrough,
       children: [
         Container(
           key: const Key('gameTable'),
@@ -177,74 +183,83 @@ class _GameTableAreaState extends State<GameTableArea> {
           // The content scrolls inside the edge: a felt given less height
           // than it needs keeps its whole border, amber in the draw step,
           // instead of being cut by a scroll view around it.
-          child: SingleChildScrollView(
-            key: const Key('gameTableScroll'),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (message != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      message,
-                      key: const Key('tableMessage'),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF86EFAC),
-                      ),
-                    ),
-                  ),
-                if (drawing)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      l10n.gameTableDrawHint,
-                      key: const Key('drawInstruction'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFFFDE68A),
-                      ),
-                    ),
-                  ),
-                if (widget.cardsPlayed.isNotEmpty) ...[
-                  _label(l10n.gameTablePlayedLabel),
-                  _cards(
-                    widget.cardsPlayed,
-                    (id) => PlayingCard(
-                      cardId: id,
-                      width: widget.cardWidth,
-                      disabled: true,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                // The pile and the deck side by side, the deck folding under
-                // the pile when the pile is long.
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.end,
-                  spacing: 18,
-                  runSpacing: 6,
-                  children: [_pile(l10n), _deck(l10n)],
+          child: LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              key: const Key('gameTableScroll'),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: box.hasTightHeight ? box.maxHeight : 0,
                 ),
-                if (drawing && take != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      _takeHint(l10n, GameCard(take)),
-                      key: const Key('takeHint'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFFBBF7D0),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            message,
+                            key: const Key('tableMessage'),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF86EFAC),
+                            ),
+                          ),
+                        ),
+                      if (drawing)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            l10n.gameTableDrawHint,
+                            key: const Key('drawInstruction'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFFFDE68A),
+                            ),
+                          ),
+                        ),
+                      if (widget.cardsPlayed.isNotEmpty) ...[
+                        _label(l10n.gameTablePlayedLabel),
+                        _cards(
+                          widget.cardsPlayed,
+                          (id) => PlayingCard(
+                            cardId: id,
+                            width: widget.cardWidth,
+                            disabled: true,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      // The pile and the deck side by side, the deck folding under
+                      // the pile when the pile is long.
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        spacing: 18,
+                        runSpacing: 6,
+                        children: [_pile(l10n), _deck(l10n)],
                       ),
-                    ),
+                      if (drawing && take != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            _takeHint(l10n, GameCard(take)),
+                            key: const Key('takeHint'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFFBBF7D0),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
         ),
@@ -333,9 +348,7 @@ class _GameTableAreaState extends State<GameTableArea> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CardBack(
-              size: widget.cardWidth >= 60 ? CardBackSize.md : CardBackSize.sm,
-            ),
+            const CardBack(size: CardBackSize.md),
             const SizedBox(height: 3),
             Text(
               l10n.gameDeckLabel(widget.deckSize),
@@ -348,7 +361,7 @@ class _GameTableAreaState extends State<GameTableArea> {
   }
 
   Widget _label(String text, {Key? key}) => Padding(
-    padding: const EdgeInsets.only(bottom: 4),
+    padding: const EdgeInsets.only(bottom: 2),
     child: Text(
       text,
       key: key,

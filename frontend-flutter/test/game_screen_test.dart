@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/providers/game_provider.dart';
@@ -344,10 +346,7 @@ void main() {
       await tester.tap(find.byKey(const Key('play-cards')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text("Tu n'as pas de place à cette table."),
-        findsOneWidget,
-      );
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
       expectBoardStanding(tester);
     });
 
@@ -717,6 +716,178 @@ void main() {
       expect(find.byType(GamePlayerTable), findsNothing);
       expect(find.text('Parties'), findsWidgets);
     });
+
+    testWidgets('from the list, the back control pops back to it: the '
+        "browser's Back never returns to the game", (tester) async {
+      // What the router tells the browser: each new path, and whether it
+      // replaces the entry on show rather than adding one.
+      final reported = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.navigation,
+        (call) async {
+          if (call.method == 'routeInformationUpdated') {
+            final arguments = call.arguments as Map;
+            final path = Uri.parse(arguments['uri'] as String).path;
+            reported.add(
+              arguments['replace'] == true ? '$path (replace)' : path,
+            );
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.navigation,
+          null,
+        ),
+      );
+      await pumpGame(tester, playing());
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      // What the list does (`parties_screen.dart`): the game goes on top.
+      router.go(AppRoutes.parties);
+      await tester.pumpAndSettle();
+      router.push(AppRoutes.gamePath('p1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GamePlayerTable), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('game-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GamePlayerTable), findsNothing);
+      expect(router.state.uri.path, AppRoutes.parties);
+      // Popped, not gone to: nothing is left under the list.
+      expect(router.canPop(), isFalse);
+      // A pop, like a `go`, reaches the browser as a new entry, and its
+      // Back would reopen the game: the game's entry is replaced instead.
+      expect(reported.last, '${AppRoutes.parties} (replace)');
+    });
+  });
+
+  group('the cards', () {
+    const phone = Size(360, 740);
+    const seven = [0, 13, 26, 40, 51, 6, 19];
+
+    /// This player's turn with [seven] in hand, the previous player's run
+    /// of three up for grabs and, in the draw step, a run of three played.
+    FakeGameBackend turn(String currentAction) => playing(
+      currentAction: currentAction,
+      playerHand: seven,
+      lastCardsPlayed: const [32, 33, 34],
+      cardsPlayed: currentAction == 'draw' ? const [3, 4, 5] : const [],
+    );
+
+    Set<int> selectedInHand(WidgetTester tester) =>
+        tester.widget<CardFan>(find.byType(CardFan)).selectedCards;
+
+    Iterable<PlayingCard> feltCards(WidgetTester tester) =>
+        tester.widgetList<PlayingCard>(
+          find.descendant(
+            of: find.byType(GameTableArea),
+            matching: find.byType(PlayingCard),
+          ),
+        );
+
+    testWidgets('at 360×740 each of seven cards in hand is 76 px wide or '
+        'more, and a tap at the centre of its visible part selects it', (
+      tester,
+    ) async {
+      await pumpGame(tester, turn('play'), size: phone);
+
+      final fan = find.byType(CardFan);
+      final layout = CardFan.layoutFor(seven.length, tester.getSize(fan).width);
+      expect(layout.rows, 2);
+      final origin = tester.getTopLeft(fan);
+      for (var i = 0; i < seven.length; i++) {
+        final card = find.descendant(
+          of: find.byKey(CardFan.itemKey(i)),
+          matching: find.byType(PlayingCard),
+        );
+        expect(tester.getSize(card).width, greaterThanOrEqualTo(76));
+        final visible = layout.visibleRect(i);
+        expect(visible.width, greaterThanOrEqualTo(48));
+
+        final centre = origin + visible.center;
+        await tester.tapAt(centre);
+        await tester.pumpAndSettle();
+        expect(selectedInHand(tester), {seven[i]}, reason: 'card $i');
+        await tester.tapAt(centre);
+        await tester.pumpAndSettle();
+        expect(selectedInHand(tester), isEmpty);
+      }
+    });
+
+    testWidgets('at 360×740 the pile and the played cards are 70 px wide', (
+      tester,
+    ) async {
+      await pumpGame(tester, turn('draw'), size: phone);
+      final widths = feltCards(tester).map((card) => card.width).toSet();
+      expect(feltCards(tester), hasLength(6));
+      expect(widths.every((width) => width >= 70), isTrue, reason: '$widths');
+    });
+
+    testWidgets('on a wide screen they are 84 px wide', (tester) async {
+      await pumpGame(tester, turn('draw'));
+      final widths = feltCards(tester).map((card) => card.width).toSet();
+      expect(widths.every((width) => width >= 84), isTrue, reason: '$widths');
+    });
+
+    testWidgets('a screen reader selects a card of the hand while playing', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpGame(tester, turn('play'), size: phone);
+
+      tester.semantics.tap(find.semantics.byLabel('7 de Cœur'));
+      await tester.pumpAndSettle();
+      expect(selectedInHand(tester), {19});
+      semantics.dispose();
+    });
+
+    testWidgets('a screen reader selects a card of the pile while drawing, '
+        'and is offered no tap on the hand', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpGame(
+        tester,
+        playing(
+          currentAction: 'draw',
+          playerHand: const [0, 13, 26, 40, 51, 6],
+          lastCardsPlayed: const [19, 32],
+          cardsPlayed: const [3, 4, 5],
+        ),
+        size: phone,
+      );
+
+      tester.semantics.tap(find.semantics.byLabel('7 de Cœur'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<PlayingCard>(find.byKey(GameTableArea.discardKey(19)))
+            .selected,
+        isTrue,
+      );
+      // The hand cannot be played in the draw step: no tap to offer.
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('A de Pique'))
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isFalse,
+      );
+      semantics.dispose();
+    });
+
+    for (final step in ['play', 'draw']) {
+      testWidgets('at 360×740 and a text scale of 1.5 ($step) nothing '
+          'overflows and less than 24 px part the felt from the hand', (
+        tester,
+      ) async {
+        await pumpGame(tester, turn(step), size: phone, textScale: 1.5);
+        expect(tester.takeException(), isNull);
+        final felt = tester.getRect(find.byKey(const Key('gameTable')));
+        final hand = tester.getRect(find.byKey(const Key('gameHand')));
+        expect(hand.top - felt.bottom, inInclusiveRange(0, 24));
+      });
+    }
   });
 
   group('failures', () {

@@ -5,13 +5,15 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../router.dart';
+import '../utils/field_touch.dart';
 import '../utils/validators.dart';
 import '../widgets/auth_form.dart';
 
 /// Sign in with a username and a password (`Login.jsx`). Only "both are
 /// filled in" is checked here, as in React: an account created before the
-/// register rules still signs in. On success the router, which follows
-/// [AuthProvider], leaves this screen.
+/// register rules still signs in. The button stays active: a click with a
+/// field missing says which one under it ([FieldTouch]). On success the
+/// router, which follows [AuthProvider], leaves this screen.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -22,24 +24,36 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
-  bool _usernameTouched = false;
-  bool _passwordTouched = false;
+  late final _usernameTouch = FieldTouch(_refresh);
+  late final _passwordTouch = FieldTouch(_refresh);
   bool _busy = false;
   String? _error;
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
+    _usernameTouch.dispose();
+    _passwordTouch.dispose();
     super.dispose();
   }
 
   bool get _usernameMissing => _username.text.trim().isEmpty;
   bool get _passwordMissing => _password.text.isEmpty;
-  bool get _canSubmit => !_busy && !_usernameMissing && !_passwordMissing;
 
   Future<void> _submit() async {
-    if (!_canSubmit) return;
+    if (_busy) return;
+    _usernameTouch.submitted();
+    _passwordTouch.submitted();
+    if (_usernameMissing || _passwordMissing) {
+      setState(() {});
+      (_usernameMissing ? _usernameTouch : _passwordTouch).focus.requestFocus();
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final auth = context.read<AuthProvider>();
     setState(() {
@@ -66,49 +80,49 @@ class _LoginScreenState extends State<LoginScreen> {
         link: l10n.loginRegisterLink,
         onPressed: _busy ? null : () => context.go(AppRoutes.register),
       ),
-      children: [
+      fields: [
         TextField(
           key: const Key('login-username'),
           controller: _username,
+          focusNode: _usernameTouch.focus,
           enabled: !_busy,
+          autocorrect: false,
           autofillHints: const [AutofillHints.username],
           textInputAction: TextInputAction.next,
           decoration: InputDecoration(
             labelText: l10n.authUsernameLabel,
             hintText: l10n.loginUsernameHint,
-            errorText: _usernameTouched && _usernameMissing
+            errorText: _usernameTouch.touched && _usernameMissing
                 ? usernameErrorText(l10n, UsernameError.required)
                 : null,
           ),
-          onChanged: (_) => setState(() => _usernameTouched = true),
+          onChanged: (_) => setState(_usernameTouch.edited),
         ),
         const SizedBox(height: 16),
-        TextField(
+        AuthPasswordField(
           key: const Key('login-password'),
           controller: _password,
+          focusNode: _passwordTouch.focus,
           enabled: !_busy,
-          obscureText: true,
           autofillHints: const [AutofillHints.password],
-          textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: l10n.authPasswordLabel,
             hintText: l10n.loginPasswordHint,
-            errorText: _passwordTouched && _passwordMissing
+            errorText: _passwordTouch.touched && _passwordMissing
                 ? passwordErrorText(l10n, PasswordError.required)
                 : null,
           ),
-          onChanged: (_) => setState(() => _passwordTouched = true),
+          onChanged: (_) => setState(_passwordTouch.edited),
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: 24),
-        AuthSubmitButton(
-          key: const Key('login-submit'),
-          label: l10n.loginSubmit,
-          busyLabel: l10n.loginSubmitting,
-          busy: _busy,
-          onPressed: _canSubmit ? _submit : null,
-        ),
       ],
+      submit: AuthSubmitButton(
+        key: const Key('login-submit'),
+        label: l10n.loginSubmit,
+        busyLabel: l10n.loginSubmitting,
+        busy: _busy,
+        onPressed: _submit,
+      ),
     );
   }
 }
