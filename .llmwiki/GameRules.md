@@ -38,7 +38,7 @@
 - Play: must be current player and phase Play (`play_cards.rs` via `execute_play`, `game_service.rs:64-117`); non-empty (`play_cards.rs:71`). First play of a round keeps the flipped card drawable; later plays push the previous `last_cards_played` to `discard_pile` and make the previous player's cards drawable (`game_service.rs:95-106`). The player draws from the *previous* player's cards, never their own.
 - Draw: phase Draw only (`game_service.rs:120-126`); `source == "played"` means discard, anything else deck (`zapzap-rust/src/application/game/draw_card.rs:71`); taking from discard records it in `card_tracker` (`game_service.rs:139`).
 - Empty deck: `discard_pile` (not `last_cards_played`) is reshuffled into the deck; both empty → error "No cards to draw" (`game_service.rs:143-149`). Matches `GAME_RULES.md:99-113`.
-- Turn advance skips eliminated players (`game_state.rs:395-403`, called `game_service.rs:163`).
+- Turn advance skips eliminated players (`game_state.rs:479-487`, called `game_service.rs:183`).
 
 ### ZapZap
 - Allowed only in phase Play, on your turn, hand value ≤5 with Joker = 0 (`zapzap-rust/src/application/game/call_zapzap.rs:70-83`, `card_analyzer.rs:76-78`, re-checked `game_service.rs:174`).

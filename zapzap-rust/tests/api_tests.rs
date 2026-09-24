@@ -2533,3 +2533,370 @@ mod google_and_bot_admin {
         assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
     }
 }
+
+// ============================================================================
+// GET /state and POST /nextRound answer Node's shapes
+// ============================================================================
+
+/// The keys of a JSON object, sorted
+fn keys_of(v: &Value) -> Vec<String> {
+    let mut keys: Vec<String> = v
+        .as_object()
+        .unwrap_or_else(|| panic!("not an object: {v}"))
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+async fn game_state(app: &mut Router, party_id: &str, token: &str) -> Value {
+    let (status, body) = get_auth(app, &format!("/api/game/{party_id}/state"), token).await;
+    assert_eq!(status, StatusCode::OK, "state: {body}");
+    body
+}
+
+#[tokio::test]
+async fn test_state_sends_nodes_always_present_keys() {
+    let (mut app, _state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "sk").await;
+
+    let body = game_state(&mut app, &party_id, &tokens[0]).await;
+    assert!(body["party"]["currentRoundId"].is_string(), "{body}");
+    assert_eq!(body["gameState"]["wasCounterActed"], false, "{body}");
+    assert_eq!(body["gameState"]["gameFinished"], false, "{body}");
+    // Node's players are {playerIndex, userId, username}
+    for p in body["players"].as_array().unwrap() {
+        assert_eq!(keys_of(p), ["playerIndex", "userId", "username"], "{p}");
+    }
+    // No move yet this round
+    assert!(body["gameState"]["lastAction"].is_null(), "{body}");
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_select_play_and_draw() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "la").await;
+    let url = |a: &str| format!("/api/game/{party_id}/{a}");
+
+    // selectHandSize: {type, playerIndex, handSize}, no timestamp (as Node)
+    let starter = game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["currentTurn"]
+        .as_u64()
+        .unwrap() as usize;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("selectHandSize"),
+        json!({"handSize": 5}),
+        &tokens[starter],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = &game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["lastAction"];
+    assert_eq!(
+        *la,
+        json!({"type": "selectHandSize", "playerIndex": starter, "handSize": 5})
+    );
+
+    // play: {type, playerIndex, cardIds, timestamp}
+    let hands: [&[u8]; 3] = [
+        &[0, 1, 2, 3, 4],
+        &[13, 14, 15, 16, 17],
+        &[26, 27, 28, 29, 30],
+    ];
+    set_game_state(&state, &party_id, &hands, &[0, 0, 0], 0, GameAction::Play).await;
+    set_piles(&state, &party_id, &[40], false).await;
+    let (status, body) =
+        post_json_auth(&mut app, &url("play"), json!({"cardIds": [4]}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[1]).await["gameState"]["lastAction"].clone();
+    assert_eq!(
+        keys_of(&la),
+        ["cardIds", "playerIndex", "timestamp", "type"],
+        "{la}"
+    );
+    assert_eq!(la["type"], "play");
+    assert_eq!(la["playerIndex"], 0);
+    assert_eq!(la["cardIds"], json!([4]));
+    assert!(
+        la["timestamp"].as_u64().unwrap() > 1_600_000_000_000,
+        "{la}"
+    );
+
+    // draw from the deck: {type, playerIndex, source, deckReshuffled, timestamp} — the
+    // card drawn stays secret (Node's cardId leak is not copied)
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("draw"),
+        json!({"source": "deck"}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[1]).await["gameState"]["lastAction"].clone();
+    assert_eq!(
+        keys_of(&la),
+        [
+            "deckReshuffled",
+            "playerIndex",
+            "source",
+            "timestamp",
+            "type"
+        ],
+        "{la}"
+    );
+    assert_eq!(la["type"], "draw");
+    assert_eq!(la["playerIndex"], 0);
+    assert_eq!(la["source"], "deck");
+    assert_eq!(la["deckReshuffled"], false);
+    assert!(
+        la.get("cardId").is_none(),
+        "a deck draw names no card: {la}"
+    );
+
+    // draw from the played pile: the card taken is on the table for all, and named
+    let (status, body) =
+        post_json_auth(&mut app, &url("play"), json!({"cardIds": [17]}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("draw"),
+        json!({"source": "played", "cardId": 4}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[2]).await["gameState"]["lastAction"].clone();
+    assert_eq!(la["type"], "draw");
+    assert_eq!(la["playerIndex"], 1);
+    assert_eq!(la["source"], "played");
+    assert_eq!(la["cardId"], 4);
+    assert_eq!(la["deckReshuffled"], false);
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_a_reshuffling_draw() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "rs").await;
+    let hands: [&[u8]; 3] = [&[0, 1, 2], &[13, 14, 15], &[26, 27, 28]];
+    set_game_state(&state, &party_id, &hands, &[0, 0, 0], 0, GameAction::Draw).await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.deck.clear();
+    gs.discard_pile = vec![40, 41, 42];
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/draw"),
+        json!({"source": "deck"}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["lastAction"].clone();
+    assert_eq!(la["source"], "deck");
+    assert_eq!(la["deckReshuffled"], true, "{la}");
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_a_zapzap() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "lz").await;
+
+    // Player 1 calls with 3 points, player 0 ties: counteracted by seat 0, which Node's
+    // `counterActedByPlayerIndex || null` turns into null; Rust answers 0
+    let hands: [&[u8]; 3] = [&[0, 1], &[13, 14], &[26, 27, 28]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 20, 30],
+        1,
+        GameAction::Play,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let body = game_state(&mut app, &party_id, &tokens[0]).await;
+    let gs = &body["gameState"];
+    let la = &gs["lastAction"];
+    assert_eq!(
+        keys_of(la),
+        [
+            "callerHandPoints",
+            "counterActedByPlayerIndex",
+            "playerIndex",
+            "roundScores",
+            "timestamp",
+            "type",
+            "wasCounterActed"
+        ],
+        "{la}"
+    );
+    assert_eq!(la["type"], "zapzap");
+    assert_eq!(la["playerIndex"], 1);
+    assert_eq!(la["wasCounterActed"], true);
+    assert_eq!(la["counterActedByPlayerIndex"], 0);
+    assert_eq!(la["callerHandPoints"], 3);
+    assert_eq!(la["roundScores"], json!({"0": 0, "1": 13, "2": 6}));
+    assert_eq!(gs["wasCounterActed"], true);
+    assert_eq!(gs["counterActedByPlayerIndex"], 0);
+    assert_eq!(gs["roundScores"], la["roundScores"]);
+    assert_eq!(gs["gameFinished"], false);
+}
+
+#[tokio::test]
+async fn test_next_round_answers_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "nr").await;
+    let players = state.party_repo.get_party_players(&party_id).await.unwrap();
+    let user_of = |i: u8| {
+        players
+            .iter()
+            .find(|p| p.player_index == i)
+            .unwrap()
+            .user_id
+            .clone()
+    };
+
+    // A finished round, player 1 out past 100
+    let hands: [&[u8]; 3] = [&[0], &[13], &[26]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 120, 30],
+        0,
+        GameAction::Finished,
+    )
+    .await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.eliminate_player(1);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        keys_of(&body),
+        [
+            "eliminatedPlayers",
+            "gameFinished",
+            "round",
+            "scores",
+            "startingPlayer",
+            "success"
+        ],
+        "{body}"
+    );
+    assert_eq!(body["gameFinished"], false);
+    assert_eq!(keys_of(&body["round"]), ["id", "roundNumber", "status"]);
+    assert_eq!(body["round"]["status"], "active");
+    assert_eq!(body["scores"], json!({"0": 10, "1": 120, "2": 30}));
+    assert_eq!(
+        body["eliminatedPlayers"],
+        json!([{"userId": user_of(1), "playerIndex": 1, "score": 120}])
+    );
+}
+
+#[tokio::test]
+async fn test_next_round_at_the_end_of_the_game_answers_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "ng").await;
+    let players = state.party_repo.get_party_players(&party_id).await.unwrap();
+    let user_of = |i: u8| {
+        players
+            .iter()
+            .find(|p| p.player_index == i)
+            .unwrap()
+            .user_id
+            .clone()
+    };
+
+    // Players 1 and 2 out: player 0 wins
+    let hands: [&[u8]; 3] = [&[0], &[13], &[26]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 120, 130],
+        0,
+        GameAction::Finished,
+    )
+    .await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.eliminate_player(1);
+    gs.eliminate_player(2);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        keys_of(&body),
+        [
+            "eliminatedPlayers",
+            "finalScores",
+            "gameFinished",
+            "success",
+            "winner"
+        ],
+        "{body}"
+    );
+    assert_eq!(body["gameFinished"], true);
+    assert_eq!(
+        body["winner"],
+        json!({"userId": user_of(0), "playerIndex": 0, "score": 10})
+    );
+    assert_eq!(body["finalScores"], json!({"0": 10, "1": 120, "2": 130}));
+    assert_eq!(
+        body["eliminatedPlayers"],
+        json!([
+            {"userId": user_of(1), "playerIndex": 1, "score": 120},
+            {"userId": user_of(2), "playerIndex": 2, "score": 130}
+        ])
+    );
+}

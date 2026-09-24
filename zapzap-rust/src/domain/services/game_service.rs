@@ -6,7 +6,10 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
-use crate::domain::value_objects::{GameAction, GameState};
+use crate::domain::value_objects::{
+    now_millis, GameAction, GameState, LastAction, LAST_ACTION_DRAW, LAST_ACTION_PLAY,
+    LAST_ACTION_ZAPZAP,
+};
 use crate::infrastructure::bot::card_analyzer;
 
 /// Initialize a new round with shuffled deck and dealt hands
@@ -110,6 +113,14 @@ pub fn execute_play(state: &mut GameState, cards: &[u8]) -> Result<(), &'static 
         state.cards_played.extend(cards.iter().copied());
     }
 
+    state.last_action = LastAction {
+        action_type: LAST_ACTION_PLAY,
+        player_index: state.current_turn,
+        card_ids: cards.iter().copied().collect(),
+        timestamp: now_millis(),
+        ..LastAction::default()
+    };
+
     // Update action to draw
     state.current_action = GameAction::Draw;
 
@@ -126,6 +137,7 @@ pub fn execute_draw(
         return Err("Not in draw phase");
     }
 
+    let mut deck_reshuffled = false;
     let card = if from_discard {
         // Draw from last played cards
         let card = card_id.ok_or("Must specify card to draw from discard")?;
@@ -148,6 +160,7 @@ pub fn execute_draw(
             state.deck.append(&mut state.discard_pile);
             let mut rng = rand::rng();
             state.deck.shuffle(&mut rng);
+            deck_reshuffled = true;
         }
         state.deck.pop().ok_or("Deck is empty")?
     };
@@ -155,9 +168,16 @@ pub fn execute_draw(
     // Add to player's hand
     state.hands[state.current_turn as usize].push(card);
 
-    // Update state
-    state.last_action.action_type = 1; // draw
-    state.last_action.player_index = state.current_turn;
+    // The card is named only when it came from the played pile, in everyone's sight
+    state.last_action = LastAction {
+        action_type: LAST_ACTION_DRAW,
+        player_index: state.current_turn,
+        from_played: Some(from_discard),
+        card_id: from_discard.then_some(card),
+        deck_reshuffled,
+        timestamp: now_millis(),
+        ..LastAction::default()
+    };
 
     // Advance to next player
     state.advance_turn();
@@ -252,10 +272,14 @@ pub fn execute_zapzap(state: &mut GameState) -> Result<ZapZapResult, &'static st
     }
 
     // Update last action
-    state.last_action.action_type = 3; // zapzap
-    state.last_action.player_index = caller;
-    state.last_action.was_counteracted = counteracted_by.is_some();
-    state.last_action.caller_hand_points = caller_value as u8;
+    state.last_action = LastAction {
+        action_type: LAST_ACTION_ZAPZAP,
+        player_index: caller,
+        was_counteracted: counteracted_by.is_some(),
+        caller_hand_points: caller_value as u8,
+        timestamp: now_millis(),
+        ..LastAction::default()
+    };
 
     // Store round end data in game state
     let mut round_scores_array = [0u16; crate::domain::value_objects::MAX_PLAYERS];
