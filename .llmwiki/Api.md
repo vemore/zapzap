@@ -7,17 +7,19 @@
 ## Facts
 
 ### Conventions
-- Router assembly: `zapzap-rust/src/api/routes/mod.rs:23-60` (under `/api`), plus `/suscribeupdate` and `/health` at the root (`zapzap-rust/src/main.rs:41-45`).
-- Auth column: **JWT** = `auth_middleware` (Bearer header, bare 401 without JSON body on a missing or invalid token, or a token whose user no longer exists, `zapzap-rust/src/api/middleware/auth_middleware.rs`); **opt** = optional auth; **admin** = JWT + `admin_middleware`, which reads `is_admin` from the database (401 `AUTH_REQUIRED` / 403 `ADMIN_REQUIRED`, `{success:false, error, code}`, as Node); the handlers do not check again; **none** = public.
+- Router assembly: `create_api_router` in `zapzap-rust/src/api/routes/mod.rs` (under `/api`), plus `/suscribeupdate` and `/health` at the root; the whole application is `build_app` (`zapzap-rust/src/api/mod.rs`), which `main.rs` serves and the API tests drive.
+- Unknown path (any method, under `/api` or not): 404 `{error:"Not Found", code:"ROUTE_NOT_FOUND", path, message}`, `path` without the query string, as Node's last handler in `src/api/server.js` (`route_not_found`, `zapzap-rust/src/api/not_found.rs`, the fallback of both routers). A served path asked with a method it does not serve answers the same 404, as on Node, which routes by method and path together (`method_not_allowed_fallback` in `build_app`, `zapzap-rust/src/api/mod.rs`). Under `/api/admin` both 404s come after the token and admin checks (401/403 first), as Node's `router.use(authMiddleware)` there: `create_admin_router` wraps its fallbacks with `layer`, not `route_layer`.
+- Auth column: **JWT** = `auth_middleware` (`zapzap-rust/src/api/middleware/auth_middleware.rs`), whose 401s are Node's (`src/api/middleware/authMiddleware.js`): no or empty header `{error, code:"MISSING_AUTH_HEADER"}`; a header that is not exactly `Bearer <token>` (split on single spaces) `INVALID_AUTH_FORMAT` with `details:{expected:"Bearer <token>"}`; a bad or expired token, or one whose user no longer exists, `INVALID_TOKEN`; **opt** = optional auth; **admin** = JWT + `admin_middleware`, which reads `is_admin` from the database (401 `AUTH_REQUIRED` / 403 `ADMIN_REQUIRED`, `{success:false, error, code}`, as Node); the handlers do not check again; **none** = public.
 - Error body for auth/party/game: `{error, code, details?}` (`ErrorBody`, `zapzap-rust/src/api/error.rs`); admin/bots/stats/history use `{success:false, error}` or `{error}` without `code`.
 - Party and game errors are typed: each use-case error variant maps to Node's status and `code` in one `From` impl per use case (`zapzap-rust/src/api/error.rs`). A 500 carries a generic `error` (`Failed to …`), a `<ROUTE>_ERROR` code and the cause in `details`, as on Node.
 - A JSON body that does not parse — malformed, a field missing or mistyped — answers **400** with the route's missing-field code (`ApiJson`, `zapzap-rust/src/api/error.rs`), not axum's 422 plain text. A request without a JSON content type reads as `{}`, as Express does; a body over axum's 2 MB default limit answers 413 `PAYLOAD_TOO_LARGE`.
-- CORS fully permissive (`zapzap-rust/src/main.rs:46`). No rate limiting.
+- CORS fully permissive (`build_app`, `zapzap-rust/src/api/mod.rs:32`). No rate limiting.
 
 ### Root
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
-| GET | `/health` and `/api/health` | none | `zapzap-rust/src/api/routes/health.rs:13` | `{status:"ok", version, uptime_seconds}`; uptime counts from the first health call, not process start (`health.rs:11-14`) |
+| GET | `/api/health` | none | `health_handler`, `zapzap-rust/src/api/routes/health.rs` | `{status:"ok", timestamp, uptime}`, Node's keys: `timestamp` as JavaScript's `toISOString()`, `uptime` fractional seconds since startup (`start_clock`, called by `main`) |
+| GET | `/health` | none | `root_health_handler`, same file | `{status:"ok", timestamp, api:"v2 (Clean Architecture)"}`, as Node's `src/api/server.js`. Healthchecks and `deploy.sh` read only the status code |
 | GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs` | SSE; events without a party and a public party's lifecycle events to all, a game's moves and private-party events only to that party's players (a token of a deleted user names nobody). See [[Backend]] |
 
 ### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:12-17`)
@@ -27,7 +29,7 @@
 | POST | `/login` | none | `auth.rs:177` | 200 `{success, user{id,username,isAdmin}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 401 `INVALID_CREDENTIALS`, 500 `LOGIN_ERROR` |
 | POST | `/google` | none | `auth.rs:252` | 200 `{success, user{id,username,email,isAdmin,isGoogleUser}, token, isNewUser}`; finds the user by `google_id`, else creates a password-less human with a unique username (`zapzap-rust/src/application/auth/login_with_google.rs`) | 400 `MISSING_CREDENTIAL` (`credential` absent or falsy), 401 `GOOGLE_AUTH_FAILED` (invalid/forged/expired token, wrong `aud`/`iss`, `email_verified` false, or `GOOGLE_OAUTH_CLIENT_ID` unset: `Google OAuth non configuré sur ce serveur`, as Node), 500 `GOOGLE_AUTH_ERROR` (`details` is generic; the database message is only logged). Token check in [[Backend]] § Google OAuth |
 
-### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:63-124`)
+### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:65-126`)
 | Method | Path | Auth | Handler | Failures |
 |---|---|---|---|---|
 | GET | `/` | opt | `zapzap-rust/src/api/routes/party.rs:348` | 500 `GET_PARTIES_ERROR`. Query `status`, `limit` (default 50, **no max**), `offset` (default 0) (`party.rs:358-359`). Only `visibility='public'` parties (`zapzap-rust/src/infrastructure/database/repositories/party_repo.rs:149`). Each item carries `isMyTurn`: true when the caller is a member, the party is playing, the round is not finished and `currentTurn` is the caller's seat (`zapzap-rust/src/application/party/list_parties.rs`); **Rust only**, Node has no such field |
@@ -39,7 +41,7 @@
 | POST | `/:partyId/start` | JWT | `party.rs:517` | 404, 403 `NOT_OWNER`, 409 `PARTY_ALREADY_PLAYING` (playing: `Party is already playing`; finished: `Party has finished`), 400 `NOT_ENOUGH_PLAYERS` (3..=8 required, `zapzap-rust/src/domain/entities/party.rs:105-106`). Renumbers the seats 0..n-1 before dealing, since the game state indexes seats by position (`zapzap-rust/src/application/party/start_party.rs`) |
 | POST | `/:partyId/bots` | JWT | `party.rs:595` | **Rust only.** Body `{botId}`; the owner fills the lowest free seat of a waiting party with a bot (`zapzap-rust/src/application/party/add_bot_to_party.rs`). 201 `{success, party{id,name,status}, bot{id,username,botDifficulty}, playerIndex}`, and a `partyUpdate`/`playerJoined` event with the bot as `userId`. 400 `MISSING_BOT_ID`, 404 `PARTY_NOT_FOUND`, 403 `NOT_OWNER`, 409 `PARTY_STARTED`, 404 `BOT_NOT_FOUND`, 400 `NOT_A_BOT`, 409 `ALREADY_IN_PARTY`, 409 `PARTY_FULL` |
 
-### Game — `/api/game` (`zapzap-rust/src/api/routes/mod.rs:127-179`), all JWT
+### Game — `/api/game` (`zapzap-rust/src/api/routes/mod.rs:129-181`), all JWT
 Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the party is not playing (Node: 500 except for `nextRound`), 403 `NOT_IN_PARTY` for a non-member, 403 `NOT_YOUR_TURN`, and 500 `<ROUTE>_ERROR` on repository errors.
 
 | Method | Path | Handler | Body | Failures |
@@ -62,7 +64,7 @@ Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedB
 - `gameFinished: true` and `winner{userId, playerIndex, score}` (Rust only) only when the call ends the game.
 - Pinned by `test_zapzap_scores_are_running_totals` and `test_zapzap_counteracted_scores` (`zapzap-rust/tests/api_tests.rs`) and, on Node, `should answer scores as running totals and handPoints per player` (`tests/unit/use-cases/game/CallZapZap.test.js`).
 
-### Stats — `/api/stats` (`zapzap-rust/src/api/routes/mod.rs:182-195`)
+### Stats — `/api/stats` (`zapzap-rust/src/api/routes/mod.rs:184-197`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/me` | JWT | `zapzap-rust/src/api/routes/stats.rs:174` | 404 user not found |
@@ -70,7 +72,7 @@ Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedB
 | GET | `/leaderboard` | none | `stats.rs:304` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only, by win rate then wins, as Node. Node's body: `{success, leaderboard[{rank, userId, username, gamesPlayed, wins, winRate, averageScore}], criteria{minGames, sortBy:"winRate"}, pagination{limit, offset, hasMore}}` — `hasMore` is "the page is full", no total |
 | GET | `/bots` | none | `stats.rs:378` | per-difficulty bot stats |
 
-### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:198-223`)
+### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:200-225`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:259` | same handler; `limit` default 20 (`history.rs:28-30`). Node's body: `{success, games[{id, partyId, partyName, winnerUserId, winnerUsername, winnerFinalScore, totalRounds, wasGoldenScore, playerCount, finishedAt, visibility, userPlacement, userScore}], pagination{limit, offset, hasMore}}` |
@@ -92,7 +94,7 @@ Node's route sends exactly `{success, zapzapSuccess, counteracted, counteractedB
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/api/bots?difficulty=` | none | `zapzap-rust/src/api/routes/bots.rs:52` | valid: easy, medium, hard, hard_vince, ml, drl, llm, thibot (`bots.rs:56-65`); 400 otherwise |
-| POST | `/api/bots` | admin (`auth_middleware` + `admin_middleware`, `zapzap-rust/src/api/routes/mod.rs:32-56`): bare 401 without a token, 403 `ADMIN_REQUIRED` for a non-admin, as `/api/admin` | `bots.rs:182` | body `{username, difficulty}`; 201 `{success, bot}` with `bot` shaped as Node's `toPublicObject()` (`id, username, userType, botDifficulty, isAdmin, lastLoginAt, totalPlayTimeSeconds, email, isGoogleUser, createdAt, updatedAt`). Every failure is 400 `{success:false, error}` with Node's message: `Username is required`, `Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm` (`thibot` is not creatable, as in Node), `Username "X" already exists`, the username format messages; a name taken by a concurrent request between the lookup and the save also answers `already exists` (`zapzap-rust/src/application/bot/create_bot.rs`) |
+| POST | `/api/bots` | admin (`auth_middleware` + `admin_middleware`, `zapzap-rust/src/api/routes/mod.rs:33-57`): 401 `MISSING_AUTH_HEADER` without a token, 403 `ADMIN_REQUIRED` for a non-admin, as `/api/admin` | `bots.rs:182` | body `{username, difficulty}`; 201 `{success, bot}` with `bot` shaped as Node's `toPublicObject()` (`id, username, userType, botDifficulty, isAdmin, lastLoginAt, totalPlayTimeSeconds, email, isGoogleUser, createdAt, updatedAt`). Every failure is 400 `{success:false, error}` with Node's message: `Username is required`, `Difficulty must be one of: easy, medium, hard, hard_vince, ml, drl, llm` (`thibot` is not creatable, as in Node), `Username "X" already exists`, the username format messages; a name taken by a concurrent request between the lookup and the save also answers `already exists` (`zapzap-rust/src/application/bot/create_bot.rs`) |
 | DELETE | `/api/bots/:botId` | admin (as above) | `bots.rs:207` | 200 `{success:true, deletedBotId}`; 400 `Bot not found` (unknown id, as Node's `DeleteBot`), 400 `User is not a bot - cannot delete human users via this endpoint`, 400 `Bot is in an active party - cannot delete it` (seated in a `waiting` or `playing` party; Node has no such check), 400 `Failed to delete bot` when a concurrent delete removed it first (`zapzap-rust/src/application/bot/delete_bot.rs`) |
 | GET | `/api/players/connected` | none | `zapzap-rust/src/api/routes/players.rs:34` | max 5 sessions; status always `lobby` (see [[Backend]]) |
 
@@ -116,12 +118,11 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 
 ### Differences with `BACKEND_API.md` (old doc, Node era, "Last Updated 2025-12-04"; removed 2026-09-22, read it with `git show 1e063d6:BACKEND_API.md`)
 - Token lifetime: doc says 24 hours (`BACKEND_API.md:94`); code is 7 days (`zapzap-rust/src/infrastructure/auth/jwt_service.rs:28`).
-- Auth error codes `MISSING_AUTH_HEADER`/`INVALID_AUTH_FORMAT`/`INVALID_TOKEN` (`BACKEND_API.md:128-130`): Rust returns a bare 401 without body.
 - Game error codes `GAME_NOT_STARTED`/`INVALID_TURN`/`INVALID_ACTION`/`CARD_NOT_IN_HAND` (`BACKEND_API.md:144-148`) do not exist; Rust uses `NOT_YOUR_TURN`, `INVALID_ACTION_STATE`, `INVALID_CARDS`, `INVALID_PLAY`. Wrong-phase is 400, not 403.
 - Start minimum: doc "minimum 2" (`BACKEND_API.md:454`); code requires 3 (`zapzap-rust/src/domain/entities/party.rs:106`).
 - `GET /api/party` "max: 100" (`BACKEND_API.md:298`): no max in code.
 - SSE: doc says heartbeat every 15 s and `retry: 500` (`BACKEND_API.md:679-683`); Rust sends a comment every 20 s and no `retry`; events carry `type` and flattened data, not only `{partyId,userId,action}`.
-- Health: doc `{status, timestamp}` (`BACKEND_API.md:720-721`); Rust `{status, version, uptime_seconds}`.
+- Health: doc `{status, timestamp}` (`BACKEND_API.md:720-721`); Rust, as Node, adds `uptime` (`/api/health`) or `api` (`/health`).
 - Undocumented in the old doc: `selectHandSize`, `nextRound`, `trigger-bot`, `/stats/*`, `/history/*`, `/admin/*`, `/bots`, `/players/connected`.
 - `AUDIT_REPORT.md` (2025-11-06) audits the pre-clean-architecture `app.js`/jQuery app (e.g. "No Turn Validation in API Endpoints"); obsolete for Rust, which checks turn and phase in every game use case.
 
@@ -138,6 +139,7 @@ Node is the reference for statuses and codes, except where it answers 500 for a 
 - Deliberate difference: Node serves the two bot mutations **without any authentication** (`src/api/routes/botRoutes.js`, mounted without middleware); Rust requires an admin.
 
 ## Decisions & History
+- 2026-09-24 (fix/rust-auth-bodies-health): the auth 401s, the unknown-route 404 and both health checks answer Node's bodies, which the parity suite had listed as `pending`. The health answers dropped `version` and `uptime_seconds` rather than keeping them as Rust-only additions: no client, healthcheck or script reads them (only the status code), and a key Node lacks is one more listed divergence to carry. After review (same PR): a served path with an unserved method answers the 404 too, not axum's bare 405; an unknown `/api/admin` path answers 401/403 before its 404, as on Node; the application is assembled once, in `api::build_app`, so that the tests drive the router `main.rs` serves.
 - 2026-09-24 (fix/rust-history-admin-contract): the history, leaderboard and admin bodies took Node's keys (`src/use-cases/history/GetGameHistory.js`, `stats/GetLeaderboard.js`, `admin/*`). Rust's own `games[].roundsPlayed` and top-level `total` were dropped rather than kept as additions: no client needs them (Flutter reads `totalRounds` first and never shows a history or leaderboard total; React reads Node's keys).
 - 2026-09-24 (fix/rust-security): the authorization holes listed on this page were closed. Where Node refuses correctly, Rust answers as Node does (state 403 `NOT_IN_PARTY`, admin 401/403); where Node is lax or buggy (details and join refusals answer 500, `trigger-bot` and history unchecked), Rust refuses with 403 — the user's rule: a Node 500 on a client error is a Node bug, Rust keeps the correct 4xx. So a private join without the code is 403 `PRIVATE_PARTY`, with a wrong code 403 `INVALID_INVITE_CODE`. `/history/public` had lost Node's public-only filter and listed private games; it filters again.
 - 2026-09-24 (fix/rust-api-errors-contract): the substring matching of use-case error messages was replaced by typed errors (`zapzap-rust/src/api/error.rs`), after six of its branches were found answering 500 for client errors (join already-in-party and not-waiting, start, delete, leave, and `NOT_IN_PARTY` on every game action). The zapzap `scores` were aligned on Node's meaning (running totals, user decision), with round points under `roundScores`; `partyCreated`, `isMyTurn` and `POST /party/:id/bots` were added on the Rust side first, Node and the clients following in their own changes.
