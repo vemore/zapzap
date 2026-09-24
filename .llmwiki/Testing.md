@@ -17,7 +17,7 @@
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |
 | Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
-| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug` |
+| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `flutter drive` against a live Node backend, below | green (2026-09-24) | no — local only; CI is its own wip entry (`2026-09-23-flutter-e2e-in-ci`) |
 | Node backend jest (`tests/unit`, `tests/integration`) | `npm test` (root) | green, 19 suites, 316 tests (2026-09-23) | yes (`node` job) |
 | Legacy Playwright e2e (`tests/e2e`) | `npm run test:e2e` | not tracked | no |
@@ -149,7 +149,7 @@
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
 ### Pre-commit gate
-- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."

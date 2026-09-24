@@ -274,9 +274,9 @@ if printf '%s\n' "$paths" | grep -qE '^frontend/'; then
     run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
 fi
 
-# The Flutter client: the analyzer only (seconds); tests and builds are the `flutter` CI
-# job. An offline pub get (no network, from the pub cache the setup filled) follows a
-# pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
+# The Flutter client: the formatter and the analyzer only (seconds); tests and builds are
+# the `flutter` CI job. An offline pub get (no network, from the pub cache the setup
+# filled) follows a pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
 # stale with every ARB change; neither `flutter analyze` nor a pub get that finds nothing
 # to resolve regenerates them, so `flutter gen-l10n` does, before the analyzer runs.
 # Only a file the commit leaves in the tree, and not a `.md`, can break the analyzer: a
@@ -304,6 +304,11 @@ and commit again."
     if [ -f "$ROOT/frontend-flutter/l10n.yaml" ]; then
         run_gate "flutter gen-l10n (frontend-flutter)" bash -c "cd '$ROOT/frontend-flutter' && flutter gen-l10n"
     fi
+    # The formatter over the whole of lib/ and test/ (and integration_test/ when it
+    # exists), not only the staged files: under a second, and drift another commit let
+    # through is caught too. The same command is a step of the `flutter` CI job.
+    run_gate "dart format --output=none --set-exit-if-changed lib test (frontend-flutter; to fix: cd $ROOT/frontend-flutter && dart format lib test)" \
+        bash -c "cd '$ROOT/frontend-flutter' && dart format --output=none --set-exit-if-changed lib test \$([ -d integration_test ] && echo integration_test)"
     run_gate "flutter analyze (frontend-flutter)" bash -c "cd '$ROOT/frontend-flutter' && flutter analyze"
 fi
 
