@@ -259,6 +259,47 @@ jobs:
       - run: flutter build web --base-href /app/ --no-web-resources-cdn
       - run: flutter build apk --debug
 
+  # The Flutter end-to-end test (frontend-flutter/integration_test/): the real client, in
+  # headless Chrome, registers a user and plays a round against two bots on a Rust backend
+  # started here on an empty database (scripts/flutter_e2e.sh). Not a required check: its
+  # name is free to change until branch protection pins it.
+  flutter-e2e:
+    name: Flutter end to end — a round against the Rust backend
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.92
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zapzap-rust
+      # scripts/init-bots.js seeds the bot accounts: the Node DDL, which the Rust backend
+      # takes as is (.llmwiki/Backend.md).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+      - name: Build the Rust backend (debug)
+        working-directory: zapzap-rust
+        run: cargo build --locked
+      - run: npm ci
+      - name: flutter pub get and gen-l10n
+        working-directory: frontend-flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          if [ -f l10n.yaml ]; then flutter gen-l10n; fi
+      # The runner's Chrome and its matching chromedriver ($CHROMEWEBDRIVER); the backend
+      # gets a fresh database and a generated JWT_SECRET, both gone with the job.
+      - name: Seed the bots, start the backend and chromedriver, flutter drive
+        run: scripts/flutter_e2e.sh
+
   node:
     name: Node backend — jest
     needs: scope
