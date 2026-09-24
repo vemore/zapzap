@@ -254,7 +254,7 @@ report "git rm --cached of a database" 0 "$?"
 git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/data.db"
 
 # Gates: which paths select them, and a missing setup named with its command. A stub
-# cargo/npm/flutter on PATH decides pass or fail, so no real build runs.
+# cargo/npm/flutter/dart on PATH decides pass or fail, so no real build runs.
 TOOLS="$SANDBOX/tools"
 mkdir -p "$TOOLS"
 stub_tool() {  # name, exit code
@@ -325,11 +325,16 @@ git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
 stage "frontend-flutter/lib/main.dart"
 GATE_PATH="$NOFLUTTER_PATH" tree_commit "a Flutter code change with no flutter on PATH" 2 "flutter is not on PATH"
 stub_flutter 0 0
+stub_tool dart 0
 tree_commit "a Flutter change in a tree never set up" 2 "cd $TREE/frontend-flutter && flutter pub get"
 mkdir -p "$TREE/frontend-flutter/.dart_tool" && touch "$TREE/frontend-flutter/l10n.yaml"
 tree_commit "a Flutter change whose analyzer is clean" 0
 stub_flutter 0 1
 tree_commit "a Flutter change with an analyzer error" 2 "flutter analyze (frontend-flutter)"
+stub_tool dart 1
+stub_flutter 0 0
+tree_commit "a Flutter change with an unformatted Dart file" 2 "dart format --output=none --set-exit-if-changed lib test (frontend-flutter"
+stub_tool dart 0
 stub_flutter 1 0
 tree_commit "a Flutter change whose offline pub get fails" 2 "cd $TREE/frontend-flutter && flutter pub get"
 stub_flutter 0 0 1

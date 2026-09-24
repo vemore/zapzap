@@ -5,7 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/router.dart';
+import 'package:go_router/go_router.dart';
+import 'package:zapzap/screens/create_party_screen.dart';
 import 'package:zapzap/screens/game_screen.dart';
+import 'package:zapzap/screens/parties_screen.dart';
+import 'package:zapzap/screens/party_lobby_screen.dart';
 
 import 'auth_helpers.dart';
 import 'party_helpers.dart';
@@ -58,6 +62,14 @@ void main() {
   bool enabled(WidgetTester tester, String key) =>
       tester.widget<ButtonStyleButton>(find.byKey(Key(key))).onPressed != null;
 
+  /// Delete is an entry of the app bar's ⋮ menu (S4 of the UX study).
+  Future<void> openDelete(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('app-bar-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('delete-party')));
+    await tester.pumpAndSettle();
+  }
+
   group('parties', () {
     testWidgets('each party shows its seats, its status and the one thing '
         'to do with it', (tester) async {
@@ -90,18 +102,96 @@ void main() {
       );
 
       expect(find.text('Open party'), findsOneWidget);
-      expect(find.text('2 / 5'), findsOneWidget);
-      expect(find.text('Rejointe'), findsNWidgets(2));
+      expect(find.textContaining('2 / 5 · En attente'), findsOneWidget);
+      expect(find.text('Rejointe'), findsOneWidget);
+      expect(find.text('En cours'), findsOneWidget);
       expect(enabled(tester, 'join-p1'), isTrue);
-      expect(find.text('Retour au salon'), findsOneWidget);
-      expect(find.text('Reprendre la partie'), findsOneWidget);
+      expect(find.text('Salon'), findsOneWidget);
+      expect(find.text('Reprendre'), findsOneWidget);
       expect(enabled(tester, 'join-p4'), isFalse);
       expect(find.text('Complète'), findsOneWidget);
+    });
+
+    testWidgets('a seat taken elsewhere shows up without a pull, once the '
+        'burst is over', (tester) async {
+      final backend = FakeLobbyBackend(
+        parties: [
+          partySummaryJson(id: 'p1', name: 'Open party', playerCount: 2),
+        ],
+      );
+      final transport = await pumpApp(tester, backend);
+      expect(find.textContaining('2 / 5'), findsOneWidget);
+
+      backend.parties = [
+        partySummaryJson(id: 'p1', name: 'Open party', playerCount: 3),
+      ];
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'userId': 'u2',
+        'action': 'playerJoined',
+        'playerIndex': 2,
+      });
+      // Debounced: nothing yet, in case more seats follow.
+      expect(find.textContaining('2 / 5'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('3 / 5'), findsOneWidget);
+      expect(find.textContaining('2 / 5'), findsNothing);
+    });
+
+    testWidgets('a party deleted elsewhere leaves the list', (tester) async {
+      final backend = FakeLobbyBackend(
+        parties: [partySummaryJson(id: 'p1', name: 'Doomed party')],
+      );
+      final transport = await pumpApp(tester, backend);
+      expect(find.text('Doomed party'), findsOneWidget);
+
+      backend.parties = [];
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'partyDeleted',
+      });
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Doomed party'), findsNothing);
+      expect(find.text('Aucune partie disponible'), findsOneWidget);
     });
 
     testWidgets('an empty list says so', (tester) async {
       await pumpApp(tester, FakeLobbyBackend());
       expect(find.text('Aucune partie disponible'), findsOneWidget);
+    });
+
+    testWidgets('a failed first load shows the error, not an empty list', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      backend.failures['GET /api/party'] = (
+        status: 500,
+        body: {'error': 'boom'},
+      );
+      await pumpApp(tester, backend);
+
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
+      expect(find.text('Aucune partie disponible'), findsNothing);
+    });
+
+    testWidgets('a row without maxPlayers reads 5 seats and can be joined', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          parties: [
+            partySummaryJson(id: 'p1', playerCount: 2)..remove('maxPlayers'),
+          ],
+        ),
+      );
+
+      expect(find.textContaining('2 / 5'), findsOneWidget);
+      expect(find.text('Complète'), findsNothing);
+      expect(enabled(tester, 'join-p1'), isTrue);
     });
 
     testWidgets('joining takes a seat and opens the lobby', (tester) async {
@@ -218,20 +308,6 @@ void main() {
       expect(find.text('Joueurs (0/5)'), findsOneWidget);
     });
 
-    testWidgets('submit waits for a name', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(),
-        initialLocation: AppRoutes.createParty,
-      );
-      expect(enabled(tester, 'create-submit'), isFalse);
-      expect(find.text('Le nom de la partie est requis'), findsOneWidget);
-
-      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
-      await tester.pump();
-      expect(enabled(tester, 'create-submit'), isTrue);
-    });
-
     testWidgets('a refusal is shown and the form stays', (tester) async {
       final backend = FakeLobbyBackend();
       backend.failures['POST /api/party'] = (
@@ -245,7 +321,7 @@ void main() {
       await tester.tap(find.byKey(const Key('create-submit')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Une erreur est survenue. Réessayez.'), findsOneWidget);
+      expect(find.text('Une erreur est survenue. Réessaie.'), findsOneWidget);
       expect(find.byKey(const Key('create-submit')), findsOneWidget);
     });
   });
@@ -411,8 +487,7 @@ void main() {
         initialLocation: AppRoutes.partyPath('p1'),
       );
 
-      await tester.tap(find.byKey(const Key('delete-party')));
-      await tester.pumpAndSettle();
+      await openDelete(tester);
       expect(find.byKey(const Key('delete-confirm')), findsOneWidget);
       await tester.tap(find.text('Annuler'));
       await tester.pumpAndSettle();
@@ -421,8 +496,7 @@ void main() {
         isEmpty,
       );
 
-      await tester.tap(find.byKey(const Key('delete-party')));
-      await tester.pumpAndSettle();
+      await openDelete(tester);
       await tester.tap(find.byKey(const Key('delete-confirm-ok')));
       await tester.pumpAndSettle();
 
@@ -451,6 +525,26 @@ void main() {
         contains('/api/party/p1/leave'),
       );
       expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('leaving a party someone already took you out of says so', (
+      tester,
+    ) async {
+      final backend = backendWith([vincent, easyBot]);
+      backend.failures['POST /api/party/p1/leave'] = (
+        status: 403,
+        body: {'error': 'User is not in this party', 'code': 'NOT_IN_PARTY'},
+      );
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+
+      await tester.tap(find.byKey(const Key('leave-party')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
     });
 
     testWidgets('a party that does not exist says so', (tester) async {
@@ -485,8 +579,10 @@ void main() {
       );
 
       expect(find.byKey(const Key('start-party')), findsNothing);
-      expect(find.byKey(const Key('delete-party')), findsNothing);
       expect(find.byKey(const Key('leave-party')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('delete-party')), findsNothing);
     });
 
     testWidgets('the only human at a table of bots may delete it', (
@@ -512,6 +608,8 @@ void main() {
       );
 
       expect(find.byKey(const Key('start-party')), findsNothing);
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('delete-party')), findsOneWidget);
     });
   });
@@ -584,73 +682,253 @@ void main() {
     // A large system font size is the same layout with everything taller
     // and wider; a tile of a fixed height, or a row of unconstrained
     // texts, overflows there and nowhere else.
-    testWidgets('the party list fits at a 1.5 text scale', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(
-          parties: [
-            partySummaryJson(
+    for (final scale in [1.5, 2.0]) {
+      testWidgets('the party list fits at a $scale text scale', (tester) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(
+            parties: [
+              partySummaryJson(
+                id: 'p1',
+                name: 'Une partie au nom particulièrement long',
+                playerCount: 2,
+                isMember: true,
+              ),
+              partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
+            ],
+            connected: [connectedPlayerJson('u1', 'Vincent')],
+          ),
+          size: phone,
+          textScale: scale,
+        );
+        expect(find.byKey(const Key('party-p1')), findsOneWidget);
+        expect(find.byKey(const Key('open-p1')), findsOneWidget);
+      });
+
+      testWidgets('the lobby fits at a $scale text scale', (tester) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(
+            details: partyDetailsJson(
               id: 'p1',
               name: 'Une partie au nom particulièrement long',
-              playerCount: 2,
-              isMember: true,
+              ownerId: 'u1',
+              players: [
+                partyPlayerJson(
+                  userId: 'u1',
+                  username: 'Vincent-au-pseudo-très-long',
+                  playerIndex: 0,
+                ),
+                partyPlayerJson(
+                  userId: 'b1',
+                  username: 'HardVinceBot1',
+                  playerIndex: 1,
+                  userType: 'bot',
+                  botDifficulty: 'hard_vince',
+                ),
+              ],
             ),
-            partySummaryJson(id: 'p2', name: 'Deuxième', playerCount: 3),
-          ],
-          connected: [connectedPlayerJson('u1', 'Vincent')],
-        ),
-        size: phone,
-        textScale: 1.5,
-      );
-      expect(find.byKey(const Key('party-p1')), findsOneWidget);
-      expect(find.byKey(const Key('open-p1')), findsOneWidget);
-    });
-
-    testWidgets('the lobby fits at a 1.5 text scale', (tester) async {
-      await pumpApp(
-        tester,
-        FakeLobbyBackend(
-          details: partyDetailsJson(
-            id: 'p1',
-            name: 'Une partie au nom particulièrement long',
-            ownerId: 'u1',
-            players: [
-              partyPlayerJson(
-                userId: 'u1',
-                username: 'Vincent-au-pseudo-très-long',
-                playerIndex: 0,
-              ),
-              partyPlayerJson(
-                userId: 'b1',
-                username: 'HardVinceBot1',
-                playerIndex: 1,
-                userType: 'bot',
-                botDifficulty: 'hard_vince',
-              ),
-            ],
           ),
-        ),
-        initialLocation: AppRoutes.partyPath('p1'),
-        size: phone,
-        textScale: 1.5,
-      );
-      expect(find.text('Joueurs (2/5)'), findsOneWidget);
-      expect(find.byKey(const Key('seat-b1')), findsOneWidget);
+          initialLocation: AppRoutes.partyPath('p1'),
+          size: phone,
+          textScale: scale,
+        );
+        // A ListView lays out — and can overflow — only what is scrolled
+        // into view: scroll down to a bot's seat, then to the last seat.
+        // The buttons are pinned under the list.
+        final list = find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        expect(find.byKey(const Key('leave-party')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('seat-b1')),
+          100,
+          scrollable: list,
+        );
+        expect(find.byKey(const Key('lobby-seats-header')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('empty-seat-2')),
+          100,
+          scrollable: list,
+        );
+      });
+
+      testWidgets('the create form fits at a $scale text scale', (
+        tester,
+      ) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(),
+          initialLocation: AppRoutes.createParty,
+          size: phone,
+          textScale: scale,
+        );
+        expect(find.byKey(const Key('slot-0')), findsOneWidget);
+        // The form's ListView builds — and lays out — only what is in
+        // view; its text fields are scrollables too.
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('create-submit')),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byType(ListView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
+  group('back navigation', () {
+    // Android's system Back pops the route on top; a screen reached with
+    // `go` would have nothing under it, and Back would leave the app.
+    Future<void> systemBack(WidgetTester tester) async {
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+
+    FakeLobbyBackend backend() => FakeLobbyBackend(
+      parties: [partySummaryJson(id: 'p1', name: 'Open party')],
+      details: partyDetailsJson(
+        id: 'p1',
+        name: 'Open party',
+        players: [
+          partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+        ],
+      ),
+      createdPartyId: 'p1',
+    );
+
+    testWidgets('Back from the create form returns to the list, as does '
+        'its back button', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CreatePartyScreen), findsOneWidget);
+      await systemBack(tester);
+      expect(find.byType(CreatePartyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('back-to-parties')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartiesScreen), findsOneWidget);
     });
 
-    testWidgets('the create form fits at a 1.5 text scale', (tester) async {
+    testWidgets("the lobby a new party opens takes the form's place: Back "
+        'returns to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('create-party')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('create-submit')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(CreatePartyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('Back from a joined lobby returns to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('leaving the lobby pops back to the list', (tester) async {
+      await pumpApp(tester, backend());
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('leave-party')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      // Popped, not stacked: one more Back would leave the app, not
+      // return to the lobby.
+      expect(
+        GoRouter.of(tester.element(find.byType(PartiesScreen))).canPop(),
+        isFalse,
+      );
+    });
+
+    testWidgets('the game a lobby starts takes its place: Back returns to '
+        'the list', (tester) async {
+      final lobby = backend()
+        ..details = partyDetailsJson(
+          id: 'p1',
+          players: [
+            partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+            partyPlayerJson(userId: 'u2', username: 'Alice', playerIndex: 1),
+            partyPlayerJson(userId: 'u3', username: 'Bob', playerIndex: 2),
+          ],
+        );
+      await pumpApp(tester, lobby);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('start-party')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameScreen), findsOneWidget);
+
+      await systemBack(tester);
+      expect(find.byType(GameScreen), findsNothing);
+      expect(find.byType(PartyLobbyScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    testWidgets('a lobby opened by a link goes back to the list', (
+      tester,
+    ) async {
       await pumpApp(
         tester,
-        FakeLobbyBackend(),
-        initialLocation: AppRoutes.createParty,
-        size: phone,
-        textScale: 1.5,
+        backend(),
+        initialLocation: AppRoutes.partyPath('p1'),
       );
-      expect(find.byKey(const Key('slot-0')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('back-to-parties')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PartiesScreen), findsOneWidget);
     });
   });
 
   group('connected players', () {
+    testWidgets('no count before the first answer, nor after a failed one', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      backend.failures['GET /api/players/connected'] = (
+        status: 500,
+        body: {'error': 'boom'},
+      );
+      await pumpApp(tester, backend);
+
+      // "0" would claim nobody is online.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('connected-players-count')))
+            .data,
+        '–',
+      );
+    });
+
     testWidgets('the app bar counts them and the stream keeps it up to date', (
       tester,
     ) async {

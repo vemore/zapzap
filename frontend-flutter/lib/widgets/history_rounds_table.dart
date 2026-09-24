@@ -40,7 +40,9 @@ class HistoryRoundsTable extends StatelessWidget {
             key: const Key('rounds-table'),
             columnSpacing: 24,
             dataRowMinHeight: 56,
-            dataRowMaxHeight: 76,
+            // Unbounded: a cell grows with the system font size, where a
+            // fixed height clips it.
+            dataRowMaxHeight: double.infinity,
             columns: [
               DataColumn(label: Text(l10n.roundColumn, style: headerStyle)),
               for (final player in players)
@@ -83,10 +85,13 @@ class _Cell extends StatelessWidget {
     final round = score;
     if (round == null) return const Text(Formats.missing);
     final theme = Theme.of(context);
-    final color = round.isLowestHand
-        ? StatsColors.success
-        : round.wasCounterActed
+    // Counteracted before lowest hand: a caller tied for the lowest hand is
+    // counteracted and pays the penalty (`GAME_RULES.md`, Tie Handling), so
+    // the cell must not read as a clean round. React has it the other way.
+    final color = round.wasCounterActed
         ? StatsColors.danger
+        : round.isLowestHand
+        ? StatsColors.success
         : null;
     return Column(
       mainAxisSize: MainAxisSize.min,

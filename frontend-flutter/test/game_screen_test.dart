@@ -1,11 +1,15 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/providers/game_provider.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/utils/app_theme.dart';
 import 'package:zapzap/widgets/card_fan.dart';
 import 'package:zapzap/widgets/game_hand.dart';
 import 'package:zapzap/widgets/game_hand_size_selector.dart';
@@ -73,6 +77,18 @@ void main() {
   Future<void> tapLoneCard(WidgetTester tester) async {
     await tester.tap(find.byKey(CardFan.itemKey(0)));
     await tester.pumpAndSettle();
+  }
+
+  /// How many lines the turn banner is drawn on.
+  int bannerLines(WidgetTester tester) {
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const Key('turnBanner')),
+        matching: find.byType(RichText),
+      ),
+    );
+    final line = paragraph.getFullHeightForCaret(const TextPosition(offset: 0));
+    return (paragraph.size.height / line).round();
   }
 
   /// The board is still there: the players, the felt and the hand.
@@ -226,13 +242,13 @@ void main() {
       await pumpGame(tester, backend);
 
       expectBoardStanding(tester);
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(0)), findsOneWidget);
       expect(find.byKey(GamePlayerTable.seatKey(2)), findsOneWidget);
-      expect(find.text('Vous'), findsOneWidget);
-      // Nothing selected yet.
+      expect(find.text('Toi'), findsOneWidget);
+      // Nothing selected yet; one button, for the step at hand.
       expect(enabled(tester, 'play-cards'), isFalse);
-      expect(enabled(tester, 'draw-card'), isFalse);
+      expect(find.byKey(const Key('draw-card')), findsNothing);
 
       // Three aces: a same-rank group, played in the order they were tapped.
       selectCard(tester, 26);
@@ -278,24 +294,26 @@ void main() {
       expectBoardStanding(tester);
       expect(find.text('En attente de EasyBot1'), findsOneWidget);
       expect(enabled(tester, 'play-cards'), isFalse);
-      expect(enabled(tester, 'draw-card'), isFalse);
+      expect(find.byKey(const Key('draw-card')), findsNothing);
       expect(enabled(tester, 'call-zapzap'), isFalse);
       expect(enabled(tester, 'draw-deck'), isFalse);
     });
 
-    testWidgets('a ZapZap hand shows its badge and enables the button', (
-      tester,
-    ) async {
-      final backend = playing(playerHand: [0, 13, 52]);
-      await pumpGame(tester, backend);
+    testWidgets(
+      'a ZapZap hand enables the button, which calls once confirmed',
+      (tester) async {
+        final backend = playing(playerHand: [0, 13, 52]);
+        await pumpGame(tester, backend);
 
-      expect(find.byKey(const Key('zapzapEligibleBadge')), findsOneWidget);
-      expect(enabled(tester, 'call-zapzap'), isTrue);
+        expect(enabled(tester, 'call-zapzap'), isTrue);
 
-      await tester.tap(find.byKey(const Key('call-zapzap')));
-      await tester.pumpAndSettle();
-      expect(backend.paths, contains('/api/game/p1/zapzap'));
-    });
+        await tester.tap(find.byKey(const Key('call-zapzap')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('zapzap-confirm')));
+        await tester.pumpAndSettle();
+        expect(backend.paths, contains('/api/game/p1/zapzap'));
+      },
+    );
 
     testWidgets('an invalid selection shows its reason and keeps the board', (
       tester,
@@ -329,10 +347,7 @@ void main() {
       await tester.tap(find.byKey(const Key('play-cards')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text("Vous n'avez pas de place à cette table."),
-        findsOneWidget,
-      );
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
       expectBoardStanding(tester);
     });
 
@@ -353,7 +368,7 @@ void main() {
 
       expect(find.text("Cette combinaison n'est pas valide."), findsOneWidget);
       expectBoardStanding(tester);
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
     });
   });
 
@@ -368,14 +383,14 @@ void main() {
       );
       await pumpGame(tester, backend);
 
-      expect(find.text('À vous — piochez une carte'), findsOneWidget);
+      expect(find.byKey(const Key('drawInstruction')), findsOneWidget);
       expect(find.text('Piocher'), findsOneWidget);
       expect(enabled(tester, 'draw-card'), isTrue);
       expect(enabled(tester, 'draw-deck'), isTrue);
 
       await tester.tap(find.byKey(GameTableArea.discardKey(8)));
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsOneWidget);
+      expect(find.text('Prendre 9♠'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('draw-card')));
       await tester.pumpAndSettle();
@@ -398,14 +413,14 @@ void main() {
       expect(enabled(tester, 'clear-selection'), isFalse);
       await tester.tap(find.byKey(GameTableArea.discardKey(8)));
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsOneWidget);
+      expect(find.text('Prendre 9♠'), findsOneWidget);
       expect(enabled(tester, 'clear-selection'), isTrue);
 
       await tester.tap(find.byKey(const Key('clear-selection')));
       await tester.pumpAndSettle();
 
       expect(find.text('Piocher'), findsOneWidget);
-      expect(find.text('Prendre'), findsNothing);
+      expect(find.textContaining('Prendre'), findsNothing);
     });
 
     testWidgets('the discard pile is dead outside my draw phase', (
@@ -421,7 +436,7 @@ void main() {
         warnIfMissed: false,
       );
       await tester.pumpAndSettle();
-      expect(find.text('Prendre'), findsNothing);
+      expect(find.textContaining('Prendre'), findsNothing);
     });
 
     testWidgets('a reshuffled deck raises its banner, then drops it', (
@@ -501,7 +516,7 @@ void main() {
           allHands: {
             '0': [0, 1, 2],
             '1': [10, 11],
-            '2': [3],
+            '2': [14],
           },
           roundScores: {'0': 28, '1': 49, '2': 0},
           scores: {'0': 28, '1': 49, '2': 0},
@@ -524,7 +539,7 @@ void main() {
           wasCounterActed: true,
           counterActedByPlayerIndex: 1,
           allHands: {
-            '0': [0, 3],
+            '0': [0, 2],
             '1': [13],
             '2': [22, 9],
           },
@@ -550,26 +565,27 @@ void main() {
       expect(find.byType(GameHand), findsNothing);
 
       // The call held: the green banner, no penalty.
+      expect(find.text('MediumBot1 a réussi son ZapZap !'), findsOneWidget);
       expect(
-        find.text('MediumBot1 a réussi son ZapZap !'),
+        find.text(
+          'Sa main valait 2 points, la plus basse de la table : '
+          'MediumBot1 marque 0.',
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('contré'), findsNothing);
+      expect(find.textContaining('ontré'), findsNothing);
 
       // Lowest round score first, and the badges of the player who closed.
       expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
       expect(topOf(tester, 0), lessThan(topOf(tester, 1)));
-      expect(find.text('#1'), findsOneWidget);
-      expect(find.text('Main la plus basse'), findsOneWidget);
-      expect(find.text('ZapZap'), findsOneWidget);
+      expect(find.byTooltip('Main la plus basse'), findsOneWidget);
+      expect(find.byTooltip('ZapZap'), findsOneWidget);
       expect(find.text('Éliminé'), findsNothing);
 
-      // This round over the total, and every hand revealed.
-      expect(find.text('0 pts'), findsOneWidget);
-      expect(find.text('28 pts'), findsOneWidget);
-      expect(find.text('49 pts'), findsOneWidget);
-      expect(find.text('Cette manche'), findsNWidgets(3));
-      expect(find.text('Score total'), findsNWidgets(3));
+      // This round's points beside the total, and every hand revealed.
+      expect(find.text('+0'), findsOneWidget);
+      expect(find.text('+28'), findsOneWidget);
+      expect(find.text('+49'), findsOneWidget);
       expect(find.byType(PlayingCard), findsNWidgets(6));
 
       await tester.tap(find.byKey(const Key('next-round')));
@@ -577,9 +593,7 @@ void main() {
       expect(backend.paths, contains('/api/game/p1/nextRound'));
     });
 
-    testWidgets('a counteracted ZapZap spells out the penalty', (
-      tester,
-    ) async {
+    testWidgets('a counteracted ZapZap spells out the penalty', (tester) async {
       await pumpGame(tester, zapZapCounteracted());
 
       expect(find.text('Manche 4'), findsOneWidget);
@@ -587,7 +601,10 @@ void main() {
         find.text('Vincent a appelé ZapZap mais a été contré !'),
         findsOneWidget,
       );
-      expect(find.text('Contré par EasyBot1'), findsOneWidget);
+      expect(
+        find.text('Contré par EasyBot1 (1 ≤ 4) : 4 + 10 de pénalité.'),
+        findsOneWidget,
+      );
       expect(
         find.text('Pénalité : 4 + (3 − 1) × 5 = 14 points'),
         findsOneWidget,
@@ -597,8 +614,8 @@ void main() {
       // its crown even though it never called.
       expect(topOf(tester, 1), lessThan(topOf(tester, 2)));
       expect(topOf(tester, 2), lessThan(topOf(tester, 0)));
-      expect(find.text('14 pts'), findsOneWidget);
-      expect(find.text('Main la plus basse'), findsOneWidget);
+      expect(find.text('+14'), findsOneWidget);
+      expect(find.byTooltip('Main la plus basse'), findsOneWidget);
       expect(find.byKey(const Key('next-round')), findsOneWidget);
     });
 
@@ -639,7 +656,7 @@ void main() {
       expect(find.text('Score final : 12 points'), findsOneWidget);
       expect(find.text('Éliminé'), findsOneWidget);
       expect(
-        find.text('Main la plus basse'),
+        find.byTooltip('Main la plus basse'),
         findsNothing,
         reason: 'a player who is out does not hold the lowest hand',
       );
@@ -666,7 +683,7 @@ void main() {
         'type': 'gameAction',
       });
 
-      expect(find.text('À vous — posez des cartes'), findsOneWidget);
+      expect(find.byKey(const Key('turnSteps')), findsOneWidget);
     });
 
     testWidgets('a deleted party sends the player back to the list', (
@@ -700,6 +717,184 @@ void main() {
       expect(find.byType(GamePlayerTable), findsNothing);
       expect(find.text('Parties'), findsWidgets);
     });
+
+    testWidgets('from the list, the back control pops back to it: the '
+        "browser's Back never returns to the game", (tester) async {
+      // What the router tells the browser: each new path, and whether it
+      // replaces the entry on show rather than adding one.
+      final reported = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.navigation,
+        (call) async {
+          if (call.method == 'routeInformationUpdated') {
+            final arguments = call.arguments as Map;
+            final path = Uri.parse(arguments['uri'] as String).path;
+            reported.add(
+              arguments['replace'] == true ? '$path (replace)' : path,
+            );
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.navigation,
+          null,
+        ),
+      );
+      await pumpGame(tester, playing());
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      // What the list does (`parties_screen.dart`): the game goes on top.
+      router.go(AppRoutes.parties);
+      await tester.pumpAndSettle();
+      router.push(AppRoutes.gamePath('p1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GamePlayerTable), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('game-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GamePlayerTable), findsNothing);
+      expect(router.state.uri.path, AppRoutes.parties);
+      // Popped, not gone to: nothing is left under the list.
+      expect(router.canPop(), isFalse);
+      // A pop, like a `go`, reaches the browser as a new entry, and its
+      // Back would reopen the game: the game's entry is replaced instead.
+      expect(reported.last, '${AppRoutes.parties} (replace)');
+    });
+  });
+
+  group('the cards', () {
+    const phone = Size(360, 740);
+    const seven = [0, 13, 26, 40, 51, 6, 19];
+
+    /// This player's turn with [seven] in hand, the previous player's run
+    /// of three up for grabs and, in the draw step, a run of three played.
+    FakeGameBackend turn(String currentAction) => playing(
+      currentAction: currentAction,
+      playerHand: seven,
+      lastCardsPlayed: const [32, 33, 34],
+      cardsPlayed: currentAction == 'draw' ? const [3, 4, 5] : const [],
+    );
+
+    Set<int> selectedInHand(WidgetTester tester) =>
+        tester.widget<CardFan>(find.byType(CardFan)).selectedCards;
+
+    Iterable<PlayingCard> feltCards(WidgetTester tester) =>
+        tester.widgetList<PlayingCard>(
+          find.descendant(
+            of: find.byType(GameTableArea),
+            matching: find.byType(PlayingCard),
+          ),
+        );
+
+    testWidgets('at 360×740 each of seven cards in hand is 76 px wide or '
+        'more, and a tap at the centre of its visible part selects it', (
+      tester,
+    ) async {
+      await pumpGame(tester, turn('play'), size: phone);
+
+      final fan = find.byType(CardFan);
+      final layout = CardFan.layoutFor(seven.length, tester.getSize(fan).width);
+      expect(layout.rows, 2);
+      final origin = tester.getTopLeft(fan);
+      for (var i = 0; i < seven.length; i++) {
+        final card = find.descendant(
+          of: find.byKey(CardFan.itemKey(i)),
+          matching: find.byType(PlayingCard),
+        );
+        expect(tester.getSize(card).width, greaterThanOrEqualTo(76));
+        final visible = layout.visibleRect(i);
+        expect(visible.width, greaterThanOrEqualTo(48));
+
+        final centre = origin + visible.center;
+        await tester.tapAt(centre);
+        await tester.pumpAndSettle();
+        expect(selectedInHand(tester), {seven[i]}, reason: 'card $i');
+        await tester.tapAt(centre);
+        await tester.pumpAndSettle();
+        expect(selectedInHand(tester), isEmpty);
+      }
+    });
+
+    testWidgets('at 360×740 the pile is 70 px wide, and the played cards '
+        '49 in the draw step, which leaves the hand its room', (tester) async {
+      await pumpGame(tester, turn('draw'), size: phone);
+      expect(feltCards(tester), hasLength(6));
+      final pile = [
+        for (final id in const [32, 33, 34])
+          tester.widget<PlayingCard>(find.byKey(GameTableArea.discardKey(id))),
+      ];
+      expect(pile.every((card) => card.width >= 70), isTrue);
+      final played = feltCards(tester).where((card) => card.cardId < 32);
+      expect(played.map((card) => card.width).toSet(), {
+        CardSizes.tablePlayedDraw,
+      });
+    });
+
+    testWidgets('on a wide screen they are 84 px wide', (tester) async {
+      await pumpGame(tester, turn('draw'));
+      final widths = feltCards(tester).map((card) => card.width).toSet();
+      expect(widths.every((width) => width >= 84), isTrue, reason: '$widths');
+    });
+
+    testWidgets('a screen reader selects a card of the hand while playing', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpGame(tester, turn('play'), size: phone);
+
+      tester.semantics.tap(find.semantics.byLabel('7 de Cœur'));
+      await tester.pumpAndSettle();
+      expect(selectedInHand(tester), {19});
+      semantics.dispose();
+    });
+
+    testWidgets('a screen reader selects a card of the pile while drawing, '
+        'and is offered no tap on the hand', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpGame(
+        tester,
+        playing(
+          currentAction: 'draw',
+          playerHand: const [0, 13, 26, 40, 51, 6],
+          lastCardsPlayed: const [19, 32],
+          cardsPlayed: const [3, 4, 5],
+        ),
+        size: phone,
+      );
+
+      tester.semantics.tap(find.semantics.byLabel('7 de Cœur'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<PlayingCard>(find.byKey(GameTableArea.discardKey(19)))
+            .selected,
+        isTrue,
+      );
+      // The hand cannot be played in the draw step: no tap to offer.
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('A de Pique'))
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isFalse,
+      );
+      semantics.dispose();
+    });
+
+    for (final step in ['play', 'draw']) {
+      testWidgets('at 360×740 and a text scale of 1.5 ($step) nothing '
+          'overflows and less than 24 px part the felt from the hand', (
+        tester,
+      ) async {
+        await pumpGame(tester, turn(step), size: phone, textScale: 1.5);
+        expect(tester.takeException(), isNull);
+        final felt = tester.getRect(find.byKey(const Key('gameTable')));
+        final hand = tester.getRect(find.byKey(const Key('gameHand')));
+        expect(hand.top - felt.bottom, inInclusiveRange(0, 24));
+      });
+    }
   });
 
   group('failures', () {
@@ -720,6 +915,40 @@ void main() {
 
       expect(find.text('Partie pas encore commencée'), findsOneWidget);
     });
+
+    testWidgets('the owner starting the party brings the board, no reload', (
+      tester,
+    ) async {
+      final backend = FakeGameBackend(state: gameSnapshotJson(gameState: null));
+      final transport = await pumpGame(tester, backend);
+      expect(find.text('Partie pas encore commencée'), findsOneWidget);
+
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'partyStarted',
+        'type': 'partyUpdate',
+      });
+
+      expect(find.text('Partie pas encore commencée'), findsNothing);
+      expectBoardStanding(tester);
+    });
+
+    testWidgets('the "not started" page retries by hand', (tester) async {
+      // For a `partyStarted` this client missed while its channel was down.
+      final backend = FakeGameBackend(state: gameSnapshotJson(gameState: null));
+      await pumpGame(tester, backend);
+
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+      );
+      await tester.tap(find.byKey(const Key('retry-game')));
+      await tester.pumpAndSettle();
+
+      expectBoardStanding(tester);
+    });
   });
 
   // Two parallel pull requests shipped clipping bugs the suite's default
@@ -728,7 +957,7 @@ void main() {
   group('a 360×740 phone', () {
     const phone = Size(360, 740);
 
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets('the play phase fits at a text scale of $scale', (
         tester,
       ) async {
@@ -767,7 +996,7 @@ void main() {
           textScale: scale,
         );
 
-        expect(find.byKey(const Key('turnBanner')), findsOneWidget);
+        expect(find.byKey(const Key('drawInstruction')), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
 
@@ -842,11 +1071,7 @@ void main() {
                 currentTurn: 0,
                 currentAction: 'finished',
                 gameFinished: true,
-                winner: {
-                  'playerIndex': 0,
-                  'username': 'Vincent',
-                  'score': 12,
-                },
+                winner: {'playerIndex': 0, 'username': 'Vincent', 'score': 12},
                 eliminatedPlayers: [1, 2],
                 allHands: {
                   '0': [5],
@@ -883,20 +1108,114 @@ void main() {
         expect(find.text('Éliminé'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
+
+      testWidgets('not my turn fits at a text scale of $scale', (tester) async {
+        // The longest waiting banner a username can make: two lines.
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              players: [
+                gamePlayersJson[0],
+                {
+                  'playerIndex': 1,
+                  'userId': 'b1',
+                  'username': 'AnExceptionallyLongUsernameForABot',
+                },
+                gamePlayersJson[2],
+              ],
+              gameState: gameStateJson(
+                currentTurn: 1,
+                currentAction: 'play',
+                playerHand: [0, 1, 2, 3, 4, 5, 6],
+                lastCardsPlayed: [7, 8, 9],
+              ),
+            ),
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        expectBoardStanding(tester);
+        expect(enabled(tester, 'play-cards'), isFalse);
+        expect(bannerLines(tester), 2);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the tallest action bar fits at a text scale of $scale', (
+        tester,
+      ) async {
+        // The steps, the named button, the invalid-play reason box and
+        // ZapZap with its reason: the most the bar ever stacks.
+        await pumpGame(
+          tester,
+          playing(playerHand: [0, 1, 2, 3, 4, 14, 30], lastCardsPlayed: [7]),
+          size: phone,
+          textScale: scale,
+        );
+        selectCard(tester, 0);
+        selectCard(tester, 14);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('invalidPlayReason')), findsOneWidget);
+        expect(find.byKey(const Key('turnSteps')), findsOneWidget);
+        expect(
+          find.text('ZapZap · main 22, il faut 5 ou moins'),
+          findsOneWidget,
+        );
+        expectBoardStanding(tester);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a Golden Score hand of 10 fits at a text scale of $scale', (
+        tester,
+      ) async {
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              gameState: gameStateJson(
+                currentTurn: 0,
+                currentAction: 'play',
+                isGoldenScore: true,
+                eliminatedPlayers: [2],
+                playerHand: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                otherPlayersHandSizes: {'1': 10, '2': 0},
+              ),
+            ),
+          ),
+          size: phone,
+          textScale: scale,
+        );
+
+        expectBoardStanding(tester);
+        expect(
+          tester.widget<CardFan>(find.byType(CardFan)).cards,
+          hasLength(10),
+        );
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 
-  testWidgets('a wide screen puts the players beside the felt', (tester) async {
-    await pumpGame(
-      tester,
-      playing(lastCardsPlayed: [7, 8]),
-      size: const Size(1280, 900),
-    );
+  for (final scale in [1.0, 1.5, 2.0]) {
+    testWidgets(
+      'a wide screen puts the players beside the felt at a text scale of '
+      '$scale',
+      (tester) async {
+        await pumpGame(
+          tester,
+          playing(lastCardsPlayed: [7, 8]),
+          size: const Size(1280, 900),
+          textScale: scale,
+        );
 
-    expectBoardStanding(tester);
-    final table = tester.getTopLeft(find.byType(GamePlayerTable));
-    final felt = tester.getTopLeft(find.byType(GameTableArea));
-    expect(felt.dx, greaterThan(table.dx));
-    expect(tester.takeException(), isNull);
-  });
+        expectBoardStanding(tester);
+        final table = tester.getTopLeft(find.byType(GamePlayerTable));
+        final felt = tester.getTopLeft(find.byType(GameTableArea));
+        expect(felt.dx, greaterThan(table.dx));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

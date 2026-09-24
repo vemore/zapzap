@@ -5,7 +5,7 @@
 > routing guard, real-time channel (SSE), the parties, create-party and lobby screens, the
 > game board, the history and statistics screens, theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-23
+> Updated: 2026-09-24
 
 ## Facts
 
@@ -18,8 +18,8 @@
   channel (below), up to the end of the round and the end of the game (below). Still
   missing against the React client ([[Frontend]]): Google sign-in, admin.
 - **History and statistics are reached from the app-bar menu** of every signed-in screen
-  (`ZapZapAppBar`, below), and from each other's app-bar action; the deep links
-  (`/#/history`, `/#/stats`) still work. There is **no Admin entry**: `/admin` has the
+  (`ZapZapAppBar`, below) — the history, the game details and the statistics carry that
+  bar too, with a back button; the deep links (`/app/history`, `/app/stats`) still work. There is **no Admin entry**: `/admin` has the
   router guard but no screen, so the menu would lead to the not-found screen.
 - The card model, play rules and card widgets (below) are what the board draws hands with.
 - **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
@@ -27,12 +27,14 @@
   the `/app/` route of the production proxy. See "The PWA image" below and [[Deployment]].
 - CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
   `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale
-  `pubspec.lock` fails the job), `gen-l10n`, `analyze`, `test`,
+  `pubspec.lock` fails the job), `gen-l10n`, `dart format --output=none
+  --set-exit-if-changed lib test` (an unformatted file fails the job), `analyze`, `test`,
   `build web --base-href /app/ --no-web-resources-cdn` (the image's flags) and
   `build apk --debug`. `scripts/ci_scope.sh` selects it
   **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
   nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
-- Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `flutter analyze` when the
+- Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `dart format --output=none
+  --set-exit-if-changed lib test` (the whole tree), `flutter analyze` when the
   commit leaves a non-`.md` file under `frontend-flutter/` (a README edit or a deletion runs
   none); no `.dart_tool` → a refusal naming `flutter pub get`; a `pubspec.lock` the pub get
   rewrites and that is left unstaged → a refusal ([[Hooks]]). `scripts/worktree_setup.sh`
@@ -65,13 +67,14 @@
 | `services/api_config.dart` | `ApiConfig` (below) |
 | `services/api_client.dart`, `services/api_exception.dart` | `ApiClient`, `ApiException`, `ApiErrorCode` (API layer, below) |
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
-| `utils/validators.dart`, `utils/jwt.dart` | the React username/password rules; the JWT payload and `exp` reader |
+| `utils/validators.dart`, `utils/jwt.dart`, `utils/field_touch.dart` | the React username/password rules; the JWT payload and `exp` reader; `FieldTouch`, when a form field may show its refusal |
+| `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen; `leaveFor(fallback)`: `popOrGo` that replaces the browser's entry (the game's exits); `replaceWith(location)`: a screen taking another's place (Back navigation, below) |
 | `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
 | `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `not_found_screen.dart` |
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
-| `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `sortCards` (below) |
-| `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `playErrorMessage(PlayError)` |
-| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `game_action_buttons.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below) |
+| `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `zapZapProgress`, `hasJoker`, `counteractPenalty`, `sortCards` (below) |
+| `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `cardShort` ("7♥"), `playMoveLabel`, `playErrorMessage(PlayError)` |
+| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `game_action_buttons.dart`, `game_zapzap_sheet.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below) |
 | `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
 | `providers/game_provider.dart` | one party's board (below) |
 | `models/` | `card.dart` (above) and the typed API models with `fromJson` (API layer, below); `json.dart` holds the lenient readers and `Page<T>` |
@@ -152,6 +155,9 @@
   so `ZapZapResult` has `totalScores` (Node) or `roundScores` (Rust), never one `scores`;
   `counteractedBy` is an index on Node, a string on Rust; Node play/draw answers carry a raw `gameState` with every hand and
   the deck, deliberately not parsed.
+  > **Status: Outdated** (2026-09-24) — Node's `GET /history` now sends `userPlacement` and
+  > `userScore` too (`src/use-cases/history/GetGameHistory.js`, from
+  > `player_game_results`); `/history/public` carries neither, on both backends.
 - **Fixtures** (`test/fixtures/*.json`): answers captured from the local Node backend
   (`PORT=9911 node app.js` on a worktree database after `npm run init-demo && npm run
   init-bots`, one game against EasyBot1 and MediumBot1 played through the API to its end),
@@ -179,9 +185,17 @@
   (JSON of `User.toJson()`), those of the React client. `MemoryTokenStorage` for tests.
 - **Screens**: login (`Login.jsx`) only requires both fields — as React, so an account
   that predates the rules still signs in; register (`Register.jsx`) checks the rules of
-  `auth.js:42-88` live (`utils/validators.dart`: username trimmed, 3-30,
-  `^[a-zA-Z0-9_-]+$`; password 6-100, not trimmed): a field shows its refusal once edited,
-  and submit stays disabled until both pass. The username is sent trimmed (Node trims it
+  `auth.js:42-88` (`utils/validators.dart`: username trimmed, 3-30,
+  `^[a-zA-Z0-9_-]+$`; password 6-100, not trimmed). **Validate on touch or submit**
+  (`FieldTouch`, also on the create-party name): a field shows its refusal once edited and
+  left, or when submit is tapped, then live — never on a form just opened. Submit stays
+  amber and active; a click with a field refused marks it, focuses it and sends nothing
+  (C2). Both share `AuthCard` (`widgets/auth_form.dart`): the logo with its one-line pitch
+  (`AppLogo(pitch: true)`, `authPitch`) above the title (C1); the fields in one
+  `AutofillGroup`, Next moving on and Done submitting, the password with an eye
+  (`AuthPasswordField`) (C3); a spinner in the button while the call runs, then the
+  refusal in a red `ErrorBanner` (live region) just above the button (C4). The username
+  is sent trimmed (Node trims it
   too, `src/use-cases/auth/RegisterUser.js:93`). Server refusals map from
   `ApiException.code`: `INVALID_CREDENTIALS`, `USERNAME_EXISTS`, no response
   (`NETWORK_ERROR`/`TIMEOUT`), else a generic text. Success navigates by itself: the router
@@ -194,8 +208,15 @@
   followed when it is a local path (`/x`, not `//host` or a scheme). An unknown path shows
   the not-found screen, signed in or out (`test/app_test.dart`). React's
   `ProtectedRoute` checks only that a token exists, never its expiry
-  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route sits in the
-  URL fragment (`/#/parties`, Flutter's default URL strategy).
+  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route is the URL
+  path under the base href (`/app/parties`): `lib/main.dart` calls `usePathUrlStrategy()`
+  (`flutter_web_plugins`) before `runApp`, a no-op off the web; the browser path less
+  `/app/` is go_router's initial route, which wins over `initialLocation`
+  (`test/deep_link_test.dart`). A `push`ed screen shows its own path in the address bar:
+  `createRouter` sets `GoRouter.optionURLReflectsImperativeAPIs = true` (go_router's
+  default keeps the path of the screen below), so a reload of `/app/parties/new`, a lobby
+  or a game stays on it and a lobby's URL can be shared (`test/deep_link_test.dart`, `the
+  URL of a pushed screen`).
 
 ### Real-time channel (SSE)
 
@@ -251,15 +272,48 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
 - **Routes** (`router.dart`): `/parties` (the list), `/parties/new` (create — declared
   **before** `/parties/:id`, which would match it), `/parties/:id` (the lobby), `/game/:id`.
   `AppRoutes.partyPath(id)` and `AppRoutes.gamePath(id)` build the last two.
+- **Back navigation**: a screen reached from another is `context.push`ed, never `go`ne
+  to — `go` replaces the whole stack, and Android's system Back then leaves the app. The
+  list pushes the form, the lobby and a game; the form's lobby and the lobby's game
+  **replace** the screen they came from (`replaceWith`, `utils/navigation.dart`: a
+  `pushReplacement` under `Router.neglect`, so the browser's history entry is replaced
+  too), so Back from either — Android's or the browser's — returns to the list, not to a
+  form whose party exists or a lobby that sends straight back to the game. A screen's own back button, and the lobby closing, call `popOrGo`
+  (`utils/navigation.dart`): pop when something is below, else `go` to the list — a deep
+  link or a reload of the PWA has nothing below. The history, the game details and the
+  statistics follow the same rule (below). `test/party_screens_test.dart` (`back
+  navigation`) and `test/app_bar_test.dart` drive the system Back
+  (`handlePopRoute`).
 - **Screens own their provider**: each screen builds it in `initState` from the
   repositories it reads off the tree and disposes it, and draws with a `ListenableBuilder`;
   the widgets below take plain data. Only `ConnectedPlayersProvider` is app-wide.
 - **`PartyListProvider`** (`providers/party_provider.dart`): `GET /party`, pull-to-refresh
   (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
-  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). The list is
-  **not** refreshed by the event stream, as in React. A card shows the seats taken, the
-  status and the one action: Join (disabled when full, playing or finished), Return to
-  lobby, or Continue game for a party the caller is in (`isMember`). The cards are laid out
+  too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). **The event
+  stream keeps the list current** (React waits for a reload): `playerJoined`, `playerLeft`,
+  `partyStarted`, `partyDeleted` and `gameFinished` (`refreshingActions`), about any party,
+  reload it without a spinner `refreshDelay` (1 s) after the last one, so a burst of bot
+  joins is one `GET /party`; a game move reloads nothing. Only the newest load's answer is
+  kept (`_loadGeneration`, as in the lobby), so a pull and an event answering out of order
+  never show the older list. Dispose cancels the pending reload and the subscription. No
+  event announces a party being created: a new one appears with the next event about any
+  party, or on pull-to-refresh. **The screen has two sections** (`screens/parties_screen.dart`):
+  "My games" (`myParties`: the caller's, `isMember` — a running game first, then the
+  lobbies, then the finished ones, each in the backend's order) and "Available games"
+  (`openParties`, the heading `partiesHeading`). **A card is two lines**
+  (`widgets/party_card.dart`): the name and a badge, then "seats · status · you host" and
+  one button. A running game of mine has an amber border, an "In progress" badge and the
+  only filled button, Resume; my lobby is green-bordered, Joined, with an outlined Lobby;
+  someone else's party has an outlined Join (disabled when full, playing or finished).
+  There is **no "your turn" badge**: neither `GET /party` (Node or Rust) says whose turn it
+  is. While the first answer is on its way the list shows three skeleton cards; an empty
+  "Available games" ends on an invitation (create yours — `push`es `/parties/new` —, or
+  pull down to refresh), worded "no game available" when I have none either. The list
+  ends with `PartiesScreen.fabClearance` (88 px) so the amber Create button never covers
+  the last card's button. A row without
+  `maxPlayers` (or with 0) falls back to `settings.playerCount`, then to 5
+  (`defaultPartyPlayers`, `models/party.dart`), as React does — not "2 / 0" and Full. A
+  failed load shows its error banner alone, not the "no party yet" empty state under it. The cards are laid out
   as rows of one to three (`_cards`, by width), not as a `SliverGrid`: a grid tile's height
   is decided before the card is laid out, and any fixed one overflows at a large system
   font size.
@@ -271,6 +325,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   there is none left the seat stays human and the option shows "none available"
   (`CreateParty.jsx:47-74`). Changing the seat count keeps what was already configured
   (React resets). `POST /party` sends `{name, visibility, settings.playerCount, botIds}`.
+  The name is 3 to 50 characters once trimmed (`partyNameMinLength`/`MaxLength`), as Node
+  requires (`src/use-cases/party/CreateParty.js:47-53`): Create stays active, and a name
+  too short shows its reason once the field was edited and left or Create tapped
+  (`FieldTouch`), and sends nothing; longer cannot be typed — Node would answer a generic
+  500.
 - **`PartyLobbyProvider`** (`providers/party_provider.dart`): `GET /party/:id`, then the
   event stream filtered on `partyId` — `playerJoined`/`playerLeft` reload the seats without
   a spinner, `partyStarted` and `partyDeleted` set `outcome` (`LobbyOutcome.started` /
@@ -279,12 +338,29 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   `isOwner` falls back to comparing `party.ownerId` with the session's user, because Node's
   answer carries neither `isOwner` nor `userPlayerIndex`; `canStart` needs the owner and 3
   players; `canDelete` is the owner **or** the only human at the table
-  (`PartyLobby.jsx:140-144`). Delete asks first, in an `AlertDialog`.
+  (`PartyLobby.jsx:140-144`). Delete asks first, in an `AlertDialog`. Its loads are
+  sequenced as the board's are (`_loadGeneration`, below): two players joining a moment
+  apart start two reloads, and an older answer arriving last is dropped.
   The hand size is only shown when the party carries one (Rust): on Node the starting
   player picks it each round (`GAME_RULES.md`), so React's "Hand Size: 7" is wrong there.
+- **The lobby screen** (`screens/party_lobby_screen.dart`, S1–S4 of the UX study) opens on
+  the invite code (`party.inviteCode`, both backends send it), 26 px mono amber with a
+  Copy button (clipboard, then a snack bar); then the settings as one `Wrap` of chips
+  (`InfoChip`, `widgets/player_seat_tile.dart`): seats, hand size (Rust), "you host", the
+  status. A seat (`PlayerSeatTile`) shows a green "online" dot for a human the session
+  knows is connected — the signed-in player, or one in `ConnectedPlayersProvider`, which
+  holds five at most, so no dot means "not known", never "offline" —, a bot's level as an
+  amber chip, the owner's crown. A free seat is text only, the first one pointing at the
+  invite code: neither backend can seat a bot in an existing party, so there is no "add a
+  bot". Under the list, pinned: the reason Start is or is not active (players missing,
+  "can start", or "the host can start" for a guest), Start named with the player count,
+  then Leave. **Delete is in the ⋮ menu** (`AppBarMenuAction`, key `delete-party`), no
+  longer a red button next to Leave; it still confirms.
 - **`ConnectedPlayersProvider`** (`providers/connected_players_provider.dart`), app-wide
-  and lazy: `GET /players/connected` on sign-in, then `userConnected` (prepended, five at
-  most), `userDisconnected` and `userStatusChanged`. A client never sees the *broadcast*
+  and lazy: `GET /players/connected` on sign-in (kept to five, as the events are), then
+  `userConnected` (prepended, five at most), `userDisconnected` and `userStatusChanged`.
+  Until the first answer or event (`loaded`), and after a failed one, the app bar shows
+  `–` rather than a count: "0" would claim nobody is online. A client never sees the *broadcast*
   of its own arrival — Node emits `userConnected` before subscribing the new stream
   (`src/api/server.js:101-106` after `:99`) — but the session is registered first, so the
   `GET /players/connected` the client makes afterwards may already list it; which of the
@@ -295,10 +371,13 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   history (`menu-history`) and the statistics (`menu-stats`), with `context.push` so the
   Android system Back button returns to the screen below. A menu rather than one icon
   each: there is no URL bar on Android, and more icons would not fit a 360 px bar at a
-  large system font. Admin is left out until an admin screen exists.
+  large system font. Admin is left out until an admin screen exists. A screen may add its
+  own entries below a divider (`ZapZapAppBar.actions`, `AppBarMenuAction`): the lobby's
+  Delete.
 - **Error text** comes from `partyErrorText` (`widgets/error_banner.dart`), mapping
   `ApiException.code` (`PARTY_NOT_FOUND`, `PARTY_FULL`, `PARTY_STARTED`,
-  `PARTY_ALREADY_PLAYING`, `NOT_OWNER`, `NOT_AUTHORIZED`, no answer) to ARB strings;
+  `PARTY_ALREADY_PLAYING`, `NOT_OWNER`, `NOT_AUTHORIZED`, `NOT_IN_PARTY`, no answer) to
+  ARB strings;
   `PartyErrorCode` (`providers/party_provider.dart`) names the party codes.
 
 ### The game board (`screens/game_screen.dart`, `providers/game_provider.dart`, `widgets/game_*.dart`)
@@ -307,8 +386,11 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 
 - **`GameProvider`**, built and disposed by the screen as the lobby's providers are:
   `GET /game/:id/state`, then the event stream filtered on `partyId` — `play`, `draw`,
-  `selectHandSize`, `zapzap`, `roundStarted` and `gameFinished` refetch without a spinner,
-  `partyDeleted` sets `outcome` and the screen goes back to the list. No move's answer
+  `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished` and `partyStarted` refetch
+  without a spinner, `partyDeleted` sets `outcome` and the screen goes back to the list.
+  `partyStarted` is what takes a client that opened `/game/:id` before the owner started
+  off the "not started yet" page and onto the table with no reload; that page also has a
+  Retry (`Key('retry-game')`) for an event missed while the channel was down. No move's answer
   carries the new table, so every move refetches the state (`GameBoard.jsx` does the same).
   It derives the caller's seat from the user id (`myPlayerIndex`, `isMyTurn`), the card
   counts, the scores, the eliminated players, `orderedPlayers` (turn order from
@@ -330,26 +412,59 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 - **One selection, in the provider**: the tapped ids in tap order, dropped whenever the
   hand changes. React keeps one in `PlayerHand` and another in `GameBoard`, and they drift
   apart. `invalidPlay` is `analyzePlay`'s code; the action bar shows its text and disables
-  Play, and the board stays.
+  Play, and the board stays. The discard card is kept across a refresh that leaves the
+  hand as it was, so `willTakeFromDiscard` checks it is still in `lastCardsPlayed`: a card
+  gone from the pile is never posted, and Take falls back to Draw.
 - **Modes**, from `gameState.currentAction`: `selectHandSize` shows
   `GameHandSizeSelector` (4-7, or 4-10 in Golden Score; it starts on the middle of the
   range, 5 or 7) to the starting player and a waiting card to everyone else; `play`/`draw`
   show the board; `finished` shows the end of the round (below).
-- **Widgets take plain data**, as the lobby's do: `GamePlayerTable` (a `GameSeat` per row,
-  the player to move on a green edge, an eliminated one struck through, at most 5 card
-  backs under 640 px and 8 above); `GameTableArea` (the `lastAction` message, the cards
-  laid down this turn, the discard pile — tappable only in the draw phase —, and the
-  "reshuffled" banner for 2.5 s, timed in the widget's state); `GameHand` (the `CardFan`,
-  the count, `ZapZap n · Penalty n`, the eligibility badge and the deck button);
-  `GameActionButtons` (the turn banner, the refusal, and Play / Draw-or-Take / ZapZap).
+- **Widgets take plain data**, as the lobby's do: `GamePlayerTable` (a `GameSeat` per
+  line, below); `GameTableArea` (the `lastAction` message, the cards laid down this turn,
+  the discard pile and the deck — both targets only in the draw step —, and the
+  "reshuffled" banner for 2.5 s, timed in the widget's state); `GameHand` (the `CardFan`
+  under the hand value); `GameActionButtons` (the step indicator, the one button naming
+  the move, the refusal, and ZapZap). "The turn reads itself", below, has what each shows.
 - **Back leads to `/parties`, not to the lobby**: `PartyLobbyProvider.load` sends a party
   that is `playing` straight back to `/game/:id`, so a back button pointing at the lobby is
-  a flash and a full remount of the board, and no way out of the game.
-- **Layouts**: under 800 px one column that fills the height — each section is `Flexible`
-  over its own scroll view, so a large system font shrinks a section instead of
-  overflowing the column —, above it the players beside the felt. `test/game_screen_test.dart`
-  pumps every mode at 360x740 at text scales 1.0 **and** 1.5; the suite's default
-  1100x3000 hides clipping.
+  a flash and a full remount of the board, and no way out of the game. Every exit of the
+  game — its back button, the body's back button, "back to the parties" at the end, a
+  deleted party — calls `leaveFor(AppRoutes.parties)` (`utils/navigation.dart`): `popOrGo`
+  under `Router.neglect`. A pop, like a `go`, reaches the browser as a *new* history entry
+  (go_router reports it with `replace: false`), so the browser's Back from the list would
+  reopen the game; under `neglect` the game's entry is replaced by the list's.
+  `test/game_screen_test.dart` (`leaving the board`) checks list → game → back: `/parties`,
+  `canPop()` false, reported as `(replace)`.
+- **Layouts**: under 800 px one column that fills the height — each section over its own
+  scroll view, so a large system font shrinks a section instead of overflowing the column
+  —, above it the players beside the felt. The phone column is a `CustomMultiChildLayout`
+  (`widgets/phone_board_layout.dart`, `PhoneBoardLayout`): the moves take what they need
+  at the bottom, the players up to 3/11 of the rest, the hand what it needs as long as the
+  felt keeps 1/5 (`feltFloor`), and the felt is laid out at exactly the height left between
+  the players and the hand — no empty band between felt and hand, and the felt's content
+  centred in it (`GameTableArea` fills a tight height: `StackFit.passthrough`, then a
+  `minHeight` under its scroll view). A `Column` of `Flexible`s left the unused share as an
+  empty band and cut the felt in the draw step (production, 390x844, 2026-09-23); the
+  earlier delegate still left ~100 px between felt and hand at 360x740. In the draw step
+  the hand, which cannot be played then, keeps at most 1/5 of the height
+  (`drawHandShare`) and scrolls, and the felt gets the rest. The hand is then read, not
+  played (`GameHand.compact`): its value alone — no gauge, no Clear, a picked pile card
+  is dropped by tapping it again — over one row of 48 px cards, and the felt's cards
+  played this turn shrink to 49 px (`GameTableArea.drawPlayedWidth`): #64's two rows of
+  big cards in 3/20 showed only a strip of rank (production, 360x740, 2026-09-24). The
+  `lastAction` message is
+  hidden then — it is this player's own play, which the "Posées" row shows. The
+  felt scrolls *inside* its own edge (`Key('gameTableScroll')`), so its border, amber in
+  the draw step, is never cut. `test/game_felt_layout_test.dart` proves it at 360x740 and
+  390x844, text scales 1.0 and 1.5, with Roboto loaded from the SDK (the test font's square
+  glyphs are twice as wide): the whole felt, the deck and the take hint show, except at
+  360x740 at 1.5, where the players and the moves take half the height and the felt's
+  content scrolls inside a whole edge. The wide board's felt is `Expanded` too. Checked in the PWA (2026-09-23, Chromium at
+  390x844, the web build against a stand-in API in the draw step). `test/game_screen_test.dart`
+  pumps every mode at 360x740 at text scales 1.0, 1.5 **and** 2.0 — not my turn with a two-line
+  waiting banner, the tallest action bar (two-line banner over the invalid-play reason)
+  and a Golden Score hand of 10 included — and the wide layout at every scale too; the
+  suite's default 1100x3000 hides clipping.
 - Checked against the local Node backend (2026-09-23): a party of Vincent and two bots
   played through the web build in Chromium — hand size, play, take from the discard, draw,
   the bots' moves arriving over SSE, the end of the round and the next round. Known local
@@ -359,6 +474,56 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   (2026-09-23): a game of Vincent and two bots played to its end over the local backend —
   a successful ZapZap with its standings and revealed hands, three rounds started from the
   client, an eliminated player's badge, and the winner banner with Back to games.
+
+### The turn reads itself (J1–J6, T1, T2 of the UX study, 2026-09-23)
+
+In the existing look (`utils/app_theme.dart`); the strings use "tu", as the study's
+mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
+
+- **The step indicator** (J1, `GameActionButtons`, `TurnStepChip`): on the player's turn
+  two chips, ① Jouer → ② Piocher (`GAME_RULES.md`, Turn Flow), the current one amber, the
+  other grey — checked (✓ Jouer) once played. Another player's turn shows "En attente de
+  X" (`Key('turnBanner')`) instead.
+- **One button that names the move** (J2): full width, keyed `play-cards` in the play step
+  and `draw-card` in the draw step. It reads "Jouer 7♥", "Jouer la paire de 7", "Jouer le
+  groupe de 7 (3 cartes)", "Jouer la suite (3 cartes)" (`CardL10n.playMoveLabel`, from
+  `analyzePlay`), plain "Jouer" when nothing or a refused play is selected, then
+  "Piocher" or "Prendre 7♥" (`cardShort`: the rank and `Suit.symbol`), amber in both steps —
+  the step chips say which step it is. The refusal reason
+  stays, under it.
+- **The hand value in plain words** (J3, `GameHand`): "Ta main · 29 pts" — jokers at 0,
+  what ZapZap is decided on —, a gauge towards "ZapZap à 5" (`zapZapProgress`: 5 / value,
+  full at 5 or under), and "En fin de manche : n pts (joker 25)" only when the hand holds a
+  joker (`hasJoker`) — a joker counts 25 at the end of the round for anyone without the
+  lowest hand, counteracted or not (`GAME_RULES.md`), so the label does not tie it to a
+  counteract.
+- **ZapZap with its risk** (J4): always shown; disabled, it says why — "main 29, il faut 5
+  ou moins", or "au début de ton tour" outside the player's play step. A tap opens a
+  bottom sheet (`widgets/game_zapzap_sheet.dart`, `confirmZapZap`) that states the
+  counteract: the hand at 25 per joker + `counteractPenalty(activePlayers)` =
+  (active players − 1) × 5 (`utils/rules.dart`), active players being those not in
+  `eliminatedPlayers` (`GameProvider.activePlayerCount`), and in Golden Score that being
+  counteracted loses the game. `ZapZapRisk.eligible` is the provider's `zapZapEligible`, so
+  the button's reason and its enabled state come from one source. Only Confirm posts `/zapzap`; Cancel or a dismissal posts
+  nothing.
+- **The discard pile and the deck** (J5, `GameTableArea.step`, `TableStep`): the pile is
+  labelled "À prendre ensuite" and dimmed while the player plays; in the draw step the
+  felt takes an amber edge, says "Touche une carte pour la prendre, ou la pioche", the pile
+  goes to full opacity, the card the draw will take (`takeCard`, the one the button names —
+  never a pick the pile no longer holds) adds "Prendre 7♥ ajoute 7 points à ta main", or for
+  a joker "0 point pour ZapZap, mais 25 en fin de manche si ta main n'est pas la plus
+  basse", and the deck (`Key('draw-deck')`, moved from the hand onto the felt) is a target
+  of its own — `GameProvider.draw(fromDeck: true)` draws from the deck even with a discard
+  card picked, and keeps that pick if the draw is refused.
+- **The hand-size choice** (T1, T2, `GameHandSizeSelector`): 58 × 50 buttons (≥ 48 dp)
+  instead of chips, a line on what the choice changes ("Moins de cartes, ZapZap plus
+  vite ; plus de cartes, plus de combinaisons"), and "Distribuer N cartes".
+- **Compact opponents** (J6, `GamePlayerTable`): one line per player in turn order from the
+  round's starting player (`orderedPlayers`), each a small card back and the count
+  instead of a row of backs, a bar of the total towards 100 (red above 80, full once out)
+  and the total; the player to move on an amber edge. Every line has the same height
+  (`GamePlayerTable.rowHeight`, from the text scale), whatever it holds — a "Toi" badge,
+  a card back or "Éliminé".
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 
@@ -372,8 +537,15 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
 - **A player's round score** is `roundScores[index]`, else 0 for `lowestHandPlayerIndex`
   and `handPoints[index]` for everybody else, as React reads it. Players are laid out
   lowest round score first; ties keep turn order, which `List.sort` alone does not promise.
-- **Badges**: `#1` for the first of the standings when they are not out, Lowest Hand for
-  `lowestHandPlayerIndex`, Eliminated, ZapZap for `zapZapCaller`. **Eliminated** is
+- **A table, not a card per player** (F1 of the UX study, 2026-09-23): one row per
+  player — rank, name, the revealed hand (`allHands`) in miniature (22 px `PlayingCard`s
+  that overlap as much as the column needs), `+` this round's points, the total —, under a
+  header row; above a 1.2 text scale the miniature goes under the name. Four players and
+  the button fit a 360x740 phone without scrolling, eight at a 1.0 text scale.
+- **Markers**: a bolt for `zapZapCaller` and a crown for `lowestHandPlayerIndex`, icons with
+  a tooltip and a semantic label so a row stays one line; "You" on the caller's own row,
+  which is also tinted with an amber edge (`isMe`, from `myPlayerIndex`); Eliminated in
+  words, not in colour alone. The rank column replaced the `#1` badge. **Eliminated** is
   `eliminatedPlayers` *or* a total above 100 (`GAME_RULES.md`): Node fills the list, React
   only compares the total, and either alone misses a case. A player who is out never gets
   the Lowest Hand badge, as in React: on the last round of a game Node points
@@ -382,17 +554,28 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   then names who counteracted and spells the penalty out:
   `handValue + (activePlayers − 1) × 5`, where `activePlayers` are those whose total
   *before* the round (`total − roundScore`) was 100 or less. React counts the totals after
-  it instead, so it charges a player who was eliminated by this very round.
-- **Each hand is revealed** (`allHands`) as disabled `PlayingCard`s in a `Wrap` — 38 px
-  wide under 640 px, 52 above — with this round's points and the total beside each other in
-  two tiles of equal height (`IntrinsicHeight`: the column they sit in has no height to
-  stretch them to).
-- **The way on** is Next round (`POST /nextRound`, disabled while a move is in flight), or,
-  once `gameFinished`, the winner banner (`winner.username`, its final score) and Back to
-  games.
-- Every badge's text and every name is `Flexible` inside its `Row`: a `Row` that sizes
-  itself to its children hands an unbounded width to its text, and "Main la plus basse"
-  then runs off a 360 px phone at a 1.5 text scale.
+  it instead, so it charges a player who was eliminated by this very round. Under its
+  title, one sentence says why (F2): held — "their hand was worth n points, the lowest at
+  the table: X scores 0"; counteracted — "Counteracted by Y (a ≤ b): hand + penalty". `a`
+  and `b` are the hand values the call was decided on, a Joker counting 0
+  (`handValue(allHands[i])`, `utils/rules.dart`); `hand` is `handPoints`, where the backend
+  counts it 25 — so a caller holding a Joker reads "(1 ≤ 1): 26 + 15".
+- **The danger zone** (F3): under each row a bar of the total towards 100, amber, red above
+  80 (`RoundEndScoreBar`), full once the player is out.
+- **Totals climb** (F5): the total and its bar go from `total − roundScore` to `total` in
+  400 ms (`TweenAnimationBuilder`), at once when `MediaQuery.disableAnimations` is set.
+- **The way on is pinned** under the scrolling table (F4): Next round (`POST /nextRound`,
+  disabled while a move is in flight) with "Round n+1: X picks the hand size" above it, or,
+  once `gameFinished`, Back to games, the winner banner (`winner.username`, its final
+  score) heading the page. X is the seat after this round's `startingPlayer`, skipping
+  whoever is out (`GAME_RULES.md` "Subsequent Rounds", `src/use-cases/game/NextRound.js`).
+- Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
+  sizes itself to its children hands an unbounded width to its text, which then runs off a
+  360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
+  at text scales 1.0, 1.5 and 2.0.
+- Checked in the PWA (2026-09-23, Chromium at 360x740, the web build against a stand-in API
+  answering a finished round): the held and the counteracted round as in the study's
+  mockup.
 
 ### History and statistics
 
@@ -411,21 +594,49 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   unhandled zone error (and a red widget test). Every screen starts its reads through it.
 - **History** (`screens/history_screen.dart`): a `SegmentedButton` over `HistoryTab.mine`
   (`GET /history`) and `.public` (`GET /history/public`), each row a `HistoryGameTile`
-  (`widgets/history_game_tile.dart`) that opens the details. Node fills `winnerFinalScore`
+  (`widgets/history_game_tile.dart`) that opens the details — `push`ed, so Back returns
+  to the list. The three screens carry `ZapZapAppBar` (presence, connection, the menu)
+  with a back button that pops (`popOrGo`: to the list, or the history for the details,
+  when opened by a link); the statistics are reached from the history through the menu,
+  and Back unwinds them one at a time. Node fills `winnerFinalScore`
   and `totalRounds`, Rust neither, so the tile leaves out what is `null`.
+- **My result first (H1–H3 of the UX study, `feat/flutter-history-ux`).** On My games each
+  `HistoryGameTile` opens on a `PlacementBadge` ("1er"/"4e", amber when I won) and shows
+  my score beside the winner's. Rust sends `userPlacement`/`userScore`; Node sends
+  neither, so `myPlacement` (`widgets/history_game_tile.dart`) falls back to 1 when
+  `winnerUserId` is mine and the badge is left out otherwise — on production (Node) only
+  wins get a badge. The public tab shows no place. The list opens on `HistorySummary`
+  (`widgets/history_summary.dart`): games and wins from `GET /stats/me` (the whole record,
+  not the page of entries), the best place (1 as soon as the record holds a win, else the
+  best `myPlacement` of the page), `—` for what is not known; tapping it `push`es
+  `/stats`. My games has its own empty state, `HistoryInvite` ("your next finished games
+  will show up here", a link that `push`es `/parties/new`), also at the end of a list
+  shorter than `HistoryScreen.inviteBelow` (3); the public tab keeps `AsyncSection`'s
+  empty message. Ordinals go through `placementLabel`: the ARB `plural` has no `=3`, so
+  `historyPlacement` is a `select` on first/second/third/other.
+  > **Status: Outdated** (2026-09-24) — Node sends `userPlacement`/`userScore` on
+  > `GET /history` now, so production shows the place of a lost game too; the
+  > `winnerUserId` fallback only serves an older Node. `test/fixtures/history_list.json`
+  > carries both fields (Vincent, 3rd, 122).
 - **Game details** (`screens/game_details_screen.dart`): the summary (winner banner,
   players, rounds, end date, visibility), `HistoryStandings` (finishing order, `RankBadge`
   gold/silver/bronze, ZapZap record, final score) and `HistoryRoundsTable` — a `DataTable`
   in a horizontal scroll view, one row per round and one column per player in standings
   order, each cell the round's points over the running total plus the markers (bolt green
   or red for a ZapZap that held or not, a crown for the lowest hand, a cross for an
-  elimination; the points are green on the lowest hand, red when counteracted), with the
-  legend under it. The app bar takes the game's name once the read lands.
-- **Statistics** (`screens/stats_screen.dart`): `StatsPersonal` (`GET /stats/me`),
+  elimination; the points are red when counteracted, else green on the lowest hand —
+  red first, because a caller tied for the lowest hand is counteracted all the same
+  (`GAME_RULES.md`, Tie Handling), and the local database has such rows; React has it the
+  other way), with the legend under it. The app bar takes the game's name once the read lands.
+- **Statistics** (`screens/stats_screen.dart`): `StatsPersonal` (`GET /stats/me`: two
+  `HeroStat`s — wins / games, the average score — then `StatLine`s for the win rate, the
+  best score and the rounds, then the ZapZap block: a bar of successful over called and,
+  with no call yet, the rule of when one may call — St1, St2 of the UX study),
   `StatsLeaderboard` (`GET /stats/leaderboard?minGames=1&limit=20`, React's own query) and
   `StatsBots` (`GET /stats/bots`) — totals, a `ChoiceChip` per difficulty found in the
   answer, a card per difficulty with its strategy, and the per-bot breakdown once one is
-  picked. `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
+  picked; a reload that no longer carries the picked difficulty falls back to all of
+  them. `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
   name, strategy and colour and falls back to the raw name, so a new bot kind shows rather
   than breaks.
 - **My row in the leaderboard**: `LeaderboardRow.isCurrentUser` from
@@ -433,10 +644,12 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   (`frontend/src/components/Stats/Statistics.jsx:8`, `:194`).
 - **Formats** (`utils/date_format.dart`): dates through `intl` in
   `Localizations.localeOf(context)` (React hard-codes `fr-FR`) — the models already turned
-  the backend's Unix seconds into UTC `DateTime`, so only `toLocal()` is left; percentages
-  `(v*100).toStringAsFixed(1)`, as React; `—` for a missing value.
+  the backend's Unix seconds into UTC `DateTime`, so only `toLocal()` is left; the clock
+  is the locale's (`add_jm`: `14:26` in French, `2:26 PM` in English); percentages
+  `(v*100).toStringAsFixed(1)`, as React; `Formats.number` for a score or an average
+  (`134`, not `134.0`; `12.5`); `—` for a missing value.
 - Shared presentation lives in `widgets/stats_common.dart`: `SectionCard`, `StatTile`,
-  `StatTileGrid` (2 columns under 640 px, 4 above), `RankBadge`, `GoldenScoreChip`,
+  `StatTileGrid` (2 columns under 640 px, 4 above), `HeroStat`, `StatLine`, `RankBadge`, `GoldenScoreChip`,
   `MiniStat` and `StatsColors` — the green/red/purple/cyan accents of the React screens,
   kept out of `utils/app_theme.dart` because they belong to these screens only.
 - **Every text beside another in a `Row` is `Flexible`**: a name, a figure or a label that
@@ -446,8 +659,16 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   too, and `GoldenScoreChip` ellipsizes: with `Expanded` on the title alone the badge takes
   what it asks for, squeezes the title into a column of single letters and is clipped
   anyway. `test/history_screens_test.dart` and `test/stats_screen_test.dart` each end on a
-  `phone width` group at 360×740, at text scale 1 and 1.5, scrolling to every card so it
-  really lays out; an overflow is a layout error, which fails the test.
+  `phone width` group at 360×740, at text scale 1, 1.5 and 2.0, scrolling to every card so
+  it really lays out; an overflow is a layout error, which fails the test. At 2.0 the
+  standings score is `Flexible` beside the name (alone it took the whole row), the rounds
+  table's rows have no maximum height (`dataRowMaxHeight: double.infinity`, a fixed 76
+  clipped a cell) and the winner label wraps beside its icon.
+- **Text scale**: every screen is pinned at 360×740 at text scales 1.5 and 2.0, the
+  largest Android offers. The screens with no phone group of their own — home, splash,
+  login, register, not-found and the game screen's loading, load-failed and "not started"
+  states — are in `test/text_scale_test.dart`, which also checks their key controls lie
+  inside the screen: a clip inside a fixed-size box raises no overflow error.
 
 ### Android (`frontend-flutter/android/`)
 
@@ -496,19 +717,34 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   into text with `playErrorMessage` — no message in `rules.dart`.
 - **Stricter than React:** a repeated id (`[c, c]`) is refused (`PlayError.duplicateCard`);
   React and the Rust backend accept it ([[GameRules]]).
-- `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring and the counteract penalty are
-  not ported (the backend computes them).
-- Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2, amber glow when
-  selected, opacity 0.5 and no tap when disabled, a localised semantics label);
+- `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring is not ported (the backend
+  computes it); `counteractPenalty(activePlayers)` is, only to warn before a call (above).
+- Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2; selected: a 2 px
+  amber edge drawn in front of the face and a small amber glow; opacity 0.5 and no tap when
+  disabled; a localised semantics label whose `onTap` is the card's tap — none when
+  disabled, so a screen reader selects a card as a finger does);
   `CardBack` (sizes `xxs` 16 … `lg` 80 px, as `CardBack.jsx`; a painted red lattice, no
-  asset); `CardFan` (the arc of `CardFan.jsx`: under 640 px 50 px cards, ≤ 50°, 8°/card,
-  100 px high, lift 15; else 70 px, ≤ 75°, 12°/card, 150 px, lift 25; selected cards on top;
-  `CardFan.itemKey(i)`).
+  asset); `CardFan` (the hand — no longer the arc of `CardFan.jsx`: cards a quarter of the
+  width wide, 76 to 96 px, overlapping left to right with a step of ¾ of a card, never
+  less than 48 px of each left visible; a hand that cannot keep 48 px on one row goes onto
+  balanced rows — 7 cards at 360 px are 4 + 3 —, each row drawn over the lower half of the
+  one above; a row bows 4 px down at its ends; a selected card rises 20 px and keeps its
+  place in the paint order, so its neighbours stay as easy to tap; `CardFan.layoutFor(n,
+  width)` gives each card's rect and its visible part; `CardFan.itemKey(i)`; `compact`, the
+  hand in the draw step on a phone: one straight row of opaque cards at most 48 px wide, no
+  lift). The sizes are
+  tokens, `CardSizes` in `utils/app_theme.dart`: hand 76–96, 48 visible, compact 48, the
+  felt's cards 70 px on a phone and 84 on a wide board (the deck `CardBackSize.md`), the
+  cards played this turn 49 on a phone in the draw step, lift 20, edge 2.
 - Faces: `frontend-flutter/assets/cards/<rank>_of_<suit>.svg` — the CC0 "English pattern"
-  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`
-  copied from `frontend/public/`; rendered with `flutter_svg`. Licence:
-  `frontend-flutter/THIRD_PARTY.md`. The 54 files weigh 1.26 MB after `svgo` (2.3 MB as
-  published); the twelve court cards are 1.15 MB of it.
+  deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`, David
+  Bellot's LGPL SVG-cards jokers reframed into the faces' `0 0 360 540` frame (same outline,
+  same scale for both, no `<use>`, `<text>` or `<style>`); rendered with `flutter_svg`,
+  stretched into the width × 1.4 box (`BoxFit.fill`). `frontend/public/joker-*.svg` are the
+  same bytes. Licence and the changes made: `frontend-flutter/THIRD_PARTY.md`. The 54 files
+  weigh 1.32 MB after `svgo` (the jokers 31.6 and 24.5 KB); the twelve court cards are
+  1.15 MB of it. `test/card_widgets_test.dart` pins the jokers' frame and pumps them beside a
+  face at 38 and 80 px.
 
 ### Localisation
 
@@ -524,7 +760,11 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   analyze` never does (checked 2026-09-22): after an ARB change, run `gen-l10n`. CI, the
   commit gate and `worktree_setup.sh` run it explicitly. Keeps parallel pull requests that
   each add strings free of conflicts in generated code.
-- `test/l10n_test.dart` fails when a key is in one ARB file and not the other.
+- `test/l10n_test.dart` fails when a key is in one ARB file and not the other, and when
+  a French message says "vous" (`vousMarkers`: vous, votre, vos, êtes, faites, dites and
+  any word ending in "-ez", but not "rendez-vous", "chez", "nez", "assez").
+- **The French client says "tu"** to the player, everywhere: "Toi", "à toi de choisir",
+  "Choisis…", "Ce n'est pas ton tour.", "Réessaie.".
 
 ### The PWA image (`frontend-flutter/Dockerfile`, `frontend-flutter/nginx.conf`)
 
@@ -558,21 +798,23 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   that (35 checks); the `image` CI job runs it. It asserts content types, not only statuses,
   the exact `Cache-Control` value (an `add_header` beside an `expires` emits two), that a
   missing file 404s, and that CanvasKit comes from the bundle.
-- The route deep links use is the hash one: go_router's default on the web, so a link is
-  `/app/#/parties`. `/app/parties` is served the app by the fallback — it loads instead of
-  404ing — but the path is not the route; only a `usePathUrlStrategy()` in `lib/` would make
-  it one.
+- Deep links are path URLs (`usePathUrlStrategy()`, above): `/app/parties` and
+  `/app/history/<partyId>` open their screen from a cold tab or a reload, the fallback
+  serving `index.html` and the app reading the route off the path. No in-app URL carries
+  `#`. The extension rule is why a route may never contain a dot.
 
 ### Build and test (from `frontend-flutter/`)
 
 | Command | What |
 |---|---|
+| `dart format lib test` | the formatter; `--output=none --set-exit-if-changed` is the gate (hook and CI) |
 | `flutter analyze` | lints, must be clean |
-| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets, the guard: expired JWT, admin, `from`); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, presence), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend: cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, and that each screen fits 360×740, and 360×740 again at a 1.5 text scale), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card, back, fan), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, the hand-size range, the events), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties, and every mode at 360×740 at text scales 1.0 and 1.5), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, an unknown game), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1 and 1.5; `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
+| `flutter test` | `test/api_config_test.dart`, `test/app_test.dart` (routing, fr/en, theme), `test/l10n_test.dart`, `test/android_config_test.dart`, `test/api_client_test.dart` (Bearer, 401 → `onUnauthorized`, network, timeout), `test/api_exception_test.dart` (every error shape), `test/models_test.dart` (every model from the fixtures, plus the Rust shapes), `test/repositories_test.dart` (each route's method, path, body), `test/auth_utils_test.dart` (validators, JWT), `test/auth_provider_test.dart` (restore, login, logout, parallel 401s, the web storage), `test/auth_screens_test.dart` (login/register widgets — C1–C4: the pitch, validate on submit with an active button, the eye, Next/Done and the `AutofillGroup`, the spinner and the banner above the button, at 360×740 at text scales 1.0 and 1.5 —, the guard: expired JWT, admin, `from`), `test/create_party_form_test.dart` (the name's refusal: none on opening, on Create, on leaving the field); `test/auth_helpers.dart` builds unsigned test JWTs, `test/sse_parser_test.dart` (line format, split chunks), `test/sse_event_test.dart`, `test/sse_client_test.dart` (fake transport `test/sse_fakes.dart` + fake_async: token, 3 s reconnect, disconnect, token change; `SseProvider`), `test/sse_transport_io_test.dart` (`MockClient.streaming`: headers, chunks, non-200, idle timeout), `test/connection_indicator_test.dart`, `test/sse_session_test.dart` (the channel follows sign-in, logout, a new token), `test/party_provider_test.dart` (seat assignment — never the same bot twice, "none available", freeing a seat —, the create body, join on `ALREADY_IN_PARTY`, the lobby's events and its owner/only-human rules, two lobby loads answering out of order, presence and its five-player cap on the first load), `test/party_screens_test.dart` (the three screens end to end over `test/party_helpers.dart`'s fake backend (its `partiesGate` holds `GET /party` back): cards and their buttons, seat selectors, start disabled below 3, a player joining through the stream, start/leave/delete, a failed first load, a row without `maxPlayers`, `NOT_IN_PARTY`, no presence count before the first answer, the system Back from the form, the lobby and the game (`back navigation`), and that each screen fits 360×740, and 360×740 again at text scales 1.5 and 2.0), `test/parties_ux_test.dart` (P1–P4 in Roboto at 360×740, text scales 1.0 and 1.5: my games first and the running one on top with its badge and amber border, no "your turn" badge, two-line cards with one button — Resume filled, Lobby and Join outlined —, the amber Create button clear of the last card, the skeletons, the invitation and its push to the form, pull-to-refresh, a failed refresh keeping the list), `test/lobby_ux_test.dart` (S1–S4 in Roboto at 360×740, text scales 1.0 and 1.5: the invite code and Copy to the clipboard, the settings chips on one line, the online dots, the bot level chip, the free seat's hint and no add-a-bot button, the reason line, Start above Leave on screen, Delete only in the ⋮ menu and still confirmed), `test/card_test.dart` + `test/rules_test.dart` (the React utils tests, ported), `test/card_widgets_test.dart` (every face of the 54 ids parses and renders; card — its amber edge, a screen reader's tap, none when disabled —, back, fan — widths, balanced rows, 48 px visible for 1 to 13 cards at 300 to 600 px, a tap at the centre of each visible part, the lift that keeps its place), `test/game_provider_test.dart` (the derived table, the selection and its reset, each move's body, a refused move that keeps the table, a failed refresh that keeps it too, two loads answering out of order, a discard card gone from the pile that is not posted, the hand-size range, the events — `partyStarted` included), `test/game_screen_test.dart` (the board end to end over `test/game_helpers.dart`'s fake backend: each mode, my turn and not my turn, an invalid play that keeps the board, a backend refusal in a snack bar, a ZapZap that held, a counteracted one with its penalty, a finished game with its winner, a refresh that fails leaving the table under its banner, Clear dropping the discard card, a Golden Score that ends pulling the hand size back into range, Back leading to the parties — from the list, popped and replacing the game's browser entry —, the cards (seven in hand at 360×740: 76 px or more, a tap at the centre of each visible part selects that card; the felt's cards 70 px on a phone and 84 wide, the played ones 49 on a phone in the draw step; a screen reader's tap on `7 de Cœur` in the hand and in the pile, no tap on a disabled hand; at 1.5, no overflow and under 24 px between felt and hand), a waiting client entering the board on `partyStarted` or by Retry, and every mode at 360×740 at text scales 1.0, 1.5 and 2.0, the wide layout at each scale), `test/game_turn_ux_test.dart` (J1–J6, T1, T2: the step chips, the named button, the hand value and its gauge, the ZapZap sheet — cancel and confirm —, the felt in each step and the deck as a target, the hand-size hint and 48 dp targets, the compact opponents at 390×844 and 1280×800 at text scales 1.0, 1.5 and 2.0, and the new pieces at 360×740), `test/game_felt_layout_test.dart` (the phone felt in the draw step at 360×740 and 390×844, text scales 1.0 and 1.5, in Roboto: never cut, the deck and the take hint in view; in the draw step, 7 and 10 cards in hand each show their rank-and-suit corner and 60 % of their height; the amber draw button), `test/date_format_test.dart`, `test/history_screens_test.dart` (the two tabs, empty, failed and retried, opening the details; summary, standings, the round table and its legend, a counteracted caller in red even on the lowest hand, the system Back from the details, the signed-in app bar, an unknown game), `test/history_ux_test.dart` (H1–H3, St1, St2: the place badge on Rust and Node entries, my score, no place on the public tab, the fr/en ordinals, the summary and its push to the statistics, the invitation and its push to the create-party form, the hero figures, `134` without `.0`, the ZapZap bar with and without calls, all at 360×740 at text scales 1.0, 1.5 and 2.0), `test/stats_screen_test.dart` (personal figures, my highlighted row and a row that is not mine, the bot filter and its fallback to All, one failing section among three), `test/app_bar_test.dart` (the app-bar menu opens the history and the statistics, the system Back returns to the list, history then statistics unwound one Back at a time, no Admin entry for either kind of session), and a `phone width` group in each at 360×740, text scale 1, 1.5 and 2.0; `test/text_scale_test.dart` (home, splash, login, register, not-found and the game screen's three message states at 360×740, text scale 1.5 and 2.0); `test/history_helpers.dart` builds a session for a given user id and an `ApiClient` routing each path to a fixture |
 | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999` | the web client against a local backend |
 | `flutter build web --base-href /app/` | the PWA → `build/web/`, to be served under `/app/` |
 | `flutter run -d <device> --dart-define=API_BASE_URL=http://10.0.2.2:9999` | the Android debug app on an emulator, against a backend on the host |
 | `flutter build apk --debug` | `build/app/outputs/flutter-apk/app-debug.apk`; needs the Android SDK (`~/sdk/android`). Add `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a device on the LAN; without it the APK talks to production over HTTPS |
+| `flutter drive --driver=test_driver/integration_test.dart --target=integration_test/play_round_test.dart -d web-server --dart-define=API_BASE_URL=http://localhost:<port>` | the end-to-end test: a fresh user plays a round against two bots on a live backend; needs the backend and a chromedriver — procedure in [[Testing]] |
 | `docker build -t zapzap-frontend-flutter:ci .` then `scripts/pwa_image_smoke.sh` (from the repository root) | the PWA image and its smoke test |
 
 Build outputs (`frontend-flutter/build/`, `.dart_tool/`) are ignored by the root and the
@@ -580,6 +822,12 @@ project `.gitignore`.
 
 ## Decisions & History
 
+- **Node's `GET /history` sends the caller's place and score (2026-09-24,
+  `fix/node-history-user-placement`).** The Rust parity fields were missing on the backend
+  production runs, so a lost game showed no place. `getFinishedGamesForUser` already joined
+  `player_game_results`; the use case now maps `user_position`/`user_final_score`. The
+  fixture was regenerated from a local Node (`PORT=9911`) on a database seeded with the
+  fixture game's ids and scores, not from a replayed game.
 - **Flutter client decided (2026-09-22).** The user wants an Android app and a PWA at parity
   with the React client. The PWA goes on the same domain under `/app/` (same origin as the
   API, no CORS change to the backend) while React stays on `/`; Android is debug-only for
@@ -595,6 +843,30 @@ project `.gitignore`.
   official archive plus its sha256 pins it exactly. The bundle also gets its own image and
   container rather than being copied into the React one, so the two clients are built and
   rolled back separately ([[Deployment]]).
+- **The end of a round is a table (2026-09-23, `feat/flutter-round-end-ux`).** The UX
+  study (F1–F5) found a card per player, ~200 px each, showed three players of four and
+  made comparing a matter of scrolling. A table row per player, the result in one sentence,
+  the player's own row and a bar towards 100, the button pinned with who deals next, and
+  totals that climb, all in the existing theme. The badges of the lowest hand and the
+  caller became icons so a row stays one line.
+- **The turn reads itself (2026-09-23, `feat/flutter-turn-ux`).** The UX study found three
+  buttons of equal weight lighting up in turn, a hand header of two numbers of which one
+  counts, a ZapZap that went off without a word of its risk, and rows of card backs that
+  had to be counted. One named primary button per step rather than three: the step
+  indicator says which step it is, so the button can say what it does. The deck moved from
+  the hand to the felt, beside the pile, so the draw step has one place to look. The new
+  strings say "tu", as the mockups the user approved; the rest of the app still says
+  "vous" (a wip entry). `gameHandValues`, `gameZapZapEligible`, `gameTurnPlay`,
+  `gameTurnDraw`, `gamePlayButton`, `gamePlayButtonCount`, `gameTakeButton`,
+  `gameTableDiscardLabel` and `gameSeatCards` lost their callers and were dropped. Absorbed:
+  the player-list entry of 2026-09-22 (one equal-height line per player, turn order from
+  the round's first player).
+  > **Status: Outdated** (2026-09-23) — the whole app says "tu" now (the entry below).
+- **Tutoiement everywhere (2026-09-23, `chore/flutter-tu-voice`).** The user chose "tu",
+  as in the UX study, over the "vous" the first screens used: on the board, the "Vous"
+  badge sat next to "Ton tour". Twenty French strings changed wording only, no key was
+  renamed, and English is unchanged. `test/l10n_test.dart` keeps "vous" out of
+  `app_fr.arb`.
 - **The web icons are the launcher icon (2026-09-23).** Flutter's default web icons shipped
   until then; they are now rendered from the same `assets/icon/` SVGs as the Android
   launcher icon, plus a maskable variant for the install prompt.
@@ -622,6 +894,12 @@ project `.gitignore`.
   component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
   faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the
   UI localises them.
+- **Bellot jokers (2026-09-23, `feat/joker-artwork`).** The home-made 80 × 112 clown
+  jokers clashed with the English-pattern faces; the user picked David Bellot's Wikimedia
+  jokers. They are bundled, never hot-linked, so the PWA works offline; the red original's
+  `<use>` references are inlined because `flutter_svg` support for them is the part least
+  worth betting on. At 38 px the "JOKER" index is unreadable, as the faces' indices are, but
+  the red jester silhouette tells a joker from any face.
 - **History and statistics (2026-09-22, `feat/flutter-history`).** One `AsyncSection` per
   read rather than one loading state per screen: the statistics screen asks three
   independent endpoints and React hides all three behind three flags anyway. The bot
@@ -681,8 +959,72 @@ project `.gitignore`.
   keys the minimal state used (`gameRoundOverCaller`, `gameRoundScoreLabel`,
   `gameTotalScoreLabel`) were replaced rather than kept: "Manche 49" for a score read as a
   round number.
+- **Bigger cards, and the game's exits replace their browser entry (2026-09-24,
+  `feat/flutter-bigger-cards`).** At 360x740 the hand's cards were 50 px wide and each
+  showed 18 px to the next one: a tap hit the neighbour, and the ranks were hard to read;
+  the felt's were 45 px. The user asked for cards larger than the first proposal (64–72
+  px): the hand's are now 76–96 px (82 at 360x740), the felt's 70/84. The arc went: with
+  rotated cards the part a finger can reach is a skewed sliver, and at these sizes seven
+  cards do not fit in one arc on a phone — two flat, overlapping rows keep 48 px of every
+  card reachable, which a test taps. A selected card stays in the paint order rather than
+  on top, as React draws it: on top, it covered 32 of the 48 px of the next card. The felt
+  now fills the height between players and hand, so the ~100 px empty band under it went
+  and its cards got the room; in the draw step the hand yields to it (3/20) and the
+  duplicate "X a posé N cartes" line is dropped, which keeps the whole draw step in view
+  at 360x740 and 390x844 at 1.0. The game's exits call `leaveFor`: `popOrGo` alone would
+  still have pushed a browser entry — checked by the reported route information, which a
+  pop sends with `replace: false`. Before/after renders at 360x740 are described in the
+  pull request.
+- **Back navigation: `push`, and `popOrGo` (2026-09-23, `fix/flutter-back-navigation`).**
+  Every screen but the app-bar menu's destinations was reached with `go`, so Android's
+  system Back left the app from the form, the lobby, the history, the details and the
+  statistics, and one tap on the history's statistics shortcut threw away the stack the
+  menu had built. The shortcuts went with the hand-rolled app bars: `ZapZapAppBar`'s menu
+  already leads to both. The form's lobby and the lobby's game replace their screen rather
+  than stack on it. Absorbed in the same change: the `maxPlayers` fallback, the 3-50 name,
+  `NOT_IN_PARTY`, the sequenced lobby loads, the presence count before `loaded`, the
+  12-hour English clock, the bot filter reset, and red over green in the rounds table.
+  `authErrorNetwork`/`authErrorGeneric` duplicated `errorNetwork`/`errorGeneric` word for
+  word, and `backToParties`/`backToHistory` lost their callers to `BackButton`: all four
+  keys were dropped.
+- **Pushed screens own the URL (2026-09-23, `fix/flutter-pushed-route-urls`).** After
+  `push` replaced `go`, the address bar stayed on `/app/parties` under the form, a lobby
+  or a game, so a reload dropped the user on the list and a lobby could not be shared.
+  go_router advises against `optionURLReflectsImperativeAPIs` because a pushed route's
+  path is not always a deep link; here every route is top-level and loads itself from its
+  path parameters, so it is. `pushReplacement` alone still added a browser history entry,
+  and the browser's Back returned to the replaced form: `Router.neglect` makes it replace
+  the entry instead. Checked on a web build behind `frontend-flutter/nginx.conf` against a
+  local Node backend on a fresh database: list, form (`/app/parties/new`), lobby
+  (`/app/parties/<id>`, history length unchanged), reload on the lobby, Back to the list,
+  Back out of the app.
+- **The lobby shows its invite code and hides Delete (2026-09-24, `feat/flutter-lobby-ux`).**
+  The UX study (S1–S4) found the invite code — the only way into a private party — never
+  on screen, a 120 px settings card, seats that did not say who was there, and three
+  full-width buttons with a red Delete a thumb away from Leave. The mockup's "add a bot"
+  on a free seat was dropped at refinement: no backend route seats a bot in an existing
+  party (wip `2026-09-23-add-bot-to-waiting-party`). The party's name left the body: the
+  app bar carries it. Checked on a web build against a local Node backend on a fresh
+  database at 360×740.
+- **History and statistics put my own result first (2026-09-23, `feat/flutter-history-ux`).**
+  The UX study (H1–H3, St1, St2) found the history row said who won but not how I did, the
+  history and the statistics linked only through the menu, an empty list said nothing to
+  do, and six equal tiles made nothing stand out. The texts keep the app's "vous", not the
+  mockup's "tu" (outdated: "tu" everywhere since 2026-09-23). The summary's games and wins come from `/stats/me` rather than the
+  history, which is one page of entries (Node answers 20 by default).
 - **Android: `com.zapzap.app`, cleartext in debug only (2026-09-22).** The scaffold's
   generated `com.zapzap.zapzap` was replaced before any install existed. Plain HTTP is needed
   to reach a local backend from the emulator or the LAN, but a release build must never
   downgrade to it, so the network security config lives in `src/debug/` rather than in the
   main manifest.
+- **The parties list puts my games first (2026-09-24, `feat/flutter-parties-ux`).** The UX
+  study (P1–P4) found "Continue" and "Join" with the same amber button on the same ~160 px
+  card, a running game lost in the list, a Create button over the last Join, and an empty
+  list with nothing to do. The study's "your turn" badge was dropped at refinement: the
+  list does not carry the current player, and one state call per running party was not
+  worth it (`wip/todo_nr/2026-09-23-party-list-current-turn.md`), so the badge says "In
+  progress". The second section keeps the "Available games" heading rather than the
+  mockup's "Open games": the auth tests land on that text, and the meaning is the same.
+  The player count is an icon rather than the word, so the line fits beside the button on
+  a phone; the P1–P4 tests load Roboto, as the felt test does, because the test font's
+  square glyphs wrap every compact line.

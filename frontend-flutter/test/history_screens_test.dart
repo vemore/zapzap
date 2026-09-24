@@ -1,10 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:zapzap/router.dart';
+import 'package:zapzap/screens/game_details_screen.dart';
+import 'package:zapzap/screens/history_screen.dart';
+import 'package:zapzap/screens/parties_screen.dart';
 import 'package:zapzap/utils/date_format.dart';
+import 'package:zapzap/widgets/connection_indicator.dart';
 import 'package:zapzap/widgets/history_game_tile.dart';
 import 'package:zapzap/widgets/stats_common.dart';
+import 'package:zapzap/widgets/zapzap_app_bar.dart';
 
 import 'fixtures.dart';
 import 'history_helpers.dart';
@@ -14,6 +21,13 @@ void main() {
   const winnerId = '74a0d812-54b3-4b99-95a3-ca56596fe8bf';
   const easyBotId = '2f76f109-185e-45ee-9890-4a5240f0f901';
   const vincentId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e';
+
+  /// The history reads among [requests]: the app bar reads who is online
+  /// too.
+  List<String> historyPaths(List<http.Request> requests) => [
+    for (final request in requests)
+      if (request.url.path.startsWith('/api/history')) request.url.path,
+  ];
 
   Map<String, String> historyBodies() => {
     '/api/history': fixtureText('history_list'),
@@ -32,7 +46,7 @@ void main() {
         api: routedApi(historyBodies(), requests: requests),
       );
 
-      expect(requests.single.url.path, '/api/history');
+      expect(historyPaths(requests), ['/api/history']);
       expect(find.byType(HistoryGameTile), findsOneWidget);
       expect(find.text('Fixture party'), findsOneWidget);
       expect(find.text('MediumBot1 (77 pts)'), findsOneWidget);
@@ -62,25 +76,40 @@ void main() {
       await tester.tap(find.text('Parties publiques'));
       await tester.pumpAndSettle();
 
-      expect(requests.map((r) => r.url.path), [
-        '/api/history',
-        '/api/history/public',
-      ]);
+      expect(historyPaths(requests), ['/api/history', '/api/history/public']);
       expect(find.byType(HistoryGameTile), findsOneWidget);
     });
 
-    testWidgets('no game shows the empty message of the tab', (tester) async {
+    testWidgets('no game of mine shows the way to a game', (tester) async {
       await pumpScreen(
         tester,
         initialLocation: AppRoutes.history,
         api: routedApi({'/api/history': '{"success":true,"games":[]}'}),
       );
 
+      // My games has its own empty state (test/history_ux_test.dart).
+      expect(find.byKey(const Key('history-invite')), findsOneWidget);
+      expect(find.byType(HistoryGameTile), findsNothing);
+    });
+
+    testWidgets('no public game shows the empty message of the tab', (
+      tester,
+    ) async {
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.history,
+        api: routedApi({
+          '/api/history': fixtureText('history_list'),
+          '/api/history/public': '{"success":true,"games":[]}',
+        }),
+      );
+
+      await tester.tap(find.text('Parties publiques'));
+      await tester.pumpAndSettle();
+
       expect(find.byKey(const Key('async-empty')), findsOneWidget);
       expect(
-        find.text(
-          'Aucune partie terminée. Jouez pour remplir votre historique !',
-        ),
+        find.text('Aucune partie publique terminée pour le moment.'),
         findsOneWidget,
       );
       expect(find.byType(HistoryGameTile), findsNothing);
@@ -100,10 +129,11 @@ void main() {
       expect(find.text("Impossible de charger l'historique."), findsOneWidget);
       await tester.tap(find.text('Réessayer'));
       await tester.pumpAndSettle();
-      expect(requests.length, 2);
+      expect(historyPaths(requests), ['/api/history', '/api/history']);
     });
 
-    testWidgets('tapping a game opens its details', (tester) async {
+    testWidgets('tapping a game opens its details, and Back returns to the '
+        'list', (tester) async {
       await pumpScreen(
         tester,
         initialLocation: AppRoutes.history,
@@ -114,6 +144,60 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Classement final'), findsOneWidget);
+      // Pushed over the list: the Android system Back pops back to it
+      // rather than leaving the app.
+      expect(find.byType(GameDetailsScreen), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(GameDetailsScreen), findsNothing);
+      expect(find.byType(HistoryScreen), findsOneWidget);
+
+      // and so does the app-bar back button
+      await tester.tap(find.byKey(const Key('history-game-$partyId')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+      expect(find.byType(HistoryScreen), findsOneWidget);
+    });
+
+    testWidgets('the app bar is the signed-in one: who is online, the '
+        'connection, the menu', (tester) async {
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.history,
+        api: routedApi({
+          ...historyBodies(),
+          '/api/players/connected':
+              '{"players":[{"userId":"u1","username":"Vincent",'
+              '"status":"lobby","connectedAt":1790094174000}]}',
+        }),
+      );
+
+      expect(find.byType(ZapZapAppBar), findsOneWidget);
+      expect(find.byType(ConnectionIndicator), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('connected-players-count')))
+            .data,
+        '1',
+      );
+      expect(find.byKey(const Key('app-bar-menu')), findsOneWidget);
+    });
+
+    testWidgets('opened by a link, its back button leads to the parties', (
+      tester,
+    ) async {
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.history,
+        api: routedApi(historyBodies()),
+      );
+
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HistoryScreen), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
     });
   });
 
@@ -199,6 +283,42 @@ void main() {
       expect(find.text('Contré'), findsOneWidget);
     });
 
+    testWidgets('a counteracted caller is red, even on the lowest hand', (
+      tester,
+    ) async {
+      // The capture has no counteracted round, so the last one is turned into
+      // the Golden-Score tie `GAME_RULES.md` describes: MediumBot1 calls,
+      // holds the lowest hand, is counteracted all the same and pays
+      // 3 + (3 − 1) × 5. The local database has rows of that shape
+      // (`was_counteracted = 1 AND is_lowest_hand = 1`).
+      final details = fixture('history_details');
+      final lastRound = (details['rounds'] as List).last as Map;
+      final caller = (lastRound['players'] as List).cast<Map>().firstWhere(
+        (player) => player['userId'] == winnerId,
+      );
+      caller
+        ..['zapZapSuccess'] = false
+        ..['wasCounterActed'] = true
+        ..['isLowestHand'] = true
+        ..['scoreThisRound'] = 13
+        ..['totalScoreAfter'] = 90;
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.gameDetails(partyId),
+        api: routedApi({
+          ...historyBodies(),
+          '/api/history/$partyId': jsonEncode(details),
+        }),
+      );
+
+      final score = tester.widget<Text>(find.text('+13'));
+      expect(score.style?.color, StatsColors.danger);
+      expect(find.text('(90)'), findsOneWidget);
+      // A lowest hand that was not a counteracted call stays green.
+      final earlier = tester.widget<Text>(find.text('+0').first);
+      expect(earlier.style?.color, StatsColors.success);
+    });
+
     testWidgets('an unknown game says so rather than failing generically', (
       tester,
     ) async {
@@ -216,7 +336,7 @@ void main() {
     // Anything that does not fit throws a layout error, which fails the
     // test. A 1.5 text scale is the same layout with every text wider: a
     // row of unconstrained texts overflows there and nowhere else.
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       final at = scale == 1 ? '' : ' at a $scale text scale';
 
       testWidgets('the history list fits$at', (tester) async {

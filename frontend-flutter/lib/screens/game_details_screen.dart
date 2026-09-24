@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -9,10 +8,12 @@ import '../router.dart';
 import '../services/api_exception.dart';
 import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
+import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
 import '../widgets/history_rounds_table.dart';
 import '../widgets/history_standings.dart';
 import '../widgets/stats_common.dart';
+import '../widgets/zapzap_app_bar.dart';
 
 /// One finished game (`GET /history/:partyId`): its summary, the final
 /// standings and the round-by-round table. The port of
@@ -66,13 +67,12 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: l10n.backToHistory,
-          onPressed: () => context.go(AppRoutes.history),
+      appBar: ZapZapAppBar(
+        title: _title ?? l10n.gameDetailsTitle,
+        leading: BackButton(
+          key: const Key('back'),
+          onPressed: () => context.popOrGo(AppRoutes.history),
         ),
-        title: Text(_title ?? l10n.gameDetailsTitle),
       ),
       body: AsyncSection<GameDetails>(
         future: _details!,
@@ -143,11 +143,14 @@ class _Summary extends StatelessWidget {
                         color: AppColors.amber400,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        l10n.gameWinnerLabel,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: AppColors.amber400,
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Text(
+                          l10n.gameWinnerLabel,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: AppColors.amber400,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],

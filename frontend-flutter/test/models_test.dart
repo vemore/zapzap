@@ -62,6 +62,27 @@ void main() {
       expect(party.createdAt, utc(1790094174));
     });
 
+    test(
+      'a party row without maxPlayers falls back to its settings, then 5',
+      () {
+        final row = fixture('party_list')['parties'][0] as JsonMap;
+        expect(
+          PartySummary.fromJson({...row}..remove('maxPlayers')).maxPlayers,
+          5,
+        );
+        expect(PartySummary.fromJson({...row, 'maxPlayers': 0}).maxPlayers, 5);
+        expect(
+          PartySummary.fromJson(
+            {
+              ...row,
+              'settings': {'playerCount': 4},
+            }..remove('maxPlayers'),
+          ).maxPlayers,
+          4,
+        );
+      },
+    );
+
     test('create', () {
       final result = CreatePartyResult.fromJson(fixture('party_create'));
       expect(result.botsJoined, 2);
@@ -397,6 +418,20 @@ void main() {
         expect(game.playerCount, 3);
         expect(game.finishedAt, utc(1790094408));
       }
+    });
+
+    test('my games carry my place and score (Node), public games do not', () {
+      GameHistoryEntry only(String name) => Page.fromJson(
+        fixture(name),
+        'games',
+        GameHistoryEntry.fromJson,
+      ).items.single;
+      final mine = only('history_list');
+      expect(mine.userPlacement, 3);
+      expect(mine.userScore, 122);
+      final public = only('history_public');
+      expect(public.userPlacement, isNull);
+      expect(public.userScore, isNull);
     });
 
     test('an entry (Rust: roundsPlayed, userPlacement)', () {

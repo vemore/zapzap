@@ -316,11 +316,15 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 The Flutter client, from `frontend-flutter/`:
 
 ```bash
-flutter pub get && flutter analyze && flutter test
+flutter pub get && dart format lib test && flutter analyze && flutter test
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999
 flutter build web --base-href /app/          # the PWA, served under /app/
 flutter build apk --debug                    # Android, needs the Android SDK
 ```
+
+An end-to-end test plays a round through the client against a live backend and a
+chromedriver (`integration_test/`, `flutter drive`); the procedure is in
+`.llmwiki/Testing.md`.
 
 The PWA image (`frontend-flutter/Dockerfile`, service `frontend-flutter`) builds that
 bundle with a pinned Flutter SDK and serves it under `/app/`; the proxy routes `/app/` to

@@ -11,8 +11,9 @@ import '../utils/card_l10n.dart';
 /// A card face, from the SVGs under `assets/cards/` — the port of
 /// `frontend/src/components/Game/PlayingCard.jsx`.
 ///
-/// Height is `width × 1.4`; a selected card glows amber, a disabled one is
-/// half transparent and ignores taps.
+/// Height is `width × 1.4`; a selected card takes an amber edge and glows
+/// amber, a disabled one is half transparent and ignores taps. A screen
+/// reader activates it as a tap does.
 class PlayingCard extends StatelessWidget {
   const PlayingCard({
     super.key,
@@ -21,6 +22,7 @@ class PlayingCard extends StatelessWidget {
     this.disabled = false,
     this.onTap,
     this.width = 80,
+    this.dimmed,
   });
 
   final int cardId;
@@ -28,6 +30,10 @@ class PlayingCard extends StatelessWidget {
   final bool disabled;
   final VoidCallback? onTap;
   final double width;
+
+  /// Half transparent; by default when [disabled]. A hand only read, whose
+  /// cards overlap, stays opaque: the cards under would show through.
+  final bool? dimmed;
 
   /// The standard playing-card ratio of the React client.
   static const aspectRatio = 1.4;
@@ -45,20 +51,32 @@ class PlayingCard extends StatelessWidget {
     final height = heightFor(width);
     final radius = BorderRadius.circular(radiusFor(width));
 
+    final tap = disabled ? null : onTap;
     return Semantics(
       button: true,
       enabled: !disabled,
       selected: selected,
       label: AppLocalizations.of(context).cardName(card),
+      onTap: tap,
       excludeSemantics: true,
       child: GestureDetector(
-        onTap: disabled ? null : onTap,
+        onTap: tap,
         child: Opacity(
-          opacity: disabled ? 0.5 : 1,
+          opacity: (dimmed ?? disabled) ? 0.5 : 1,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: width,
             height: height,
+            // In front of the face, so the edge does not shrink it.
+            foregroundDecoration: selected
+                ? BoxDecoration(
+                    borderRadius: radius,
+                    border: Border.all(
+                      color: AppColors.amber400,
+                      width: CardSizes.selectedBorder,
+                    ),
+                  )
+                : null,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: radius,
@@ -66,8 +84,8 @@ class PlayingCard extends StatelessWidget {
                 if (selected)
                   BoxShadow(
                     color: AppColors.amber400.withValues(alpha: 0.7),
-                    blurRadius: 20,
-                    spreadRadius: 8,
+                    blurRadius: 12,
+                    spreadRadius: 2,
                   )
                 else
                   BoxShadow(

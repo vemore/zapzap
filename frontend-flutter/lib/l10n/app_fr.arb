@@ -32,11 +32,11 @@
   "@authPasswordLabel": {
     "description": "Label of the password field (login and register)"
   },
-  "loginUsernameHint": "Entrez votre pseudo",
+  "loginUsernameHint": "Entre ton pseudo",
   "@loginUsernameHint": {
     "description": "Placeholder of the login username field"
   },
-  "loginPasswordHint": "Entrez votre mot de passe",
+  "loginPasswordHint": "Entre ton mot de passe",
   "@loginPasswordHint": {
     "description": "Placeholder of the login password field"
   },
@@ -55,6 +55,18 @@
   "loginRegisterLink": "S'inscrire",
   "@loginRegisterLink": {
     "description": "Link from the login screen to the register screen"
+  },
+  "authPitch": "Vide ta main : à 5 points ou moins, crie ZapZap !",
+  "@authPitch": {
+    "description": "One line under the logo of the login and register screens that says what the game is about"
+  },
+  "authShowPassword": "Afficher le mot de passe",
+  "@authShowPassword": {
+    "description": "Tooltip of the eye button that reveals the password (login and register)"
+  },
+  "authHidePassword": "Masquer le mot de passe",
+  "@authHidePassword": {
+    "description": "Tooltip of the eye button that hides the password again (login and register)"
   },
   "registerTitle": "Créer un compte",
   "@registerTitle": {
@@ -169,14 +181,6 @@
   "@authErrorUsernameExists": {
     "description": "Register refused (USERNAME_EXISTS)"
   },
-  "authErrorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
-  "@authErrorNetwork": {
-    "description": "No answer from the server (network error or timeout)"
-  },
-  "authErrorGeneric": "Une erreur est survenue. Réessayez.",
-  "@authErrorGeneric": {
-    "description": "Any other login or register failure"
-  },
   "partiesTitle": "Parties",
   "@partiesTitle": {
     "description": "Title of the parties (lobby) screen"
@@ -261,11 +265,11 @@
   "@playErrorNotConsecutive": {
     "description": "A play is refused: the cards of the sequence are not consecutive, even with the jokers"
   },
-  "errorNetwork": "Serveur injoignable. Vérifiez votre connexion.",
+  "errorNetwork": "Serveur injoignable. Vérifie ta connexion.",
   "@errorNetwork": {
-    "description": "No answer from the server (network error or timeout), outside the auth screens"
+    "description": "No answer from the server (network error or timeout)"
   },
-  "errorGeneric": "Une erreur est survenue. Réessayez.",
+  "errorGeneric": "Une erreur est survenue. Réessaie.",
   "@errorGeneric": {
     "description": "Any failure with no more precise message"
   },
@@ -313,7 +317,7 @@
   "@partiesEmptyTitle": {
     "description": "Title shown when no party exists"
   },
-  "partiesEmptyBody": "Créez la première partie et commencez à jouer !",
+  "partiesEmptyBody": "Crée la première partie et commence à jouer !",
   "@partiesEmptyBody": {
     "description": "Body shown when no party exists"
   },
@@ -373,6 +377,38 @@
   "@partyReturnToLobbyButton": {
     "description": "Button that opens the lobby of a party the user is in"
   },
+  "partiesMine": "Mes parties",
+  "@partiesMine": {
+    "description": "Section heading: the parties the signed-in user is in"
+  },
+  "partiesOpenEmpty": "Pas d'autre partie ouverte.",
+  "@partiesOpenEmpty": {
+    "description": "Shown under the open games heading when there is none but the user has games of their own"
+  },
+  "partiesEmptyCreate": "Crée la tienne",
+  "@partiesEmptyCreate": {
+    "description": "Link in the empty open-games box that opens the create-party screen"
+  },
+  "partiesPullToRefresh": "Tire vers le bas pour actualiser.",
+  "@partiesPullToRefresh": {
+    "description": "Hint under the empty open-games box"
+  },
+  "partyInProgressBadge": "En cours",
+  "@partyInProgressBadge": {
+    "description": "Badge on a party the user is in whose game is running"
+  },
+  "partyCardHost": "tu es l'hôte",
+  "@partyCardHost": {
+    "description": "On a party card: the signed-in user created this party"
+  },
+  "partyResumeButton": "Reprendre",
+  "@partyResumeButton": {
+    "description": "Button that opens the running game of a party the user is in"
+  },
+  "partyLobbyButton": "Salon",
+  "@partyLobbyButton": {
+    "description": "Button that opens the lobby of a party the user is in"
+  },
   "createPartyTitle": "Nouvelle partie",
   "@createPartyTitle": {
     "description": "Title of the create-party screen"
@@ -381,13 +417,22 @@
   "@createPartyNameLabel": {
     "description": "Label of the party name field"
   },
-  "createPartyNameHint": "Entrez un nom",
+  "createPartyNameHint": "Entre un nom",
   "@createPartyNameHint": {
     "description": "Placeholder of the party name field"
   },
   "createPartyNameRequired": "Le nom de la partie est requis",
   "@createPartyNameRequired": {
     "description": "Validation: empty party name"
+  },
+  "createPartyNameTooShort": "Le nom doit faire au moins {min} caractères",
+  "@createPartyNameTooShort": {
+    "description": "Validation: party name shorter than the backend accepts (3-50 characters)",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
   },
   "createPartyPlayerCountLabel": "Nombre de joueurs",
   "@createPartyPlayerCountLabel": {
@@ -421,7 +466,7 @@
   "@createPartySlotsTitle": {
     "description": "Title of the per-seat configuration block"
   },
-  "createPartySlotOwner": "Joueur 1 (vous)",
+  "createPartySlotOwner": "Joueur 1 (toi)",
   "@createPartySlotOwner": {
     "description": "The creator's own seat, always the first and always human"
   },
@@ -577,6 +622,74 @@
   "@lobbyNotFoundBody": {
     "description": "Body shown when the party does not exist any more"
   },
+  "lobbyInviteCodeLabel": "Code d'invitation",
+  "@lobbyInviteCodeLabel": {
+    "description": "Label above the party's invite code in the lobby"
+  },
+  "lobbyCopyInviteCode": "Copier",
+  "@lobbyCopyInviteCode": {
+    "description": "Button that copies the invite code to the clipboard"
+  },
+  "lobbyInviteCodeCopied": "Code copié : envoie-le à tes amis.",
+  "@lobbyInviteCodeCopied": {
+    "description": "Snack bar once the invite code is on the clipboard"
+  },
+  "lobbySeatsChip": "{count, plural, =1{1 place} other{{count} places}}",
+  "@lobbySeatsChip": {
+    "description": "Settings chip: how many seats the party has",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyHandSizeChip": "{count, plural, =1{1 carte en main} other{{count} cartes en main}}",
+  "@lobbyHandSizeChip": {
+    "description": "Settings chip: the party's hand size (Rust only)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyYouHostChip": "Tu es l'hôte",
+  "@lobbyYouHostChip": {
+    "description": "Settings chip shown to the party's owner"
+  },
+  "lobbySeatOnline": "en ligne",
+  "@lobbySeatOnline": {
+    "description": "Beside a human seat whose player is connected"
+  },
+  "lobbySeatHost": "hôte",
+  "@lobbySeatHost": {
+    "description": "Beside the owner's seat, after the crown"
+  },
+  "lobbyEmptySlotHint": "Envoie le code d'invitation pour la remplir.",
+  "@lobbyEmptySlotHint": {
+    "description": "Under an empty seat: how to fill it"
+  },
+  "lobbyStartWithCount": "{count, plural, =1{Lancer la partie (1 joueur)} other{Lancer la partie ({count} joueurs)}}",
+  "@lobbyStartWithCount": {
+    "description": "Owner-only button that starts the game, with the number of players",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyCanStart": "Au moins {min} joueurs : la partie peut commencer.",
+  "@lobbyCanStart": {
+    "description": "Why Start is active",
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "lobbyWaitingForHost": "L'hôte peut lancer la partie.",
+  "@lobbyWaitingForHost": {
+    "description": "Shown to a player who does not own the party, once there are enough players"
+  },
   "connectedPlayersTitle": "Joueurs connectés",
   "@connectedPlayersTitle": {
     "description": "Title of the connected players list, and tooltip of the app bar button that opens it"
@@ -601,14 +714,6 @@
   "@loading": {
     "description": "Accessibility label of a spinner while a section loads"
   },
-  "backToParties": "Retour aux parties",
-  "@backToParties": {
-    "description": "Back button of the history and statistics screens"
-  },
-  "backToHistory": "Retour à l'historique",
-  "@backToHistory": {
-    "description": "Back button of the game details screen"
-  },
   "historyTitle": "Historique",
   "@historyTitle": {
     "description": "Title of the history screen"
@@ -620,10 +725,6 @@
   "historyTabPublic": "Parties publiques",
   "@historyTabPublic": {
     "description": "History tab listing everyone's public finished games"
-  },
-  "historyEmptyMine": "Aucune partie terminée. Jouez pour remplir votre historique !",
-  "@historyEmptyMine": {
-    "description": "Empty My games tab"
   },
   "historyEmptyPublic": "Aucune partie publique terminée pour le moment.",
   "@historyEmptyPublic": {
@@ -644,6 +745,66 @@
         "type": "int"
       }
     }
+  },
+  "historyPlacement": "{kind, select, first{{place}er} other{{place}e}}",
+  "@historyPlacement": {
+    "description": "My finishing place in a finished game, as an ordinal (history list badge). kind is first, second, third or other, from place (the ARB plural has no =3)",
+    "placeholders": {
+      "place": {
+        "type": "int"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "historyYourPlacement": "Ta place : {place}",
+  "@historyYourPlacement": {
+    "description": "Accessibility label of the finishing-place badge; place is historyPlacement",
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "historyYourScore": "toi : {score} pts",
+  "@historyYourScore": {
+    "description": "My final score in a finished game, next to the winner's, in the history list",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryGames": "{count, plural, one{partie} other{parties}}",
+  "@historySummaryGames": {
+    "description": "Caption under the number of games played, in the history summary",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryWins": "{count, plural, one{victoire} other{victoires}}",
+  "@historySummaryWins": {
+    "description": "Caption under the number of games won, in the history summary",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historySummaryBestPlace": "meilleur rang",
+  "@historySummaryBestPlace": {
+    "description": "Caption under my best finishing place, in the history summary"
+  },
+  "historyInviteText": "Tes prochaines parties terminées apparaîtront ici.",
+  "@historyInviteText": {
+    "description": "Under a short or empty My games list"
+  },
+  "historyInvitePlay": "Lancer une partie contre des bots",
+  "@historyInvitePlay": {
+    "description": "Link under a short or empty My games list: opens the create-party form"
   },
   "playerCount": "{count, plural, one{{count} joueur} other{{count} joueurs}}",
   "@playerCount": {
@@ -803,17 +964,13 @@
   "@statsPersonalTitle": {
     "description": "Title of the personal statistics card"
   },
-  "statsLoadError": "Impossible de charger vos statistiques.",
+  "statsLoadError": "Impossible de charger tes statistiques.",
   "@statsLoadError": {
     "description": "GET /stats/me failed"
   },
   "statsGamesPlayed": "Parties jouées",
   "@statsGamesPlayed": {
     "description": "Number of games played"
-  },
-  "statsWins": "Victoires",
-  "@statsWins": {
-    "description": "Number of games won"
   },
   "statsWinRate": "Taux de victoire",
   "@statsWinRate": {
@@ -835,21 +992,49 @@
   "@statsZapzapTitle": {
     "description": "Title of the ZapZap block of the personal statistics"
   },
-  "statsZapzapTotal": "Appels",
-  "@statsZapzapTotal": {
-    "description": "Number of ZapZap calls"
-  },
-  "statsZapzapSuccessful": "Réussis",
-  "@statsZapzapSuccessful": {
-    "description": "Number of successful ZapZap calls"
-  },
-  "statsZapzapFailed": "Ratés",
-  "@statsZapzapFailed": {
-    "description": "Number of failed ZapZap calls"
-  },
   "statsZapzapSuccessRate": "Taux de réussite",
   "@statsZapzapSuccessRate": {
     "description": "Share of successful ZapZap calls"
+  },
+  "statsHeroWinsValue": "{wins} / {games}",
+  "@statsHeroWinsValue": {
+    "description": "Big figure of the personal statistics: games won over games played",
+    "placeholders": {
+      "wins": {
+        "type": "int"
+      },
+      "games": {
+        "type": "int"
+      }
+    }
+  },
+  "statsHeroWinsLabel": "{wins, plural, one{Victoire} other{Victoires}} / {games, plural, one{partie} other{parties}}",
+  "@statsHeroWinsLabel": {
+    "description": "Caption of statsHeroWinsValue",
+    "placeholders": {
+      "wins": {
+        "type": "int"
+      },
+      "games": {
+        "type": "int"
+      }
+    }
+  },
+  "statsZapzapBar": "{successful, plural, one{{successful} réussi} other{{successful} réussis}} / {total, plural, one{{total} appel} other{{total} appels}}",
+  "@statsZapzapBar": {
+    "description": "Caption of the successful-over-called ZapZap bar",
+    "placeholders": {
+      "successful": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "statsZapzapNone": "Pas encore de ZapZap appelé. Il faut une main de 5 points ou moins (joker = 0).",
+  "@statsZapzapNone": {
+    "description": "Personal ZapZap block when no ZapZap was ever called: when one may call it (GAME_RULES.md, ZapZap Eligibility)"
   },
   "leaderboardTitle": "Classement général",
   "@leaderboardTitle": {
@@ -863,7 +1048,7 @@
   "@leaderboardEmpty": {
     "description": "The leaderboard has no row"
   },
-  "leaderboardYou": "(vous)",
+  "leaderboardYou": "(toi)",
   "@leaderboardYou": {
     "description": "Marks the signed-in player's own leaderboard row"
   },
@@ -900,7 +1085,7 @@
   "@botStatsLoadError": {
     "description": "GET /stats/bots failed"
   },
-  "botStatsEmpty": "Aucune statistique de bot. Jouez contre des bots !",
+  "botStatsEmpty": "Aucune statistique de bot. Joue contre des bots !",
   "@botStatsEmpty": {
     "description": "No bot has played yet"
   },
@@ -1124,18 +1309,9 @@
   "@gamePlayersWaiting": {
     "description": "Shown when the table carries no seat"
   },
-  "gameYouBadge": "Vous",
+  "gameYouBadge": "Toi",
   "@gameYouBadge": {
     "description": "Badge marking the caller's own row in the player table"
-  },
-  "gameSeatCards": "({count})",
-  "@gameSeatCards": {
-    "description": "How many cards a seat holds, after its card backs",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
   },
   "gameEliminatedMark": "Éliminé",
   "@gameEliminatedMark": {
@@ -1144,15 +1320,6 @@
   "gameTablePlayedLabel": "Posées",
   "@gameTablePlayedLabel": {
     "description": "Label of the cards laid down this turn"
-  },
-  "gameTableDiscardLabel": "Défausse ({count})",
-  "@gameTableDiscardLabel": {
-    "description": "Label of the discard pile and its size",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
   },
   "gameTableEmpty": "Vide",
   "@gameTableEmpty": {
@@ -1231,22 +1398,6 @@
       }
     }
   },
-  "gameHandValues": "ZapZap {eligibility} · Pénalité {penalty}",
-  "@gameHandValues": {
-    "description": "The hand value with jokers at 0, then at 25",
-    "placeholders": {
-      "eligibility": {
-        "type": "int"
-      },
-      "penalty": {
-        "type": "int"
-      }
-    }
-  },
-  "gameZapZapEligible": "ZapZap possible",
-  "@gameZapZapEligible": {
-    "description": "Badge shown when the hand is worth 5 points or less"
-  },
   "gameDeckLabel": "Pioche {count}",
   "@gameDeckLabel": {
     "description": "The deck button and how many cards are left in it",
@@ -1273,14 +1424,6 @@
   "@gameHandEmpty": {
     "description": "Shown when the caller holds no card"
   },
-  "gameTurnPlay": "À vous — posez des cartes",
-  "@gameTurnPlay": {
-    "description": "Turn banner: the caller must play"
-  },
-  "gameTurnDraw": "À vous — piochez une carte",
-  "@gameTurnDraw": {
-    "description": "Turn banner: the caller must draw"
-  },
   "gameTurnWaiting": "En attente de {player}",
   "@gameTurnWaiting": {
     "description": "Turn banner: another player is to move",
@@ -1290,36 +1433,225 @@
       }
     }
   },
-  "gamePlayButton": "Poser",
-  "@gamePlayButton": {
-    "description": "Button playing the selected cards"
+  "gameDrawButton": "Piocher",
+  "@gameDrawButton": {
+    "description": "Button drawing from the deck"
   },
-  "gamePlayButtonCount": "Poser {count}",
-  "@gamePlayButtonCount": {
-    "description": "Button playing the selected cards, with how many",
+  "gameZapZapButton": "ZapZap !",
+  "@gameZapZapButton": {
+    "description": "Button calling ZapZap"
+  },
+  "gameStepPlay": "① Jouer",
+  "@gameStepPlay": {
+    "description": "Turn step 1, the current or the next one"
+  },
+  "gameStepPlayDone": "✓ Jouer",
+  "@gameStepPlayDone": {
+    "description": "Turn step 1 once done"
+  },
+  "gameStepDraw": "② Piocher",
+  "@gameStepDraw": {
+    "description": "Turn step 2"
+  },
+  "gameStepYourTurn": "Ton tour",
+  "@gameStepYourTurn": {
+    "description": "Beside the turn steps: it is the caller's turn"
+  },
+  "gameMovePlay": "Jouer",
+  "@gameMovePlay": {
+    "description": "Primary button of the play step when the selection names no move"
+  },
+  "gameMovePlaySingle": "Jouer {card}",
+  "@gameMovePlaySingle": {
+    "description": "Primary button: play one card",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayPair": "Jouer la paire de {rank}",
+  "@gameMovePlayPair": {
+    "description": "Primary button: play two cards of one rank",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayGroup": "Jouer le groupe de {rank} ({count} cartes)",
+  "@gameMovePlayGroup": {
+    "description": "Primary button: play three or more cards of one rank",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameMovePlayJokers": "Jouer {count} jokers",
+  "@gameMovePlayJokers": {
+    "description": "Primary button: play jokers only",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "gameDrawButton": "Piocher",
-  "@gameDrawButton": {
-    "description": "Button drawing from the deck"
+  "gameMovePlaySequence": "Jouer la suite ({count} cartes)",
+  "@gameMovePlaySequence": {
+    "description": "Primary button: play a sequence",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-  "gameTakeButton": "Prendre",
-  "@gameTakeButton": {
-    "description": "Button taking the selected card from the discard pile"
+  "gameMoveTake": "Prendre {card}",
+  "@gameMoveTake": {
+    "description": "Primary button of the draw step: take the selected discard card",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
   },
-  "gameZapZapButton": "ZapZap !",
-  "@gameZapZapButton": {
-    "description": "Button calling ZapZap"
+  "gameHandTitle": "Ta main · {points} pts",
+  "@gameHandTitle": {
+    "description": "The caller's hand value, jokers at 0",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapThreshold": "ZapZap à {threshold}",
+  "@gameZapZapThreshold": {
+    "description": "Label of the gauge towards the ZapZap threshold",
+    "placeholders": {
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "gameHandPenalty": "En fin de manche : {points} pts (joker 25)",
+  "@gameHandPenalty": {
+    "description": "What the hand scores at the end of the round, jokers at 25 — shown when the hand holds a joker",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapNeedLow": "ZapZap · main {points}, il faut {threshold} ou moins",
+  "@gameZapZapNeedLow": {
+    "description": "Disabled ZapZap button: the hand is too high",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapNotNow": "ZapZap · au début de ton tour",
+  "@gameZapZapNotNow": {
+    "description": "Disabled ZapZap button: not the play step of the caller's turn"
+  },
+  "gameZapZapSheetTitle": "{points, plural, =0{Appeler ZapZap avec 0 point ?} =1{Appeler ZapZap avec 1 point ?} other{Appeler ZapZap avec {points} points ?}}",
+  "@gameZapZapSheetTitle": {
+    "description": "Title of the ZapZap confirmation sheet",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetWin": "Tu gagnes la manche si aucun adversaire n'a {points} ou moins.",
+  "@gameZapZapSheetWin": {
+    "description": "ZapZap confirmation: when the call holds",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetOpponents": "{count, plural, =1{1 adversaire} other{{count} adversaires}}",
+  "@gameZapZapSheetOpponents": {
+    "description": "How many opponents the counteract penalty counts",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetRisk": "Sinon tu es contré : ta main, {hand}, + {penalty} de pénalité ({opponents} × 5) = {total} points.",
+  "@gameZapZapSheetRisk": {
+    "description": "ZapZap confirmation: what a counteract costs",
+    "placeholders": {
+      "hand": {
+        "type": "int"
+      },
+      "penalty": {
+        "type": "int"
+      },
+      "opponents": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "gameZapZapSheetJoker": "Le joker y compte alors 25.",
+  "@gameZapZapSheetJoker": {
+    "description": "ZapZap confirmation: the hand holds a joker"
+  },
+  "gameZapZapSheetGolden": "Score en or : contré, tu perds la partie.",
+  "@gameZapZapSheetGolden": {
+    "description": "ZapZap confirmation in Golden Score"
+  },
+  "gameTableNextLabel": "À prendre ensuite",
+  "@gameTableNextLabel": {
+    "description": "Label of the discard pile: the cards the next draw may take"
+  },
+  "gameTableDrawHint": "Touche une carte pour la prendre, ou la pioche",
+  "@gameTableDrawHint": {
+    "description": "Instruction on the felt during the draw step"
+  },
+  "gameTableTakeHint": "{points, plural, =0{Prendre {card} n'ajoute aucun point à ta main.} =1{Prendre {card} ajoute 1 point à ta main.} other{Prendre {card} ajoute {points} points à ta main.}}",
+  "@gameTableTakeHint": {
+    "description": "What taking the selected discard card does to the hand value",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameTableTakeJokerHint": "Prendre {card} : 0 point pour ZapZap, mais 25 en fin de manche si ta main n'est pas la plus basse.",
+  "@gameTableTakeJokerHint": {
+    "description": "What taking a joker from the discard pile does to the hand",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameHandSizeEffect": "Moins de cartes, ZapZap plus vite ; plus de cartes, plus de combinaisons.",
+  "@gameHandSizeEffect": {
+    "description": "What the hand size changes"
   },
   "gameHandSizeTitle": "Nombre de cartes",
   "@gameHandSizeTitle": {
     "description": "Title of the hand-size selector"
   },
-  "gameHandSizeBody": "Choisissez combien de cartes chaque joueur reçoit.",
+  "gameHandSizeBody": "Choisis combien de cartes chaque joueur reçoit.",
   "@gameHandSizeBody": {
     "description": "Body of the hand-size selector"
   },
@@ -1336,9 +1668,14 @@
       }
     }
   },
-  "gameHandSizeConfirm": "Distribuer",
+  "gameHandSizeConfirm": "Distribuer {count} cartes",
   "@gameHandSizeConfirm": {
-    "description": "Button confirming the hand size"
+    "description": "Button dealing the picked hand size",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "gameHandSizeWaitingTitle": "En attente",
   "@gameHandSizeWaitingTitle": {
@@ -1383,7 +1720,7 @@
   "@gameNextRoundButton": {
     "description": "Button starting the next round"
   },
-  "errorNotYourTurn": "Ce n'est pas votre tour.",
+  "errorNotYourTurn": "Ce n'est pas ton tour.",
   "@errorNotYourTurn": {
     "description": "Refused move: NOT_YOUR_TURN"
   },
@@ -1395,11 +1732,11 @@
   "@errorInvalidPlay": {
     "description": "Refused move: INVALID_PLAY"
   },
-  "errorInvalidCards": "Ces cartes ne sont pas dans votre main.",
+  "errorInvalidCards": "Ces cartes ne sont pas dans ta main.",
   "@errorInvalidCards": {
     "description": "Refused move: INVALID_CARDS"
   },
-  "errorHandTooHigh": "Votre main dépasse 5 points.",
+  "errorHandTooHigh": "Ta main dépasse 5 points.",
   "@errorHandTooHigh": {
     "description": "Refused move: HAND_TOO_HIGH"
   },
@@ -1423,7 +1760,7 @@
   "@gameRefreshFailed": {
     "description": "Banner over a table whose refresh failed; the table stays on screen"
   },
-  "errorNotInParty": "Vous n'avez pas de place à cette table.",
+  "errorNotInParty": "Tu n'as pas de place à cette table.",
   "@errorNotInParty": {
     "description": "Refused move: NOT_IN_PARTY"
   },
@@ -1464,28 +1801,85 @@
   "@gameRoundOverHandLabel": {
     "description": "Label above a player's revealed hand"
   },
-  "gameRoundEndThisRound": "Cette manche",
-  "@gameRoundEndThisRound": {
-    "description": "Label of a player's points for the round that just ended"
+  "gameRoundEndColumnRank": "#",
+  "@gameRoundEndColumnRank": {
+    "description": "Header of the rank column of the end-of-round table"
   },
-  "gameRoundEndTotalScore": "Score total",
-  "@gameRoundEndTotalScore": {
-    "description": "Label of a player's total score"
+  "gameRoundEndColumnPlayer": "Joueur",
+  "@gameRoundEndColumnPlayer": {
+    "description": "Header of the name column of the end-of-round table"
   },
-  "gameRoundEndPoints": "{score} pts",
-  "@gameRoundEndPoints": {
-    "description": "A number of points",
+  "gameRoundEndColumnRound": "Manche",
+  "@gameRoundEndColumnRound": {
+    "description": "Header of the column of this round's points"
+  },
+  "gameRoundEndColumnTotal": "Total",
+  "@gameRoundEndColumnTotal": {
+    "description": "Header of the column of the total score"
+  },
+  "gameRoundEndRoundPoints": "+{score}",
+  "@gameRoundEndRoundPoints": {
+    "description": "What a player scored this round, in the end-of-round table",
     "placeholders": {
       "score": {
         "type": "int"
       }
     }
   },
-  "gameRankBadge": "#{rank}",
-  "@gameRankBadge": {
-    "description": "Badge of the player with the lowest round score",
+  "gameRoundEndDangerLegend": "Barre : total vers 100. Au-delà de 100, le joueur est éliminé.",
+  "@gameRoundEndDangerLegend": {
+    "description": "Legend of the bar under each row of the end-of-round table (GAME_RULES.md, Game Elimination)"
+  },
+  "gameRoundOverZapZapHeldDetail": "Sa main valait {value} points, la plus basse de la table : {player} marque 0.",
+  "@gameRoundOverZapZapHeldDetail": {
+    "description": "Why a ZapZap held (GAME_RULES.md, Final Scoring); the value counts a Joker 0",
     "placeholders": {
-      "rank": {
+      "player": {
+        "type": "String"
+      },
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "gameRoundOverCounteractedDetail": "Contré par {player} ({counter} ≤ {caller}) : {hand} + {penalty} de pénalité.",
+  "@gameRoundOverCounteractedDetail": {
+    "description": "Why a ZapZap was counteracted and what it cost the caller (GAME_RULES.md, counteract)",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "counter": {
+        "type": "int"
+      },
+      "caller": {
+        "type": "int"
+      },
+      "hand": {
+        "type": "int"
+      },
+      "penalty": {
+        "type": "int"
+      }
+    }
+  },
+  "gameNextRoundChooser": "Manche {number} : {player} choisit la taille de la main",
+  "@gameNextRoundChooser": {
+    "description": "Who picks the hand size of the next round (GAME_RULES.md, Subsequent Rounds)",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameNextRoundChooserMe": "Manche {number} : à toi de choisir la taille de la main",
+  "@gameNextRoundChooserMe": {
+    "description": "The caller picks the hand size of the next round",
+    "placeholders": {
+      "number": {
         "type": "int"
       }
     }

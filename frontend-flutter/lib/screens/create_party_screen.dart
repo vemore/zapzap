@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -8,13 +8,17 @@ import '../providers/party_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/field_touch.dart';
+import '../utils/navigation.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/player_slot_selector.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The create-party form (`CreateParty.jsx`): a name, the number of seats,
 /// the visibility, and one selector per seat — a human, or a bot of a
-/// difficulty. The creator always holds the first seat.
+/// difficulty. The creator always holds the first seat. The name shows its
+/// refusal once edited and left, or on submit ([FieldTouch]), never on a
+/// form that just opened; Create stays active and says what is missing.
 class CreatePartyScreen extends StatefulWidget {
   const CreatePartyScreen({super.key});
 
@@ -25,6 +29,9 @@ class CreatePartyScreen extends StatefulWidget {
 class _CreatePartyScreenState extends State<CreatePartyScreen> {
   late final CreatePartyProvider _create;
   final _name = TextEditingController();
+  late final _nameTouch = FieldTouch(() {
+    if (mounted) setState(() {});
+  });
 
   @override
   void initState() {
@@ -36,19 +43,39 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _nameTouch.dispose();
     _create.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    _nameTouch.submitted();
+    if (_name.text.trim().length < partyNameMinLength) {
+      setState(() {});
+      _nameTouch.focus.requestFocus();
+      return;
+    }
     final partyId = await _create.submit(_name.text);
-    if (partyId != null && mounted) context.go(AppRoutes.partyPath(partyId));
+    // The lobby takes the form's place: Back from it returns to the list,
+    // not to a form whose party already exists.
+    if (partyId != null && mounted) {
+      context.replaceWith(AppRoutes.partyPath(partyId));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final named = _name.text.trim().isNotEmpty;
+    final name = _name.text.trim();
+    // Node refuses a name outside 3-50 characters with a generic 500
+    // (`src/use-cases/party/CreateParty.js:47-53`): refuse it here instead.
+    final nameError = !_nameTouch.touched
+        ? null
+        : name.isEmpty
+        ? l10n.createPartyNameRequired
+        : name.length < partyNameMinLength
+        ? l10n.createPartyNameTooShort(partyNameMinLength)
+        : null;
     return Scaffold(
       appBar: ZapZapAppBar(
         title: l10n.createPartyTitle,
@@ -56,7 +83,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
           key: const Key('back-to-parties'),
           tooltip: l10n.lobbyBack,
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go(AppRoutes.parties),
+          onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
       ),
       body: ListenableBuilder(
@@ -67,14 +94,20 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
             TextField(
               key: const Key('party-name'),
               controller: _name,
+              focusNode: _nameTouch.focus,
               enabled: !_create.busy,
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
                 labelText: l10n.createPartyNameLabel,
                 hintText: l10n.createPartyNameHint,
                 border: const OutlineInputBorder(),
-                errorText: named ? null : l10n.createPartyNameRequired,
+                errorText: nameError,
               ),
+              onChanged: (_) => _nameTouch.edited(),
+              onSubmitted: (_) => _submit(),
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(partyNameMaxLength),
+              ],
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<int>(
@@ -183,7 +216,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
             const SizedBox(height: 24),
             FilledButton(
               key: const Key('create-submit'),
-              onPressed: named && !_create.busy ? _submit : null,
+              onPressed: _create.busy ? null : _submit,
               child: Text(
                 _create.busy
                     ? l10n.createPartySubmitting

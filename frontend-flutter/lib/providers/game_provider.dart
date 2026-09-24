@@ -165,6 +165,11 @@ class GameProvider extends ChangeNotifier {
   bool isEliminated(int playerIndex) =>
       game?.eliminatedPlayers.contains(playerIndex) ?? false;
 
+  /// The players still in the game: the `active_players` of the counteract
+  /// penalty (`GAME_RULES.md`).
+  int get activePlayerCount =>
+      players.where((player) => !isEliminated(player.playerIndex)).length;
+
   /// The name of the player at [playerIndex], or `null` when no seat
   /// carries it (the screen falls back to "Player n").
   String? nameOf(int? playerIndex) {
@@ -212,10 +217,13 @@ class GameProvider extends ChangeNotifier {
 
   bool get canDraw => isMyTurn && currentAction == GameAction.draw && !_busy;
 
-  /// Drawing takes the selected discard card when there is one, and the
-  /// deck otherwise (React's single Draw/Take button).
+  /// Drawing takes the selected discard card when it is still on the pile,
+  /// and the deck otherwise (React's single Draw/Take button). A card the
+  /// pile no longer holds is never posted: the backend would refuse a
+  /// `cardId` that is gone.
   bool get willTakeFromDiscard =>
-      _selectedDiscardCard != null && lastCardsPlayed.isNotEmpty;
+      _selectedDiscardCard != null &&
+      lastCardsPlayed.contains(_selectedDiscardCard);
 
   bool get canZapZap =>
       isMyTurn && currentAction == GameAction.play && zapZapEligible && !_busy;
@@ -298,10 +306,15 @@ class GameProvider extends ChangeNotifier {
     await _act(() => _repository.play(partyId, cards));
   }
 
-  /// Draws: the selected discard card, or the deck.
-  Future<void> draw() async {
+  /// Draws: the selected discard card, or the deck — always the deck with
+  /// [fromDeck], the deck on the felt being a target of its own. The pile
+  /// pick is dropped only once the draw has landed (`_act`), so a refused
+  /// one keeps it.
+  Future<void> draw({bool fromDeck = false}) async {
     if (!canDraw) return;
-    final fromDiscard = willTakeFromDiscard ? _selectedDiscardCard : null;
+    final fromDiscard = !fromDeck && willTakeFromDiscard
+        ? _selectedDiscardCard
+        : null;
     await _act(
       () => fromDiscard == null
           ? _repository.drawFromDeck(partyId)
@@ -353,7 +366,9 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Every client gets every broadcast: only this party's matter
-  /// (`GameBoard.jsx:108-142`).
+  /// (`GameBoard.jsx:108-142`). `partyStarted` brings a client that opened
+  /// the board before the owner started from the "not started" page onto
+  /// the table, with no reload.
   void _onEvent(SseEvent event) {
     if (event.partyId != partyId || _outcome != null) return;
     switch (event.action) {
@@ -363,6 +378,7 @@ class GameProvider extends ChangeNotifier {
       case 'zapzap':
       case 'gameFinished':
       case 'roundStarted':
+      case 'partyStarted':
         load(showSpinner: false);
       case 'partyDeleted':
         _outcome = GameOutcome.closed;

@@ -81,6 +81,20 @@ int handValue(Iterable<int> hand, {bool penalty = false}) =>
 /// Whether [hand] may call ZapZap: 5 points or less, jokers counted 0.
 bool isZapZapEligible(Iterable<int> hand) => handValue(hand) <= zapZapThreshold;
 
+/// How close a hand worth [value] points (jokers 0) is to calling ZapZap,
+/// from 0 to 1: 1 at the threshold or under it, else threshold / value.
+double zapZapProgress(int value) =>
+    value <= zapZapThreshold ? 1 : zapZapThreshold / value;
+
+/// Whether [hand] holds a joker: its two values then differ, 0 for ZapZap
+/// and 25 for the score.
+bool hasJoker(Iterable<int> hand) => hand.any((id) => GameCard(id).isJoker);
+
+/// What a counteracted ZapZap adds to the caller's hand (`GAME_RULES.md`,
+/// Final Scoring): 5 points for every other player still in the game.
+int counteractPenalty(int activePlayers) =>
+    activePlayers <= 1 ? 0 : (activePlayers - 1) * 5;
+
 /// The two values shown for a hand: for eligibility (jokers 0) and for
 /// scoring (jokers 25).
 ({int eligibility, int penalty}) handValueDisplay(Iterable<int> hand) =>

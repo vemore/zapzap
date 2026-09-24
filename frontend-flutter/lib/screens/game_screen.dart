@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -10,6 +9,8 @@ import '../providers/sse_provider.dart';
 import '../repositories/game_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../utils/navigation.dart';
+import '../utils/rules.dart';
 import '../widgets/game_action_buttons.dart';
 import '../widgets/game_error_text.dart';
 import '../widgets/game_hand.dart';
@@ -17,6 +18,8 @@ import '../widgets/game_hand_size_selector.dart';
 import '../widgets/game_player_table.dart';
 import '../widgets/game_round_end.dart';
 import '../widgets/game_table_area.dart';
+import '../widgets/game_zapzap_sheet.dart';
+import '../widgets/phone_board_layout.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The board (`frontend/src/components/Game/GameBoard.jsx`): the players,
@@ -83,7 +86,7 @@ class _GameScreenState extends State<GameScreen> {
     if (_game.outcome == GameOutcome.closed && !_left) {
       _left = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go(AppRoutes.parties);
+        if (mounted) context.leaveFor(AppRoutes.parties);
       });
     }
   }
@@ -107,7 +110,7 @@ class _GameScreenState extends State<GameScreen> {
             key: const Key('game-back'),
             tooltip: l10n.lobbyBack,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go(AppRoutes.parties),
+            onPressed: () => context.leaveFor(AppRoutes.parties),
           ),
         ),
         body: SafeArea(child: _body(context, l10n)),
@@ -136,6 +139,9 @@ class _GameScreenState extends State<GameScreen> {
         Icons.hourglass_empty,
         l10n.gameNotStartedTitle,
         l10n.gameNotStartedBody,
+        // `partyStarted` refetches on its own; the button covers an event
+        // this client missed while its channel was down.
+        onRetry: _game.load,
       );
     }
     final content = switch (_game.currentAction) {
@@ -221,7 +227,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             OutlinedButton(
               key: const Key('game-back-body'),
-              onPressed: () => context.go(AppRoutes.parties),
+              onPressed: () => context.leaveFor(AppRoutes.parties),
               child: Text(l10n.lobbyBack),
             ),
           ],
@@ -272,67 +278,95 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _playerTable() => GamePlayerTable(seats: _seats());
 
-  Widget _tableArea({double cardWidth = 45}) => GameTableArea(
+  /// Where this player's turn stands, for the felt.
+  TableStep get _tableStep {
+    if (!_game.isMyTurn) return TableStep.waiting;
+    return switch (_game.currentAction) {
+      GameAction.play => TableStep.play,
+      GameAction.draw => TableStep.draw,
+      _ => TableStep.waiting,
+    };
+  }
+
+  Widget _tableArea({
+    double cardWidth = CardSizes.tablePhone,
+    double? drawPlayedWidth,
+  }) => GameTableArea(
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
     playerName: _nameOf,
     cardWidth: cardWidth,
+    drawPlayedWidth: drawPlayedWidth,
+    step: _tableStep,
+    deckSize: _game.deckSize,
     selectedDiscardCard: _game.selectedDiscardCard,
+    takeCard: _game.willTakeFromDiscard ? _game.selectedDiscardCard : null,
     onDiscardTap: _game.canSelectDiscard ? _game.selectDiscardCard : null,
+    onDeckTap: _game.canDraw ? () => _game.draw(fromDeck: true) : null,
   );
 
-  Widget _hand() {
+  Widget _hand({bool compact = false}) {
     final values = _game.handValues;
     return GameHand(
+      compact: compact,
       cards: _game.myHand,
       selectedCards: _game.selectedCards,
       eligibilityValue: values.eligibility,
       penaltyValue: values.penalty,
-      zapZapEligible: _game.zapZapEligible,
-      deckSize: _game.deckSize,
       disabled: !_game.isMyTurn || _game.currentAction != GameAction.play,
       onCardTap: _game.toggleCard,
       onClearSelection: _game.hasSelection ? _game.clearSelection : null,
-      onDrawFromDeck: _game.canDraw && !_game.willTakeFromDiscard
-          ? _game.draw
-          : null,
     );
   }
 
-  Widget _actions() => GameActionButtons(
-    isMyTurn: _game.isMyTurn,
-    currentAction: _game.currentAction,
-    currentPlayerName: _nameOf(_game.currentTurn),
-    selectedCount: _game.selectedCards.length,
-    invalidPlay: _game.invalidPlay,
-    takeFromDiscard: _game.willTakeFromDiscard,
-    onPlay: _game.canPlay ? _game.play : null,
-    onDraw: _game.canDraw ? _game.draw : null,
-    onZapZap: _game.canZapZap ? _game.zapZap : null,
-  );
+  Widget _actions() {
+    final values = _game.handValues;
+    return GameActionButtons(
+      isMyTurn: _game.isMyTurn,
+      currentAction: _game.currentAction,
+      currentPlayerName: _nameOf(_game.currentTurn),
+      selectedCards: _game.selectedCards,
+      invalidPlay: _game.invalidPlay,
+      takeCard: _game.willTakeFromDiscard ? _game.selectedDiscardCard : null,
+      zapZapRisk: ZapZapRisk(
+        handValue: values.eligibility,
+        scoredValue: values.penalty,
+        activePlayers: _game.activePlayerCount,
+        eligible: _game.zapZapEligible,
+        holdsJoker: hasJoker(_game.myHand),
+        isGoldenScore: _game.isGoldenScore,
+      ),
+      onPlay: _game.canPlay ? _game.play : null,
+      onDraw: _game.canDraw ? _game.draw : null,
+      onZapZap: _game.canZapZap ? _game.zapZap : null,
+    );
+  }
 
-  /// A phone: one column that fills the height. Each section is `Flexible`
-  /// over its own scroll view, so a large system font shrinks a section
-  /// rather than overflowing the column.
-  Widget _phoneBoard() => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      // A section that needs less than its share leaves the slack behind;
-      // spreading it keeps the moves against the bottom of the screen.
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Flexible(flex: 3, child: _scroll(_playerTable())),
-        const SizedBox(height: 6),
-        Expanded(flex: 4, child: _scroll(_tableArea())),
-        const SizedBox(height: 6),
-        Flexible(flex: 4, child: _scroll(_hand())),
-        const SizedBox(height: 6),
-        _actions(),
-      ],
-    ),
-  );
+  /// A phone: one column that fills the height, each section over its own
+  /// scroll view, so a large system font shrinks a section rather than
+  /// overflowing the column. How the height is shared: [PhoneBoardLayout].
+  Widget _phoneBoard() {
+    final drawing = _tableStep == TableStep.draw;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      child: CustomMultiChildLayout(
+        delegate: PhoneBoardLayout(feltFirst: drawing),
+        children: [
+          LayoutId(id: PhoneBoardSlot.players, child: _scroll(_playerTable())),
+          LayoutId(
+            id: PhoneBoardSlot.felt,
+            child: _tableArea(drawPlayedWidth: CardSizes.tablePlayedDraw),
+          ),
+          LayoutId(
+            id: PhoneBoardSlot.hand,
+            child: _scroll(_hand(compact: drawing)),
+          ),
+          LayoutId(id: PhoneBoardSlot.actions, child: _actions()),
+        ],
+      ),
+    );
+  }
 
   /// A wide screen: the players beside the felt, the hand and the moves
   /// under them.
@@ -347,7 +381,9 @@ class _GameScreenState extends State<GameScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _scroll(_tableArea(cardWidth: 60))),
+              // The felt fills the height the hand leaves, and scrolls
+              // inside its own edge past it (`GameTableArea`).
+              Expanded(child: _tableArea(cardWidth: CardSizes.tableWide)),
               const SizedBox(height: 12),
               Flexible(child: _scroll(_hand())),
               const SizedBox(height: 12),
@@ -406,6 +442,7 @@ class _GameScreenState extends State<GameScreen> {
               // once the game is over (checked locally, 2026-09-23).
               isLowestHand: !out && index == state.lowestHandPlayerIndex,
               isZapZapCaller: index == state.zapZapCaller,
+              isMe: index == _game.myPlayerIndex,
             );
           }(),
         ),
@@ -415,6 +452,30 @@ class _GameScreenState extends State<GameScreen> {
       return byScore != 0 ? byScore : a.seat.compareTo(b.seat);
     });
     return [for (final row in rows) row.player];
+  }
+
+  /// Who picks the hand size of the next round: the seat after this
+  /// round's starting player, skipping whoever is out (`GAME_RULES.md`,
+  /// "Subsequent Rounds"; `NextRound.js` rotates the same way).
+  int? _nextChooser(List<RoundEndPlayer> players) {
+    final seats = [for (final player in players) player.playerIndex]..sort();
+    final out = {
+      for (final player in players)
+        if (player.isEliminated) player.playerIndex,
+    };
+    final from = seats.indexOf(_game.startingPlayer);
+    for (var step = 1; step <= seats.length; step++) {
+      final seat = seats[(from + step) % seats.length];
+      if (!out.contains(seat)) return seat;
+    }
+    return null;
+  }
+
+  /// The hand value [playerIndex] held, a Joker counting 0: what a ZapZap
+  /// is decided on.
+  int? _zapZapValueOf(GameState state, int? playerIndex) {
+    final hand = playerIndex == null ? null : state.allHands?[playerIndex];
+    return hand == null ? null : handValue(hand);
   }
 
   Widget _roundOver(BuildContext context, AppLocalizations l10n) {
@@ -428,6 +489,7 @@ class _GameScreenState extends State<GameScreen> {
     final active = players
         .where((player) => player.totalScore - player.roundScore <= 100)
         .length;
+    final next = _nextChooser(players);
 
     return GameRoundEnd(
       roundNumber: _game.round?.roundNumber ?? 1,
@@ -440,6 +502,13 @@ class _GameScreenState extends State<GameScreen> {
       callerHandValue: caller == null ? null : state.handPoints?[caller],
       callerRoundScore: caller == null ? null : _roundScoreOf(state, caller),
       activePlayerCount: active,
+      callerZapZapValue: _zapZapValueOf(state, caller),
+      counterActorZapZapValue: _zapZapValueOf(
+        state,
+        state.counterActedByPlayerIndex,
+      ),
+      nextChooserName: next == null ? null : _nameOf(next),
+      nextChooserIsMe: next != null && next == _game.myPlayerIndex,
       gameFinished: _game.isGameFinished,
       winnerName: winner == null
           ? null
@@ -447,7 +516,7 @@ class _GameScreenState extends State<GameScreen> {
       winnerScore: winner?.score,
       busy: _game.busy,
       onNextRound: _game.nextRound,
-      onBackToParties: () => context.go(AppRoutes.parties),
+      onBackToParties: () => context.leaveFor(AppRoutes.parties),
     );
   }
 }

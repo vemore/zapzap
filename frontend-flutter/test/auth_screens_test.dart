@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -48,14 +49,21 @@ void main() {
       null;
 
   group('register', () {
-    testWidgets('invalid username and password show the messages and '
-        'disable submit', (tester) async {
-      await pumpApp(tester, initialLocation: AppRoutes.register);
+    testWidgets('invalid username and password show the messages on '
+        'submit, which sends nothing', (tester) async {
+      final requests = <http.Request>[];
+      await pumpApp(
+        tester,
+        initialLocation: AppRoutes.register,
+        api: fakeApi((_) async => http.Response('{}', 500), requests: requests),
+      );
       expect(find.text('Créer un compte'), findsOneWidget);
-      expect(submitEnabled(tester, 'register-submit'), isFalse);
+      expect(submitEnabled(tester, 'register-submit'), isTrue);
 
       await tester.enterText(find.byKey(const Key('register-username')), 'ab');
       await tester.enterText(find.byKey(const Key('register-password')), '123');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('register-submit')));
       await tester.pump();
       expect(
         find.text('Le pseudo doit contenir au moins 3 caractères'),
@@ -65,8 +73,9 @@ void main() {
         find.text('Le mot de passe doit contenir au moins 6 caractères'),
         findsOneWidget,
       );
-      expect(submitEnabled(tester, 'register-submit'), isFalse);
+      expect(requests, isEmpty);
 
+      // From then on the rules are checked live.
       await tester.enterText(
         find.byKey(const Key('register-username')),
         'bob smith',
@@ -97,14 +106,12 @@ void main() {
         find.text('Le mot de passe ne peut pas dépasser 100 caractères'),
         findsOneWidget,
       );
-      expect(submitEnabled(tester, 'register-submit'), isFalse);
 
       await tester.enterText(find.byKey(const Key('register-username')), '');
       await tester.enterText(find.byKey(const Key('register-password')), '');
       await tester.pump();
       expect(find.text('Le pseudo est requis'), findsOneWidget);
       expect(find.text('Le mot de passe est requis'), findsOneWidget);
-      expect(submitEnabled(tester, 'register-submit'), isFalse);
 
       await tester.enterText(
         find.byKey(const Key('register-username')),
@@ -116,7 +123,26 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Le pseudo est requis'), findsNothing);
-      expect(submitEnabled(tester, 'register-submit'), isTrue);
+      expect(find.text('Le mot de passe est requis'), findsNothing);
+    });
+
+    testWidgets('a field shows its refusal once edited and left, not while '
+        'typing', (tester) async {
+      await pumpApp(tester, initialLocation: AppRoutes.register);
+      await tester.enterText(find.byKey(const Key('register-username')), 'ab');
+      await tester.pump();
+      expect(
+        find.text('Le pseudo doit contenir au moins 3 caractères'),
+        findsNothing,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pump();
+      expect(
+        find.text('Le pseudo doit contenir au moins 3 caractères'),
+        findsOneWidget,
+      );
+      // The password field has the focus but was not edited: quiet.
+      expect(find.text('Le mot de passe est requis'), findsNothing);
     });
 
     testWidgets('the messages are English in English', (tester) async {
@@ -126,6 +152,7 @@ void main() {
         locale: const Locale('en'),
       );
       await tester.enterText(find.byKey(const Key('register-username')), 'ab');
+      await tester.tap(find.byKey(const Key('register-submit')));
       await tester.pump();
       expect(
         find.text('Username must be at least 3 characters'),
@@ -199,31 +226,217 @@ void main() {
   });
 
   group('login', () {
-    testWidgets('submit is disabled until both fields are filled in', (
+    testWidgets('C1: the logo says what the game is, above the title', (
       tester,
     ) async {
       await pumpApp(tester);
-      expect(find.text('Connexion'), findsOneWidget);
-      expect(submitEnabled(tester, 'login-submit'), isFalse);
+      final pitch = find.text(
+        'Vide ta main : à 5 points ou moins, crie ZapZap !',
+      );
+      expect(pitch, findsOneWidget);
+      expect(
+        tester.getRect(pitch).bottom,
+        lessThanOrEqualTo(tester.getRect(find.text('Connexion')).top),
+      );
+    });
 
+    testWidgets('C2: submit stays active; a click says what is missing and '
+        'sends nothing', (tester) async {
+      final requests = <http.Request>[];
+      await pumpApp(
+        tester,
+        api: fakeApi((_) async => http.Response('{}', 500), requests: requests),
+      );
+      expect(find.text('Connexion'), findsOneWidget);
+      expect(submitEnabled(tester, 'login-submit'), isTrue);
+      expect(find.text('Le pseudo est requis'), findsNothing);
+      expect(find.text('Le mot de passe est requis'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pump();
+      expect(find.text('Le pseudo est requis'), findsOneWidget);
+      expect(find.text('Le mot de passe est requis'), findsOneWidget);
+      expect(requests, isEmpty);
+      expect(submitEnabled(tester, 'login-submit'), isTrue);
+
+      // Each message goes as soon as its field is filled in.
       await tester.enterText(
         find.byKey(const Key('login-username')),
         'Vincent',
       );
       await tester.pump();
-      expect(submitEnabled(tester, 'login-submit'), isFalse);
+      expect(find.text('Le pseudo est requis'), findsNothing);
+      expect(find.text('Le mot de passe est requis'), findsOneWidget);
 
-      await tester.enterText(find.byKey(const Key('login-password')), 'x');
+      await tester.tap(find.byKey(const Key('login-submit')));
       await tester.pump();
-      expect(submitEnabled(tester, 'login-submit'), isTrue);
+      expect(requests, isEmpty);
 
       await tester.enterText(find.byKey(const Key('login-username')), '   ');
-      await tester.enterText(find.byKey(const Key('login-password')), '');
+      await tester.enterText(find.byKey(const Key('login-password')), 'x');
       await tester.pump();
       expect(find.text('Le pseudo est requis'), findsOneWidget);
-      expect(find.text('Le mot de passe est requis'), findsOneWidget);
-      expect(submitEnabled(tester, 'login-submit'), isFalse);
+      expect(find.text('Le mot de passe est requis'), findsNothing);
     });
+
+    testWidgets('C3: the eye shows the password; Next moves on, Done signs '
+        'in; both fields share one AutofillGroup', (tester) async {
+      final requests = <http.Request>[];
+      await pumpApp(
+        tester,
+        api: fakeApi(
+          (_) async => http.Response(authFixtureWithJwt('auth_login'), 200),
+          requests: requests,
+        ),
+      );
+      EditableText editable(String key) => tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(Key(key)),
+          matching: find.byType(EditableText),
+        ),
+      );
+      final group = find.byType(AutofillGroup);
+      expect(group, findsOneWidget);
+      for (final key in ['login-username', 'login-password']) {
+        expect(
+          find.descendant(of: group, matching: find.byKey(Key(key))),
+          findsOneWidget,
+        );
+      }
+      expect(editable('login-username').autofillHints, [
+        AutofillHints.username,
+      ]);
+      expect(editable('login-password').autofillHints, [
+        AutofillHints.password,
+      ]);
+
+      expect(editable('login-password').obscureText, isTrue);
+      expect(find.byTooltip('Afficher le mot de passe'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('password-visibility')));
+      await tester.pump();
+      expect(editable('login-password').obscureText, isFalse);
+      expect(find.byTooltip('Masquer le mot de passe'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('password-visibility')));
+      await tester.pump();
+      expect(editable('login-password').obscureText, isTrue);
+
+      await tester.enterText(
+        find.byKey(const Key('login-username')),
+        'Vincent',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pump();
+      expect(editable('login-password').focusNode.hasFocus, isTrue);
+
+      await tester.enterText(
+        find.byKey(const Key('login-password')),
+        'secret1',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(requests.first.url.path, '/api/auth/login');
+      expect(find.text('Parties disponibles'), findsOneWidget);
+    });
+
+    testWidgets('C4: a spinner in the button while signing in, one request '
+        'only; the refusal sits just above the button', (tester) async {
+      final requests = <http.Request>[];
+      final answer = Completer<http.Response>();
+      final error = errorFixture('error_invalid_credentials');
+      await pumpApp(
+        tester,
+        api: fakeApi((_) => answer.future, requests: requests),
+      );
+      await tester.enterText(
+        find.byKey(const Key('login-username')),
+        'Vincent',
+      );
+      await tester.enterText(find.byKey(const Key('login-password')), 'wrong');
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('login-submit')),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Connexion…'), findsOneWidget);
+      expect(submitEnabled(tester, 'login-submit'), isFalse);
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pump();
+      expect(requests, hasLength(1));
+
+      answer.complete(http.Response(error.body, error.status));
+      await tester.pumpAndSettle();
+      final banner = find.byKey(const Key('auth-error'));
+      expect(
+        find.descendant(
+          of: banner,
+          matching: find.text('Pseudo ou mot de passe incorrect'),
+        ),
+        findsOneWidget,
+      );
+      final bannerRect = tester.getRect(banner);
+      expect(
+        bannerRect.top,
+        greaterThan(
+          tester.getRect(find.byKey(const Key('login-password'))).bottom,
+        ),
+      );
+      expect(
+        bannerRect.bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.byKey(const Key('login-submit'))).top,
+        ),
+      );
+      expect(submitEnabled(tester, 'login-submit'), isTrue);
+    });
+
+    for (final scale in [1.0, 1.5]) {
+      testWidgets('on a 360×740 phone at a text scale of $scale, the pitch, '
+          'both errors, the eye and the banner fit', (tester) async {
+        tester.view.physicalSize = const Size(360, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pumpApp(
+          tester,
+          api: fakeApi((_) async => throw http.ClientException('refused')),
+        );
+        await tester.enterText(
+          find.byKey(const Key('login-username')),
+          'Vincent',
+        );
+        await tester.enterText(find.byKey(const Key('login-password')), 'x');
+        await tester.ensureVisible(find.byKey(const Key('login-submit')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('login-submit')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('login-username')), '');
+        await tester.enterText(find.byKey(const Key('login-password')), '');
+        await tester.pump();
+
+        for (final finder in [
+          find.byKey(const Key('app-pitch')),
+          find.text('Le pseudo est requis'),
+          find.text('Le mot de passe est requis'),
+          find.byKey(const Key('password-visibility')),
+          find.byKey(const Key('auth-error')),
+          find.byKey(const Key('login-submit')),
+        ]) {
+          expect(finder, findsOneWidget);
+          await tester.ensureVisible(finder);
+          await tester.pump();
+          final rect = tester.getRect(finder);
+          final screen = Offset.zero & const Size(360, 740);
+          expect(screen.intersect(rect), rect, reason: '$finder off screen');
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('a wrong password shows the refusal and stays', (tester) async {
       final error = errorFixture('error_invalid_credentials');
@@ -262,7 +475,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Serveur injoignable. Vérifiez votre connexion.'),
+        find.text('Serveur injoignable. Vérifie ta connexion.'),
         findsOneWidget,
       );
     });

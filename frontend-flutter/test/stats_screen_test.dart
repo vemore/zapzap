@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zapzap/l10n/app_localizations.dart';
+import 'package:zapzap/models/stats.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/widgets/stats_bots.dart';
 import 'package:zapzap/widgets/stats_leaderboard.dart';
 import 'package:zapzap/widgets/stats_personal.dart';
 
@@ -33,9 +36,9 @@ void main() {
 
     expect(find.text('Mes statistiques'), findsOneWidget);
     expect(find.text('Parties jouées'), findsWidgets);
-    // 1 game, 0 win, a 0 win rate, an average of 122.
+    // 1 game, 0 win, a 0 win rate, an average of 122 — without its `.0`.
     expect(find.text('0.0%'), findsWidgets);
-    expect(find.text('122.0'), findsOneWidget);
+    expect(find.text('122.0'), findsNothing);
     expect(find.text('Performance ZapZap'), findsOneWidget);
     // No ZapZap called, so no success rate line in the ZapZap block (the
     // bots' cards further down have one of their own).
@@ -47,7 +50,8 @@ void main() {
       findsNothing,
     );
     expect(find.text('Meilleur score'), findsOneWidget);
-    expect(find.text('122'), findsOneWidget);
+    // The average and the best score.
+    expect(find.text('122'), findsNWidgets(2));
   });
 
   testWidgets('my own leaderboard row is highlighted and marked', (
@@ -57,7 +61,7 @@ void main() {
 
     expect(find.byType(LeaderboardRow), findsOneWidget);
     expect(highlighted(tester, vincentId), isTrue);
-    expect(find.textContaining('(vous)'), findsOneWidget);
+    expect(find.textContaining('(toi)'), findsOneWidget);
   });
 
   testWidgets('a row that is not mine is neither highlighted nor marked', (
@@ -66,7 +70,7 @@ void main() {
     await pumpStats(tester, userId: 'someone-else');
 
     expect(highlighted(tester, vincentId), isFalse);
-    expect(find.textContaining('(vous)'), findsNothing);
+    expect(find.textContaining('(toi)'), findsNothing);
   });
 
   testWidgets('the leaderboard row shows the wins and the win rate', (
@@ -121,6 +125,46 @@ void main() {
       expect(find.byKey(const Key('bot-card-medium')), findsOneWidget);
       expect(find.text('Bot par bot'), findsNothing);
     });
+
+    testWidgets('a reload without the picked difficulty falls back to all', (
+      tester,
+    ) async {
+      final full = BotStats.fromJson(fixture('stats_bots'));
+      final withoutEasy = fixture('stats_bots');
+      withoutEasy['byDifficulty'] = [
+        for (final line in withoutEasy['byDifficulty'] as List)
+          if ((line as Map)['difficulty'] != 'easy') line,
+      ];
+      Future<void> show(BotStats stats) => tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('fr'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SingleChildScrollView(child: StatsBots(stats: stats)),
+          ),
+        ),
+      );
+      tester.view.physicalSize = const Size(1100, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await show(full);
+      await tester.tap(find.byKey(const Key('bot-difficulty-easy')));
+      await tester.pumpAndSettle();
+      expect(find.text('Bot par bot'), findsOneWidget);
+
+      // The same widget, new stats: no easy bot any more.
+      await show(BotStats.fromJson(withoutEasy));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('bot-card-medium')), findsOneWidget);
+      expect(find.text('Bot par bot'), findsNothing);
+      final all = tester.widget<ChoiceChip>(
+        find.byKey(const Key('bot-difficulty-all')),
+      );
+      expect(all.selected, isTrue);
+    });
   });
 
   testWidgets('a failing section leaves the others standing', (tester) async {
@@ -143,7 +187,7 @@ void main() {
     // Anything that does not fit throws a layout error, which fails the
     // test. A 1.5 text scale is the same layout with every text wider: a
     // row of unconstrained texts overflows there and nowhere else.
-    for (final scale in [1.0, 1.5]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
       testWidgets(
         'the statistics fit${scale == 1 ? '' : ' at a $scale text scale'}',
         (tester) async {
