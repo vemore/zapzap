@@ -86,46 +86,46 @@ void main() {
     expect(lobby.partyId, partyId);
   });
 
+  /// The paths reported to the engine (the browser's address bar), in order;
+  /// one that replaces the current history entry rather than adding one
+  /// ends in ` (replace)`.
+  List<String> reportedPaths(WidgetTester tester) {
+    final paths = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.navigation,
+      (call) async {
+        if (call.method == 'routeInformationUpdated') {
+          final arguments = call.arguments as Map;
+          final path = Uri.parse(arguments['uri'] as String).path;
+          paths.add(arguments['replace'] == true ? '$path (replace)' : path);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.navigation,
+        null,
+      ),
+    );
+    return paths;
+  }
+
+  FakeLobbyBackend backend() => FakeLobbyBackend(
+    parties: [partySummaryJson(id: 'p1', name: 'Open party')],
+    details: partyDetailsJson(id: 'p1', name: 'Open party'),
+    createdPartyId: 'p1',
+  );
+
+  Future<void> tapKey(WidgetTester tester, String key) async {
+    await tester.tap(find.byKey(Key(key)));
+    await tester.pumpAndSettle();
+  }
+
   // A pushed screen reports its own path to the browser, so the address bar,
   // a reload and a shared link follow it — go_router's default keeps the path
   // of the screen below (`GoRouter.optionURLReflectsImperativeAPIs`).
   group('the URL of a pushed screen', () {
-    /// The paths reported to the engine (the browser's address bar), in order;
-    /// one that replaces the current history entry rather than adding one
-    /// ends in ` (replace)`.
-    List<String> reportedPaths(WidgetTester tester) {
-      final paths = <String>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.navigation,
-        (call) async {
-          if (call.method == 'routeInformationUpdated') {
-            final arguments = call.arguments as Map;
-            final path = Uri.parse(arguments['uri'] as String).path;
-            paths.add(arguments['replace'] == true ? '$path (replace)' : path);
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.navigation,
-          null,
-        ),
-      );
-      return paths;
-    }
-
-    FakeLobbyBackend backend() => FakeLobbyBackend(
-      parties: [partySummaryJson(id: 'p1', name: 'Open party')],
-      details: partyDetailsJson(id: 'p1', name: 'Open party'),
-      createdPartyId: 'p1',
-    );
-
-    Future<void> tapKey(WidgetTester tester, String key) async {
-      await tester.tap(find.byKey(Key(key)));
-      await tester.pumpAndSettle();
-    }
-
     testWidgets('the create form and a lobby show their own path, and '
         'Back shows the list again', (tester) async {
       final paths = reportedPaths(tester);
@@ -140,7 +140,7 @@ void main() {
       expect(paths.last, AppRoutes.createParty);
 
       await tapKey(tester, 'back-to-parties');
-      expect(paths.last, AppRoutes.parties);
+      expect(paths.last, '${AppRoutes.parties} (replace)');
 
       await tapKey(tester, 'join-p1');
       expect(paths.last, AppRoutes.partyPath('p1'));
@@ -169,6 +169,89 @@ void main() {
 
       expect(find.byType(PartyLobbyScreen), findsOneWidget);
       expect(paths.last, '${AppRoutes.partyPath('p1')} (replace)');
+    });
+  });
+
+  // go_router reports a pop, like a `go`, as a new browser entry: the
+  // browser's Back would then reopen the screen just left. A screen's own
+  // back button (`popOrGo`) replaces that entry instead.
+  group("a back button replaces the screen it leaves in the browser's "
+      'history', () {
+    Future<void> openFromMenu(WidgetTester tester, String item) async {
+      await tapKey(tester, 'app-bar-menu');
+      await tapKey(tester, item);
+    }
+
+    for (final (item, route) in [
+      ('menu-history', AppRoutes.history),
+      ('menu-stats', AppRoutes.stats),
+    ]) {
+      testWidgets('list → $route → back', (tester) async {
+        final paths = reportedPaths(tester);
+        await pumpScreen(
+          tester,
+          initialLocation: AppRoutes.parties,
+          api: backend().client(),
+        );
+
+        await openFromMenu(tester, item);
+        expect(paths.last, route);
+
+        await tapKey(tester, 'back');
+        expect(find.byType(PartiesScreen), findsOneWidget);
+        expect(paths.last, '${AppRoutes.parties} (replace)');
+      });
+    }
+
+    testWidgets('list → history → statistics → back → back', (tester) async {
+      final paths = reportedPaths(tester);
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.parties,
+        api: backend().client(),
+      );
+      await openFromMenu(tester, 'menu-history');
+      await openFromMenu(tester, 'menu-stats');
+
+      await tapKey(tester, 'back');
+      expect(paths.last, '${AppRoutes.history} (replace)');
+      await tapKey(tester, 'back');
+      expect(paths.last, '${AppRoutes.parties} (replace)');
+    });
+
+    testWidgets('list → lobby → back', (tester) async {
+      final paths = reportedPaths(tester);
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.parties,
+        api: backend().client(),
+      );
+      await tapKey(tester, 'join-p1');
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+
+      await tapKey(tester, 'back-to-parties');
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      expect(paths.last, '${AppRoutes.parties} (replace)');
+    });
+
+    testWidgets('the details opened by a link fall back to the history', (
+      tester,
+    ) async {
+      final paths = reportedPaths(tester);
+      openedAt(tester, '/history/$partyId');
+      await pumpScreen(
+        tester,
+        initialLocation: AppRoutes.home,
+        api: routedApi({
+          '/api/history/$partyId': fixtureText('history_details'),
+          '/api/history': '{"games":[]}',
+        }),
+      );
+      expect(find.byType(GameDetailsScreen), findsOneWidget);
+
+      await tapKey(tester, 'back');
+      expect(find.byType(GameDetailsScreen), findsNothing);
+      expect(paths.last, '${AppRoutes.history} (replace)');
     });
   });
 
