@@ -5,16 +5,20 @@ import '../services/api_exception.dart';
 import '../utils/app_theme.dart';
 import '../utils/validators.dart';
 import 'app_logo.dart';
+import 'error_banner.dart';
 
 /// The frame shared by the login and register screens (`Login.jsx`,
-/// `Register.jsx`): the logo, a title, the server's refusal if any, the
-/// form, and the link to the other screen.
+/// `Register.jsx`): the logo with its one-line pitch, a title, the fields in
+/// one [AutofillGroup] (the password manager fills and saves them together),
+/// the server's refusal if any just above the submit button, where the eye
+/// already is, and the link to the other screen.
 class AuthCard extends StatelessWidget {
   const AuthCard({
     super.key,
     required this.title,
     required this.error,
-    required this.children,
+    required this.fields,
+    required this.submit,
     required this.footer,
   });
 
@@ -22,7 +26,8 @@ class AuthCard extends StatelessWidget {
 
   /// The localised refusal of the last submit, `null` for none.
   final String? error;
-  final List<Widget> children;
+  final List<Widget> fields;
+  final Widget submit;
   final Widget footer;
 
   @override
@@ -41,7 +46,7 @@ class AuthCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const AppLogo(),
+                    const AppLogo(pitch: true),
                     const SizedBox(height: 16),
                     Text(
                       title,
@@ -49,11 +54,19 @@ class AuthCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
+                    AutofillGroup(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: fields,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     if (error != null) ...[
                       _ErrorBanner(error!),
                       const SizedBox(height: 16),
                     ],
-                    ...children,
+                    submit,
                     const SizedBox(height: 24),
                     footer,
                   ],
@@ -67,6 +80,9 @@ class AuthCard extends StatelessWidget {
   }
 }
 
+/// The server's refusal, in the soft red card of the other screens
+/// ([ErrorBanner]); it stays until the next submit, and a screen reader
+/// announces it.
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner(this.message);
 
@@ -74,17 +90,68 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Semantics(
       liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(8),
+      child: ErrorBanner(key: const Key('auth-error'), message: message),
+    );
+  }
+}
+
+/// A password field with an eye that shows or hides what was typed. The
+/// eye sits inside the field, so it stays there at a large text scale.
+class AuthPasswordField extends StatefulWidget {
+  const AuthPasswordField({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.enabled,
+    required this.autofillHints,
+    required this.decoration,
+    required this.onChanged,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool enabled;
+  final Iterable<String> autofillHints;
+
+  /// The label, hint, helper and error; the eye is added here.
+  final InputDecoration decoration;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+
+  @override
+  State<AuthPasswordField> createState() => _AuthPasswordFieldState();
+}
+
+class _AuthPasswordFieldState extends State<AuthPasswordField> {
+  bool _visible = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return TextField(
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      enabled: widget.enabled,
+      obscureText: !_visible,
+      autocorrect: false,
+      enableSuggestions: false,
+      autofillHints: widget.autofillHints,
+      textInputAction: TextInputAction.done,
+      decoration: widget.decoration.copyWith(
+        suffixIcon: IconButton(
+          key: const Key('password-visibility'),
+          tooltip: _visible ? l10n.authHidePassword : l10n.authShowPassword,
+          icon: Icon(_visible ? Icons.visibility_off : Icons.visibility),
+          onPressed: widget.enabled
+              ? () => setState(() => _visible = !_visible)
+              : null,
         ),
-        child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
       ),
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
     );
   }
 }
