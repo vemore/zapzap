@@ -57,10 +57,11 @@ while IFS= read -r path; do
         # JWT_SECRET, the hooks job's deploy self-test reads its services and images.
         docker-compose.prod.yml) image=true; hooks=true ;;
 
-        # The Claude Code hooks and the scripts the hooks job exercises: hooks_selftest.sh,
-        # and deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
+        # The Claude Code hooks and the scripts the hooks job exercises: hooks_selftest.sh
+        # (and generate_keystore.sh, which it runs with a stub keytool), and
+        # deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
         # sibling). No image holds them.
-        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|rebuild.sh)
+        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh)
             hooks=true ;;
 
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.

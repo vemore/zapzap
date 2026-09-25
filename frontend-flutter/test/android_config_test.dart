@@ -46,4 +46,44 @@ void main() {
       isFalse,
     );
   });
+
+  test('the release build signs with key.properties, else the debug key, and runs R8', () {
+    final gradle = _read('$_app/build.gradle.kts');
+    expect(gradle, contains('rootProject.file("key.properties")'));
+    expect(gradle, contains('signingConfigs.getByName("release")'));
+    // CI and worktrees have no key.properties: the build must still sign.
+    expect(gradle, contains('signingConfigs.getByName("debug")'));
+    expect(gradle, contains('isMinifyEnabled = true'));
+    expect(gradle, contains('isShrinkResources = true'));
+    expect(gradle, contains('"proguard-rules.pro"'));
+  });
+
+  test('the keep rules cover Flutter and google_sign_in', () {
+    final rules = _read('$_app/proguard-rules.pro');
+    expect(rules, contains('-keep class io.flutter.embedding.** { *; }'));
+    expect(rules, contains('-keep class io.flutter.plugins.** { *; }'));
+    expect(
+      rules,
+      contains('-keep class androidx.credentials.playservices.** { *; }'),
+    );
+    expect(
+      rules,
+      contains('-keep class com.google.android.libraries.identity.googleid.**'),
+    );
+  });
+
+  test(
+    'key.properties and keystores are gitignored; the template names the alias',
+    () {
+      final ignore = _read('android/.gitignore');
+      expect(ignore, contains('key.properties'));
+      expect(ignore, contains('**/*.jks'));
+      expect(ignore, contains('**/*.keystore'));
+      final template = _read('android/key.properties.template');
+      expect(template, contains('keyAlias=zapzap-upload'));
+      for (final key in ['storeFile=', 'storePassword=', 'keyPassword=']) {
+        expect(template, contains(key));
+      }
+    },
+  );
 }

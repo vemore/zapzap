@@ -329,7 +329,13 @@ flutter pub get && dart format lib test && flutter analyze && flutter test
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999
 flutter build web --base-href /app/          # the PWA, served under /app/
 flutter build apk --debug                    # Android, needs the Android SDK
+flutter build appbundle --release            # signed with the upload key when android/key.properties exists
 ```
+
+The release build signs with the upload key `zapzap-upload` named by
+`frontend-flutter/android/key.properties` (never committed; copy `key.properties.template`,
+generate the keystore once with `scripts/generate_keystore.sh`), and falls back to the debug
+key without it: [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md) § Android.
 
 An end-to-end test plays a round through the client against a live backend and a
 chromedriver (`integration_test/`, `flutter drive`). `scripts/flutter_e2e.sh` starts the
@@ -354,8 +360,8 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
 unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
 compose's Rust backend with the Bedrock feature, started until its health check passes; both
-frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
-debug apk builds; the APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
+frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web, debug and
+release apk builds; the debug APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 

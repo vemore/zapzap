@@ -31,7 +31,7 @@ check "0 0 1 1 0 0 0" "frontend/src/App.jsx"
 check "0 0 0 1 0 0 0" "nginx/nginx.conf"
 check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh"
 check "0 0 0 0 1 0 0" "rebuild.sh"
-check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "scripts/deploy.env.example" "rebuild.sh" "scripts/hooks_selftest.sh"
+check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "scripts/deploy.env.example" "rebuild.sh" "scripts/hooks_selftest.sh" "scripts/generate_keystore.sh"
 # The production compose file: parsed by the image job, read by the deploy self-test.
 check "0 0 0 1 1 0 0" "docker-compose.prod.yml"
 check "0 0 0 1 0 0 0" "nginx/Dockerfile"
