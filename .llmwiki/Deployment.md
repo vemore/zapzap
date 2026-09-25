@@ -97,8 +97,8 @@ code and by a rehearsal (2026-09-24: Node built a database, the production Rust 
 logged users in, played a game to its end and started a second one, then Node opened the
 file):
 
-- the schema is Node's own DDL (`schema.sql`, compared statement by statement with
-  `DatabaseConnection.js` by `zapzap-rust/tests/schema_tests.rs`), and Rust adds no table;
+- the schema is Node's own DDL (`schema.sql`, compared statement by statement with a
+  frozen Node-built schema by `zapzap-rust/tests/schema_tests.rs`), and Rust adds no table;
 - timestamps are Unix seconds on both sides (`chrono::Utc::now().timestamp()` in the Rust
   repositories, `Math.floor(Date.now() / 1000)` in `src/domain/entities/`);
 - `parties.settings_json` holds Node's keys `{playerCount, allowSpectators, roundTimeLimit}`

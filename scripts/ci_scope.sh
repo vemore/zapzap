@@ -68,10 +68,6 @@ while IFS= read -r path; do
         # The smoke tests the image job runs: the Flutter PWA image, the production backend.
         scripts/pwa_image_smoke.sh|scripts/backend_image_smoke.sh) image=true ;;
 
-        # The Node schema, which zapzap-rust/tests/schema_tests.rs reads and compares
-        # with the Rust backend's copy: a change to it needs the rust job too.
-        src/infrastructure/database/sqlite/DatabaseConnection.js) rust=true; node=true; image=true; parity=true; e2e=true ;;
-
         # The Node backend, production's rollback since the switch to Rust
         # (.llmwiki/Deployment.md): its code and dependencies are tested by jest, baked into
         # the root Dockerfile's image (which a rollback builds), and compared with the Rust
