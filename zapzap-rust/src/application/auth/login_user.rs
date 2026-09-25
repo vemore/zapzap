@@ -57,8 +57,12 @@ impl LoginUser {
             .as_ref()
             .ok_or(LoginError::InvalidCredentials)?;
 
-        let valid = PasswordService::verify(&input.password, password_hash)
-            .map_err(|e| LoginError::Internal(e.to_string()))?;
+        // A stored hash that cannot be read refuses the login, as Node's `bcrypt.compare`
+        // answers false for it, rather than failing the request
+        let valid = PasswordService::verify(&input.password, password_hash).unwrap_or_else(|e| {
+            tracing::warn!("Unreadable password hash for user {}: {}", user.id, e);
+            false
+        });
 
         if !valid {
             return Err(LoginError::InvalidCredentials);

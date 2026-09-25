@@ -348,6 +348,31 @@ async fn test_login_leaves_the_bcrypt_hash_unchanged() {
     assert_eq!(stored_hash(&state, "nodeuser").await, node_hash);
 }
 
+#[tokio::test]
+async fn test_login_with_an_unreadable_hash_is_401() {
+    let (mut app, state) = create_test_app_with_state().await;
+
+    // An unknown format, and a bcrypt prefix over a truncated hash
+    for (username, hash) in [("badhash1", "not-a-hash"), ("badhash2", "$2b$10$short")] {
+        let user = User::new_human(
+            uuid::Uuid::new_v4().to_string(),
+            username.to_string(),
+            hash.to_string(),
+        );
+        state.user_repo.save(&user).await.unwrap();
+
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/login",
+            json!({"username": username, "password": "demo123"}),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{username}: {body}");
+        assert_eq!(body["code"], "INVALID_CREDENTIALS");
+    }
+}
+
 // ============================================================================
 // Party Tests
 // ============================================================================

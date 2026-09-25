@@ -34,6 +34,8 @@ while IFS= read -r path; do
 
         # The Rust backend -- the deployed server -- and the image built from it; the
         # parity suite runs its release build against the Node backend.
+        # Password hashing and its fixture: jest's RustBcryptCompat.test.js checks Node reads them.
+        zapzap-rust/src/infrastructure/auth/*|zapzap-rust/tests/fixtures/bcrypt_node_compat.json) rust=true; node=true; image=true; parity=true ;;
         zapzap-rust/*) rust=true; image=true; parity=true ;;
 
         # Bot parameters and models: zapzap-rust/data is a symlink to data/.

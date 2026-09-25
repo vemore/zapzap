@@ -128,14 +128,24 @@ impl AppState {
             #[cfg(feature = "bedrock")]
             {
                 if llm_enabled("AWS_BEDROCK_ENABLED", "AWS_ACCESS_KEY_ID") {
-                    // Bounded: the probe runs before the port is bound
-                    let probe = async {
-                        let service = BedrockService::new(BedrockConfig::default()).await;
-                        service.health_check().await.then_some(service)
+                    // Both steps are bounded: they run before the port is bound
+                    let service = match tokio::time::timeout(
+                        STARTUP_PROBE_TIMEOUT,
+                        BedrockService::new(BedrockConfig::default()),
+                    )
+                    .await
+                    {
+                        Ok(service) => {
+                            probe_within("AWS Bedrock", STARTUP_PROBE_TIMEOUT, service).await
+                        }
+                        Err(_) => {
+                            tracing::warn!("AWS Bedrock client not configured in time");
+                            None
+                        }
                     };
-                    match probe_within("AWS Bedrock", STARTUP_PROBE_TIMEOUT, probe).await {
+                    match service {
                         Some(service) => {
-                            tracing::info!("AWS Bedrock LLM service initialized and available");
+                            tracing::info!("AWS Bedrock LLM service initialized");
                             Some(Arc::new(service) as Arc<dyn LlmService>)
                         }
                         None => {
@@ -159,13 +169,10 @@ impl AppState {
         let llm_service: Option<Arc<dyn LlmService>> = if llm_service.is_some() {
             llm_service
         } else if llm_enabled("ENABLE_LLM_BOTS", "OLLAMA_BASE_URL") {
-            let probe = async {
-                let service = OllamaService::new(OllamaConfig::default());
-                service.health_check().await.then_some(service)
-            };
-            match probe_within("Ollama", STARTUP_PROBE_TIMEOUT, probe).await {
+            let service = OllamaService::new(OllamaConfig::default());
+            match probe_within("Ollama", STARTUP_PROBE_TIMEOUT, service).await {
                 Some(service) => {
-                    tracing::info!("Ollama LLM service initialized and available");
+                    tracing::info!("Ollama LLM service initialized");
                     Some(Arc::new(service))
                 }
                 None => {
