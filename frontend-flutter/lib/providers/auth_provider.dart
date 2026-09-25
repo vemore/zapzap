@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../repositories/auth_repository.dart';
 import '../services/api_client.dart';
+import '../services/google_sign_in_service.dart';
 import '../services/token_storage.dart';
 import '../utils/jwt.dart';
 
@@ -18,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
     required this._repository,
     required ApiClient apiClient,
     required this._storage,
+    this._google = const DisabledGoogleSignIn(),
     DateTime Function()? clock,
   }) : _api = apiClient,
        _clock = clock ?? DateTime.now {
@@ -27,6 +29,7 @@ class AuthProvider extends ChangeNotifier {
   final AuthRepository _repository;
   final ApiClient _api;
   final TokenStorage _storage;
+  final GoogleSignInService _google;
   final DateTime Function() _clock;
 
   User? _user;
@@ -81,15 +84,25 @@ class AuthProvider extends ChangeNotifier {
   Future<void> loginWithGoogle(String credential) async =>
       _signIn(await _repository.loginWithGoogle(credential));
 
-  /// Signs out. Idempotent: several 401s in flight each call it, and only
-  /// the first does anything.
+  /// Signs out, of Google too: on a shared device the next person is not
+  /// offered this Google account. Idempotent: several 401s in flight each
+  /// call it, and only the first does anything.
   Future<void> logout() async {
     if (_token == null && _user == null) return;
     _user = null;
     _token = null;
     _api.token = null;
     notifyListeners();
+    _signOutOfGoogle();
     await _clearStorage();
+  }
+
+  /// Not awaited: Google may never answer (its script blocked), and the
+  /// session is closed either way.
+  void _signOutOfGoogle() {
+    Future<void>.sync(
+      _google.signOut,
+    ).catchError((Object error) => debugPrint('Google not signed out: $error'));
   }
 
   Future<void> _signIn(AuthSession session) async {

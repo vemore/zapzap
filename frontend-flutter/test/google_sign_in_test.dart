@@ -9,52 +9,11 @@ import 'package:zapzap/router.dart';
 import 'package:zapzap/services/api_client.dart';
 import 'package:zapzap/services/google_sign_in_service.dart';
 import 'package:zapzap/services/token_storage.dart';
+import 'package:zapzap/widgets/google_sign_in_section.dart';
 
 import 'auth_helpers.dart';
+import 'google_fakes.dart';
 import 'sse_fakes.dart';
-
-/// Google replaced: [signIn] hands over [nextToken], or fails with
-/// [nextFailure], or does nothing (the user closed the dialog) when both are
-/// `null`.
-class FakeGoogleSignIn implements GoogleSignInService {
-  final _tokens = StreamController<String>.broadcast();
-  String? nextToken = 'google-id-token';
-  Object? nextFailure;
-
-  /// Thrown by [signIn] itself (a failure the token stream does not carry).
-  Object? signInThrows;
-  int signIns = 0;
-
-  /// Google's own button, as on the web; `null`: the app draws one.
-  Widget Function()? webButton;
-  int platformButtonCalls = 0;
-
-  /// A token handed over by Google's own button, bypassing [signIn].
-  void emit(String token) => _tokens.add(token);
-
-  @override
-  bool get enabled => true;
-
-  @override
-  Stream<String> get idTokens => _tokens.stream;
-
-  @override
-  Widget? platformButton(BuildContext context) {
-    platformButtonCalls++;
-    return webButton?.call();
-  }
-
-  @override
-  Future<void> signIn() async {
-    signIns++;
-    if (signInThrows != null) throw signInThrows!;
-    if (nextFailure != null) {
-      _tokens.addError(nextFailure!);
-    } else if (nextToken != null) {
-      _tokens.add(nextToken!);
-    }
-  }
-}
 
 void main() {
   const webId = '1234-abc.apps.googleusercontent.com';
@@ -365,6 +324,103 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests.first.url.path, '/api/auth/google');
     expect(find.text('Parties disponibles'), findsOneWidget);
+  });
+
+  testWidgets('the logout button signs out of Google', (tester) async {
+    final google = FakeGoogleSignIn();
+    await pumpApp(
+      tester,
+      google: google,
+      api: fakeApi(
+        (_) async => http.Response(authFixtureWithJwt('auth_login'), 200),
+      ),
+    );
+    await tester.tap(googleButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Parties disponibles'), findsOneWidget);
+    expect(google.signOuts, 0);
+
+    await tester.tap(find.byKey(const Key('logout')));
+    await tester.pumpAndSettle();
+    expect(find.text('Connexion'), findsOneWidget);
+    expect(google.signOuts, 1);
+  });
+
+  group('Google not ready (its script blocked, no route to Google)', () {
+    // What the GIS plugin draws while it waits for its script.
+    Widget placeholder() => const Text('Getting ready');
+    const timeout = Duration(seconds: 8);
+
+    for (final screen in [AppRoutes.login, AppRoutes.register]) {
+      testWidgets('$screen: after ${timeout.inSeconds} s, no placeholder and '
+          'no "ou" rule; the fields remain', (tester) async {
+        expect(GoogleSignInSection.readyTimeout, timeout);
+        final google = FakeGoogleSignIn()
+          ..webButton = placeholder
+          ..onReady = () => Completer<void>().future;
+        await pumpApp(tester, initialLocation: screen, google: google);
+        final fieldsTop = tester.getRect(find.byType(TextField).first).top;
+        expect(find.text('Getting ready'), findsOneWidget);
+        expect(find.text('ou'), findsOneWidget);
+
+        await tester.pump(timeout - const Duration(seconds: 1));
+        expect(find.text('Getting ready'), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+        expect(find.text('Getting ready'), findsNothing);
+        expect(find.text('ou'), findsNothing);
+        expect(find.byType(TextField), findsNWidgets(2));
+        // Nothing left of the section, its spacing included.
+        expect(tester.getSize(find.byType(GoogleSignInSection)).height, 0);
+        expect(
+          tester.getRect(find.byType(TextField).first).top,
+          lessThan(fieldsTop),
+        );
+      });
+    }
+
+    testWidgets('the next screen starts without the section', (tester) async {
+      final google = FakeGoogleSignIn()
+        ..webButton = placeholder
+        ..onReady = () => Completer<void>().future;
+      await pumpApp(tester, google: google);
+      await tester.pump(timeout);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text("S'inscrire"));
+      await tester.pumpAndSettle();
+      expect(find.text('Créer un compte'), findsOneWidget);
+      expect(find.text('Getting ready'), findsNothing);
+      expect(find.text('ou'), findsNothing);
+    });
+
+    testWidgets('ready after the timeout after all: the section comes back', (
+      tester,
+    ) async {
+      final slow = Completer<void>();
+      final google = FakeGoogleSignIn()..onReady = () => slow.future;
+      await pumpApp(tester, google: google);
+      await tester.pump(timeout);
+      await tester.pumpAndSettle();
+      expect(googleButton, findsNothing);
+
+      slow.complete();
+      await tester.pumpAndSettle();
+      expect(googleButton, findsOneWidget);
+      expect(find.text('ou'), findsOneWidget);
+    });
+
+    testWidgets('a failed initialisation hides the section at once, with no '
+        'error', (tester) async {
+      final google = FakeGoogleSignIn()
+        ..onReady = () async => throw const GoogleSignInFailure('init failed');
+      await pumpApp(tester, google: google);
+      expect(googleButton, findsNothing);
+      expect(find.text('ou'), findsNothing);
+      expect(find.byKey(const Key('auth-error')), findsNothing);
+      expect(find.byKey(const Key('login-username')), findsOneWidget);
+    });
   });
 
   group('phone width', () {
