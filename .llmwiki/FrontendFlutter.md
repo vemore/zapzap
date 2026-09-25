@@ -274,7 +274,7 @@
   the section comes back. A failed initialisation is not also put on `idTokens`.
 - **Logout signs out of Google** (`signOut`, a no-op when Google was never initialised),
   so on a shared device the next person is not offered the previous account.
-- **Tests** fake Google (`FakeGoogleSignIn` in `test/google_sign_in_test.dart`, passed as
+- **Tests** fake Google (`FakeGoogleSignIn` in `test/google_fakes.dart`, passed as
   `ZapZapApp(googleSignIn:)`); the real flow needs an authorised origin or a registered
   signing key, so it is checked by hand (below).
 
