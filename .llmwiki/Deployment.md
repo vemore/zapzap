@@ -24,7 +24,7 @@ part of this deployment.
 
 | Container | Image | Command | Mounts |
 |---|---|---|---|
-| `zapzap-backend` | built from `zapzap-rust/Dockerfile` with `CARGO_FEATURES=bedrock`, runs as uid 1000 | `/app/zapzap-backend` | `data/ → /app/data` |
+| `zapzap-backend` | built from `zapzap-rust/Dockerfile` with `CARGO_FEATURES=bedrock`: a static musl binary on `alpine:3.22` with `ca-certificates` only (29 MB), runs as uid 1000 | `/app/zapzap-backend` | `data/ → /app/data` |
 | `zapzap-frontend` | `zapzap-frontend`, built from `frontend/Dockerfile` | nginx serving the Vite build | — |
 | `zapzap-frontend-flutter` | `zapzap-frontend-flutter`, built from `frontend-flutter/Dockerfile` | nginx serving the Flutter web bundle under `/app/` | — |
 | `zapzap-proxy` | `nginx:alpine` | nginx | `nginx/nginx.conf → /etc/nginx/conf.d/default.conf` |
@@ -80,7 +80,18 @@ switch: `sqlite_master` and the row counts unchanged).
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker compose
 build backend`, then the container on an empty database until its compose health check
-passes).
+passes — busybox `wget`, the image has no curl —, then uid 1000, the CA store and the size).
+
+**The image** (since 2026-09-25, feat/backend-image-alpine): builder `rust:1.92-alpine` (in step with
+`rust-toolchain.toml`) with `musl-dev cmake perl make clang linux-headers`, for the two crates
+that compile C, `libsqlite3-sys` (bundled SQLite) and `aws-lc-sys` (rustls' crypto under
+`bedrock`); the binary is static (the build fails on a `NEEDED` entry) and stripped. Runtime
+`alpine:3.22` with `ca-certificates` only: nothing links OpenSSL (reqwest uses rustls with
+bundled webpki roots for Google's keys; the Bedrock client, `rustls-native-certs`, reads
+`/etc/ssl/certs`). 29 MB served, against 135 MB for the Debian `bookworm-slim` image
+before (`libssl3`, `curl`). The binary is root-owned and only `/app/data` belongs to uid 1000
+(a recursive `chown` of `/app` after the `COPY` stored the binary twice, 20 MB); everything
+the backend writes lives under `data/`.
 
 ### Rolling back
 
