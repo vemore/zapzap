@@ -98,8 +98,9 @@ ssh vemore@192.168.1.147 'df -h /home/vemore/workspace/zapzap; free -m; export P
 
   - **≥ 6 GB free**: the builder stage is 3.47 GB (Flutter SDK 2.3 GB, pub cache 650 MB) and
     the served image 107 MB, plus transient space. Prune with `docker image prune -f`.
-    A Rust backend rebuild adds its own builder stage (`rust:1.92-slim-bookworm` and a release
-    `target/` with the AWS SDK; not measured on the NAS) for a served image of 135 MB.
+    A Rust backend rebuild adds its own builder stage (`rust:1.92-alpine` with `musl-dev cmake
+    perl make clang linux-headers`, and a release `target/` with the AWS SDK; not measured on
+    the NAS) for a served image of about 29 MB.
   - **≥ 2 GB free RAM**: `dart2js` needs about that; a NAS short of it fails the build
     mid-way — which since 2026-09-23 costs nothing but the wasted minutes, because
     `deploy.sh` builds before it stops anything (§2).

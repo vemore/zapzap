@@ -6,9 +6,9 @@
 # which links statically by default: the binary needs no libc, no OpenSSL at run time.
 FROM rust:1.92-alpine AS builder
 
-# Two crates compile C: libsqlite3-sys (bundled SQLite) needs a C toolchain and the musl
-# headers; aws-lc-sys (rustls' crypto under the `bedrock` feature) also needs cmake, perl,
-# make, clang and the kernel headers.
+# Crates that compile C: libsqlite3-sys (bundled SQLite) and ring need a C toolchain and the
+# musl headers; aws-lc-sys (rustls' crypto under the `bedrock` feature) also needs cmake,
+# perl, make, clang and the kernel headers.
 RUN apk add --no-cache musl-dev cmake perl make clang linux-headers
 
 # Set working directory
@@ -42,11 +42,13 @@ COPY src ./src
 
 # Build the application; touching the sources makes them newer than anything cached.
 # The binary is stripped (no debug symbols in the image) and must come out static: no
-# NEEDED entry, or the Alpine runtime would lack the library it names.
+# NEEDED entry, or the Alpine runtime would lack the library it names. readelf writes to a
+# file first: /bin/sh has no pipefail, and a failing readelf must fail the build.
 RUN touch src/lib.rs src/main.rs && \
     cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} && \
     strip target/release/zapzap-backend && \
-    ! readelf -d target/release/zapzap-backend | grep -q NEEDED
+    readelf -d target/release/zapzap-backend > /tmp/dynamic-section && \
+    ! grep -q NEEDED /tmp/dynamic-section
 
 # Stage 2: Runtime
 # ca-certificates only: rustls-native-certs (the Bedrock client) reads the system store,
