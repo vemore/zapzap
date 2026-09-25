@@ -10,11 +10,12 @@ use crate::application::bot::BotRunner;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
+use crate::infrastructure::services::{
+    probe_within, GoogleOAuthService, LlmService, OllamaConfig, OllamaService, SessionManager,
+    STARTUP_PROBE_TIMEOUT,
+};
 #[cfg(feature = "bedrock")]
 use crate::infrastructure::services::{BedrockConfig, BedrockService};
-use crate::infrastructure::services::{
-    GoogleOAuthService, LlmService, OllamaConfig, OllamaService, SessionManager,
-};
 
 /// Placeholder secrets published in this repository (code defaults, `.env.example`,
 /// README): a token signed with one of them can be forged by anyone.
@@ -127,14 +128,32 @@ impl AppState {
             #[cfg(feature = "bedrock")]
             {
                 if llm_enabled("AWS_BEDROCK_ENABLED", "AWS_ACCESS_KEY_ID") {
-                    let config = BedrockConfig::default();
-                    let service = BedrockService::new(config).await;
-                    if service.health_check().await {
-                        tracing::info!("AWS Bedrock LLM service initialized and available");
-                        Some(Arc::new(service) as Arc<dyn LlmService>)
-                    } else {
-                        tracing::warn!("AWS Bedrock configured but not available - trying Ollama");
-                        None
+                    // Both steps are bounded: they run before the port is bound
+                    let service = match tokio::time::timeout(
+                        STARTUP_PROBE_TIMEOUT,
+                        BedrockService::new(BedrockConfig::default()),
+                    )
+                    .await
+                    {
+                        Ok(service) => {
+                            probe_within("AWS Bedrock", STARTUP_PROBE_TIMEOUT, service).await
+                        }
+                        Err(_) => {
+                            tracing::warn!("AWS Bedrock client not configured in time");
+                            None
+                        }
+                    };
+                    match service {
+                        Some(service) => {
+                            tracing::info!("AWS Bedrock LLM service initialized");
+                            Some(Arc::new(service) as Arc<dyn LlmService>)
+                        }
+                        None => {
+                            tracing::warn!(
+                                "AWS Bedrock configured but not available - trying Ollama"
+                            );
+                            None
+                        }
                     }
                 } else {
                     None
@@ -151,13 +170,17 @@ impl AppState {
             llm_service
         } else if llm_enabled("ENABLE_LLM_BOTS", "OLLAMA_BASE_URL") {
             let service = OllamaService::new(OllamaConfig::default());
-            // Check if Ollama is available
-            if service.health_check().await {
-                tracing::info!("Ollama LLM service initialized and available");
-                Some(Arc::new(service))
-            } else {
-                tracing::warn!("Ollama configured but not available - LLM bots will use fallback");
-                None
+            match probe_within("Ollama", STARTUP_PROBE_TIMEOUT, service).await {
+                Some(service) => {
+                    tracing::info!("Ollama LLM service initialized");
+                    Some(Arc::new(service))
+                }
+                None => {
+                    tracing::warn!(
+                        "Ollama configured but not available - LLM bots will use fallback"
+                    );
+                    None
+                }
             }
         } else {
             tracing::info!("LLM service not configured - LLM bots will use fallback strategy");

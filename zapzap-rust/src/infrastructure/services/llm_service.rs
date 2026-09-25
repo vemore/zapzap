@@ -31,6 +31,29 @@ pub trait LlmService: Send + Sync {
     async fn health_check(&self) -> bool;
 }
 
+/// Longest wait for an LLM service's health check at startup, before the port is bound
+pub const STARTUP_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Health-check an LLM service at startup, waiting at most `limit`; returns the service to keep.
+///
+/// The probe runs before the port is bound, so it cannot wait long. A service that answers
+/// its health check is kept, one that fails it is dropped. One that has not answered at
+/// `limit` (a cold model) is kept unverified: its first real call decides, and a bot whose
+/// call fails plays its fallback strategy.
+pub async fn probe_within<S: LlmService>(what: &str, limit: Duration, service: S) -> Option<S> {
+    match tokio::time::timeout(limit, service.health_check()).await {
+        Ok(true) => Some(service),
+        Ok(false) => None,
+        Err(_) => {
+            warn!(
+                "{what} health check did not answer within {limit:?} - kept unverified, \
+                 the first bot call decides"
+            );
+            Some(service)
+        }
+    }
+}
+
 /// Ollama service configuration
 #[derive(Debug, Clone)]
 pub struct OllamaConfig {
@@ -214,23 +237,51 @@ impl BedrockService {
     }
 }
 
+/// Health-check prompt: one word asked, at most `HEALTH_CHECK_MAX_GEN_LEN` tokens generated,
+/// so that a warm model answers well within `STARTUP_PROBE_TIMEOUT`
+#[cfg(any(feature = "bedrock", test))]
+const HEALTH_CHECK_SYSTEM: &str = "Answer with the single word OK.";
+#[cfg(any(feature = "bedrock", test))]
+const HEALTH_CHECK_USER: &str = "OK";
+#[cfg(any(feature = "bedrock", test))]
+const HEALTH_CHECK_MAX_GEN_LEN: u32 = 5;
+
+/// The Bedrock Llama request body
+#[cfg(any(feature = "bedrock", test))]
+fn bedrock_payload(
+    system_prompt: &str,
+    user_prompt: &str,
+    max_gen_len: u32,
+    temperature: f32,
+) -> serde_json::Value {
+    let prompt = format!(
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+        system_prompt, user_prompt
+    );
+
+    serde_json::json!({
+        "prompt": prompt,
+        "max_gen_len": max_gen_len,
+        "temperature": temperature,
+    })
+}
+
 #[cfg(feature = "bedrock")]
-#[async_trait]
-impl LlmService for BedrockService {
-    async fn invoke(&self, system_prompt: &str, user_prompt: &str) -> Result<String, LlmError> {
+impl BedrockService {
+    async fn invoke_with(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        max_gen_len: u32,
+    ) -> Result<String, LlmError> {
         use aws_sdk_bedrockruntime::primitives::Blob;
-        use serde_json::json;
 
-        let prompt = format!(
-            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
-            system_prompt, user_prompt
+        let payload = bedrock_payload(
+            system_prompt,
+            user_prompt,
+            max_gen_len,
+            self.config.temperature,
         );
-
-        let payload = json!({
-            "prompt": prompt,
-            "max_gen_len": self.config.max_tokens,
-            "temperature": self.config.temperature,
-        });
 
         let response = self
             .client
@@ -253,13 +304,24 @@ impl LlmService for BedrockService {
             .map(|s| s.to_string())
             .ok_or_else(|| LlmError::InvalidResponse("No generation in response".to_string()))
     }
+}
+
+#[cfg(feature = "bedrock")]
+#[async_trait]
+impl LlmService for BedrockService {
+    async fn invoke(&self, system_prompt: &str, user_prompt: &str) -> Result<String, LlmError> {
+        self.invoke_with(system_prompt, user_prompt, self.config.max_tokens)
+            .await
+    }
 
     async fn health_check(&self) -> bool {
-        // Simple check - try to invoke with minimal tokens
-        match self.invoke("Say OK", "").await {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        self.invoke_with(
+            HEALTH_CHECK_SYSTEM,
+            HEALTH_CHECK_USER,
+            HEALTH_CHECK_MAX_GEN_LEN,
+        )
+        .await
+        .is_ok()
     }
 }
 
@@ -297,6 +359,75 @@ mod tests {
         let result = service.invoke("system", "user").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Test response");
+    }
+
+    /// A service whose health check answers `healthy` after `delay`
+    struct ProbedLlmService {
+        delay: Duration,
+        healthy: bool,
+    }
+
+    #[async_trait]
+    impl LlmService for ProbedLlmService {
+        async fn invoke(&self, _: &str, _: &str) -> Result<String, LlmError> {
+            Err(LlmError::Unavailable)
+        }
+
+        async fn health_check(&self) -> bool {
+            tokio::time::sleep(self.delay).await;
+            self.healthy
+        }
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_keeps_a_slow_service_unverified() {
+        let started = std::time::Instant::now();
+        let service = ProbedLlmService {
+            delay: Duration::from_secs(3600),
+            healthy: false,
+        };
+
+        // A cold model: the boot goes on at the limit, and the service stays for the bots
+        let kept = probe_within("cold", Duration::from_millis(50), service).await;
+
+        assert!(kept.is_some());
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_keeps_an_available_service() {
+        let service = MockLlmService::new("OK");
+
+        assert!(probe_within("mock", STARTUP_PROBE_TIMEOUT, service)
+            .await
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_drops_a_failing_service() {
+        let service = ProbedLlmService {
+            delay: Duration::ZERO,
+            healthy: false,
+        };
+
+        assert!(probe_within("down", STARTUP_PROBE_TIMEOUT, service)
+            .await
+            .is_none());
+    }
+
+    #[test]
+    fn test_bedrock_health_check_is_cheap() {
+        let payload = bedrock_payload(
+            HEALTH_CHECK_SYSTEM,
+            HEALTH_CHECK_USER,
+            HEALTH_CHECK_MAX_GEN_LEN,
+            0.3,
+        );
+
+        let max_gen_len = payload["max_gen_len"].as_u64().unwrap();
+        assert!((1..=5).contains(&max_gen_len), "max_gen_len {max_gen_len}");
+        let prompt = payload["prompt"].as_str().unwrap();
+        assert!(prompt.contains("<|start_header_id|>user<|end_header_id|>\n\nOK<|eot_id|>"));
     }
 
     #[test]
