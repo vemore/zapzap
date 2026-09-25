@@ -45,8 +45,9 @@ cd zapzap
 # Install dependencies
 npm install
 
-# Initialize demo data (5 users + 1 party)
-npm run init-demo
+# Seed the bot accounts and the 5 demo users into data/zapzap.db (the Rust backend's
+# seed command; idempotent, creates the file and its tables when missing)
+(cd zapzap-rust && cargo run -- seed --demo)
 ```
 
 ### Running the Game
@@ -60,7 +61,7 @@ The server will start on **port 9999** by default.
 
 ### Demo Login Credentials
 
-After running `npm run init-demo`, you can login with:
+After a `seed --demo`, you can login with:
 - **Usernames**: Vincent, Thibaut, Simon, Lyo, Laurent
 - **Password**: `demo123` (for all users)
 
@@ -106,8 +107,8 @@ mkdir -p data && touch data/zapzap.db
 # 5. Start all services
 docker-compose up -d
 
-# 6. (Optional) Initialize demo data, from the host (Node), into the same file
-npm ci && npm run init-demo && npm run init-bots
+# 6. Seed the bot accounts and, with --demo, the demo users (idempotent)
+docker-compose exec backend /app/zapzap-backend seed --demo
 ```
 
 The application will be available at **http://localhost** (port 80).
@@ -168,8 +169,8 @@ docker-compose restart
 # Rebuild and restart (after code changes)
 docker-compose up -d --build
 
-# Initialize demo data
-docker-compose exec backend npm run init-demo
+# Seed the bots and the demo users (idempotent)
+docker-compose exec backend /app/zapzap-backend seed --demo
 
 # Access backend shell
 docker-compose exec backend sh
@@ -209,7 +210,7 @@ ls -la data/
 # Reset database (WARNING: deletes all data!)
 rm data/zapzap.db
 docker-compose restart backend
-docker-compose exec backend npm run init-demo
+docker-compose exec backend /app/zapzap-backend seed --demo
 ```
 
 **Network issues:**
@@ -366,8 +367,8 @@ squash-merged pull requests with green checks. What CI does not run yet, and why
 # Start development server
 npm start
 
-# Initialize demo data
-npm run init-demo
+# Seed the bot accounts and the demo users
+(cd zapzap-rust && cargo run -- seed --demo)
 
 # Run tests
 npm test
@@ -420,22 +421,19 @@ node scripts/test-api.js
 ### Demo Data
 
 ```bash
-# Initialize 5 demo users and 1 party
-npm run init-demo
+# The 8 bot accounts (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2)
+(cd zapzap-rust && cargo run -- seed)
 
-# Output:
-# Demo Users (username / password):
-#   - Vincent / demo123
-#   - Thibaut / demo123
-#   - Simon / demo123
-#   - Lyo / demo123
-#   - Laurent / demo123
-#
-# Demo Party:
-#   - Party ID: <uuid>
-#   - Invite Code: <code>
-#   - Name: Demo Game
+# The bots and the 5 demo users, all with the password demo123:
+# Vincent, Thibaut, Simon, Lyo, Laurent
+(cd zapzap-rust && cargo run -- seed --demo)
 ```
+
+The seed opens the database the server would (`DATABASE_URL`, else `DB_PATH`, else
+`./data/zapzap.db`), creates it and its tables when missing, and creates only the accounts
+whose username is free: run it twice, or on a database in use, and nothing is duplicated.
+It needs no `JWT_SECRET` and no running server. Unlike the Node `npm run init-demo`, it
+creates no demo party.
 
 ### Environment Variables
 
@@ -446,7 +444,8 @@ Create a `.env` file (optional):
 PORT=9999
 NODE_ENV=development
 
-# Database (the Node backend and scripts/init-bots.js; default data/zapzap.db)
+# Database (the Node backend; the Rust backend and its seed read DATABASE_URL, else
+# DB_PATH; default data/zapzap.db)
 DB_PATH=./data/zapzap.db
 
 # JWT

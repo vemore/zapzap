@@ -137,8 +137,8 @@
   `test/` only, so the `flutter` job does not run it (the `flutter-e2e` job does); `flutter analyze` covers it (dev dependencies
   `integration_test` and `flutter_driver`, from the SDK).
 - **`scripts/flutter_e2e.sh`** runs it end to end, as CI does: in a `mktemp -d` directory
-  it seeds the bot accounts (`DB_PATH=<dir>/e2e.db node scripts/init-bots.js`, the Node
-  DDL, which the Rust backend takes as is), starts the Rust backend's debug build from
+  it seeds the bot accounts (`DB_PATH=<dir>/e2e.db zapzap-backend seed`, which creates the
+  file and its schema, [[Backend]] § Seeding), starts the Rust backend's debug build from
   `zapzap-rust/` with a generated `JWT_SECRET` (`openssl rand -hex 32`), waits for
   `/api/health` (60 s), starts chromedriver and waits for its `/status` (30 s), then runs
   the `flutter drive` of step 3 below, headless. It exits with `flutter drive`'s status,
@@ -147,15 +147,17 @@
   `${CARGO_TARGET_DIR:-zapzap-rust/target}/debug/zapzap-backend`), `E2E_API_PORT` (9921),
   `E2E_DRIVER_PORT` (4461), `CHROMEDRIVER` (default `$CHROMEWEBDRIVER/chromedriver`, which
   a GitHub runner sets, else `chromedriver` on the PATH). Needs `cargo build --locked` in
-  `zapzap-rust/`, `npm ci` at the root and `flutter pub get`. Locally (2026-09-24, Chrome
+  `zapzap-rust/` and `flutter pub get`; no Node. Locally (2026-09-24, Chrome
   153): `CHROMEDRIVER=<cft>/chromedriver E2E_API_PORT=9551 E2E_DRIVER_PORT=9552
   scripts/flutter_e2e.sh`, about 3.5 min, one minute of it the web compile.
 - **Procedure by hand** (checked 2026-09-24, Chrome 153, Node backend):
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
-     (`DB_PATH`, [[Architecture]]): `npm ci && DB_PATH=/tmp/e2e.db npm run init-bots &&
-     DB_PATH=/tmp/e2e.db PORT=9921 NODE_ENV=development node app.js` (development allows
-     any `http://localhost:` origin, `src/api/server.js:32-45`; the test page is served
-     from another port). Each run adds a user and a party, so reusing a development
+     (`DB_PATH`, [[Architecture]]), from `zapzap-rust/`: `DB_PATH=/tmp/e2e.db cargo run --
+     seed && JWT_SECRET=$(openssl rand -hex 32) DB_PATH=/tmp/e2e.db PORT=9921 cargo run`
+     (its CORS layer is permissive; the test page is served from another port). The Node
+     backend, which the 2026-09-24 check used, works too: `DB_PATH=/tmp/e2e.db PORT=9921
+     NODE_ENV=development node app.js` (development allows any `http://localhost:` origin,
+     `src/api/server.js:32-45`). Each run adds a user and a party, so reusing a development
      database works too.
   2. A chromedriver of Chrome's major version, on a free port:
      `npx @puppeteer/browsers install chromedriver@<google-chrome --version>`, then
@@ -182,7 +184,7 @@
 | `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`; `docker compose config` of the root compose file (valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check is `healthy`, and uid 1000 asserted); `docker build -t zapzap-node-backend:ci .` (the root `Dockerfile` a rollback builds: `node:20-alpine`, npm 10, `npm ci --only=production` — a lockfile only a newer npm accepts fails here), `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
-| `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `npm ci`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
+| `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 | `node` | `node != 'false'` | Node 20 (`actions/setup-node`, npm cache), `npm ci`, `npm test` | 15 min |
 | `parity` | `parity != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Node 20, `cargo build --release --locked` in `zapzap-rust`, `npm ci`, `npm run test:parity` | 30 min |
 
@@ -221,7 +223,7 @@
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `deploy.sh`, `rebuild.sh` | hooks |
 | `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
 | `scripts/flutter_e2e.sh` | e2e |
-| Node backend (the rollback): `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image, parity (the root `Dockerfile` copies them), e2e (`scripts/flutter_e2e.sh` seeds its bots with `scripts/init-bots.js`, which loads `src/` and `logger.js`) |
+| Node backend (the rollback): `src/*`, `app.js`, `logger.js`, root `package.json`, `package-lock.json` | node, image, parity (the root `Dockerfile` copies them); not e2e since `scripts/flutter_e2e.sh` seeds with `zapzap-backend seed` |
 | `views/*`, `public/*`, root `Dockerfile`, `.dockerignore` | image |
 | `tests/parity/*` | parity |
 | `tests/*`, `jest.config.js` | node |
@@ -238,6 +240,7 @@
 - `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- 2026-09-25 (feat/rust-seed-accounts): the `flutter-e2e` job runs no Node. `scripts/flutter_e2e.sh` seeds its bots with the backend binary it already built (`zapzap-backend seed`), so the job lost `setup-node` and the root `npm ci`, and `src/`, `app.js`, `logger.js` and the root `package*.json` no longer set the `e2e` flag. It removes the last Node dependency of the job ahead of the Node backend's removal.
 - 2026-09-24 (fix/rust-parity-last-items): the parity player now checks the game end. It had treated the final nextRound 400 as a failure and stopped there on every game of both backends; the two agreed, so the comparison passed while `rules.game-over` and `rules.winner` never ran. A per-game counter asserted in `parity.test.js` keeps it from going silent again. No new difference came out of it.
 - CI was introduced in commit 1e063d6 (squash of the chore/ci branch): "To start green, zapzap-rust/ and native/ are run through cargo fmt, and the backend's clippy findings are fixed ... or allowed where the code is a tuning knob (bot thresholds) or an API choice. The pre-existing red parts — the API integration tests with no schema, frontend lint and vitest, native clippy — are left out of the gates and tracked as local wip entries."
 - Rust 1.92 pinned because the latest stable clippy added a lint 1.92 lacks (`sort_by_key`) and the image's former `rust:1.83` could not parse `base64ct` 1.8.1 (edition 2024) — commit message of the toolchain pin, folded into 1e063d6; comment `zapzap-rust/rust-toolchain.toml:1-2`.

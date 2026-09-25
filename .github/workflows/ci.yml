@@ -289,12 +289,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zapzap-rust
-      # scripts/init-bots.js seeds the bot accounts: the Node DDL, which the Rust backend
-      # takes as is (.llmwiki/Backend.md).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.2
@@ -303,14 +297,14 @@ jobs:
       - name: Build the Rust backend (debug)
         working-directory: zapzap-rust
         run: cargo build --locked
-      - run: npm ci
       - name: flutter pub get and gen-l10n
         working-directory: frontend-flutter
         run: |
           flutter pub get --enforce-lockfile
           if [ -f l10n.yaml ]; then flutter gen-l10n; fi
       # The runner's Chrome and its matching chromedriver ($CHROMEWEBDRIVER); the backend
-      # gets a fresh database and a generated JWT_SECRET, both gone with the job.
+      # gets a fresh database, seeded by `zapzap-backend seed` (no Node), and a generated
+      # JWT_SECRET, both gone with the job.
       - name: Seed the bots, start the backend and chromedriver, flutter drive
         run: scripts/flutter_e2e.sh
 

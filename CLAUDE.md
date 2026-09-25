@@ -63,6 +63,7 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
 ```bash
 # Rust backend (toolchain pinned: rust-toolchain.toml)
 cd zapzap-rust && JWT_SECRET=<openssl rand -hex 32> cargo run   # :9999, JWT_SECRET required; needs the DB file
+cargo run -- seed --demo                         # bots + demo users (demo123); idempotent, creates the DB file
 cargo fmt && cargo clippy --all-targets -- -D warnings
 cargo test                                       # unit + API integration tests: .llmwiki/Testing.md
 
@@ -80,7 +81,6 @@ node scripts/train-native.js                     # .llmwiki/NativeEngine.md
 
 # Legacy Node backend (production's rollback)
 npm start                                        # :9999
-npm run init-demo && npm run init-bots           # demo users (demo123), bot users
 
 # Tooling
 scripts/wip.sh list all                          # the local backlog
