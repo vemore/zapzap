@@ -148,6 +148,9 @@ data/models/*.safetensors
 # Google OAuth credentials (secrets), wherever a download lands (the Node backend kept
 # them under src/infrastructure/auth/, which a main checkout may still hold untracked)
 client_secret_*.json
+# Google service-account keys (Play publishing, Cloud APIs): they live outside the
+# repository; the commit hook also refuses one by its content, whatever its name
+*service-account*.json
 
 # Local work tracking: one file per entry, never committed (scripts/wip.sh, .llmwiki/ParallelDelivery.md)
 /wip/

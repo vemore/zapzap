@@ -156,17 +156,32 @@ refuse() {
 }
 
 # 1. Secrets and the database ------------------------------------------------
-secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$' \
+secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$|(^|/)key\.properties$|\.(jks|keystore)$|service-account[^/]*\.json$' \
           | grep -vE '(^|/)\.env\.example$')
+# A Google service-account key is recognised by its content, whatever it is named: the
+# staged blob, or the working file when `commit -a` stages it after this hook runs.
+sa_key='"type"[[:space:]]*:[[:space:]]*"service_account"'
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    printf '%s\n' "$secrets" | grep -qxF "$f" && continue
+    if git show ":$f" 2>/dev/null | grep -qE "$sa_key" || { [ -f "$f" ] && grep -qE "$sa_key" "$f"; }; then
+        secrets="${secrets:+$secrets$'\n'}$f"
+    fi
+done < <(printf '%s\n' "$added" | grep -E '\.json$')
 if [ -n "$secrets" ]; then
     refuse "Refused: this commit would add a secret or a database to the repository.
 
 $secrets
 
 Every .env holds JWT_SECRET and the cloud credentials; client_secret_*.json is the Google
-OAuth client; data/zapzap.db holds every account and password hash. All are gitignored,
-so reaching this point took a \`git add -f\`. Unstage with \`git reset <path>\` and commit
-again. .env.example is the committed template."
+OAuth client; data/zapzap.db holds every account and password hash. A *.jks / *.keystore
+is the Android upload key and key.properties its passwords: whoever holds them can sign
+an update of the app. A Google service-account key (\"type\": \"service_account\") acts
+on the Cloud project and can publish to Play. All are gitignored, so reaching this point
+took a \`git add -f\` -- or a service-account key under another name. Unstage with
+\`git reset <path>\` and commit again. .env.example and
+frontend-flutter/android/key.properties.template are the committed templates; the keys
+live outside the repository (.llmwiki/FrontendFlutter.md, Android)."
 fi
 
 # 2. Work tracking ----------------------------------------------------------

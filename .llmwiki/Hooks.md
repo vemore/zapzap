@@ -38,10 +38,12 @@ the repository a path remote leads to). A throwaway repository an agent builds u
 scratchpad to test a script is not that, and pushing to or committing on its master passes.
 A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
 
-`scripts/hooks_selftest.sh` exercises all of it — 159 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 179 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter` and `dart` — plus `scripts/cleanup_local.sh`, the
 `flutter pub get` of `scripts/worktree_setup.sh` (and that a failed one clears its setup
-marker) and its `--deploy` links; it is the `hooks` CI job. The same job runs
+marker) and its `--deploy` links and `scripts/generate_keystore.sh` (stub `keytool`: writes to `$HOME`,
+`umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository); it is the `hooks` CI
+job. The same job runs
 `scripts/deploy_nas_selftest.sh`, the production deploy's own table (158 cases, `ssh`,
 `docker`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
 no-op rather than an outage, the health wait, every refusal, `--rollback` — [[Deployment]]).
@@ -59,6 +61,8 @@ no-op rather than an outage, the health wait, every refusal, `--rollback` — [[
 | `gh pr merge` with `--admin`, or without `--squash`, or with `--merge`/`--rebase` | parsed flags, bundled short flags included |
 | Committing on master (of a checkout of this project), on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
 | Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
+| Committing an Android keystore (`*.jks`, `*.keystore`), `key.properties` (its passwords; `key.properties.template` passes) or a `*service-account*.json` | same path list |
+| Committing any JSON holding `"type": "service_account"` (a Google service-account key), whatever its name | the staged blob, or the working file under `-a` |
 | Committing anything under `wip/`, or a root `TODO.md` / `DONE.md` | same path list |
 | Committing with a red gate, or with the gate's setup missing | see below |
 
@@ -124,3 +128,4 @@ are not inspected. The ship-parallel agent prompt says so.
 - **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** It had no gate, so the table only loses its `src/` row; the self-test's "no gate" case now stages `scripts/train-native.js`, and its OAuth-secret case a root `client_secret_*.json`. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
 - **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 158 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.
+- **Keystores and service-account keys (2026-09-25, feat/flutter-android-release-signing).** The Android release build now signs with an upload key ([[FrontendFlutter]] § Android), so the secret rule gained countscore's keystore, `key.properties` and service-account cases — the last judged by content too, since a downloaded key is named `<project>-<hash>.json`. Twenty self-test cases: the refused files, the template that passes, a key under another name and one written into a tracked JSON under `commit -a`, and the keystore script.

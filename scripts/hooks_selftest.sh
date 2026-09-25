@@ -245,6 +245,30 @@ secret_case "the Google OAuth client"              2 "client_secret_123.json"
 secret_case "the SQLite database"                  2 "data/zapzap.db"
 secret_case "a backup of the database"            2 "data/zapzap.db.bak-2026-09-22-1356"
 secret_case "an ordinary JSON file"                0 "data/thibot_genetic_params.json"
+secret_case "the Android upload keystore (.jks)"   2 "android/zapzap-upload-keystore.jks"
+secret_case "a .keystore"                          2 "android/app/release.keystore"
+secret_case "key.properties, the keystore passwords" 2 "android/key.properties"
+secret_case "the committed key.properties.template" 0 "android/key.properties.template"
+secret_case "a service-account key, by its name"   2 "play-service-account.json"
+# A service-account key is refused by its content, whatever it is named.
+sa_case() {  # description, expected exit, path, content, [commit command]
+    printf '%s\n' "$4" > "$TREE/$3"
+    git -C "$TREE" add -f "$3"
+    out=$(payload "${5:-git commit -m x}" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+    report "$1" "$2" "$?"
+    git -C "$TREE" rm -q --cached "$3" && rm "$TREE/$3"
+}
+sa_case "a service-account key under another name" 2 "credentials.json" \
+    '{ "type": "service_account", "project_id": "zapzap-481109", "private_key": "x" }'
+sa_case "the same, compact JSON"                   2 "gcp.json" '{"type":"service_account"}'
+sa_case "a JSON whose type is something else"      0 "config.json" '{ "type": "authorized_user" }'
+# Under `commit -a` the key is only in the working file when the hook runs.
+echo '{}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "settings" >/dev/null 2>&1
+echo '{"type": "service_account"}' > "$TREE/settings.json"
+out=$(payload "git commit -am x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a service-account key written into a tracked JSON, commit -a" 2 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/settings.json"
 # Untracking the database is a deletion, not a leak.
 echo x > "$TREE/data.db" && git -C "$TREE" add -f data.db
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "db" >/dev/null 2>&1
@@ -659,6 +683,39 @@ report "worktree_setup.sh without --deploy links no deploy.env" none \
 report "worktree_setup.sh --deploy links scripts/deploy.env" "$WIPREPO/scripts/deploy.env" \
     "$(readlink "$SANDBOX/wipwt/scripts/deploy.env" 2>/dev/null)"
 report "worktree_setup.sh --deploy links .env" "$WIPREPO/.env" "$(readlink "$SANDBOX/wipwt/.env" 2>/dev/null)"
+
+# generate_keystore.sh writes the upload key to $HOME, never into a repository, and never
+# overwrites one. A stub keytool creates the file named by -keystore and logs its arguments.
+KHOME="$SANDBOX/khome"
+mkdir -p "$KHOME"
+cat > "$TOOLS/keytool" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$KEYTOOL_LOG"
+umask > "$KEYTOOL_LOG.umask"
+while [ $# -gt 0 ]; do [ "$1" = -keystore ] && { echo key > "$2"; }; shift; done
+STUB
+chmod +x "$TOOLS/keytool"
+export KEYTOOL_LOG="$SANDBOX/keytool.log"
+gen() { HOME="$KHOME" PATH="$TOOLS:$PATH" "$ROOT/scripts/generate_keystore.sh" "$@" >/dev/null 2>&1 </dev/null; }
+gen
+report "generate_keystore.sh succeeds" 0 "$?"
+report "generate_keystore.sh writes to \$HOME" present \
+    "$([ -f "$KHOME/zapzap-upload-keystore.jks" ] && echo present || echo missing)"
+report "generate_keystore.sh: alias zapzap-upload, JKS, RSA 2048" yes \
+    "$(grep -q -- '-storetype JKS -keyalg RSA -keysize 2048 .*-alias zapzap-upload' "$KEYTOOL_LOG" && echo yes || echo no)"
+report "generate_keystore.sh: the keystore is mode 600" 600 "$(stat -c %a "$KHOME/zapzap-upload-keystore.jks" 2>/dev/null)"
+report "generate_keystore.sh: keytool runs under umask 077" 0077 "$(cat "$KEYTOOL_LOG.umask" 2>/dev/null)"
+: > "$KEYTOOL_LOG"
+gen
+report "generate_keystore.sh refuses to overwrite a keystore" 1 "$?"
+report "generate_keystore.sh: and leaves it untouched" "key" "$(cat "$KHOME/zapzap-upload-keystore.jks")"
+report "generate_keystore.sh: keytool never ran" "" "$(cat "$KEYTOOL_LOG")"
+ZAPZAP_KEYSTORE="$WIPREPO/zapzap-upload-keystore.jks" gen
+report "generate_keystore.sh refuses a path inside a repository" 1 "$?"
+report "generate_keystore.sh: nothing written there" none \
+    "$([ -e "$WIPREPO/zapzap-upload-keystore.jks" ] && echo written || echo none)"
+ZAPZAP_KEYSTORE="relative.jks" gen
+report "generate_keystore.sh refuses a relative path" 1 "$?"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

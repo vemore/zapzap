@@ -1,0 +1,18 @@
+# key.properties -- the Android upload key, for the release build.
+#
+# Copy to frontend-flutter/android/key.properties and fill in the passwords.
+# key.properties is gitignored (android/.gitignore) and the commit hook refuses it: it
+# holds the keystore's passwords. Without it, a release APK signs with the debug key (with a
+# warning) and a release bundle is refused (android/app/build.gradle.kts).
+#
+# The keystore itself comes from scripts/generate_keystore.sh, which writes it to $HOME,
+# never to the repository. Back up the keystore AND the passwords (password manager plus an
+# offline copy): lose them and the app can only be updated through Play's upload-key reset.
+#
+# .llmwiki/FrontendFlutter.md, section Android, has the whole procedure.
+
+# Absolute path to the keystore.
+storeFile=/home/USER/zapzap-upload-keystore.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=zapzap-upload
+keyPassword=YOUR_KEY_PASSWORD

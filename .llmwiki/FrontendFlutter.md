@@ -31,8 +31,10 @@
   `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale
   `pubspec.lock` fails the job), `gen-l10n`, `dart format --output=none
   --set-exit-if-changed lib test` (an unformatted file fails the job), `analyze`, `test`,
-  `build web --base-href /app/ --no-web-resources-cdn` (the image's flags) and
-  `build apk --debug`. `scripts/ci_scope.sh` selects it
+  `build web --base-href /app/ --no-web-resources-cdn` (the image's flags),
+  `build apk --debug` (uploaded, below), `build apk --release` (R8, and the debug-key
+  fallback: CI has no `key.properties` — section Android) and `build appbundle --release`,
+  which must fail there, naming `key.properties`. `scripts/ci_scope.sh` selects it
   **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
   nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
 - Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `dart format --output=none
@@ -886,8 +888,8 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
 
 ### Android (`frontend-flutter/android/`)
 
-- **Debug only** for now: no release signing (the `release` build type still signs with the
-  debug key, as generated), no store.
+- **No store yet**: the release build signs with the upload key when there is one (below),
+  but no bundle has been sent to Play.
 - **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
   push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
   the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
@@ -896,6 +898,54 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   the runner's throwaway debug key, so Google sign-in fails on it (below); sign in with a
   password. CI installs `platforms;android-36` and `build-tools;36.0.0` with `sdkmanager`
   and caps the Gradle heap in `~/.gradle/gradle.properties` (the project's asks for 8 GB).
+- **Release signing** (`android/app/build.gradle.kts`, ported from countscore): when
+  `frontend-flutter/android/key.properties` exists, the `release` build type signs with the
+  keystore it names (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; a missing or
+  empty one fails the build naming it — `android/key.properties: missing storePassword` —,
+  never printing a value). Without the file — CI, a worktree:
+  - a **release APK** (`flutter build apk --release`, Gradle `assembleRelease`) is signed
+    with the **debug key** and still builds, printing `WARNING: no android/key.properties --
+    this release build is signed with the DEBUG key` (through `logger.error`: `flutter
+    build` hides Gradle's stdout, so a `logger.warn` would only show under `-v`);
+  - a **release bundle** (`flutter build appbundle --release`, `bundleRelease`) is
+    **refused** before any task runs (`gradle.taskGraph.whenReady`): `No android/key.properties:
+    a release bundle … must be signed with the upload key` — a Play bundle is never
+    debug-signed.
+  Both are CI steps of the `flutter` job ("Release build without key.properties",
+  "Release bundle without key.properties is refused"). The release build also runs R8
+  (`isMinifyEnabled`, `isShrinkResources`, keep rules in `android/app/proguard-rules.pro`:
+  the Flutter embedding and plugins, Credential Manager's Play services provider and
+  `googleid` for google_sign_in, flutter_secure_storage). A class R8 strips shows up at run
+  time as `ClassNotFoundException` in logcat — add a `-keep` rule; the R8 build has not
+  been started on a device yet (no emulator, below).
+- **The keys**:
+  - **Upload key** — alias `zapzap-upload`, JKS, RSA 2048, ~27 years — made **once** by
+    `scripts/generate_keystore.sh`, which writes `~/zapzap-upload-keystore.jks` (`keytool` under `umask 077`, then mode 600;
+    `ZAPZAP_KEYSTORE=<absolute path>` overrides it), refuses a path inside a git work tree
+    and never overwrites an existing keystore. Then copy
+    `frontend-flutter/android/key.properties.template` to `android/key.properties` (next to
+    the template) and fill it in. Neither the keystore nor `key.properties` is in the
+    repository: `android/.gitignore` ignores `key.properties`, `*.jks`, `*.keystore`, the root
+    `.gitignore` `*service-account*.json`, and the commit hook refuses all of them and any JSON
+    holding `"type": "service_account"` ([[Hooks]]).
+  - **Backup**: the keystore file **and** its password, in the password manager plus an
+    offline copy (encrypted USB). Lost, the app can only be updated after an upload-key
+    reset requested from the Play Console (days, and only once Play App Signing is on).
+  - **Play App Signing key** — once the app exists in the Play Console, Google re-signs
+    what it serves with its own app-signing key; the upload key only proves the upload.
+    Its SHA-1 is in Play Console → the app → Test and release → App integrity → App
+    signing.
+  - **SHA-1s to register** as Android OAuth clients (package `com.zapzap.app`) in
+    `zapzap-481109` (Google sign-in on Android, below): the local debug key (done
+    2026-09-24), the **upload key** (`keytool -list -v -keystore ~/zapzap-upload-keystore.jks
+    -alias zapzap-upload`, the `SHA1:` line) for a release APK installed by hand, and
+    **Play App Signing's** for what users install from Play. None of the last two is
+    registered yet (2026-09-25: the upload key is not generated).
+  - Check which key signed a build: `jarsigner -verify -verbose -certs -keystore
+    ~/zapzap-upload-keystore.jks build/app/outputs/bundle/release/app-release.aab` prints
+    `(zapzap-upload)` after each signer; without `-keystore` the alias shows as the
+    `META-INF/ZAPZAP-U.SF`/`.RSA` names. For an APK: `~/sdk/android/build-tools/36.0.0/apksigner
+    verify --print-certs <apk>` (`CN=Android Debug` is the debug fallback).
 - Application id and namespace `com.zapzap.app` (`android/app/build.gradle.kts`);
   `MainActivity` in `android/app/src/main/kotlin/com/zapzap/app/`. Label `ZapZap`.
 - `INTERNET` is in the **main** manifest (`android/app/src/main/AndroidManifest.xml`), so
@@ -920,8 +970,9 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   bar under 3-button navigation. Before the first frame, `LaunchTheme` and `NormalTheme`
   (`android/app/src/main/res/values{,-night}/styles.xml`) set the same bar.
   `test/system_ui_test.dart` pins the style the app sends and the window themes.
-- `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
-  debug-only cleartext.
+- `test/android_config_test.dart` pins the id, the main-manifest `INTERNET`, the
+  debug-only cleartext, the release signing with its debug-key fallback and R8, the
+  Flutter and google_sign_in keep rules, and the ignored `key.properties` and keystores.
 - **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
   id (`zapzap-481109`), an OAuth client of type **Android**
   for the package `com.zapzap.app` and the SHA-1 of the key that signs the APK. Nothing of
@@ -1378,3 +1429,12 @@ project `.gitignore`.
   deck draw's `cardDrawn` is not otherwise used. The badge stays under reduced motion,
   drawn still — it says which card is new, which a player who turned animations off needs
   as much.
+- **Release signing ported from countscore (2026-09-25, feat/flutter-android-release-signing).**
+  Play refuses a bundle signed with a debug key, so the `release` build type gained
+  countscore's `key.properties` signing config, R8 and the keystore script. Unlike
+  countscore, a missing `key.properties` falls back to the debug key instead of an empty
+  signing config, so CI and worktrees keep building a release APK — but only an APK: the
+  review of #113 made `bundleRelease` fail without it, since a Play bundle must never be
+  debug-signed and a worktree has no `key.properties`. The script refuses a path inside a
+  repository and runs `keytool` under `umask 077`. The real upload key and its OAuth client are the user's
+  manual steps.
