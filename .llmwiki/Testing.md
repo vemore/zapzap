@@ -47,13 +47,16 @@
 - `integration_test/play_round_test.dart`: the real client, no fake and no fixture, against
   a live backend — registers a fresh user (`e2e_<base-36 time>`), creates a party of three
   with two easy bots (`Bot — Facile`), starts it, then plays until the end-of-round screen
-  shows: the hand size when it is its pick, the first card of the hand, a draw from the
-  deck, ZapZap as soon as it is enabled. It checks `roundOver`, the three
+  shows: four cards when the hand size is its pick, the first suggestion chip
+  (`handSuggestion-0`, the play taking the most points off, `suggestPlays` in
+  `lib/utils/rules.dart`) — the first card when there is none — a draw from the deck,
+  ZapZap as soon as it is enabled. It checks `roundOver`, the three
   `roundEndPlayer-<i>` rows, `roundEndMe`, the `zapZapBanner` (a round only ends on a
   call) and Next round (or Back to games). It drives widget keys only, in French
-  (`locale: fr`, the bot option's label). A round is a few dozen turns; the test gives it
-  5 min (`roundTimeout`) and each screen 30 s, and a timeout fails with the steps taken and
-  the text on screen.
+  (`locale: fr`, the bot option's label). Shedding the most points each turn brings the
+  hand to ZapZap in about ten turns: the test allows 60 moves (`maxMoves`), with 5 min
+  (`roundTimeout`) as a safety net and 30 s per screen; either limit fails with the steps
+  taken and the text on screen.
 - `test_driver/integration_test.dart` is the host side (`integrationDriver()`); the steps
   land in `frontend-flutter/build/integration_response_data.json`. `flutter test` runs
   `test/` only, so the `flutter` job does not run it (the `flutter-e2e` job does); `flutter analyze` covers it (dev dependencies
@@ -67,11 +70,13 @@
   stops what it started by process id, prints the backend log's last 80 lines on a
   failure, and removes the directory. Environment: `E2E_BACKEND_BIN` (default
   `${CARGO_TARGET_DIR:-zapzap-rust/target}/debug/zapzap-backend`), `E2E_API_PORT` (9921),
-  `E2E_DRIVER_PORT` (4461), `CHROMEDRIVER` (default `$CHROMEWEBDRIVER/chromedriver`, which
+  `E2E_DRIVER_PORT` (4461), `E2E_BOT_ACTION_DELAY_MS` (0: the backend's
+  `BOT_ACTION_DELAY_MS`, the bots' pause between two actions, [[Backend]]), `CHROMEDRIVER` (default `$CHROMEWEBDRIVER/chromedriver`, which
   a GitHub runner sets, else `chromedriver` on the PATH). Needs `cargo build --locked` in
   `zapzap-rust/` and `flutter pub get`. Locally (2026-09-24, Chrome
   153): `CHROMEDRIVER=<cft>/chromedriver E2E_API_PORT=9551 E2E_DRIVER_PORT=9552
-  scripts/flutter_e2e.sh`, about 3.5 min, one minute of it the web compile.
+  scripts/flutter_e2e.sh`, about 80 s (2026-09-25), 45 s of it the web compile; the round
+  takes 4 to 9 turns.
 - **Procedure by hand** (checked 2026-09-24 with Chrome 153 against the Node backend of the time; the steps below use the Rust one):
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
      (`DB_PATH`, [[Architecture]]), from `zapzap-rust/`: `DB_PATH=/tmp/e2e.db cargo run --
@@ -151,6 +156,7 @@
 - `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- 2026-09-25 (fix/flutter-e2e-round-bounded): the Flutter end-to-end round no longer runs past its 5 min at random (#99, #102, #107, each green on rerun). Since the Rust backend honours `BOT_ACTION_DELAY_MS` (1000 ms by default) each bot turn took seconds, and the driver played the first card of its hand, whose points only drifted (47 after 58 turns on #102). The script starts the bots without a pause, and the driver deals four cards and plays the suggestion taking the most points off, so the round is held to a move budget rather than to a longer timeout.
 - **2026-09-25 (chore/remove-node-backend): the Node backend is removed, and its suites with it.** The jest suites (`tests/unit`, `tests/integration`), the Node vs Rust parity suite (`tests/parity`), the Playwright suite (`tests/e2e`), the `node` and `parity` CI jobs, their scope flags and the Node image build of the `image` job are gone; a path under the former Node directories now runs everything. They can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/parity/parity.test.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds the Node backend, the former rollback target).
 - 2026-09-25 (feat/rust-seed-accounts): the `flutter-e2e` job runs no Node. `scripts/flutter_e2e.sh` seeds its bots with the backend binary it already built (`zapzap-backend seed`), so the job lost `setup-node` and the root `npm ci`, and `src/`, `app.js`, `logger.js` and the root `package*.json` no longer set the `e2e` flag. It removes the last Node dependency of the job ahead of the Node backend's removal.
 - 2026-09-24 (fix/rust-parity-last-items): the parity player now checks the game end. It had treated the final nextRound 400 as a failure and stopped there on every game of both backends; the two agreed, so the comparison passed while `rules.game-over` and `rules.winner` never ran. A per-game counter asserted in `parity.test.js` keeps it from going silent again. No new difference came out of it.
