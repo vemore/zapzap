@@ -76,23 +76,24 @@ than silently checking the wrong paths.
 - Back up the database: `cp -p data/zapzap.db data/zapzap.db.bak-$(date +%F-%H%M)` (keep the
   last few). They are gitignored from #24 on, and the commit hook refuses them — but a clone
   older than #24 shows them as untracked, which is the second expected entry above.
-- **`data/` is writable by uid 1000**, the user the backend image runs as. A file in it owned
+- **`data/` is writable by uid 1000**, the user the backend image runs as. The directory itself
+  (SQLite creates `zapzap.db-journal` beside the database) or a file in it owned
   by anyone else (a backup restored as root, say) makes the database or the LLM bots' memory
   unwritable. `vemore` cannot `chown` a root file, a container can; the `find` must print
   nothing (backups `*.bak-*` are left out: the backend never opens them):
 
 ```bash
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \
-  find data -maxdepth 2 \( -name "zapzap.db*" -o -path "data/bot-strategies*" \) ! -name "*.bak-*" ! -uid 1000'
+  find data -maxdepth 2 \( -path data -o -name "zapzap.db*" -o -path "data/bot-strategies*" \) ! -name "*.bak-*" ! -uid 1000'
 # if it prints anything:
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \
-  docker run --rm -v "$PWD/data:/data" alpine sh -c "chown -R 1000:1000 /data/bot-strategies /data/zapzap.db*"'
+  docker run --rm -v "$PWD/data:/data" alpine sh -c "chown 1000:1000 /data && chown -R 1000:1000 /data/bot-strategies /data/zapzap.db*"'
 ```
 
 - **Room to build** — a deploy that rebuilds the Flutter PWA image needs both:
 
 ```bash
-ssh vemore@192.168.1.147 'df -h /volume1; free -m; export PATH=$PATH:/usr/local/bin; docker system df; docker-compose version'
+ssh vemore@192.168.1.147 'df -h /home/vemore/workspace/zapzap; free -m; export PATH=$PATH:/usr/local/bin; docker system df; docker-compose version'
 ```
 
   - **≥ 6 GB free**: the builder stage is 3.47 GB (Flutter SDK 2.3 GB, pub cache 650 MB) and
