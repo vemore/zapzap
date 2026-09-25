@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../models/card.dart';
 import '../utils/app_theme.dart';
 import '../utils/card_l10n.dart';
+import '../utils/motion.dart';
 
 /// A card face, from the SVGs under `assets/cards/` — the port of
 /// `frontend/src/components/Game/PlayingCard.jsx`.
@@ -81,7 +82,7 @@ class PlayingCard extends StatelessWidget {
       child: GestureDetector(
         onTap: tap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: Motion.of(context, Motion.select),
           width: width,
           height: height,
           // In front of the face, so the edge does not shrink it.
