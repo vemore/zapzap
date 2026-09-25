@@ -943,8 +943,8 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
     `zapzap-481109` (Google sign-in on Android, below): the local debug key (done
     2026-09-24), the **upload key** (`keytool -list -v -keystore ~/zapzap-upload-keystore.jks
     -alias zapzap-upload`, the `SHA1:` line) for a release APK installed by hand, and
-    **Play App Signing's** for what users install from Play. None of the last two is
-    registered yet (2026-09-25: the upload key is not generated).
+    **Play App Signing's** for what users install from Play. Both registered 2026-09-25:
+    "ZapZap Android upload" and "ZapZap Android Play" (SHA-1s in [[Release]] § Keys).
   - Check which key signed a build: `jarsigner -verify -verbose -certs -keystore
     ~/zapzap-upload-keystore.jks build/app/outputs/bundle/release/app-release.aab` prints
     `(zapzap-upload)` after each signer; without `-keystore` the alias shows as the
@@ -986,7 +986,9 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   it is in the repository: no `google-services.json`, no client secret — the app sends the
   web client id as `serverClientId`, and Google matches the running app by package and
   signature. Registered 2026-09-24: "ZapZap Android debug", the SHA-1 of the local debug
-  keystore `~/.android/debug.keystore` (`98:33:9F:AE:5E:05:7E:18:34:DE:01:C2:7E:51:DF:B1:AE:15:C4:E1`).
+  keystore `~/.android/debug.keystore` (`98:33:9F:AE:5E:05:7E:18:34:DE:01:C2:7E:51:DF:B1:AE:15:C4:E1`);
+  2026-09-25: "ZapZap Android upload" (the upload key's SHA-1) and "ZapZap Android Play"
+  (Play App Signing's), both in [[Release]] § Keys.
   Every other signing key (another machine's debug keystore, a release key, Play app
   signing) needs its own Android client — or its SHA-1 added — or `authenticate()` fails
   with a configuration error. To register one:

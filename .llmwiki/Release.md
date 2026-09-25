@@ -15,19 +15,23 @@
   `versionCode`, which must rise above every version code on every Play track.
 - `targetSdk` is `flutter.targetSdkVersion`, 36 with Flutter 3.47.2 — Play refuses an update
   below 36 since 2026-08-31. `scripts/verify_aab.sh` checks it on every bundle.
-- Not in the Play Console yet (2026-09-25): the app, its listing, the service account and
-  the closed test are still to create (`wip/todo/2026-09-25-play-console-app-setup.md`).
+- **Play Console** (created 2026-09-25): developer account `8477248554887921993`, app id
+  `4976271203350646679`; default language fr-FR, game, free, category Cards; IARC content
+  rating done (PEGI 3 / Everyone). The listing, Data Safety and the closed test are still to
+  do (`wip/todo/2026-09-25-play-console-app-setup.md`).
 
 ### Keys
 
-| Certificate | SHA-256 | Signs |
-|---|---|---|
-| Upload key (`zapzap-upload`, `~/zapzap-upload-keystore.jks`, `scripts/generate_keystore.sh`) | to record after Play Console setup | the bundle uploaded to Play |
-| Play app signing key (held by Google) | to record after Play Console setup | every APK Play serves; what Android verifies |
+Both recorded 2026-09-25.
+
+| Certificate | SHA-1 | SHA-256 | Signs |
+|---|---|---|---|
+| Upload key (`zapzap-upload`, `~/zapzap-upload-keystore.jks`, `scripts/generate_keystore.sh`, valid until 2054-02-10) | `22:37:47:25:16:52:29:77:CB:2E:35:EE:DB:D8:02:FB:DA:77:D6:16` | `0C:75:B1:44:1B:46:EE:0D:EC:4D:72:69:AF:1D:49:5A:56:B4:6A:17:B7:5D:20:15:81:EC:9F:ED:D4:A5:07:89` | the bundle uploaded to Play |
+| Play app signing key (held by Google) | `68:9B:C2:1A:AE:47:F3:3A:DA:1E:D1:A2:01:7B:D6:79:26:CC:6F:FB` | `46:7E:22:08:87:9A:CC:B5:E3:C2:C5:2B:D7:3A:2A:9D:BC:5B:AD:FE:E0:62:2F:8C:0D:A3:A6:A2:1C:67:2E:F0` | every APK Play serves; what Android verifies |
 
 - Read the upload key's with `keytool -list -v -keystore ~/zapzap-upload-keystore.jks -alias
   zapzap-upload`; the app signing key's is in the Console, Test and release → App integrity
-  → App signing. Both SHA-1s also go to the Google sign-in Android clients
+  → App signing. Both SHA-1s are registered as Google sign-in Android clients
   ([[FrontendFlutter]] § Android).
 - Play App Signing stays on: a lost upload key can then be reset through Play support (days).
 - Signing in the build, the keystore's backup and `key.properties`: [[FrontendFlutter]]
@@ -53,10 +57,15 @@
   (`NOTES_LOCALES`), `store_listing/<locale>/release_notes_v<x.y.z>.txt`, ≤ 500 characters,
   fr-FR falling back to en-US. Listing locales are the `store_listing/*/` directories holding
   a `title.txt`. Tests: `scripts/test_play_publish.py`, a fake Google service.
-- Credentials: a service account `zapzap-play-publisher` with no GCP role, invited in the
-  Console on this app only; its JSON key at `~/.config/zapzap/play-service-account.json`
+- Credentials: the service account
+  `zapzap-play-publisher@partant-pour-un-restau.iam.gserviceaccount.com` (GCP project
+  `partant-pour-un-restau`, countscore's; no GCP role), invited in the Console on ZapZap
+  only with view app information, release to testing tracks, release to production and
+  manage store presence (the Console also forced manage policy declarations and manage
+  deep links on). Its JSON key goes to `~/.config/zapzap/play-service-account.json`
   (`chmod 600`), named by `playServiceAccount=` in `frontend-flutter/android/key.properties`
-  (commented out in `key.properties.template`). Not created yet. The root `.gitignore` has
+  (commented out in `key.properties.template`); the key is not created yet (2026-09-25,
+  the user's step). The root `.gitignore` has
   `*service-account*.json`, and the commit hook refuses any JSON holding
   `"type": "service_account"` ([[Hooks]]).
 
