@@ -1,14 +1,15 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, then down/up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed frontend/, frontend-flutter/, the Node backend, nginx/ or the compose files, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the Synology NAS (192.168.1.147) — the git clone there, deploy.sh (git pull, docker-compose build, then down/up), the database safety check, the health check through the public URL, logs, and rollback to the previous commit. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or the compose files, when rolling back a bad deploy (to the Node backend included), or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
 
-Facts, and why it works this way: `.llmwiki/Deployment.md`. Production runs the **Node**
-backend (`src/`, root `Dockerfile`), the React frontend on `/` and the Flutter PWA on
-`/app/`, from the root `docker-compose.yml`. `zapzap-rust/` is not deployed yet (a wip
-entry).
+Facts, and why it works this way: `.llmwiki/Deployment.md`. Production runs the **Rust**
+backend (`zapzap-rust/`, built with `CARGO_FEATURES=bedrock`, service `backend`, container
+`zapzap-backend`), the React frontend on `/` and the Flutter PWA on `/app/`, from the root
+`docker-compose.yml`. The Node backend (`src/`, root `Dockerfile`) is the rollback (§4);
+until 2026-09-24 it was what production ran.
 
 Every command runs over `ssh vemore@192.168.1.147`; Docker is in `/usr/local/bin`, so start
 remote commands with `export PATH=$PATH:/usr/local/bin;`. The clone is
@@ -56,6 +57,107 @@ Then run `./deploy.sh` (its own pull is then a no-op). Run it **from the clone r
 `./deploy.sh`; it also `cd`s to its own directory, so a call from elsewhere is safe rather
 than silently checking the wrong paths.
 
+### The switch from Node to Rust — once, before the first deploy that carries it
+
+The commit that switches the root compose's `backend` to `zapzap-rust/` needs four things
+the script does not do. Do them in this order, after the pull by hand above (the clone then
+has the new compose file) and **before** `./deploy.sh`; nothing here stops production.
+
+1. **Back up the database** (§1's command) and write down the commit production runs — the
+   rollback target (§4). It is the last commit whose compose file builds the Node backend.
+2. **`.env`, without printing it.** The Rust service refuses to start without `JWT_SECRET`,
+   and `docker-compose` refuses the file (deploy.sh then stops before building):
+
+   ```bash
+   ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && for k in JWT_SECRET GOOGLE_OAUTH_CLIENT_ID BOT_ACTION_DELAY_MS AWS_BEDROCK_ENABLED AWS_BEDROCK_REGION AWS_BEDROCK_MODEL_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do printf "%s: " $k; grep -c "^$k=." .env; done'
+   ```
+
+   `JWT_SECRET` must print `1` (production's is the Node one: tokens survive the switch).
+   Keep the Node-only keys (`NODE_ENV`, `ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR`, `DB_PATH`):
+   Rust ignores them, and a rollback reads them again.
+3. **Ownership of `data/`.** The Rust image runs as uid 1000; Node ran as root and left
+   `data/bot-strategies/` `root:root` (checked 2026-09-24), where the LLM bots' memory must
+   be written. `vemore` cannot `chown` a root file, a container can:
+
+   ```bash
+   ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \
+     docker run --rm -v "$PWD/data:/data" alpine chown -R 1000:1000 /data/bot-strategies && \
+     ls -ld data data/bot-strategies data/zapzap.db* && \
+     find data -maxdepth 2 \( -name "zapzap.db*" -o -path "data/bot-strategies*" \) ! -name "*.bak-*" ! -uid 1000'
+   ```
+
+   The `find` must print nothing: the database, its `-journal` file if any, and
+   `bot-strategies/` all `1000` (backups `*.bak-*` are left out: the backend never opens
+   them). Node, as root, still reads and writes them: a rollback needs
+   no `chown` back.
+4. **Rehearse on a copy**, Rust then Node, in an SSH session on the NAS (`ssh
+   vemore@192.168.1.147`, then `bash` if the login shell is not bash), so the commands need
+   no nested quoting. Everything lives under
+   `/tmp/zapzap-rehearsal` and the compose project `zapzap-rehearsal`, container
+   `zapzap-rehearsal-backend`, on `127.0.0.1:19999`: **nothing mounts the clone's `data/`
+   or uses the name `zapzap-backend`**, and production keeps serving. `<pre-switch-sha>` is
+   the rollback target of step 1.
+
+   ```bash
+   export PATH=$PATH:/usr/local/bin; CLONE=/home/vemore/workspace/zapzap; R=/tmp/zapzap-rehearsal
+   mkdir -p $R/data $R/logs && cp -p $CLONE/data/zapzap.db $R/data/
+   # The Rust image runs as uid 1000: the copy must be its own before `up`.
+   [ "$(id -u)" = 1000 ] || docker run --rm -v $R/data:/d alpine chown -R 1000:1000 /d
+   # Snapshot of the copy: schema hash and counts. The copy is read from a copy of it,
+   # through a read-only mount, so the check itself writes nothing.
+   snap() { docker run --rm -v $R/data:/d:ro alpine sh -c 'apk add -q sqlite && cp /d/zapzap.db /tmp/s.db && sqlite3 /tmp/s.db "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name" | sha256sum && sqlite3 /tmp/s.db "SELECT (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM parties), (SELECT COUNT(*) FROM game_results), (SELECT COUNT(*) FROM parties WHERE status = '"'playing'"')"'; }
+   snap > $R/before.txt; cat $R/before.txt
+   cat > $R/override.yml <<'EOF'
+   services:
+     backend:
+       container_name: zapzap-rehearsal-backend
+       ports: ["127.0.0.1:19999:9999"]
+       volumes: ["/tmp/zapzap-rehearsal/data:/app/data", "/tmp/zapzap-rehearsal/logs:/app/logs"]
+   EOF
+   rc() { docker-compose --env-file $CLONE/.env -p zapzap-rehearsal -f "$1/docker-compose.yml" -f $R/override.yml "${@:2}"; }
+
+   # Rust half: the clone's (new) compose file.
+   rc $CLONE up -d --build --no-deps backend
+   until [ "$(docker inspect -f '{{.State.Health.Status}}' zapzap-rehearsal-backend)" != starting ]; do sleep 2; done
+   docker inspect -f '{{.State.Health.Status}}' zapzap-rehearsal-backend    # healthy
+   snap > $R/after.txt && diff $R/before.txt $R/after.txt && echo "schema step: no-op"
+   docker logs zapzap-rehearsal-backend 2>&1 | grep -iE 'error|warn' | head
+   ```
+
+   Take the `after` snapshot **before any login or `/state` call**: the four `playing`
+   parties have bots, which a `/state` call sets playing (with Bedrock on, the LLM bot too),
+   so the counts may move afterwards — that is the game, not the schema step. `diff` must
+   print nothing: production has been opened by the Node app for months, so the step that
+   fails on an entrypoint-rebuilt `users` table should not (`.llmwiki/Deployment.md`). Then
+   check against `http://127.0.0.1:19999` the login of §3's post-switch block (any password
+   account; Rust keeps bcrypt, so the login changes nothing Node reads),
+   `GET /api/admin/parties?status=playing` with an admin
+   token, and `GET /api/game/<id>/state` for the playing parties that account plays in.
+
+   ```bash
+   # Node half: the rollback commit, checked out beside the clone, on the same copy.
+   rc $CLONE down --remove-orphans
+   git -C $CLONE worktree add --detach /tmp/zapzap-rollback <pre-switch-sha>
+   rc /tmp/zapzap-rollback up -d --build --no-deps backend
+   until [ "$(docker inspect -f '{{.State.Health.Status}}' zapzap-rehearsal-backend)" != starting ]; do sleep 2; done
+   docker inspect -f '{{.State.Health.Status}} {{.Config.Cmd}}' zapzap-rehearsal-backend   # healthy [node scripts/docker-entrypoint.js]
+   curl -fsS http://127.0.0.1:19999/api/health
+   ```
+
+   Check a password login — the account that just logged in on Rust included: its hash is
+   still bcrypt (fix/rust-keeps-bcrypt, #100) — and a party's state. Then clean up — the Node container ran as root, so its files go through a
+   container too:
+
+   ```bash
+   rc /tmp/zapzap-rollback down --remove-orphans
+   git -C $CLONE worktree remove --force /tmp/zapzap-rollback
+   docker run --rm -v /tmp:/t alpine rm -rf /t/zapzap-rehearsal
+   docker image ls | grep zapzap-rehearsal    # remove those images: docker rmi <id>
+   ```
+
+Then `./deploy.sh`. The first Rust build compiles the AWS SDK in release mode: expect tens of
+minutes on the NAS, and a build that fails for want of RAM or disk stops nothing (§2).
+
 ## 1. Preflight
 
 - The commit to deploy is on `origin/master` and its CI is green (`gh run list --branch
@@ -84,13 +186,16 @@ ssh vemore@192.168.1.147 'df -h /volume1; free -m; export PATH=$PATH:/usr/local/
 
   - **≥ 6 GB free**: the builder stage is 3.47 GB (Flutter SDK 2.3 GB, pub cache 650 MB) and
     the served image 107 MB, plus transient space. Prune with `docker image prune -f`.
+    A Rust backend rebuild adds its own builder stage (`rust:1.92-slim-bookworm` and a release
+    `target/` with the AWS SDK; not measured on the NAS) for a served image of 135 MB.
   - **≥ 2 GB free RAM**: `dart2js` needs about that; a NAS short of it fails the build
     mid-way — which since 2026-09-23 costs nothing but the wasted minutes, because
     `deploy.sh` builds before it stops anything (§2).
   - **`docker-compose` version**: the NAS runs **1.29.2**, the v1 Python CLI. The procedure
     here works on it — that is why every `down` carries `--remove-orphans`, which v1 needs
     to remove a container the compose file no longer declares (it otherwise only warns, and
-    then fails to remove the network). v1 also ignores `depends_on.condition`. Upgrading to
+    then fails to remove the network). 1.29.2 does honour `depends_on: condition:
+    service_healthy`, so `zapzap-proxy` waits for `backend` and `frontend`. Upgrading to
     v2 is tracked separately; note the version you saw, and do not assume v2 behaviour.
 
 ## 2. Deploy
@@ -183,6 +288,35 @@ ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker ps --format "
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker logs --tail 50 zapzap-backend'
 ```
 
+The backend logs are the Rust ones (`RUST_LOG`, `info` by default): a `Starting ZapZap backend
+on 0.0.0.0:9999` line, and `AWS Bedrock LLM service initialized` when the LLM bots are on.
+
+**After a deploy that changed the backend — the switch to Rust first of all — prove Rust
+serves, and serves the players' data**, from your own machine:
+
+```bash
+ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker inspect -f "{{.Config.Image}} {{.Config.Cmd}} {{.Created}}" zapzap-backend; docker logs zapzap-backend 2>&1 | grep -m1 "Starting ZapZap backend"'
+# A password login through the public URL. The operator types the account and password;
+# nothing is echoed, stored or put on a command line. A dedicated test account keeps a
+# player's password out of it, but any account works: Rust keeps bcrypt, so the login
+# changes nothing a rollback to Node would read.
+read -rp 'user: ' U; read -rsp 'password: ' PW; echo
+TOKEN=$(jq -n --arg u "$U" --arg p "$PW" '{username: $u, password: $p}' \
+  | curl -fsS -H 'content-type: application/json' -d @- https://zapzap.ombivince.synology.me/api/auth/login \
+  | jq -r .token); unset PW; [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "login: ok"
+# The parties being played (an admin account), then the state of those this account plays in.
+curl -fsS -H "authorization: Bearer $TOKEN" 'https://zapzap.ombivince.synology.me/api/admin/parties?status=playing' | jq -r '.parties[] | "\(.id) \(.name)"'
+curl -fsS -o /dev/null -w '%{http_code}\n' -H "authorization: Bearer $TOKEN" https://zapzap.ombivince.synology.me/api/game/<id>/state
+unset TOKEN
+```
+
+The container runs `[/app/zapzap-backend]` — Node's ran `[node scripts/docker-entrypoint.js]`
+under the same image name — and was created by this deploy, the log has the Rust start-up
+line, the login answers a
+token, and each `/state` answers 200 — a 500 there, with `Invalid game state JSON` in the
+log, is a game state Node wrote that Rust cannot read. A party the account does not play in
+is checked by its players; watch the log (`docker logs -f zapzap-backend`) while they do.
+
 All four containers `healthy`, health answers 200, `/` still serves the React client, `/app/`
 carries the `/app/` base href, `/app/parties` answers 200, no error at startup. Then drive
 the path the change touched in a browser (Playwright on
@@ -228,6 +362,19 @@ be gone: do not read its 200 as the PWA working.
 The clone stays detached until the fix is merged; the next deploy starts with
 `git checkout master`. A schema change the old code cannot read needs the database backup of
 §1 — restoring it loses what players did since: ask the user first.
+
+### Rolling back from Rust to Node
+
+The same commands, to the last commit before the switch (the one written down in §0's
+switch steps): its compose file builds the Node `backend` from the root `Dockerfile`, which
+CI keeps building. The Rust container is replaced by the Node one under the same names, and
+the database stays: Rust writes Node's schema, settings keys, Unix-second timestamps and
+game states, and Node served and finished a Rust-started game in the rehearsal of
+2026-09-24 (`.llmwiki/Deployment.md` "Rolling back to Node"). Passwords too: Rust hashes
+with bcrypt at Node's cost and never rehashes (fix/rust-keeps-bcrypt, #100), and tokens are
+signed with the same secret, so nobody is logged out. `.env` needs nothing: the Node keys
+were kept. No `chown` back: Node
+runs as root.
 
 ## 5. After
 

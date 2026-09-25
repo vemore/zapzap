@@ -85,7 +85,9 @@ A change confined to `frontend-flutter/` is lane **A** unless it meets a B crite
 size, most often). The PWA ships under `/app/` since #36 ([[Deployment]]), so its merge is
 deployed like any other (`ship-parallel` §4); the proxy does not depend on it, so a broken
 bundle takes down `/app/` and not the site. A change that also touches the backend, `nginx/`
-or the compose files is judged on those.
+or the compose files is judged on those. Since 2026-09-24 the backend a merge deploys is
+`zapzap-rust/`; a change to `src/` (the Node backend) deploys nothing — it is production's
+rollback, built only by a rollback ([[Deployment]]).
 
 The reviewing agent gets these rules: verify each finding against the PR head; a wiki page
 or README the change makes false is at least Medium; read a page's `Decisions & History`
@@ -129,3 +131,4 @@ moves from `todo_nr/` to `todo/` (at most 12).
   agent overwrote another's `pr.md` (#71) and `gh pr edit` failed on #68.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
+- **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.

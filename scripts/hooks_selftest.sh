@@ -289,6 +289,15 @@ unstage "native/src/lib.rs"
 stage "src/api/app.js"
 tree_commit "the legacy Node backend runs no gate" 0
 unstage "src/api/app.js"
+# A README edit or a deletion cannot break lint or build, so neither needs node_modules.
+stage "frontend/README.md"
+tree_commit "a frontend README-only commit, tree never set up" 0
+unstage "frontend/README.md"
+stage "frontend/src/old.jsx"
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "old.jsx" >/dev/null 2>&1
+git -C "$TREE" rm -rq frontend
+tree_commit "a frontend deletion-only commit, tree never set up" 0
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
 stage "frontend/src/App.jsx"
 tree_commit "a frontend change in a tree never set up" 2 "npm ci --prefix"
 mkdir -p "$TREE/frontend/node_modules"
@@ -637,7 +646,7 @@ mkdir -p "$DSTATES"
 DSERVICES="$SANDBOX/deploy-services" # what `docker-compose config --services` answers
 services_stub() { printf '%s\n' "$@" > "$DSERVICES"; }
 services_stub backend frontend nginx frontend-flutter
-compose_stub() {  # exit code of `build`, of `down`, of `up` (0 = that step succeeds)
+compose_stub() {  # exit code of `build`, of `down`, of `up`, [of `config`] (0 = succeeds)
     cat > "$DTOOLS/docker-compose" <<STUBEOF
 #!/bin/sh
 echo "\$*" >> "$DLOG"
@@ -645,7 +654,12 @@ case "\$1" in
     build) exit $1 ;;
     down)  exit $2 ;;
     up)    exit $3 ;;
-    config) cat "$DSERVICES" ;;             # \`config --services\`
+    config)                                 # \`config --services\`
+        if [ "${4:-0}" != 0 ]; then
+            echo 'Missing mandatory value for "environment" option: JWT_SECRET must be set' >&2
+            exit ${4:-0}
+        fi
+        cat "$DSERVICES" ;;
     port)  echo 0.0.0.0:80 ;;               # \`port <proxy> 80\`
     ps)    [ "\$2" = -q ] && echo "cid-\$3" ;;
 esac
@@ -784,6 +798,16 @@ report "deploy: and builds nothing"                      "" "$(calls)"
 case "$dout" in *"expects a service named 'frontend'"*) got=named ;; *) got="missing from the output" ;; esac
 report "deploy: naming the service and the three files"  named "$got"
 services_stub backend frontend nginx frontend-flutter
+
+# A compose file docker-compose cannot read — since the Rust backend, a .env without
+# JWT_SECRET (`${JWT_SECRET:?...}`) — is refused before anything is built or stopped.
+compose_stub 0 0 0 1
+upstream "a change deployed with no JWT_SECRET in .env"
+run_deploy; rc=$?
+report "deploy: refuses a compose file it cannot read"   1 "$rc"
+report "deploy: and builds nothing then"                 "" "$(calls)"
+case "$dout" in *"JWT_SECRET must be set"*"cannot read the compose file"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: printing compose's reason, then its own" said "$got"
 
 # A tracked production database: refuse before the pull, naming the fix.
 compose_stub 0 0 0
