@@ -17,7 +17,8 @@ echo "======================================"
 echo ""
 
 # Build first, stop second, in both branches: a failed build then leaves whatever is
-# running alone instead of leaving it stopped (same reason as deploy.sh).
+# running alone instead of leaving it stopped (the reason scripts/deploy_nas.sh pulls before
+# its `down`).
 if [ -z "$SERVICE" ]; then
     echo "🔨 Rebuilding all services..."
     docker-compose build

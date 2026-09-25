@@ -49,12 +49,18 @@ while IFS= read -r path; do
         # it: the slash.
         frontend-flutter/*) flutter=true; image=true; e2e=true ;;
 
-        # The reverse proxy configuration, baked into no image but mounted by compose.
+        # The reverse proxy: its configuration, baked into the production proxy image
+        # (nginx/Dockerfile), which the image job builds and runs `nginx -t` in.
         nginx/*) image=true ;;
 
-        # The Claude Code hooks and the scripts scripts/hooks_selftest.sh exercises
-        # (deploy.sh is driven there; rebuild.sh is its sibling). No image holds them.
-        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|deploy.sh|rebuild.sh)
+        # The production compose file: the image job checks it parses and requires
+        # JWT_SECRET, the hooks job's deploy self-test reads its services and images.
+        docker-compose.prod.yml) image=true; hooks=true ;;
+
+        # The Claude Code hooks and the scripts the hooks job exercises: hooks_selftest.sh,
+        # and deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
+        # sibling). No image holds them.
+        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|rebuild.sh)
             hooks=true ;;
 
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.

@@ -11,10 +11,12 @@
 #        --no-frontend  skip `npm ci` in frontend/
 #        --no-rust      skip the cargo warm-up of zapzap-rust/
 #        --no-flutter   skip `flutter pub get` in frontend-flutter/
-#        --deploy       link the main checkout's .env (backend-deploy, frontend-deploy)
+#        --deploy       link the main checkout's .env and scripts/deploy.env (the deploy
+#                       skill: scripts/deploy_nas.sh reads both)
 #
 # No secret reaches a worktree by default: an implementing agent never deploys, so only
-# the deploy worktree (--deploy) gets the main checkout's .env, linked, never copied.
+# the deploy worktree (--deploy) gets the main checkout's .env and scripts/deploy.env,
+# linked, never copied.
 #
 # Cargo builds go to the main checkout's target directories (CARGO_TARGET_DIR), as the
 # commit hook does, so a worktree does not rebuild every dependency.
@@ -36,8 +38,8 @@ for arg in "$@"; do
         --no-frontend) frontend=0 ;;
         --no-rust) rust=0 ;;
         --no-flutter) flutter=0 ;;
-        --deploy) LOCAL_ONLY+=(.env) ;;
-        -h|--help) sed -n '3,25p' "$0"; exit 0 ;;
+        --deploy) LOCAL_ONLY+=(.env scripts/deploy.env) ;;
+        -h|--help) sed -n '3,27p' "$0"; exit 0 ;;
         -*) echo "worktree_setup.sh: unknown option $arg (see --help)" >&2; exit 2 ;;
         *) dir="$arg" ;;
     esac
