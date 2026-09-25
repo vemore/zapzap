@@ -65,12 +65,13 @@ nom « Joueur supprimé », sans lien avec toi.
   compte**, puis confirme avec ton mot de passe (ou avec Google pour un compte Google).
 - **Depuis le web, sans l'application** :
   <https://zapzap.ombivince.synology.me/account/delete> — connecte-toi, puis confirme.
+- **Par e-mail** : écris à <scribio.ai@gmail.com> depuis l'adresse de ton compte Google, ou
+  en donnant ton pseudo, et ton compte sera supprimé de la même façon.
 - Une partie en attente ou en cours doit d'abord être quittée ou terminée.
 
 ### Contact
 
-Pour toute question ou demande sur tes données : via les issues du dépôt GitHub,
-<https://github.com/vemore/zapzap/issues>.
+Pour toute question ou demande sur tes données : <scribio.ai@gmail.com>.
 
 ---
 
@@ -128,9 +129,10 @@ in the other players' history under the name "Deleted player", with no link to y
   confirm with your password (or with Google for a Google account).
 - **From the web, without the app**:
   <https://zapzap.ombivince.synology.me/account/delete> — sign in, then confirm.
+- **By e-mail**: write to <scribio.ai@gmail.com> from your Google account's address, or
+  giving your username, and your account will be deleted the same way.
 - A game that is waiting or in progress must be left or finished first.
 
 ### Contact
 
-For any question or request about your data: through the GitHub repository's issues,
-<https://github.com/vemore/zapzap/issues>.
+For any question or request about your data: <scribio.ai@gmail.com>.
