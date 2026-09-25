@@ -268,7 +268,15 @@ if printf '%s\n' "$paths" | grep -qE '^native/'; then
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 
-if printf '%s\n' "$paths" | grep -qE '^frontend/'; then
+# A client gate (frontend/, frontend-flutter/) runs only for a file the commit leaves in
+# the tree and that is not a `.md`: a README edit or a deletion (`git rm -r frontend`
+# included) cannot break lint, build or the analyzer, so it runs no gate and needs no setup.
+gate_paths() {  # directory
+    printf '%s\n' "$paths" | grep -E "^$1/" | grep -vE '\.md$' \
+        | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done
+}
+
+if [ -n "$(gate_paths frontend)" ]; then
     [ -d "$ROOT/frontend/node_modules" ] || needs_setup "frontend/node_modules is missing (this tree was never set up)" "npm ci --prefix $ROOT/frontend"
     run_gate "npm run lint (frontend)" bash -c "cd '$ROOT/frontend' && npm run lint --silent"
     run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
@@ -279,11 +287,7 @@ fi
 # filled) follows a pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
 # stale with every ARB change; neither `flutter analyze` nor a pub get that finds nothing
 # to resolve regenerates them, so `flutter gen-l10n` does, before the analyzer runs.
-# Only a file the commit leaves in the tree, and not a `.md`, can break the analyzer: a
-# README edit or a deletion (`git rm -r frontend-flutter` included) runs no gate.
-flutter_paths=$(printf '%s\n' "$paths" | grep -E '^frontend-flutter/' | grep -vE '\.md$' \
-    | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done)
-if [ -n "$flutter_paths" ]; then
+if [ -n "$(gate_paths frontend-flutter)" ]; then
     command -v flutter >/dev/null 2>&1 || needs_setup "flutter is not on PATH" "install Flutter 3.47.2 (.llmwiki/FrontendFlutter.md), then: cd $ROOT/frontend-flutter && flutter pub get"
     [ -d "$ROOT/frontend-flutter/.dart_tool" ] || needs_setup "frontend-flutter/.dart_tool is missing (flutter pub get never ran in this tree)" "cd $ROOT/frontend-flutter && flutter pub get"
     run_gate "flutter pub get --offline (frontend-flutter; if a package is missing from the cache: cd $ROOT/frontend-flutter && flutter pub get)" \

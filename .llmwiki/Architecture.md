@@ -2,7 +2,7 @@
 
 > Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -60,7 +60,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 | `hard_vince_genetic_params.json`, `hard_vince_optimized_params.json`, `thibot_genetic_params.json` | `scripts/genetic-optimize-hard-vince.js`, `scripts/optimize-hard-vince.js`, `scripts/genetic-optimize-thibot.js` | the same scripts / legacy JS strategies; the Rust backend does not read them (no reference in `zapzap-rust/src`), see [[Bots]] |
 | `ml_model_*.json` (16 files, up to ~41 MB) | legacy JS ML training | `src/infrastructure/bot/ml/ModelStorage.js:14` (default dir `./data`) |
 | `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors`, `models/default/{config,weights}.json` | `scripts/train-native.js` (default save path `data/models/rust-drl`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
-| `bot-strategies/<botUserId>.json` (untracked) | LLM bot memory | Rust backend, dir overridable by `BOT_STRATEGIES_DIR` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:153-157`) |
+| `bot-strategies/<botUserId>.json` (gitignored) | LLM bot memory | Rust backend, dir overridable by `BOT_STRATEGIES_DIR` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:153-157`) |
 
 ### Docker / compose
 
