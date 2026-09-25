@@ -4003,3 +4003,75 @@ async fn test_only_human_deletes_a_playing_party_against_bots() {
     let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&other)).await;
     assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
 }
+
+// ========== Seeding (`zapzap-backend seed [--demo]`) ==========
+
+#[tokio::test]
+async fn test_seed_twice_on_an_empty_database_creates_each_bot_once() {
+    use zapzap_backend::infrastructure::database::seed::{self, SEED_BOTS};
+
+    // A file that does not exist yet: the seed creates it and its schema
+    let path = std::env::temp_dir().join(format!("zapzap-seed-{}.db", uuid::Uuid::new_v4()));
+    let db = seed::open(path.to_str().unwrap()).await.unwrap();
+
+    let first = seed::seed(&db, false).await.unwrap();
+    assert_eq!(first.created.len(), SEED_BOTS.len());
+    assert!(first.existing.is_empty());
+
+    let second = seed::seed(&db, false).await.unwrap();
+    assert!(
+        second.created.is_empty(),
+        "second seed created {:?}",
+        second.created
+    );
+    assert_eq!(second.existing.len(), SEED_BOTS.len());
+
+    for (username, difficulty) in SEED_BOTS {
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT user_type, bot_difficulty FROM users WHERE username = ?")
+                .bind(username)
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            rows,
+            vec![("bot".to_string(), Some(difficulty.as_str().to_string()))],
+            "{username}"
+        );
+    }
+    // No demo user without --demo
+    let humans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(humans, 0);
+
+    db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_seed_with_demo_users_lets_a_demo_user_log_in_with_demo123() {
+    use zapzap_backend::infrastructure::database::seed::{self, DEMO_USERS};
+    let (mut app, state) = create_test_app_with_state().await;
+
+    seed::seed(&state.db, true).await.unwrap();
+    let again = seed::seed(&state.db, true).await.unwrap();
+    assert!(
+        again.created.is_empty(),
+        "second seed created {:?}",
+        again.created
+    );
+
+    for username in DEMO_USERS {
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/login",
+            json!({ "username": username, "password": "demo123" }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{username}: {body}");
+        assert_eq!(body["user"]["username"], username);
+        assert!(body["token"].is_string());
+    }
+}

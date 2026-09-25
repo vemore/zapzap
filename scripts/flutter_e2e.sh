@@ -4,15 +4,14 @@
 # freshly started Rust backend.
 #
 # On a throwaway database in a temporary directory: seeds the bot accounts
-# (scripts/init-bots.js, the Node DDL the Rust backend accepts as is), starts the Rust
+# (`zapzap-backend seed`, which creates the file and its schema), starts the Rust
 # backend with a generated JWT_SECRET, waits for /api/health, starts a chromedriver, then
 # runs `flutter drive` on headless Chrome (a phone-sized page). Everything it started is
 # stopped on exit, by process id; the database goes with the directory. The CI job
 # `flutter-e2e` runs it; the procedure by hand is in .llmwiki/Testing.md.
 #
-# Needs: the backend built (`cd zapzap-rust && cargo build --locked`), `npm ci` at the
-# root (init-bots), `flutter pub get` in frontend-flutter/, Chrome, and a chromedriver of
-# Chrome's major version.
+# Needs: the backend built (`cd zapzap-rust && cargo build --locked`), `flutter pub get`
+# in frontend-flutter/, Chrome, and a chromedriver of Chrome's major version. No Node.
 #
 # Usage: scripts/flutter_e2e.sh
 #   E2E_BACKEND_BIN   the backend binary (default: the debug build under
@@ -70,7 +69,7 @@ wait_for() {  # label, url, seconds
 }
 
 echo "== seeding the bot accounts on $DB"
-(cd "$ROOT" && DB_PATH="$DB" node scripts/init-bots.js >/dev/null)
+DB_PATH="$DB" "$BACKEND_BIN" seed
 
 echo "== starting the Rust backend on :$API_PORT"
 # Run from zapzap-rust/: its data/ link holds the bot parameters.

@@ -75,9 +75,9 @@ while IFS= read -r path; do
         # The Node backend, production's rollback since the switch to Rust
         # (.llmwiki/Deployment.md): its code and dependencies are tested by jest, baked into
         # the root Dockerfile's image (which a rollback builds), and compared with the Rust
-        # backend by the parity suite. The Flutter end-to-end run seeds its bots with
-        # scripts/init-bots.js, which loads src/ and logger.js after an `npm ci`: e2e too.
-        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true; parity=true; e2e=true ;;
+        # backend by the parity suite. Not e2e: the Flutter end-to-end run seeds its bots
+        # with `zapzap-backend seed` and runs no Node.
+        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true; parity=true ;;
 
         # What the Node image holds but jest does not load, and the image's own recipe.
         views/*|public/*|Dockerfile|.dockerignore) image=true ;;
