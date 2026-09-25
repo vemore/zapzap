@@ -334,8 +334,8 @@ flutter build appbundle --release            # signed with the upload key when a
 
 The release build signs with the upload key `zapzap-upload` named by
 `frontend-flutter/android/key.properties` (never committed; copy `key.properties.template`,
-generate the keystore once with `scripts/generate_keystore.sh`), and falls back to the debug
-key without it: [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md) § Android.
+generate the keystore once with `scripts/generate_keystore.sh`). Without it a release APK
+falls back to the debug key, with a warning, and a release bundle is refused: [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md) § Android.
 
 An end-to-end test plays a round through the client against a live backend and a
 chromedriver (`integration_test/`, `flutter drive`). `scripts/flutter_e2e.sh` starts the

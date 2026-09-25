@@ -48,6 +48,9 @@ echo "keytool asks for the store password, then the name and organisation."
 echo "Keep the password in a password manager: without it the keystore is useless."
 echo
 
+# Owner-only from the first byte, even if the prompts are interrupted; chmod 600 below
+# stays for a file keytool might create otherwise.
+umask 077
 # JKS, as Flutter's deployment guide does; keytool's default would be PKCS12.
 keytool -genkeypair -v \
     -keystore "$KEYSTORE" \

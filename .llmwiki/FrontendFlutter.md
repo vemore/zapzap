@@ -32,8 +32,9 @@
   `pubspec.lock` fails the job), `gen-l10n`, `dart format --output=none
   --set-exit-if-changed lib test` (an unformatted file fails the job), `analyze`, `test`,
   `build web --base-href /app/ --no-web-resources-cdn` (the image's flags),
-  `build apk --debug` (uploaded, below) and `build apk --release` (R8, and the debug-key
-  fallback: CI has no `key.properties` — section Android). `scripts/ci_scope.sh` selects it
+  `build apk --debug` (uploaded, below), `build apk --release` (R8, and the debug-key
+  fallback: CI has no `key.properties` — section Android) and `build appbundle --release`,
+  which must fail there, naming `key.properties`. `scripts/ci_scope.sh` selects it
   **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
   nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
 - Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `dart format --output=none
@@ -879,9 +880,19 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   and caps the Gradle heap in `~/.gradle/gradle.properties` (the project's asks for 8 GB).
 - **Release signing** (`android/app/build.gradle.kts`, ported from countscore): when
   `frontend-flutter/android/key.properties` exists, the `release` build type signs with the
-  keystore it names (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`); without it
-  — CI, a worktree — with the debug key, so `flutter build apk --release` still builds (the
-  CI step above proves it on every run). The release build also runs R8
+  keystore it names (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; a missing or
+  empty one fails the build naming it — `android/key.properties: missing storePassword` —,
+  never printing a value). Without the file — CI, a worktree:
+  - a **release APK** (`flutter build apk --release`, Gradle `assembleRelease`) is signed
+    with the **debug key** and still builds, printing `WARNING: no android/key.properties --
+    this release build is signed with the DEBUG key` (through `logger.error`: `flutter
+    build` hides Gradle's stdout, so a `logger.warn` would only show under `-v`);
+  - a **release bundle** (`flutter build appbundle --release`, `bundleRelease`) is
+    **refused** before any task runs (`gradle.taskGraph.whenReady`): `No android/key.properties:
+    a release bundle … must be signed with the upload key` — a Play bundle is never
+    debug-signed.
+  Both are CI steps of the `flutter` job ("Release build without key.properties",
+  "Release bundle without key.properties is refused"). The release build also runs R8
   (`isMinifyEnabled`, `isShrinkResources`, keep rules in `android/app/proguard-rules.pro`:
   the Flutter embedding and plugins, Credential Manager's Play services provider and
   `googleid` for google_sign_in, flutter_secure_storage). A class R8 strips shows up at run
@@ -889,7 +900,7 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   been started on a device yet (no emulator, below).
 - **The keys**:
   - **Upload key** — alias `zapzap-upload`, JKS, RSA 2048, ~27 years — made **once** by
-    `scripts/generate_keystore.sh`, which writes `~/zapzap-upload-keystore.jks` (mode 600;
+    `scripts/generate_keystore.sh`, which writes `~/zapzap-upload-keystore.jks` (`keytool` under `umask 077`, then mode 600;
     `ZAPZAP_KEYSTORE=<absolute path>` overrides it), refuses a path inside a git work tree
     and never overwrites an existing keystore. Then copy
     `frontend-flutter/android/key.properties.template` to `android/key.properties` (next to

@@ -309,6 +309,14 @@ jobs:
       # no android/key.properties here: it must fall back to the debug key and still build.
       - name: Release build without key.properties (R8, debug-key fallback)
         run: flutter build apk --release
+      # A Play bundle is never debug-signed: without key.properties, `flutter build
+      # appbundle` must fail, before any task runs, naming the file.
+      - name: Release bundle without key.properties is refused
+        run: |
+          if flutter build appbundle --release > appbundle.log 2>&1; then
+            cat appbundle.log; echo "appbundle built without key.properties"; exit 1
+          fi
+          grep -F "No android/key.properties: a release bundle" appbundle.log
 
   # The Flutter end-to-end test (frontend-flutter/integration_test/): the real client, in
   # headless Chrome, registers a user and plays a round against two bots on a Rust backend

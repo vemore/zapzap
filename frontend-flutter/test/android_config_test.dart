@@ -56,6 +56,13 @@ void main() {
     expect(gradle, contains('isMinifyEnabled = true'));
     expect(gradle, contains('isShrinkResources = true'));
     expect(gradle, contains('"proguard-rules.pro"'));
+    // Only an APK falls back: a release bundle without key.properties is refused
+    // (the CI step "Release bundle without key.properties is refused" runs it).
+    expect(gradle, contains('if ("bundleRelease" in names)'));
+    expect(gradle, contains('throw GradleException('));
+    // A partly filled key.properties names the missing key.
+    expect(gradle, contains('error("android/key.properties: missing \$key'));
+    expect(gradle, isNot(contains('as String')));
   });
 
   test('the keep rules cover Flutter and google_sign_in', () {

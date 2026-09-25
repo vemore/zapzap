@@ -691,6 +691,7 @@ mkdir -p "$KHOME"
 cat > "$TOOLS/keytool" <<'STUB'
 #!/bin/sh
 echo "$*" >> "$KEYTOOL_LOG"
+umask > "$KEYTOOL_LOG.umask"
 while [ $# -gt 0 ]; do [ "$1" = -keystore ] && { echo key > "$2"; }; shift; done
 STUB
 chmod +x "$TOOLS/keytool"
@@ -703,6 +704,7 @@ report "generate_keystore.sh writes to \$HOME" present \
 report "generate_keystore.sh: alias zapzap-upload, JKS, RSA 2048" yes \
     "$(grep -q -- '-storetype JKS -keyalg RSA -keysize 2048 .*-alias zapzap-upload' "$KEYTOOL_LOG" && echo yes || echo no)"
 report "generate_keystore.sh: the keystore is mode 600" 600 "$(stat -c %a "$KHOME/zapzap-upload-keystore.jks" 2>/dev/null)"
+report "generate_keystore.sh: keytool runs under umask 077" 0077 "$(cat "$KEYTOOL_LOG.umask" 2>/dev/null)"
 : > "$KEYTOOL_LOG"
 gen
 report "generate_keystore.sh refuses to overwrite a keystore" 1 "$?"
