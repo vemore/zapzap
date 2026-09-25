@@ -31,6 +31,26 @@ pub trait LlmService: Send + Sync {
     async fn health_check(&self) -> bool;
 }
 
+/// Longest wait for an LLM service's health check at startup, before the port is bound
+pub const STARTUP_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Run a startup probe of an LLM service, giving up after `limit`.
+///
+/// `probe` yields the service when it is available. A probe still running at `limit` counts
+/// as unavailable, so an unreachable endpoint cannot hold up the boot: LLM bots fall back.
+pub async fn probe_within<T, F>(what: &str, limit: Duration, probe: F) -> Option<T>
+where
+    F: std::future::Future<Output = Option<T>>,
+{
+    match tokio::time::timeout(limit, probe).await {
+        Ok(service) => service,
+        Err(_) => {
+            warn!("{what} health check timed out after {limit:?}");
+            None
+        }
+    }
+}
+
 /// Ollama service configuration
 #[derive(Debug, Clone)]
 pub struct OllamaConfig {
@@ -256,10 +276,7 @@ impl LlmService for BedrockService {
 
     async fn health_check(&self) -> bool {
         // Simple check - try to invoke with minimal tokens
-        match self.invoke("Say OK", "").await {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        self.invoke("Say OK", "").await.is_ok()
     }
 }
 
@@ -297,6 +314,56 @@ mod tests {
         let result = service.invoke("system", "user").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Test response");
+    }
+
+    /// A service whose health check never answers in time
+    struct HangingLlmService;
+
+    #[async_trait]
+    impl LlmService for HangingLlmService {
+        async fn invoke(&self, _: &str, _: &str) -> Result<String, LlmError> {
+            Err(LlmError::Unavailable)
+        }
+
+        async fn health_check(&self) -> bool {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_gives_up_on_a_hanging_service() {
+        let started = std::time::Instant::now();
+        let probe = async {
+            let service = HangingLlmService;
+            service.health_check().await.then_some(service)
+        };
+
+        let service = probe_within("hanging", Duration::from_millis(50), probe).await;
+
+        assert!(service.is_none());
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_keeps_an_available_service() {
+        let probe = async {
+            let service = MockLlmService::new("OK");
+            service.health_check().await.then_some(service)
+        };
+
+        assert!(probe_within("mock", STARTUP_PROBE_TIMEOUT, probe)
+            .await
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_probe_within_reports_an_unavailable_service() {
+        let probe = async { None::<MockLlmService> };
+
+        assert!(probe_within("down", STARTUP_PROBE_TIMEOUT, probe)
+            .await
+            .is_none());
     }
 
     #[test]

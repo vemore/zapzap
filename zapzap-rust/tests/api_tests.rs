@@ -294,6 +294,60 @@ async fn test_login_success() {
     assert!(body["token"].is_string());
 }
 
+/// The stored password hash of `username`
+async fn stored_hash(state: &AppState, username: &str) -> String {
+    state
+        .user_repo
+        .find_by_username(username)
+        .await
+        .unwrap()
+        .expect("user saved")
+        .password_hash
+        .expect("password user")
+}
+
+#[tokio::test]
+async fn test_register_stores_node_compatible_bcrypt() {
+    use zapzap_backend::infrastructure::auth::PasswordService;
+    let (mut app, state) = create_test_app_with_state().await;
+
+    register(&mut app, "bcryptreg").await;
+
+    // Node verifies with bcryptjs only: the hash must be bcrypt at Node's cost
+    let hash = stored_hash(&state, "bcryptreg").await;
+    assert!(
+        hash.starts_with("$2b$10$"),
+        "not a Node bcrypt hash: {hash}"
+    );
+    assert!(PasswordService::verify("password123", &hash).unwrap());
+}
+
+#[tokio::test]
+async fn test_login_leaves_the_bcrypt_hash_unchanged() {
+    let (mut app, state) = create_test_app_with_state().await;
+
+    // A user as Node wrote it: a bcryptjs 2.x `$2a$` hash of "demo123"
+    let node_hash = bcrypt::hash("demo123", 10)
+        .unwrap()
+        .replacen("$2b$", "$2a$", 1);
+    let user = User::new_human(
+        uuid::Uuid::new_v4().to_string(),
+        "nodeuser".to_string(),
+        node_hash.clone(),
+    );
+    state.user_repo.save(&user).await.unwrap();
+
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": "nodeuser", "password": "demo123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "login: {body}");
+
+    assert_eq!(stored_hash(&state, "nodeuser").await, node_hash);
+}
+
 // ============================================================================
 // Party Tests
 // ============================================================================

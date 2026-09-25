@@ -1,0 +1,5 @@
+{
+  "password": "rust-bcrypt-fixture-pw",
+  "rustHash": "$2b$10$YKxLj2BzFpNB4BtZ3LCkSO2mmxcYqQWpnqOQARsT/UMHjZjSz.4N2",
+  "nodeHash": "$2b$10$Byw5bg6nxfryDlf/qXhFmeC/bA.cDFiL1hLJSGLfmZsyJkKIb2Hd."
+}

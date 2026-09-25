@@ -64,18 +64,9 @@ impl LoginUser {
             return Err(LoginError::InvalidCredentials);
         }
 
-        // Update last login
+        // Update last login. The hash is never rewritten: it stays the bcrypt hash Node
+        // verifies, so a rollback to the Node backend keeps every login.
         self.user_repo.update_last_login(&user.id).await?;
-
-        // Check if password needs rehash (bcrypt -> argon2 migration)
-        if PasswordService::needs_rehash(password_hash) {
-            // Rehash with Argon2
-            if let Ok(new_hash) = PasswordService::hash(&input.password) {
-                let mut updated_user = user.clone();
-                updated_user.password_hash = Some(new_hash);
-                let _ = self.user_repo.save(&updated_user).await;
-            }
-        }
 
         // Generate token
         let token = self
