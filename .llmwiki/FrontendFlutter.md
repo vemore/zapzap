@@ -868,6 +868,14 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
 
 - **Debug only** for now: no release signing (the `release` build type still signs with the
   debug key, as generated), no store.
+- **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
+  push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
+  the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
+  `app-debug.apk`; or `gh run download <run id> -n app-debug`. Install with
+  `adb install -r app-debug.apk`. It talks to production over HTTPS by default. Signed with
+  the runner's throwaway debug key, so Google sign-in fails on it (below); sign in with a
+  password. CI installs `platforms;android-36` and `build-tools;36.0.0` with `sdkmanager`
+  and caps the Gradle heap in `~/.gradle/gradle.properties` (the project's asks for 8 GB).
 - Application id and namespace `com.zapzap.app` (`android/app/build.gradle.kts`);
   `MainActivity` in `android/app/src/main/kotlin/com/zapzap/app/`. Label `ZapZap`.
 - `INTERNET` is in the **main** manifest (`android/app/src/main/AndroidManifest.xml`), so
@@ -883,6 +891,15 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   `rsvg-convert -w 1024 -h 1024 <x>.svg -o <x>.png`, then `dart run flutter_launcher_icons`
   (config in `frontend-flutter/flutter_launcher_icons.yaml`, not in `pubspec.yaml`) writes
   the `mipmap-*`, `drawable-*` and `values/colors.xml` resources.
+- System bars: the navigation bar is the app's slate `#0f172a` with light buttons, the status
+  bar transparent with light icons — `AppTheme.systemOverlayStyle`
+  (`lib/utils/app_theme.dart`), set as an `AnnotatedRegion` around every route
+  (`MaterialApp.router`'s `builder` in `lib/app.dart`) and as `appBarTheme.systemOverlayStyle`.
+  `systemNavigationBarContrastEnforced: false`: with targetSdk 36 the app is edge-to-edge on
+  Android 15+, where the colour is ignored and the contrast scrim is what drew a light grey
+  bar under 3-button navigation. Before the first frame, `LaunchTheme` and `NormalTheme`
+  (`android/app/src/main/res/values{,-night}/styles.xml`) set the same bar.
+  `test/system_ui_test.dart` pins the style the app sends and the window themes.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
   debug-only cleartext.
 - **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
