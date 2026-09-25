@@ -31,7 +31,7 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Deployment]] | The NAS, the four containers (the Rust backend in production since 2026-09-24), its environment and `data/` ownership, `deploy.sh`, the rollback to the previous commit, the tracked-database trap | 2026-09-25 |
+| [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, the four containers (the Rust backend in production since 2026-09-24), its environment and `data/` ownership, `scripts/deploy_nas.sh` (build, push, pull, health wait), `--rollback <sha>` | 2026-09-25 |
 | [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-25 |
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-25 |
 | [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser (`.mcp.json`, `--isolated`; the root `package.json`'s Playwright as the headless fallback), scratchpad and `gh` pitfalls, lanes A–D, cleanup, local `wip/` | 2026-09-25 |

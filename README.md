@@ -224,6 +224,17 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
+### Deploying to production
+
+Production does not build from a clone: `scripts/deploy_nas.sh` builds the four images from a
+clean `HEAD` on the dev machine, tags them `<short sha>` and `latest`, pushes them to the LAN
+registry, and has the NAS deploy directory pull and start them from
+`docker-compose.prod.yml` (registry images only), waiting until the site answers.
+`scripts/deploy_nas.sh --rollback <sha>` redeploys an earlier deploy's images. Configuration:
+`scripts/deploy.env` (copy `scripts/deploy.env.example`). The procedure is the `deploy`
+skill (`.claude/skills/deploy/SKILL.md`), the facts `.llmwiki/Deployment.md`. The root
+`docker-compose.yml` above is for local use.
+
 ### Production Considerations
 
 For production deployment:

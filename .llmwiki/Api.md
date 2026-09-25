@@ -20,7 +20,7 @@
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
 | GET | `/api/health` | none | `health_handler`, `zapzap-rust/src/api/routes/health.rs` | `{status:"ok", timestamp, uptime}`: `timestamp` as JavaScript's `toISOString()`, `uptime` fractional seconds since startup (`start_clock`, called by `main`) |
-| GET | `/health` | none | `root_health_handler`, same file | `{status:"ok", timestamp, api:"v2 (Clean Architecture)"}`. Healthchecks and `deploy.sh` read only the status code |
+| GET | `/health` | none | `root_health_handler`, same file | `{status:"ok", timestamp, api:"v2 (Clean Architecture)"}`. Healthchecks and `scripts/deploy_nas.sh` read only the status code |
 | GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs` | SSE; events without a party and a public party's lifecycle events to all, a game's moves and private-party events only to that party's players (a token of a deleted user names nobody). See [[Backend]] |
 
 ### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:12-17`)

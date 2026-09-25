@@ -19,8 +19,8 @@ Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip
 
 ## Non-negotiables
 
-1. **The database never enters git.** `data/zapzap.db` holds every account; in production it
-   is a file in the NAS clone that a careless `git pull` can delete (`deploy` skill §0).
+1. **The database never enters git.** `data/zapzap.db` holds every account; production's
+   lives in the NAS deploy directory, which holds no clone (`deploy` skill).
 2. **A rule change updates `GAME_RULES.md`** and the test that proves it, in the same change.
 
 What a hook refuses outright — killing node, secrets, the database, `wip/` in a commit, red

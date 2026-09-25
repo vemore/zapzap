@@ -20,7 +20,7 @@
 | Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web` and `build apk --debug`; the format check and the analyzer also in the commit hook |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand, below | green (2026-09-24) | yes (`flutter-e2e` job) |
-| Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, `nginx -t` on `nginx/nginx.conf` | green | yes |
+| Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, the proxy image (`nginx/Dockerfile`) and `nginx -t` in it, `docker compose config` of both compose files | green | yes |
 
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
@@ -100,8 +100,8 @@
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
-| `image` | `image != 'false'` | `nginx -t` on `nginx/nginx.conf`; `docker compose config` of the root compose file (valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check is `healthy`, and uid 1000 asserted); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
-| `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]) | 10 min |
+| `image` | `image != 'false'` | the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check is `healthy`, and uid 1000 asserted); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
+| `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK) | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 
@@ -135,7 +135,8 @@
 | `frontend/*` | frontend, image |
 | `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]), e2e |
 | `nginx/*` | image |
-| `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `deploy.sh`, `rebuild.sh` | hooks |
+| `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `scripts/deploy_nas.sh`, its self-test and `deploy.env.example`, `rebuild.sh` | hooks |
+| `docker-compose.prod.yml` | image, hooks |
 | `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
 | `scripts/flutter_e2e.sh` | e2e |
 | root `package.json`, `package-lock.json` (Playwright only, [[ParallelDelivery]]) | none |

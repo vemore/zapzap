@@ -1,6 +1,6 @@
 //! Health checks, with the Node backend's keys: `/api/health` answers
 //! `{status, timestamp, uptime}`, `/health` answers `{status, timestamp, api}`.
-//! Healthchecks and deploy.sh read only the status code.
+//! Healthchecks and scripts/deploy_nas.sh read only the status code.
 
 use axum::Json;
 use serde::Serialize;

@@ -169,24 +169,29 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # nginx/nginx.conf is baked into no image, only mounted by compose, so nothing else
-      # reads it before production does: a typo there is a crash-looping proxy after
-      # deploy.sh has stopped the old containers. --add-host: nginx resolves the hosts of
-      # its upstream blocks when it loads the configuration.
-      - name: Proxy configuration is valid
+      # The production proxy is nginx:alpine with nginx/nginx.conf baked in (nginx/Dockerfile,
+      # pushed as zapzap-proxy by scripts/deploy_nas.sh). A typo in the conf is a
+      # crash-looping proxy after the deploy has stopped the old containers, so nginx -t runs
+      # in the very image. --add-host: nginx resolves the hosts of its upstream blocks when
+      # it loads the configuration.
+      - name: Proxy image builds and its configuration is valid
         run: |
+          docker build -t zapzap-proxy:ci nginx
           docker run --rm \
             --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 \
-            -v "$PWD/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
-            nginx:alpine nginx -t
-      # The root compose file parses, and its backend service still requires JWT_SECRET:
-      # production's .env provides it, and the Rust backend has no default.
-      - name: Production compose file is valid
+            zapzap-proxy:ci nginx -t
+      # Both compose files parse, and their backend service still requires JWT_SECRET:
+      # production's .env provides it, and the Rust backend has no default. The root one
+      # builds (local use, CI); docker-compose.prod.yml is what the NAS runs, registry
+      # images only.
+      - name: Compose files are valid (root and production)
         run: |
-          JWT_SECRET=ci-only docker compose config --quiet
-          if docker compose config --quiet 2>/dev/null; then
-            echo "docker-compose.yml accepts a missing JWT_SECRET" >&2; exit 1
-          fi
+          for f in docker-compose.yml docker-compose.prod.yml; do
+            JWT_SECRET=ci-only docker compose -f "$f" config --quiet
+            if docker compose -f "$f" config --quiet 2>/dev/null; then
+              echo "$f accepts a missing JWT_SECRET" >&2; exit 1
+            fi
+          done
       # The image production runs (.llmwiki/Deployment.md): the root compose's `backend`
       # service, the Rust backend built with the Bedrock client of the LLM bots. The script
       # builds it through compose, starts it on an empty database with a throwaway secret,
@@ -216,6 +221,10 @@ jobs:
       # The table drives the guards with payloads in sandbox repositories and a
       # stubbed gh, cargo, npm, flutter and dart: nothing is built and nothing leaves the runner.
       - run: scripts/hooks_selftest.sh
+      # The production deploy (scripts/deploy_nas.sh), with ssh, docker and docker-compose
+      # stubbed: its refusals, the order pull/down/up, the health wait, --rollback.
+      - name: Deploy script self-test
+        run: scripts/deploy_nas_selftest.sh
 
   flutter:
     name: Flutter client — analyze, test, build web and apk

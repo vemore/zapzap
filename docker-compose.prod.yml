@@ -1,18 +1,21 @@
+# Production compose for the NAS. scripts/deploy_nas.sh copies it to the deploy directory
+# ($NAS_DEPLOY_DIR/compose.yaml, next to the production .env and data/) with the registry
+# and the tag written in literally, so the file on the NAS names exactly the images that
+# run: <registry>/zapzap-*:<short sha>. `--rollback <sha>` rewrites those tags in place.
+#
+# Nothing is built here: every image is built on the dev machine and pulled from the LAN
+# registry. The root docker-compose.yml, which builds, stays for local use and CI.
+#
+# The NAS runs docker-compose 1.29.2 (v1): no top-level `name:`, and the project name comes
+# from COMPOSE_PROJECT_NAME=zapzap, which deploy_nas.sh exports.
+#
+# Service names are load-bearing: nginx/nginx.conf proxies to `backend`, `frontend` and
+# `frontend-flutter`, and ESSENTIAL_SERVICES / PROXY_SERVICE in scripts/deploy_nas.sh name
+# `backend`, `frontend` and `nginx`. Rename them together or not at all.
 services:
-  # Local use and CI: this file builds every image. Production runs docker-compose.prod.yml,
-  # registry images built and pushed by scripts/deploy_nas.sh (.llmwiki/Deployment.md);
-  # keep the two in step.
-  #
-  # Backend API Service: the Rust backend (zapzap-rust/). The service and container names
-  # stay `backend`/`zapzap-backend`: nginx/nginx.conf proxies to `backend:9999` and
-  # scripts/deploy_nas.sh's ESSENTIAL_SERVICES names it.
+  # The Rust backend (zapzap-rust/), built with CARGO_FEATURES=bedrock.
   backend:
-    build:
-      context: ./zapzap-rust
-      dockerfile: Dockerfile
-      args:
-        # `bedrock` builds the AWS Bedrock client of the LLM bots; production enables them
-        - CARGO_FEATURES=bedrock
+    image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-backend:${ZAPZAP_TAG:-latest}
     container_name: zapzap-backend
     restart: unless-stopped
     environment:
@@ -34,25 +37,22 @@ services:
       - AWS_SESSION_TOKEN
       - BOT_STRATEGIES_DIR=/app/data/bot-strategies
     volumes:
-      # The image runs as uid 1000: data/, data/zapzap.db and data/bot-strategies/ must be
-      # writable by it (the deploy skill's one-time chown).
+      # data/ of the deploy directory. The image runs as uid 1000: data/, data/zapzap.db and
+      # data/bot-strategies/ must be writable by it (deploy_nas.sh refuses otherwise).
       - ./data:/app/data
     networks:
       - zapzap-network
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:9999/api/health"]
+      # The Alpine image carries busybox wget, not curl.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9999/api/health"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
 
-  # Frontend Service
+  # The React client, served on /
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
+    image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-frontend:${ZAPZAP_TAG:-latest}
     container_name: zapzap-frontend
     restart: unless-stopped
     networks:
@@ -64,15 +64,9 @@ services:
       retries: 3
       start_period: 5s
 
-  # Flutter PWA Service (served under /app/ by the proxy)
+  # The Flutter PWA, served under /app/ by the proxy
   frontend-flutter:
-    build:
-      context: ./frontend-flutter
-      dockerfile: Dockerfile
-      args:
-        # The web OAuth client id, the React build's own (not a secret); empty → no
-        # Google button (frontend-flutter/Dockerfile, .llmwiki/FrontendFlutter.md).
-        - GOOGLE_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
+    image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-frontend-flutter:${ZAPZAP_TAG:-latest}
     container_name: zapzap-frontend-flutter
     restart: unless-stopped
     networks:
@@ -84,18 +78,16 @@ services:
       retries: 3
       start_period: 5s
 
-  # Nginx Reverse Proxy
+  # The reverse proxy: nginx:alpine with nginx/nginx.conf baked in (nginx/Dockerfile)
   nginx:
-    image: nginx:alpine
+    image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-proxy:${ZAPZAP_TAG:-latest}
     container_name: zapzap-proxy
     restart: unless-stopped
     ports:
       - "${PROXY_PORT:-80}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     # No condition on frontend-flutter, deliberately: a PWA that fails its health check
     # would otherwise hold zapzap-proxy in Created and take the whole site down, since
-    # the deploy has already stopped the old containers. The /app/ location resolves the
+    # deploy_nas.sh has already stopped the old containers. The /app/ location resolves the
     # PWA per request instead (nginx/nginx.conf), so a broken PWA is a 502 on /app/ only.
     depends_on:
       backend:
@@ -114,6 +106,3 @@ services:
 networks:
   zapzap-network:
     driver: bridge
-
-volumes:
-  data:
