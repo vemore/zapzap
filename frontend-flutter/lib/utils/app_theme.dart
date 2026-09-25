@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// The palette of the React client (`frontend/tailwind.config.js`), so both
 /// clients look alike: slate surfaces, amber accent, a green card table.
@@ -69,6 +70,23 @@ abstract final class CardSizes {
 
 /// The one theme of the app: dark, like the React client.
 abstract final class AppTheme {
+  /// The Android system bars over the dark screens: the navigation bar takes
+  /// the app's background with light buttons, the status bar stays
+  /// transparent with light icons. The contrast scrim is off: under
+  /// edge-to-edge (Android 15+) it is what draws a light grey bar under
+  /// 3-button navigation. Set on the whole app by `ZapZapApp` and on every
+  /// app bar through [dark]'s `appBarTheme`.
+  static const systemOverlayStyle = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+    systemStatusBarContrastEnforced: false,
+    systemNavigationBarColor: AppColors.slate900,
+    systemNavigationBarDividerColor: AppColors.slate900,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
+  );
+
   static ThemeData dark() {
     const scheme = ColorScheme(
       brightness: Brightness.dark,
@@ -93,6 +111,7 @@ abstract final class AppTheme {
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.slate800,
         foregroundColor: AppColors.slate100,
+        systemOverlayStyle: systemOverlayStyle,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
