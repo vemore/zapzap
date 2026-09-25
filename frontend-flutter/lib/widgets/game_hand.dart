@@ -159,6 +159,10 @@ class GameHand extends StatelessWidget {
               )
             else
               CardFan(
+                // Keyed: the lines around it come and go (the joker line,
+                // the compact hand's missing rows), and the fan must keep
+                // its state — the card that just arrived — across them.
+                key: const Key('handFan'),
                 cards: cards,
                 selectedCards: selectedCards.toSet(),
                 onCardTap: disabled ? null : onCardTap,

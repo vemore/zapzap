@@ -391,6 +391,12 @@ void main() {
       await tester.pumpWidget(
         fan(328, const CardFan(cards: hand, selectedCards: {26})),
       );
+      // It rises in 150 ms (J9), not in one jump.
+      await tester.pump(const Duration(milliseconds: 75));
+      final rising = resting.top - tester.getRect(cardAt(2)).top;
+      expect(rising, greaterThan(0));
+      expect(rising, lessThan(CardSizes.selectedLift));
+      await tester.pumpAndSettle();
       final lifted = tester.getRect(cardAt(2));
       expect(resting.top - lifted.top, CardSizes.selectedLift);
       expect(lifted.left, resting.left);
