@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use jsonwebtoken::jwk::{Jwk, JwkSet};
+use jsonwebtoken::jwk::{Jwk, JwkSet, KeyAlgorithm};
 use jsonwebtoken::{decode, decode_header, errors::ErrorKind, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -271,6 +271,7 @@ pub fn parse_jwks(body: &serde_json::Value) -> JwkSet {
         .map(|keys| {
             keys.iter()
                 .filter_map(|k| serde_json::from_value::<Jwk>(k.clone()).ok())
+                .filter(|k| k.common.key_algorithm != Some(KeyAlgorithm::UNKNOWN_ALGORITHM))
                 .collect()
         })
         .unwrap_or_default();
