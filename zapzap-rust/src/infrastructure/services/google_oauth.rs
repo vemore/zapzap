@@ -497,10 +497,12 @@ mod tests {
         let body = serde_json::json!({"keys": [
             {"kty": "XYZ", "kid": "weird"},
             {"kty": "RSA", "alg": "RS999", "kid": "future", "n": "AQAB", "e": "AQAB"},
-            {"kty": "RSA", "alg": "RS256", "use": "sig", "kid": KID, "n": test_keys::N, "e": "AQAB"}
+            {"kty": "RSA", "alg": "RS256", "use": "sig", "kid": KID, "n": test_keys::N, "e": "AQAB"},
+            {"kty": "RSA", "use": "sig", "kid": "no-alg", "n": test_keys::N, "e": "AQAB"}
         ]});
         let set = parse_jwks(&body);
-        assert_eq!(set.keys.len(), 1);
+        assert_eq!(set.keys.len(), 2);
+        assert!(set.find("no-alg").is_some(), "a key without alg is kept");
         assert!(set.find(KID).is_some());
         assert!(parse_jwks(&serde_json::json!({})).keys.is_empty());
     }
