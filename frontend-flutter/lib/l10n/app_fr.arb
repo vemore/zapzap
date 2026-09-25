@@ -627,15 +627,6 @@
       }
     }
   },
-  "lobbyHandSizeChip": "{count, plural, =1{1 carte en main} other{{count} cartes en main}}",
-  "@lobbyHandSizeChip": {
-    "description": "Settings chip: the party's hand size (Rust only)",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "lobbyYouHostChip": "Tu es l'hôte",
   "@lobbyYouHostChip": {
     "description": "Settings chip shown to the party's owner"

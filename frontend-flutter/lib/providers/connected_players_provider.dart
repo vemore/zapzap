@@ -11,9 +11,9 @@ import '../repositories/party_repository.dart';
 ///
 /// `GET /players/connected` gives the first list (at most 5) and the event
 /// stream keeps it up to date: `userConnected` puts the newcomer first,
-/// `userDisconnected` drops them, `userStatusChanged` moves them between
-/// the lobby, a party and a game. The list is fetched again on every
-/// (re)connection of the stream: the first fetch may answer before the
+/// `userDisconnected` drops them (`zapzap-rust/src/api/sse.rs`; no event
+/// says a player moved to a party or a game). The list is fetched again on
+/// every (re)connection of the stream: the first fetch may answer before the
 /// backend has registered our own stream, and what happened while the
 /// stream was down never arrives.
 ///
@@ -106,20 +106,6 @@ class ConnectedPlayersProvider extends ChangeNotifier {
         ].take(maxPlayers).toList();
       case 'userDisconnected':
         _players = _players.where((player) => player.userId != userId).toList();
-      case 'userStatusChanged':
-        _players = [
-          for (final player in _players)
-            if (player.userId == userId)
-              ConnectedPlayer(
-                userId: player.userId,
-                username: player.username,
-                status: Json.string(event.data, 'status', player.status),
-                partyId: event.partyId,
-                connectedAt: player.connectedAt,
-              )
-            else
-              player,
-        ];
       default:
         return;
     }

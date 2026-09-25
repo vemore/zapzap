@@ -10,6 +10,7 @@
       "playerCount": 3,
       "maxPlayers": 3,
       "isMember": true,
+      "isMyTurn": false,
       "createdAt": 1790094174
     },
     {
@@ -21,7 +22,11 @@
       "playerCount": 4,
       "maxPlayers": 5,
       "isMember": true,
+      "isMyTurn": false,
       "createdAt": 1790094104
     }
-  ]
+  ],
+  "total": 2,
+  "limit": 50,
+  "offset": 0
 }

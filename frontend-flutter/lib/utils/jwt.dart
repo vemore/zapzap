@@ -30,8 +30,8 @@ abstract final class Jwt {
   }
 
   /// Whether [token] is a JWT whose `exp` is after [now] (default: the
-  /// current time). Both backends always set `exp` (24 h on Node, 7 days on
-  /// Rust), so a token without one is not trusted.
+  /// current time). The backend always sets `exp` (7 days,
+  /// `jwt_service.rs`), so a token without one is not trusted.
   static bool isValid(String? token, {DateTime? now}) {
     if (token == null || token.isEmpty) return false;
     final expiresAt = expiry(token);

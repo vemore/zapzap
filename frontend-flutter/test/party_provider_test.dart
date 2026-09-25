@@ -396,6 +396,21 @@ void main() {
       lobby.dispose();
     });
 
+    test('the owner is what isOwner says, not a match on ownerId', () async {
+      final details = partyDetailsJson(id: 'p1', players: [vincent, bot]);
+      expect(details['isOwner'], isTrue);
+      details['isOwner'] = false;
+      final backend = FakeLobbyBackend(details: details);
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final lobby = lobbyOf(backend, events);
+      await lobby.load();
+
+      expect(lobby.details!.party.ownerId, 'u1');
+      expect(lobby.isOwner, isFalse);
+      lobby.dispose();
+    });
+
     test('only the owner starts; the only human may still delete', () async {
       final backend = FakeLobbyBackend(
         details: partyDetailsJson(
@@ -449,7 +464,7 @@ void main() {
   });
 
   group('ConnectedPlayersProvider', () {
-    test('the stream adds, removes and moves players', () async {
+    test('the stream adds and removes players', () async {
       final backend = FakeLobbyBackend(
         connected: [connectedPlayerJson('u1', 'Vincent')],
       );
@@ -472,18 +487,6 @@ void main() {
       );
       await pumpEventQueue();
       expect(players.players.first.username, 'Alice');
-
-      events.add(
-        const SseEvent({
-          'type': 'userStatusChanged',
-          'userId': 'u2',
-          'status': 'game',
-          'partyId': 'p1',
-        }),
-      );
-      await pumpEventQueue();
-      expect(players.players.first.status, 'game');
-      expect(players.players.first.partyId, 'p1');
 
       events.add(const SseEvent({'type': 'userDisconnected', 'userId': 'u2'}));
       await pumpEventQueue();

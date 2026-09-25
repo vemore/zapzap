@@ -1,15 +1,13 @@
-import 'dart:convert';
-
 /// A decoded JSON object.
 typedef JsonMap = Map<String, dynamic>;
 
-/// Lenient readers for the JSON the two backends send.
+/// Lenient readers for the JSON the backend sends
+/// (`zapzap-rust/src/api/routes/*.rs`).
 ///
-/// The Node backend (production) and the Rust backend (the target) agree on
-/// field names but not always on types: an id is an integer on one side and a
-/// string on the other, a timestamp is Unix seconds, Unix milliseconds or an
-/// RFC 3339 string, a hand is a list or a JSON-encoded string. Every model
-/// reads through these helpers so it parses both.
+/// Types vary from field to field: an id is a string, or an integer (a party
+/// seat's `id`); a timestamp is Unix seconds or Unix milliseconds. Every model
+/// reads through these helpers, which never throw on a missing or mistyped
+/// field.
 abstract final class Json {
   /// The object at [key], or `null` when missing or not an object.
   static JsonMap? map(JsonMap json, String key) {
@@ -30,8 +28,7 @@ abstract final class Json {
   static String string(JsonMap json, String key, [String fallback = '']) =>
       stringOrNull(json, key) ?? fallback;
 
-  /// A string, also accepting a number (Rust sends some ids as strings,
-  /// Node as integers).
+  /// A string, also accepting a number (a party seat's `id` is an integer).
   static String? stringOrNull(JsonMap json, String key) {
     final value = json[key];
     if (value == null) return null;
@@ -70,18 +67,9 @@ abstract final class Json {
     return value is bool ? value : null;
   }
 
-  /// A list of integers (card ids, player indexes). Also accepts a
-  /// JSON-encoded string (`"[17,28,1]"`, the Node history's `handCards`) and
-  /// a list of objects carrying `playerIndex` (the `nextRound`'s
-  /// `eliminatedPlayers`).
+  /// A list of integers (card ids, player indexes). Also accepts a list of
+  /// objects carrying `playerIndex` (the `nextRound`'s `eliminatedPlayers`).
   static List<int> ints(Object? value) {
-    if (value is String) {
-      try {
-        return ints(jsonDecode(value));
-      } on FormatException {
-        return const [];
-      }
-    }
     if (value is! List) return const [];
     final result = <int>[];
     for (final item in value) {
@@ -132,7 +120,7 @@ abstract final class Json {
 
   /// A timestamp, in UTC.
   ///
-  /// Accepts Unix seconds (most Node fields), Unix milliseconds (a number
+  /// Accepts Unix seconds (most fields), Unix milliseconds (a number
   /// `>= 1e10`: `lastAction.timestamp`, `connectedAt`), a numeric string, or
   /// an RFC 3339 string (some Rust fields). `null` when missing or unreadable.
   static DateTime? timestamp(JsonMap json, String key) {
@@ -153,10 +141,10 @@ abstract final class Json {
   }
 }
 
-/// One page of a listing, with whatever paging data the route sends (both
-/// backends alike): `pagination {limit, offset, hasMore}` (history,
-/// leaderboard), `pagination {total, limit, offset}` (admin), or `total`,
-/// `limit`, `offset` at the top level (`GET /party`).
+/// One page of a listing, with whatever paging data the route sends:
+/// `pagination {limit, offset, hasMore}` (history, leaderboard),
+/// `pagination {total, limit, offset}` (admin), or `total`, `limit`,
+/// `offset` at the top level (`GET /party`).
 class Page<T> {
   const Page({
     required this.items,

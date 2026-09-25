@@ -44,5 +44,7 @@
       "playerIndex": 2,
       "joinedAt": 1790094174
     }
-  ]
+  ],
+  "isOwner": true,
+  "userPlayerIndex": 0
 }

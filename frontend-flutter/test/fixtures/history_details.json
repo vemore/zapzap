@@ -64,7 +64,13 @@
           "scoreThisRound": 28,
           "totalScoreAfter": 28,
           "handPoints": 28,
-          "handCards": "[17,28,1,30,38]",
+          "handCards": [
+            17,
+            28,
+            1,
+            30,
+            38
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -78,7 +84,12 @@
           "scoreThisRound": 49,
           "totalScoreAfter": 49,
           "handPoints": 49,
-          "handCards": "[42,33,24,53]",
+          "handCards": [
+            42,
+            33,
+            24,
+            53
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -92,7 +103,10 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 0,
           "handPoints": 2,
-          "handCards": "[26,0]",
+          "handCards": [
+            26,
+            0
+          ],
           "isZapZapCaller": true,
           "zapZapSuccess": true,
           "wasCounterActed": false,
@@ -111,7 +125,13 @@
           "scoreThisRound": 29,
           "totalScoreAfter": 57,
           "handPoints": 29,
-          "handCards": "[18,26,16,45,10]",
+          "handCards": [
+            18,
+            26,
+            16,
+            45,
+            10
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -125,7 +145,9 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 49,
           "handPoints": 1,
-          "handCards": "[13]",
+          "handCards": [
+            13
+          ],
           "isZapZapCaller": true,
           "zapZapSuccess": true,
           "wasCounterActed": false,
@@ -139,7 +161,9 @@
           "scoreThisRound": 4,
           "totalScoreAfter": 4,
           "handPoints": 4,
-          "handCards": "[3]",
+          "handCards": [
+            3
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -158,7 +182,14 @@
           "scoreThisRound": 41,
           "totalScoreAfter": 98,
           "handPoints": 41,
-          "handCards": "[15,26,52,1,14,33]",
+          "handCards": [
+            15,
+            26,
+            52,
+            1,
+            14,
+            33
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -172,7 +203,9 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 49,
           "handPoints": 2,
-          "handCards": "[40]",
+          "handCards": [
+            40
+          ],
           "isZapZapCaller": true,
           "zapZapSuccess": true,
           "wasCounterActed": false,
@@ -186,7 +219,12 @@
           "scoreThisRound": 37,
           "totalScoreAfter": 41,
           "handPoints": 37,
-          "handCards": "[39,13,53,48]",
+          "handCards": [
+            39,
+            13,
+            53,
+            48
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -205,7 +243,13 @@
           "scoreThisRound": 24,
           "totalScoreAfter": 122,
           "handPoints": 24,
-          "handCards": "[1,42,43,4,33]",
+          "handCards": [
+            1,
+            42,
+            43,
+            4,
+            33
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -219,7 +263,9 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 49,
           "handPoints": 1,
-          "handCards": "[26]",
+          "handCards": [
+            26
+          ],
           "isZapZapCaller": true,
           "zapZapSuccess": true,
           "wasCounterActed": false,
@@ -233,7 +279,11 @@
           "scoreThisRound": 36,
           "totalScoreAfter": 77,
           "handPoints": 36,
-          "handCards": "[13,52,35]",
+          "handCards": [
+            13,
+            52,
+            35
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -252,7 +302,7 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 122,
           "handPoints": 0,
-          "handCards": "[]",
+          "handCards": [],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -266,7 +316,10 @@
           "scoreThisRound": 9,
           "totalScoreAfter": 58,
           "handPoints": 9,
-          "handCards": "[2,44]",
+          "handCards": [
+            2,
+            44
+          ],
           "isZapZapCaller": false,
           "zapZapSuccess": false,
           "wasCounterActed": false,
@@ -280,7 +333,9 @@
           "scoreThisRound": 0,
           "totalScoreAfter": 77,
           "handPoints": 3,
-          "handCards": "[15]",
+          "handCards": [
+            15
+          ],
           "isZapZapCaller": true,
           "zapZapSuccess": true,
           "wasCounterActed": false,

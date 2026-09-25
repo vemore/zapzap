@@ -456,7 +456,7 @@ class _GameScreenState extends State<GameScreen> {
           player: () {
             final index = ordered[seat].playerIndex;
             final total = _game.scoreOf(index);
-            // Both sources: Node fills `eliminatedPlayers`, and
+            // Both sources: the state's `eliminatedPlayers`, and
             // `GAME_RULES.md` puts anybody above 100 points out.
             final out = _game.isEliminated(index) || total > 100;
             return RoundEndPlayer(

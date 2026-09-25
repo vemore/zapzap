@@ -6,30 +6,25 @@ import 'json.dart';
 /// as in React (`PartyList.jsx:167`, `PartyLobby.jsx:134`).
 const int defaultPartyPlayers = 5;
 
-/// Party statuses, as both backends spell them.
+/// Party statuses, as the backend spells them.
 abstract final class PartyStatus {
   static const waiting = 'waiting';
   static const playing = 'playing';
   static const finished = 'finished';
 }
 
-/// A party's settings. The two backends disagree: Node stores
-/// `{playerCount, allowSpectators, roundTimeLimit}` and **requires**
-/// `playerCount` (3-8) on create; Rust stores `{handSize, maxScore,
-/// enableGoldenScore, goldenScoreThreshold}` and ignores the Node keys. Every
-/// field is therefore optional; send both sets on create.
+/// A party's settings, `{playerCount, allowSpectators, roundTimeLimit}`
+/// (`PartySettings`, `zapzap-rust/src/domain/value_objects/party_settings.rs`).
+/// `playerCount` (3-8, the seats) is required on create, else 400
+/// `VALIDATION_ERROR`. A field missing from an unreadable answer is `null`.
 class PartySettings {
   const PartySettings({
     this.playerCount,
     this.allowSpectators,
     this.roundTimeLimit,
-    this.handSize,
-    this.maxScore,
-    this.enableGoldenScore,
-    this.goldenScoreThreshold,
   });
 
-  /// Accepts an object or a JSON-encoded string (the Node `/admin/parties`).
+  /// Accepts an object or a JSON-encoded string (`GET /admin/parties`).
   factory PartySettings.fromJson(Object? value) {
     if (value is String) {
       try {
@@ -44,29 +39,19 @@ class PartySettings {
       playerCount: Json.intOrNull(json['playerCount']),
       allowSpectators: Json.boolOrNull(json, 'allowSpectators'),
       roundTimeLimit: Json.intOrNull(json['roundTimeLimit']),
-      handSize: Json.intOrNull(json['handSize']),
-      maxScore: Json.intOrNull(json['maxScore']),
-      enableGoldenScore: Json.boolOrNull(json, 'enableGoldenScore'),
-      goldenScoreThreshold: Json.intOrNull(json['goldenScoreThreshold']),
     );
   }
 
   final int? playerCount;
   final bool? allowSpectators;
+
+  /// Seconds per round, 0 for none (stored, not enforced).
   final int? roundTimeLimit;
-  final int? handSize;
-  final int? maxScore;
-  final bool? enableGoldenScore;
-  final int? goldenScoreThreshold;
 
   JsonMap toJson() => {
     'playerCount': ?playerCount,
     'allowSpectators': ?allowSpectators,
     'roundTimeLimit': ?roundTimeLimit,
-    'handSize': ?handSize,
-    'maxScore': ?maxScore,
-    'enableGoldenScore': ?enableGoldenScore,
-    'goldenScoreThreshold': ?goldenScoreThreshold,
   };
 }
 
@@ -192,7 +177,7 @@ class PartyPlayer {
     joinedAt: Json.timestamp(json, 'joinedAt'),
   );
 
-  /// The seat's row id (an integer on Node, a string on Rust).
+  /// The seat's row id (an integer, read as a string).
   final String? id;
   final String userId;
   final String username;
@@ -246,17 +231,17 @@ class CreatePartyResult {
   final int botsJoined;
 }
 
-/// `POST /party/:id/join`. Node sends no `playerIndex`; Rust does.
+/// `POST /party/:id/join`: the party and the seat taken.
 class JoinPartyResult {
-  const JoinPartyResult({required this.party, this.playerIndex});
+  const JoinPartyResult({required this.party, required this.playerIndex});
 
   factory JoinPartyResult.fromJson(JsonMap json) => JoinPartyResult(
     party: Party.fromJson(Json.map(json, 'party') ?? const {}),
-    playerIndex: Json.intOrNull(json['playerIndex']),
+    playerIndex: Json.integer(json, 'playerIndex'),
   );
 
   final Party party;
-  final int? playerIndex;
+  final int playerIndex;
 }
 
 /// A round reference: `{id, roundNumber, status}`.

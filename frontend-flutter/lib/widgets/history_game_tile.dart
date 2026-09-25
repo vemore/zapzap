@@ -6,13 +6,6 @@ import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
 import 'stats_common.dart';
 
-/// Where [userId] finished [game], or `null` when the entry does not say.
-///
-/// Both backends send `userPlacement`; a Node older than 2026-09-24 does
-/// not, but its `winnerUserId` still tells a win apart.
-int? myPlacement(GameHistoryEntry game, String? userId) =>
-    game.userPlacement ?? (game.winnerUserId == userId ? 1 : null);
-
 /// [place] as an ordinal in the app's language: `1er`, `4e`; `1st`, `4th`.
 String placementLabel(AppLocalizations l10n, int place) =>
     l10n.historyPlacement(place, switch (place) {
@@ -46,7 +39,7 @@ class HistoryGameTile extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
     final mine = currentUserId != null;
-    final place = mine ? myPlacement(game, currentUserId) : null;
+    final place = mine ? game.userPlacement : null;
     final myScore = mine ? game.userScore : null;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),

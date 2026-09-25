@@ -48,13 +48,16 @@ abstract final class ApiErrorCode {
 
 /// A failed API call.
 ///
-/// Reads every error shape the backends send:
-/// - `{error, code, details?}` — auth, party, game (both backends);
-/// - `{success: false, error}` or `{error}` — admin, bots, stats, history:
-///   [code] comes from the status;
-/// - `{error, code, message}` — the Node 404/500 fallbacks;
-/// - `{message}` alone;
-/// - an empty body — the Rust 401 on a missing or invalid token.
+/// Reads every error shape the backend sends (`zapzap-rust/src/api/`):
+/// - `{error, code, details?}` — auth, party, game (`error.rs`, the auth
+///   middleware);
+/// - `{success: false, error, code}` — the admin middleware's 401 and 403;
+/// - `{success: false, error}` or `{error}` — the admin routes' refusals,
+///   stats, history: [code] comes from the status;
+/// - `{error, code, path, message}` — the 404 of a path no route serves
+///   (`not_found.rs`): [message] is `error`;
+/// - and, from whatever stands in front of it (a proxy, the platform), a body
+///   that is not JSON, `{message}` alone, or no body at all.
 ///
 /// [message] is the backend's text, for logs: screens show a localised text
 /// chosen from [code], never [message] (no user-facing literal outside

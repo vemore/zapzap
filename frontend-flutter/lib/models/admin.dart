@@ -38,8 +38,7 @@ class AdminUser {
   final DateTime? updatedAt;
 }
 
-/// A party in `GET /admin/parties` (every visibility and status), as Node's
-/// `ListAllParties` lists it; Rust sends the same keys.
+/// A party in `GET /admin/parties` (every visibility and status).
 class AdminParty {
   const AdminParty({
     required this.id,

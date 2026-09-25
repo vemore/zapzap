@@ -11,9 +11,9 @@ import 'package:zapzap/models/user.dart';
 
 import 'fixtures.dart';
 
-// Every model parsed from an answer captured from the Node backend
-// (test/fixtures/), plus the Rust shapes that differ, written from the Rust
-// response structs (zapzap-rust/src/api/routes/*.rs).
+// Every model parsed from the backend's answers (test/fixtures/), plus the
+// cases a fixture does not show, written from the Rust response structs
+// (zapzap-rust/src/api/routes/*.rs).
 
 DateTime utc(int seconds) =>
     DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
@@ -107,11 +107,13 @@ void main() {
       expect(result.party.visibility, 'public');
       expect(result.party.settings.playerCount, 3);
       expect(result.party.settings.allowSpectators, isFalse);
-      expect(result.party.settings.handSize, isNull);
+      expect(result.party.settings.roundTimeLimit, 0);
     });
 
     test('details: players with userType and botDifficulty', () {
       final details = PartyDetails.fromJson(fixture('party_details'));
+      expect(details.isOwner, isTrue);
+      expect(details.userPlayerIndex, 0);
       expect(details.party.currentRoundId, isNull);
       expect(details.party.updatedAt, utc(1790094174));
       expect(details.players.map((p) => p.username), [
@@ -130,7 +132,7 @@ void main() {
       expect(bot.joinedAt, utc(1790094174));
     });
 
-    test('Rust details: string ids, RFC 3339 dates, Rust settings', () {
+    test('details: string ids, RFC 3339 dates, not in the party', () {
       final details = PartyDetails.fromJson({
         'success': true,
         'party': {
@@ -141,10 +143,9 @@ void main() {
           'visibility': 'private',
           'status': 'playing',
           'settings': {
-            'handSize': 7,
-            'maxScore': 100,
-            'enableGoldenScore': true,
-            'goldenScoreThreshold': 100,
+            'playerCount': 6,
+            'allowSpectators': true,
+            'roundTimeLimit': 120,
           },
           'currentRoundId': 'r1',
           'createdAt': '2026-09-22T16:22:54+00:00',
@@ -161,13 +162,14 @@ void main() {
             'joinedAt': '2026-09-22T16:22:54Z',
           },
         ],
-        'isOwner': true,
-        'userPlayerIndex': 0,
+        'isOwner': false,
+        'userPlayerIndex': null,
       });
-      expect(details.isOwner, isTrue);
-      expect(details.userPlayerIndex, 0);
-      expect(details.party.settings.handSize, 7);
-      expect(details.party.settings.enableGoldenScore, isTrue);
+      expect(details.isOwner, isFalse);
+      expect(details.userPlayerIndex, isNull);
+      expect(details.party.settings.playerCount, 6);
+      expect(details.party.settings.allowSpectators, isTrue);
+      expect(details.party.settings.roundTimeLimit, 120);
       expect(details.party.createdAt, DateTime.utc(2026, 9, 22, 16, 22, 54));
       expect(details.party.updatedAt, utc(1790094174));
       expect(details.players.single.id, '12');
@@ -176,7 +178,7 @@ void main() {
     test('join, start, connected players', () {
       final join = JoinPartyResult.fromJson(fixture('party_join'));
       expect(join.party.name, 'Second');
-      expect(join.playerIndex, isNull); // Node sends none
+      expect(join.playerIndex, 1);
       final start = StartPartyResult.fromJson(fixture('party_start'));
       expect(start.party.status, PartyStatus.playing);
       expect(start.round.roundNumber, 1);
@@ -199,16 +201,41 @@ void main() {
       expect(player.connectedAt, DateTime.utc(2026, 9, 22, 16, 23, 17, 863));
     });
 
-    test('settings as a JSON string, and toJson', () {
+    test('settings: {playerCount, allowSpectators, roundTimeLimit}', () {
+      final settings = PartySettings.fromJson({
+        'playerCount': 5,
+        'allowSpectators': true,
+        'roundTimeLimit': 90,
+      });
+      expect(settings.playerCount, 5);
+      expect(settings.allowSpectators, isTrue);
+      expect(settings.roundTimeLimit, 90);
+      expect(settings.toJson(), {
+        'playerCount': 5,
+        'allowSpectators': true,
+        'roundTimeLimit': 90,
+      });
+    });
+
+    test('settings as a JSON string (admin), and toJson', () {
       final settings = PartySettings.fromJson(
         '{"playerCount":5,"allowSpectators":false,"roundTimeLimit":0}',
       );
       expect(settings.playerCount, 5);
+      expect(settings.allowSpectators, isFalse);
       expect(settings.roundTimeLimit, 0);
-      expect(const PartySettings(playerCount: 4, handSize: 5).toJson(), {
-        'playerCount': 4,
-        'handSize': 5,
+      expect(const PartySettings(playerCount: 4).toJson(), {'playerCount': 4});
+    });
+
+    test('settings keys the backend no longer has are not read', () {
+      final settings = PartySettings.fromJson({
+        'playerCount': 3,
+        'handSize': 7,
+        'maxScore': 100,
+        'enableGoldenScore': true,
+        'goldenScoreThreshold': 100,
       });
+      expect(settings.toJson(), {'playerCount': 3});
     });
   });
 
@@ -326,13 +353,13 @@ void main() {
       expect(select.handSize, 5);
     });
 
-    test('zapzap (Node: running totals, no roundScores)', () {
+    test("zapzap: running totals and this round's points", () {
       final result = ZapZapResult.fromJson(fixture('game_zapzap'));
       expect(result.zapzapSuccess, isTrue);
       expect(result.counteracted, isFalse);
       expect(result.counteractedByPlayerIndex, isNull);
       expect(result.totalScores, {0: 0, 1: 23, 2: 9});
-      expect(result.roundScores, isNull);
+      expect(result.roundScores, {0: 0, 1: 23, 2: 9});
       expect(result.handPoints, {0: 28, 1: 23, 2: 9});
       expect(result.callerPoints, 3);
       final after = GameSnapshot.fromJson(fixture('game_state_after_zapzap'))
@@ -342,7 +369,7 @@ void main() {
       expect(after.roundScores, {0: 0, 1: 23, 2: 9});
     });
 
-    test("zapzap (Rust: Node's keys, plus roundScores)", () {
+    test('zapzap counteracted, after round 1: totals are not round points', () {
       // Round 2, counteracted: totals were {0: 28, 1: 49, 2: 0}.
       final result = ZapZapResult.fromJson({
         'success': true,
@@ -362,22 +389,7 @@ void main() {
       expect(result.callerPoints, 4);
     });
 
-    test('zapzap after round 1: Node totals are not round points', () {
-      // Round 2: totals were {0: 28, 1: 49}; Node reports 28+9 and 49+12.
-      final result = ZapZapResult.fromJson({
-        'success': true,
-        'zapzapSuccess': true,
-        'counteracted': false,
-        'counteractedBy': null,
-        'scores': {'0': 37, '1': 61, '2': 0},
-        'handPoints': {'0': 9, '1': 12, '2': 2},
-        'callerPoints': 2,
-      });
-      expect(result.totalScores, {0: 37, 1: 61, 2: 0});
-      expect(result.roundScores, isNull);
-    });
-
-    test('next round (Node)', () {
+    test('next round', () {
       final result = NextRoundResult.fromJson(fixture('game_next_round'));
       expect(result.gameFinished, isFalse);
       expect(result.round!.roundNumber, 2);
@@ -386,8 +398,8 @@ void main() {
       expect(result.eliminatedPlayers, isEmpty);
     });
 
-    test('next round ending the game (Node objects, Rust indexes)', () {
-      final node = NextRoundResult.fromJson({
+    test('next round ending the game (objects, older bare indexes)', () {
+      final result = NextRoundResult.fromJson({
         'success': true,
         'gameFinished': true,
         'winner': {'userId': 'u2', 'playerIndex': 2, 'score': 77},
@@ -396,10 +408,11 @@ void main() {
           {'userId': 'u0', 'playerIndex': 0, 'score': 122},
         ],
       });
-      expect(node.winner!.playerIndex, 2);
-      expect(node.finalScores, {0: 122, 1: 58, 2: 77});
-      expect(node.eliminatedPlayers, [0]);
-      final rust = NextRoundResult.fromJson({
+      expect(result.winner!.playerIndex, 2);
+      expect(result.finalScores, {0: 122, 1: 58, 2: 77});
+      expect(result.eliminatedPlayers, [0]);
+      // A Rust answer from before 2026-09-24.
+      final older = NextRoundResult.fromJson({
         'success': true,
         'gameFinished': true,
         'winner': 2,
@@ -408,15 +421,15 @@ void main() {
           {'playerIndex': 0, 'score': 122},
         ],
       });
-      expect(rust.winner!.playerIndex, 2);
-      expect(rust.winner!.username, isNull);
-      expect(rust.eliminatedPlayers, [0]);
-      expect(rust.finalScores, {0: 122});
+      expect(older.winner!.playerIndex, 2);
+      expect(older.winner!.username, isNull);
+      expect(older.eliminatedPlayers, [0]);
+      expect(older.finalScores, {0: 122});
     });
   });
 
   group('history', () {
-    test('my games and public games (Node)', () {
+    test('my games and public games', () {
       for (final name in ['history_list', 'history_public']) {
         final page = Page.fromJson(
           fixture(name),
@@ -437,7 +450,7 @@ void main() {
       }
     });
 
-    test('my games carry my place and score (Node), public games do not', () {
+    test('my games carry my place and score, public games do not', () {
       GameHistoryEntry only(String name) => Page.fromJson(
         fixture(name),
         'games',
@@ -451,7 +464,7 @@ void main() {
       expect(public.userScore, isNull);
     });
 
-    test("an entry (Rust: Node's keys and pagination)", () {
+    test('an entry with every key, and its pagination', () {
       final page = Page.fromJson(
         {
           'success': true,
@@ -490,7 +503,7 @@ void main() {
       expect(game.userScore, 40);
     });
 
-    test('details: players and rounds, hand cards from a JSON string', () {
+    test('details: players and rounds, hand cards as a list', () {
       final details = GameDetails.fromJson(fixture('history_details'));
       expect(details.game.status, 'finished');
       expect(details.game.winnerUsername, 'MediumBot1');
@@ -503,7 +516,7 @@ void main() {
       expect(details.rounds, hasLength(5));
       final first = details.rounds.first.players.first;
       expect(first.username, 'Vincent');
-      expect(first.handCards, [17, 28, 1, 30, 38]); // "[17,28,1,30,38]"
+      expect(first.handCards, [17, 28, 1, 30, 38]);
       expect(first.scoreThisRound, 28);
       expect(first.totalScoreAfter, 28);
       expect(

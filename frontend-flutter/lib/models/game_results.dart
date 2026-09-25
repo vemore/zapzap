@@ -4,8 +4,6 @@ import 'party.dart';
 
 // The answers to the game moves. None of them carries the new game state the
 // caller should render: refetch `GET /game/:id/state` (the React client does).
-// The Node play and draw answers also carry a raw `gameState` with every hand
-// and the deck; it is deliberately not parsed.
 
 /// `POST /game/:id/play`.
 class PlayResult {
@@ -60,7 +58,7 @@ class ZapZapResult {
     required this.counteracted,
     required this.callerPoints,
     this.totalScores = const {},
-    this.roundScores,
+    this.roundScores = const {},
     this.handPoints = const {},
     this.counteractedByPlayerIndex,
   });
@@ -70,7 +68,7 @@ class ZapZapResult {
     counteracted: Json.boolean(json, 'counteracted'),
     counteractedByPlayerIndex: Json.intOrNull(json['counteractedBy']),
     totalScores: Json.intMap(json['scores']),
-    roundScores: Json.intMapOrNull(json['roundScores']),
+    roundScores: Json.intMap(json['roundScores']),
     handPoints: Json.intMap(json['handPoints']),
     callerPoints: Json.integer(json, 'callerPoints'),
   );
@@ -85,11 +83,10 @@ class ZapZapResult {
   /// Each player's total score after this round (`scores`), by player index.
   final Map<int, int> totalScores;
 
-  /// The points each player scored this round, by player index. Rust sends
-  /// them; Node does not, so this is `null` there. The finished round's
-  /// `GET /game/:id/state` carries them on both (`roundScores`), so screens
-  /// read that rather than this.
-  final Map<int, int>? roundScores;
+  /// The points each player scored this round, by player index. The
+  /// finished round's `GET /game/:id/state` carries them too (`roundScores`),
+  /// and screens read that rather than this.
+  final Map<int, int> roundScores;
 
   /// Hand points per player index.
   final Map<int, int> handPoints;
@@ -107,8 +104,6 @@ class NextRoundResult {
     this.scores = const {},
     this.finalScores,
     this.eliminatedPlayers = const [],
-    this.isGoldenScore = false,
-    this.enteringGoldenScore = false,
     this.winner,
   });
 
@@ -121,8 +116,6 @@ class NextRoundResult {
       scores: Json.intMap(json['scores']),
       finalScores: Json.intMapOrNull(json['finalScores']),
       eliminatedPlayers: Json.ints(json['eliminatedPlayers']),
-      isGoldenScore: Json.boolean(json, 'isGoldenScore'),
-      enteringGoldenScore: Json.boolean(json, 'enteringGoldenScore'),
       winner: GameWinner.fromJsonOrNull(json['winner']),
     );
   }
@@ -137,14 +130,8 @@ class NextRoundResult {
   /// When the game is over.
   final Map<int, int>? finalScores;
 
-  /// Player indexes. Both backends send objects with `playerIndex`; the
-  /// bare indexes of older Rust responses are read too.
+  /// Player indexes. The backend sends objects with `playerIndex`; the bare
+  /// indexes of Rust responses before 2026-09-24 are read too.
   final List<int> eliminatedPlayers;
-
-  /// Node only.
-  final bool isGoldenScore;
-
-  /// Node only: this round starts the golden score.
-  final bool enteringGoldenScore;
   final GameWinner? winner;
 }
