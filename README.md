@@ -355,7 +355,7 @@ paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy 
 unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
 compose's Rust backend with the Bedrock feature, started until its health check passes; both
 frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
-debug apk builds), Flutter end to end (a round against the Rust backend). `master` accepts only
+debug apk builds; the APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 

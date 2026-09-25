@@ -73,6 +73,7 @@
 | `utils/app_theme.dart` | `AppColors`, `AppTheme.dark()` |
 | `utils/validators.dart`, `utils/jwt.dart`, `utils/field_touch.dart` | the React username/password rules; the JWT payload and `exp` reader; `FieldTouch`, when a form field may show its refusal |
 | `utils/navigation.dart` | `popOrGo(fallback)`: the back button of a pushed screen, replacing the browser's entry; `replaceWith(location)`: a screen taking another's place (Back navigation, below) |
+| `utils/motion.dart` | `Motion`: the board's animation durations and `Motion.of(context, d)`, zero under `MediaQuery.disableAnimations` (J9, "The turn reads itself", below) |
 | `utils/date_format.dart` | `Formats`: date and time in the app's locale, percentages, one-decimal numbers (History and statistics, below) |
 | `screens/` | `home_screen.dart`, `splash_screen.dart`, `login_screen.dart`, `register_screen.dart`, `parties_screen.dart`, `create_party_screen.dart`, `party_lobby_screen.dart`, `game_screen.dart` (the board), `history_screen.dart`, `game_details_screen.dart`, `stats_screen.dart`, `admin_screen.dart`, `not_found_screen.dart` |
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
@@ -575,6 +576,31 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   amber. The chips are one line that scrolls sideways, not a wrap, so the hand keeps its
   height on a phone; a label wider than the line wraps inside its chip. Hidden when the
   hand cannot be played (`GameHand.disabled`) and in the compact draw-step hand.
+- **Motion that explains** (J9, `lib/utils/motion.dart`, 2026-09-25): a card that comes
+  onto the felt glides in (`GameTableArea`, `Motion.glide` 350 ms, `easeOutCubic`, fading in
+  over the first half) from 1.5 card heights away (`GameTableArea.glideDistance`) — up from
+  the hand when the last move was this player's (`playedByMe`, `lastAction.playerIndex ==
+  myPlayerIndex`), down from the players otherwise, so a bot that played and drew between
+  two refreshes still shows its cards arriving on the pile. "Comes onto" is the set
+  `cardsPlayed ∪ lastCardsPlayed` against the previous build: this player's cards going
+  from "Posées" to the pile do not move again, and the first table drawn does not glide.
+  The card a draw brings into the hand — exactly one card more, none gone; a deal, a play or
+  a reorder is not a draw — carries a "Nouveau" badge (`gameCardNew`,
+  `CardFan.freshBadgeKey`) for 2 s (`Motion.freshCard`), painted above every card of the
+  fan at the card's top-left, popping in over 200 ms. `CardFan` is stateful for it and
+  keyed in `GameHand` (`Key('handFan')`): the lines around it come and go at the draw. A
+  selected card rises in 150 ms (`Motion.lift`, `AnimatedPositioned`) and takes its edge in
+  200 ms (`Motion.select`). **Under `MediaQuery.disableAnimations` every one of these is
+  off**: durations are zero, nothing glides, and the badge is drawn still — it is
+  information, so it stays its 2 s. The end of a round's climbing totals (F5, below) did
+  so already. Material's own transitions (ink, route) are not the board's and are left as
+  the framework draws them. `test/game_motion_test.dart` checks the badge and its 2 s, the
+  glide from below and from above, and, under reduced motion, that the board settles in one
+  pump after a play and a draw (`pumpAndSettle()` returns 1), with no glide and a still
+  badge. Checked in the PWA (2026-09-25, headless Chromium at 390x844 against the local Rust
+  backend, a CDP screencast): a Q♣ played rises semi-transparent from the hand's side onto
+  the "Played" row ~350 ms after the move, and the drawn 10♦ carries "New" (the page was
+  in English) until 2 s later.
 - **ZapZap with its risk** (J4): always shown; disabled, it says why — "main 29, il faut 5
   ou moins", or "au début de ton tour" outside the player's play step. A tap opens a
   bottom sheet (`widgets/game_zapzap_sheet.dart`, `confirmZapZap`) that states the
@@ -846,6 +872,14 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
 
 - **Debug only** for now: no release signing (the `release` build type still signs with the
   debug key, as generated), no store.
+- **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
+  push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
+  the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
+  `app-debug.apk`; or `gh run download <run id> -n app-debug`. Install with
+  `adb install -r app-debug.apk`. It talks to production over HTTPS by default. Signed with
+  the runner's throwaway debug key, so Google sign-in fails on it (below); sign in with a
+  password. CI installs `platforms;android-36` and `build-tools;36.0.0` with `sdkmanager`
+  and caps the Gradle heap in `~/.gradle/gradle.properties` (the project's asks for 8 GB).
 - Application id and namespace `com.zapzap.app` (`android/app/build.gradle.kts`);
   `MainActivity` in `android/app/src/main/kotlin/com/zapzap/app/`. Label `ZapZap`.
 - `INTERNET` is in the **main** manifest (`android/app/src/main/AndroidManifest.xml`), so
@@ -861,6 +895,15 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   `rsvg-convert -w 1024 -h 1024 <x>.svg -o <x>.png`, then `dart run flutter_launcher_icons`
   (config in `frontend-flutter/flutter_launcher_icons.yaml`, not in `pubspec.yaml`) writes
   the `mipmap-*`, `drawable-*` and `values/colors.xml` resources.
+- System bars: the navigation bar is the app's slate `#0f172a` with light buttons, the status
+  bar transparent with light icons — `AppTheme.systemOverlayStyle`
+  (`lib/utils/app_theme.dart`), set as an `AnnotatedRegion` around every route
+  (`MaterialApp.router`'s `builder` in `lib/app.dart`) and as `appBarTheme.systemOverlayStyle`.
+  `systemNavigationBarContrastEnforced: false`: with targetSdk 36 the app is edge-to-edge on
+  Android 15+, where the colour is ignored and the contrast scrim is what drew a light grey
+  bar under 3-button navigation. Before the first frame, `LaunchTheme` and `NormalTheme`
+  (`android/app/src/main/res/values{,-night}/styles.xml`) set the same bar.
+  `test/system_ui_test.dart` pins the style the app sends and the window themes.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET` and the
   debug-only cleartext.
 - **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
@@ -925,11 +968,11 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   width wide, 76 to 96 px, overlapping left to right with a step of ¾ of a card, never
   less than 48 px of each left visible; a hand that cannot keep 48 px on one row goes onto
   balanced rows — 7 cards at 360 px are 4 + 3 —, each row drawn over the lower half of the
-  one above; a row bows 4 px down at its ends; a selected card rises 20 px and keeps its
-  place in the paint order, so its neighbours stay as easy to tap; `CardFan.layoutFor(n,
+  one above; a row bows 4 px down at its ends; a selected card rises 20 px (in 150 ms,
+  at once under reduced motion) and keeps its place in the paint order, so its neighbours stay as easy to tap; `CardFan.layoutFor(n,
   width)` gives each card's rect and its visible part; `CardFan.itemKey(i)`; `compact`, the
   hand in the draw step on a phone: one straight row of opaque cards at most 48 px wide, no
-  lift). The sizes are
+  lift; the card a draw brings in is badged "Nouveau" for 2 s, J9 above). The sizes are
   tokens, `CardSizes` in `utils/app_theme.dart`: hand 76–96, 48 visible, compact 48, the
   felt's cards 70 px on a phone and 84 on a wide board (the deck `CardBackSize.md`), the
   cards played this turn 49 on a phone in the draw step, lift 20, edge 2.
@@ -1295,3 +1338,15 @@ project `.gitignore`.
   a phone; the P1–P4 tests load Roboto, as the felt test does, because the test font's
   square glyphs wrap every compact line.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost its Node-vs-Rust comparisons (CORS, SSE, presence, shapes, the refusals the client pre-empts); the client code kept its Node-shape branches until refactor/flutter-drop-node-branches (2026-09-25), which checked each against `zapzap-rust/src/api/routes/*.rs` and `api/sse.rs` and dropped those Rust never reaches: the `isOwner` fallback on `ownerId`, the `winnerUserId` placement fallback, the JSON-string `handCards`, the unnamed SSE `message` and `userStatusChanged`, `NextRoundResult.isGoldenScore`/`enteringGoldenScore`, a `null` `roundScores`, a `join` without `playerIndex`, a leaderboard row without `averageScore`, and the old Rust party settings keys with the lobby's hand-size chip (`lobbyHandSizeChip`). The parsing kept for Rust answers before 2026-09-24 (list-shaped maps, bare indexes, RFC 3339 dates) was left alone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- **Board motion goes through one switch (2026-09-25, feat/flutter-play-motion).** Every
+  animation of the board reads its duration from `Motion.of`, so reduced motion is one
+  test away rather than a check per widget; only `game_round_end.dart` read
+  `disableAnimations` before. The glide is a slide into place on the felt, not a flight
+  from the card's spot in the hand: the hand and the felt are separate sections and the
+  move lands through a refetch, so a flight would need the hand's rects kept across two
+  states and an overlay; the direction (from below for this player, from above for the
+  others) carries the same meaning for far less. The drawn card is found by diffing the
+  hand, not from the draw's answer: the table others' events bring is the same path, and a
+  deck draw's `cardDrawn` is not otherwise used. The badge stays under reduced motion,
+  drawn still — it says which card is new, which a player who turned animations off needs
+  as much.
