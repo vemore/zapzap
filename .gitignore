@@ -21,6 +21,8 @@ data/zapzap.db
 data/zapzap.test.db
 # Backups the deploy skill takes before a deploy (data/zapzap.db.bak-<date>)
 data/*.db.bak-*
+# The LLM bot's memory (BOT_STRATEGIES_DIR), written at runtime
+data/bot-strategies/
 
 # Playwright MCP screenshots
 .playwright-mcp/

@@ -289,6 +289,15 @@ unstage "native/src/lib.rs"
 stage "src/api/app.js"
 tree_commit "the legacy Node backend runs no gate" 0
 unstage "src/api/app.js"
+# A README edit or a deletion cannot break lint or build, so neither needs node_modules.
+stage "frontend/README.md"
+tree_commit "a frontend README-only commit, tree never set up" 0
+unstage "frontend/README.md"
+stage "frontend/src/old.jsx"
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "old.jsx" >/dev/null 2>&1
+git -C "$TREE" rm -rq frontend
+tree_commit "a frontend deletion-only commit, tree never set up" 0
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
 stage "frontend/src/App.jsx"
 tree_commit "a frontend change in a tree never set up" 2 "npm ci --prefix"
 mkdir -p "$TREE/frontend/node_modules"

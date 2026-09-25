@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -69,7 +69,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 |---|---|
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
 | `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
-| `frontend/` | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
+| `frontend/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `dart format --output=none --set-exit-if-changed lib test` (plus `integration_test` when it exists; the whole tree, not only the staged files, so drift another commit let through is caught — under a second; the refusal names `dart format lib test`), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get`; a `pubspec.lock` the pub get rewrote and that is left unstaged (not under `-a`) → refusal naming `git add` |
 | anything else (docs, legacy `src/`) | none |
 

@@ -2,7 +2,7 @@
 
 > Scope: bot players in the Rust backend (`zapzap-rust/src/infrastructure/bot/`): difficulties, strategies, parameter provenance, LLM bot (Ollama / Bedrock) and its memory, how bot turns are triggered. Short pointer to the training-only strategies in `native/`.
 > Related: [[Backend]] · [[Api]] · [[GameRules]] · [[NativeEngine]] · [[Architecture]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -68,7 +68,7 @@ Mapping done once, in `BotBrain::for_difficulty` (`zapzap-rust/src/application/b
 - Card notation in prompts: `RankSuit`, suits S/H/C/D, joker `JKR` (`llm_bot.rs:21`, `:147-154`); reflection prompt is in French with suits P/C/T/K (`zapzap-rust/src/application/bot/reflect_on_round.rs:136-166`, `:225`).
 
 ### LLM memory and reflection
-- `LlmBotMemory` per bot, JSON file `{BOT_STRATEGIES_DIR}/{bot_user_id}.json`, default dir `data/bot-strategies` (read once into `AppState.bot_strategies_dir`, `zapzap-rust/src/infrastructure/app_state.rs`); atomic save via `.tmp` + rename (`llm_memory.rs` `save`). `data/bot-strategies/` is untracked in git.
+- `LlmBotMemory` per bot, JSON file `{BOT_STRATEGIES_DIR}/{bot_user_id}.json`, default dir `data/bot-strategies` (read once into `AppState.bot_strategies_dir`, `zapzap-rust/src/infrastructure/app_state.rs`); atomic save via `.tmp` + rename (`llm_memory.rs` `save`). `data/bot-strategies/` is gitignored.
 - A directory that cannot be created or written (root-owned on the NAS, the image runs as uid 1000) never fails a bot turn: `load` warns and starts empty, and `save_or_keep`, which the reflection calls, warns once and keeps the memory in the process (lost at restart). Tests: `test_llm_bots_play_on_when_the_strategies_dir_is_not_writable` (`zapzap-rust/tests/rules_and_bots_tests.rs`), `test_reflection_in_a_read_only_strategies_dir_keeps_the_insights_in_memory` (`reflect_on_round.rs`).
 - Limits: 20 strategies, 5 per category, 50 recent decisions, 10 game summaries (`llm_memory.rs:48-51`). Categories: play_strategy, zapzap_timing, draw_decision, golden_score, opponent_reading (`:14-20`).
 - Cached in `AppState.llm_memories`, loaded lazily (`app_state.rs:72`, `:187-205`).
