@@ -2,7 +2,10 @@
 
 # ZapZap - build the production backend service of the root docker-compose.yml (the Rust
 # backend, `bedrock` feature) and prove the container starts and passes its own compose
-# health check (`curl` against /api/health) on an empty database.
+# health check (busybox `wget` against /api/health) on an empty database. Then the facts
+# production relies on: the image runs as uid 1000 (the ownership of data/), carries the
+# system CA store (rustls-native-certs, the Bedrock client) and stays small (Alpine, a
+# static musl binary: under MAX_IMAGE_BYTES).
 #
 # What differs from production, through an override file and nothing else: a scratch
 # data directory instead of ./data, a throwaway JWT_SECRET, a container name of its own,
@@ -16,6 +19,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="${SMOKE_PROJECT:-zapzap-backend-smoke}"
+MAX_IMAGE_BYTES=40000000
 SCRATCH="$(mktemp -d)"
 DATA="$SCRATCH/data"
 
@@ -69,6 +73,26 @@ if [ "$state" != healthy ]; then
 fi
 
 user=$(docker exec "$cid" id -u)
-body=$(docker exec "$cid" curl -fsS http://localhost:9999/api/health)
+body=$(docker exec "$cid" wget -qO- http://127.0.0.1:9999/api/health)
 echo "✓ backend container healthy (uid $user): $body"
 [ "$user" = 1000 ] || { echo "✗ expected the image to run as uid 1000, got $user" >&2; exit 1; }
+
+image=$(docker inspect -f '{{.Image}}' "$cid")
+
+# The image's own user, not the container's: production starts it without --user.
+image_user=$(docker run --rm --entrypoint id "$image" -u)
+[ "$image_user" = 1000 ] || { echo "✗ the image's user is uid $image_user, not 1000" >&2; exit 1; }
+
+# The system store rustls-native-certs reads (it follows openssl-probe's paths).
+if ! docker run --rm --entrypoint test "$image" -s /etc/ssl/certs/ca-certificates.crt; then
+    echo "✗ the image has no system CA store (/etc/ssl/certs/ca-certificates.crt)" >&2
+    exit 1
+fi
+echo "✓ image user uid $image_user, system CA store present"
+
+size=$(docker image inspect -f '{{.Size}}' "$image")
+echo "✓ image size: $((size / 1000000)) MB ($size bytes)"
+if [ "$size" -ge "$MAX_IMAGE_BYTES" ]; then
+    echo "✗ the image is $size bytes, the limit is $MAX_IMAGE_BYTES" >&2
+    exit 1
+fi

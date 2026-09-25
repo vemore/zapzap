@@ -1,15 +1,15 @@
 # Rust Backend Dockerfile for ZapZap
-# Multi-stage build for smaller final image
+# Multi-stage build: a static musl binary, served from a bare Alpine image.
 
 # Stage 1: Build
-# Keep in step with rust-toolchain.toml.
-FROM rust:1.92-slim-bookworm AS builder
+# Keep in step with rust-toolchain.toml. The Alpine image targets x86_64-unknown-linux-musl,
+# which links statically by default: the binary needs no libc, no OpenSSL at run time.
+FROM rust:1.92-alpine AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Two crates compile C: libsqlite3-sys (bundled SQLite) needs a C toolchain and the musl
+# headers; aws-lc-sys (rustls' crypto under the `bedrock` feature) also needs cmake, perl,
+# make, clang and the kernel headers.
+RUN apk add --no-cache musl-dev cmake perl make clang linux-headers
 
 # Set working directory
 WORKDIR /app
@@ -40,31 +40,33 @@ RUN cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} && \
 # Copy actual source code
 COPY src ./src
 
-# Build the application; touching the sources makes them newer than anything cached
+# Build the application; touching the sources makes them newer than anything cached.
+# The binary is stripped (no debug symbols in the image) and must come out static: no
+# NEEDED entry, or the Alpine runtime would lack the library it names.
 RUN touch src/lib.rs src/main.rs && \
-    cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
+    cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} && \
+    strip target/release/zapzap-backend && \
+    ! readelf -d target/release/zapzap-backend | grep -q NEEDED
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim
+# ca-certificates only: rustls-native-certs (the Bedrock client) reads the system store,
+# /etc/ssl/certs. Health checks use busybox's wget; there is no curl.
+FROM alpine:3.22
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates
 
-# Create non-root user
-RUN useradd -m -u 1000 zapzap
+# Non-root user, uid 1000: the ownership of data/ in production relies on it
+RUN adduser -D -u 1000 zapzap
 
 # Set working directory
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/zapzap-backend /app/zapzap-backend
+# Data directory, owned by the runtime user. Before the binary, and never a recursive chown
+# of /app: a chown after the COPY would store the 20 MB binary a second time in its layer.
+RUN mkdir -p /app/data && chown zapzap:zapzap /app/data
 
-# Create data directory
-RUN mkdir -p /app/data && chown -R zapzap:zapzap /app
+# Copy binary from builder; it stays root-owned, the runtime user cannot rewrite it
+COPY --from=builder /app/target/release/zapzap-backend /app/zapzap-backend
 
 # Switch to non-root user
 USER zapzap
@@ -77,9 +79,10 @@ ENV RUST_LOG=info,zapzap_backend=debug
 # Expose port
 EXPOSE 9999
 
-# Health check
+# Health check. 127.0.0.1, not localhost: the backend listens on IPv4 only, and localhost
+# may resolve to ::1 first.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:9999/api/health || exit 1
+    CMD wget -q --spider http://127.0.0.1:9999/api/health || exit 1
 
 # Run the application
 CMD ["/app/zapzap-backend"]
