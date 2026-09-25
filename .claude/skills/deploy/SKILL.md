@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the four images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged with the 12-character sha, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>` (the compose file that tag ran with), `--build-only`, and the one-off switch from the old NAS clone. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the four images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged with the 12-character sha, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>` (the compose file that tag ran with), and `--build-only`. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
@@ -44,89 +44,9 @@ On the dev machine that deploys (the main checkout, or a worktree set up with
   short of it fails before anything is pushed, which costs nothing but the minutes. The NAS
   only needs room for the pulled images.
 
-### First deploy: switching the NAS from the old clone
-
-Until this is done, production runs from the git clone `/home/vemore/workspace/zapzap` on the
-NAS, built there by the removed `deploy.sh`. The switch touches production and needs `sudo`
-on the NAS: **the user runs or approves each step.** Its containers have the same names and
-the same compose project (`zapzap`) as the deploy directory's, so the first
-`deploy_nas.sh` replaces them.
-
-0. **#106 (the Alpine backend image) is merged *and deployed* first**, through the old clone
-   and its `deploy.sh`, as any deploy before this switch. `docker-compose.prod.yml` checks the
-   backend with `wget`, which only that image carries: `deploy_nas.sh` refuses to push a
-   backend image without it, so building from a master that lacks #106 stops at the build.
-
-1. **The NAS trusts the registry.** `/etc/docker/daemon.json` does not exist there
-   (2026-09-25). Restarting the daemon stops every container of the NAS for a few seconds —
-   schedule it; `restart: unless-stopped` brings them back. The NAS is an Ubuntu host with
-   Docker in `/usr/local/bin`: if `systemctl restart docker` names no unit there, find how
-   its daemon is started (`systemctl list-units | grep -i docker`) before going on.
-
-   ```bash
-   ssh -t vemore@192.168.1.147 'echo "{\"insecure-registries\": [\"192.168.1.25:5050\"]}" | sudo tee /etc/docker/daemon.json && sudo systemctl restart docker'
-   ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker info 2>/dev/null | grep -A3 "Insecure Registries"'   # lists 192.168.1.25:5050
-   ```
-
-2. **The NAS logs in to the registry**, the user typing the credentials:
-   `ssh -t vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker login 192.168.1.25:5050'`.
-
-3. **The deploy directory, and the secrets**, copied without printing them (the clone keeps
-   its copy as the fallback of step 8; it goes with the clone):
-
-   ```bash
-   ssh vemore@192.168.1.147 'mkdir -p /home/vemore/docker/zapzap/data && cp -p /home/vemore/workspace/zapzap/.env /home/vemore/docker/zapzap/.env && ls -la /home/vemore/docker/zapzap'
-   ```
-
-4. **Build and push first, while the clone still serves**, from the dev machine (§0 done,
-   §1's clean checkout of master):
-
-   ```bash
-   scripts/deploy_nas.sh --build-only
-   ```
-
-   It builds, checks the backend image has `wget`, and pushes — without touching the NAS,
-   so it does not need the deploy directory's database yet. Step 6's deploy then rebuilds
-   from the Docker cache in seconds and its pushes are no-ops: the downtime is only the
-   data copy, the pull and the start.
-
-5. **Count what must survive**, before anything stops:
-
-   ```bash
-   ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && python3 -c "import sqlite3; c=sqlite3.connect(\"file:data/zapzap.db?mode=ro\", uri=True); print([c.execute(f\"SELECT COUNT(*) FROM {t}\").fetchone()[0] for t in (\"users\", \"parties\")])"'
-   ```
-
-6. **Stop the clone's stack, back up and copy the data.** Downtime starts here and lasts until
-   step 7's health wait ends (a copy, a pull and a start: the images are pushed already).
-   The backend reads only `zapzap.db` and `bot-strategies/` from `data/`; the tracked bot
-   parameter files and models there are not read by the Rust backend.
-
-   ```bash
-   ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; cd /home/vemore/workspace/zapzap && \
-     docker-compose down --remove-orphans && \
-     cp -p data/zapzap.db data/zapzap.db.bak-$(date +%F-%H%M) && \
-     cp -a data/zapzap.db data/bot-strategies /home/vemore/docker/zapzap/data/ && \
-     find /home/vemore/docker/zapzap/data -maxdepth 2 ! -uid 1000'    # prints nothing
-   ```
-
-7. **The first deploy**, from the dev machine: `scripts/deploy_nas.sh` (§2). Then §3, and the
-   checks of the switch itself:
-
-   ```bash
-   ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker inspect -f "{{range .Mounts}}{{.Source}} {{end}}" zapzap-backend'   # /home/vemore/docker/zapzap/data
-   ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker images --format "{{.Repository}}:{{.Tag}}" | grep zapzap'
-   ```
-
-   and the counts of step 5 again, run in `/home/vemore/docker/zapzap`: the same numbers.
-
-   **If it fails** and no quick fix is in sight, the clone is the fallback, untouched:
-   `ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin COMPOSE_PROJECT_NAME=zapzap; cd /home/vemore/docker/zapzap && docker-compose -f compose.yaml down --remove-orphans; cd /home/vemore/workspace/zapzap && docker-compose up -d'`
-   — on the database *of the clone*: anything played on the new stack meanwhile is lost,
-   so ask the user first if players were on.
-
-8. **At D+7**, the new stack having held: delete the clone (its `.env` goes with it) and its
-   locally built images (`zapzap_backend`, `zapzap_frontend`, `zapzap_frontend-flutter`,
-   and what `docker image prune` then finds dangling). Ask the user before deleting.
+The one-off switch from the old NAS clone is done (2026-09-25): the clone and its images are
+gone, and production's `.env` holds only keys the Rust stack reads. How it went:
+`.llmwiki/Deployment.md`, history.
 
 ## 1. Preflight
 

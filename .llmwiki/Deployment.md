@@ -19,8 +19,8 @@
 | Secrets | the deploy directory's `.env` (JWT, Google, AWS Bedrock) — never printed, never copied off the NAS | `docker-compose.prod.yml`, service `backend` |
 
 `192.168.1.25` is the registry host only (the user-level `deploy-nas` skill's; it refuses
-SSH). Until the switch of the `deploy` skill's "First deploy" section, production ran from a
-git clone at `/home/vemore/workspace/zapzap` on the NAS, built there (history below).
+SSH). Until 2026-09-25 production ran from a git clone at `/home/vemore/workspace/zapzap` on
+the NAS, built there; the clone and its images are deleted (history below).
 
 ### What runs
 
@@ -59,10 +59,10 @@ root `docker-compose.yml`):
 | `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
 | `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
 
-Production's `.env` may still hold keys only the removed Node backend read — `NODE_ENV`,
-`ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR` — and `DB_PATH`, which the backend reads only when
-`DATABASE_URL` is unset (compose sets it): nothing reads them, they can be dropped
-(`.env.example`).
+Production's `.env` holds none of the keys only the removed Node backend read — `NODE_ENV`,
+`ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR` — nor `DB_PATH`, which the backend reads only when
+`DATABASE_URL` is unset (compose sets it): dropped 2026-09-25, a backup `.env.bak-*-node-keys`
+kept next to it.
 
 **CORS answers every origin.** The Rust router uses `CorsLayer::permissive()`
 (`zapzap-rust/src/api/mod.rs:32`); there is no allow-list (`ALLOWED_ORIGINS` is read by
@@ -347,3 +347,7 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   configuration): this repository already publishes the NAS address, and the script writes
   the configured one into the compose file it sends. The proxy became an image of its own so
   nothing on the NAS is a file of the repository.
+- **The switch is closed (2026-09-25, docs/nas-switch-done).** The first `deploy_nas.sh`
+  (34918bab08a6) came up healthy with 25 users and 29 parties before and after; the user deleted
+  the clone and its `zapzap_*` images the same day instead of waiting a week, and the Node-only
+  keys left the `.env`. The step-by-step switch left the `deploy` skill.
