@@ -1,6 +1,6 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production still runs the earlier Node.js/Express backend while the switch to Rust is prepared. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production runs the Rust backend; the earlier Node.js/Express backend stays in the repository as its rollback. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -93,16 +93,21 @@ cd zapzap
 cp .env.example .env
 
 # 3. Generate a secure JWT secret
-openssl rand -base64 32
+openssl rand -hex 32
 
-# 4. Edit .env and set JWT_SECRET to the generated value
+# 4. Edit .env and set JWT_SECRET to the generated value (required: the backend
+#    refuses to start without it, or with the placeholder of .env.example)
 nano .env
+
+# 4b. The backend opens data/zapzap.db and never creates the file itself (it creates
+#     the tables): create it once, writable by the image's user (uid 1000)
+mkdir -p data && touch data/zapzap.db
 
 # 5. Start all services
 docker-compose up -d
 
-# 6. (Optional) Initialize demo data
-docker-compose exec backend npm run init-demo
+# 6. (Optional) Initialize demo data, from the host (Node), into the same file
+npm ci && npm run init-demo && npm run init-bots
 ```
 
 The application will be available at **http://localhost** (port 80).
@@ -113,8 +118,9 @@ The Docker setup includes four services:
 
 - **nginx** (Reverse Proxy) - Routes requests to appropriate services
   - Port 80 → Frontend, Flutter PWA and API
-- **backend** (Node.js API) - Express API server
-  - Internal port 9999
+- **backend** (Rust API, `zapzap-rust/`) - axum API server, built with the AWS Bedrock client
+  of the LLM bots (`CARGO_FEATURES=bedrock`)
+  - Internal port 9999, database `./data/zapzap.db` mounted at `/app/data`
 - **frontend** (React App) - Vite-built React application
   - Internal port 80, served at `/`
 - **frontend-flutter** (Flutter PWA) - the Flutter web bundle, built with `--base-href /app/`
@@ -126,12 +132,15 @@ Environment variables in `.env`:
 
 ```env
 # Required
-NODE_ENV=production
 JWT_SECRET=your-secure-random-string-here
 
 # Optional
-LOG_LEVEL=info
+RUST_LOG=info
 PROXY_PORT=80
+GOOGLE_OAUTH_CLIENT_ID=...          # Google sign-in; VITE_GOOGLE_OAUTH_CLIENT_ID for the clients
+BOT_ACTION_DELAY_MS=1000
+AWS_BEDROCK_ENABLED=true            # LLM bots, with AWS_BEDROCK_REGION, AWS_BEDROCK_MODEL_ID,
+                                    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 ```
 
 ### Useful Docker Commands
@@ -223,26 +232,20 @@ docker-compose up -d
 
 For production deployment:
 
-1. **Set NODE_ENV to production**
-   ```env
-   NODE_ENV=production
-   ```
-
-2. **Use a strong JWT secret**
+1. **Use a strong JWT secret** (required; `docker-compose` refuses to start without one)
    ```bash
-   openssl rand -base64 64
+   openssl rand -hex 32
    ```
 
-3. **Configure proper logging**
+2. **Configure proper logging** (the backend logs to stdout: `docker-compose logs backend`)
    ```env
-   LOG_LEVEL=warn
+   RUST_LOG=warn
    ```
 
-4. **Consider adding HTTPS** (Modify nginx config for SSL)
+3. **Consider adding HTTPS** (Modify nginx config for SSL)
 
-5. **Set up proper monitoring and backups**
+4. **Set up proper monitoring and backups**
    - Database backups: `./data/`
-   - Log rotation: `./logs/`
 
 6. **Review security settings** in CLAUDE.md
 
@@ -307,11 +310,11 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 
 | Part | Path | Stack | Status |
 |---|---|---|---|
-| Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | target backend, not deployed yet |
+| Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | **runs in production** (since 2026-09-24) |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
 | Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register (password or Google), the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
-| Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | **runs in production** until the switch |
+| Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | production's rollback (`.llmwiki/Deployment.md`) |
 
 The Flutter client, from `frontend-flutter/`:
 
@@ -343,10 +346,10 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 
 `.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
-unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (docker build of the
-Rust backend, of the Node backend production runs — root `Dockerfile`, npm 10 — and of both
-frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
-debug apk builds), Node backend (`npm test`: the jest suites in `tests/unit` and
+unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
+compose's Rust backend with the Bedrock feature, started until its health check passes; the
+Node backend a rollback builds — root `Dockerfile`, npm 10 —; both frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
+debug apk builds), Flutter end to end (a round against the Rust backend), Node backend (`npm test`: the jest suites in `tests/unit` and
 `tests/integration`, on Node 20), backend parity (`npm run test:parity`: the same HTTP
 scenarios against the Node and Rust backends, every known difference listed in
 `tests/parity/divergences.json`). `master` accepts only

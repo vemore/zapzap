@@ -1,9 +1,9 @@
 # Deployment
 
 > Scope: where production runs, how it is built and started, where its data and secrets
-> live, and the gap between what is deployed and what the project targets.
+> live, the Rust backend service, and the rollback to the Node backend.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -15,26 +15,104 @@
 | Public URL | `https://zapzap.ombivince.synology.me/` | old `CLAUDE.md` |
 | Checkout | `/home/vemore/workspace/zapzap`, a git clone of `https://github.com/vemore/zapzap.git` on `master`, at `d43e199` (2025-12-20) on 2026-09-22 | `git log -1` on the NAS |
 | Docker | `/usr/local/bin/docker`, `docker-compose` **1.29.2** — the v1 Python CLI, not `docker compose` | `docker-compose version` on the NAS, 2026-09-23 |
-| Secrets | the clone's `.env` (JWT, Google, AWS Bedrock) — never printed, never copied | root `docker-compose.yml:10-22` |
+| Secrets | the clone's `.env` (JWT, Google, AWS Bedrock) — never printed, never copied | root `docker-compose.yml`, service `backend` |
 
 `192.168.1.25` (the user-level `deploy-nas` skill's registry host) refuses SSH and is not
 part of this deployment.
 
-### What runs (checked 2026-09-22)
+### What runs
 
 | Container | Image | Command | Mounts |
 |---|---|---|---|
-| `zapzap-backend` | `zapzap-backend`, built from the root `Dockerfile` | `node scripts/docker-entrypoint.js` | `data/ → /app/data`, `logs/ → /app/logs` |
+| `zapzap-backend` | built from `zapzap-rust/Dockerfile` with `CARGO_FEATURES=bedrock`, runs as uid 1000 | `/app/zapzap-backend` | `data/ → /app/data` |
 | `zapzap-frontend` | `zapzap-frontend`, built from `frontend/Dockerfile` | nginx serving the Vite build | — |
 | `zapzap-frontend-flutter` | `zapzap-frontend-flutter`, built from `frontend-flutter/Dockerfile` | nginx serving the Flutter web bundle under `/app/` | — |
 | `zapzap-proxy` | `nginx:alpine` | nginx | `nginx/nginx.conf → /etc/nginx/conf.d/default.conf` |
 
-All four come from the root `docker-compose.yml`; the backend and frontend containers were
-created 2026-04-23, and `zapzap-frontend-flutter` has served the PWA under `/app/` since #36
-(2026-09-23); every Flutter merge since (#62, #63, #64) went out through the `deploy` skill.
-**Production runs the legacy Node backend (`src/`),
-not `zapzap-rust/`**, which has its own `Dockerfile` and `docker-compose.yml` (the same four
-services) and has never been deployed.
+All four come from the root `docker-compose.yml`. `zapzap-frontend-flutter` has served the
+PWA under `/app/` since #36 (2026-09-23). **The `backend` service is the Rust backend
+(`zapzap-rust/`) from the switch of 2026-09-24 on**; until then it was the legacy Node backend
+(root `Dockerfile`, `node scripts/docker-entrypoint.js`, containers created 2026-04-23),
+which stays in the repository as the rollback (below). `zapzap-rust/docker-compose.yml` is a
+standalone copy for local use (container `zapzap-rust-backend`, port 9999 published, no
+Bedrock by default); production does not use it.
+
+### The backend service (Rust, since 2026-09-24)
+
+The service and container keep the names `backend` and `zapzap-backend`: `nginx/nginx.conf`
+proxies `/api/` and `/suscribeupdate` to `backend:9999`, and `deploy.sh`'s
+`ESSENTIAL_SERVICES` names it. Its environment (root `docker-compose.yml`):
+
+| Variable | Value | Why |
+|---|---|---|
+| `PORT` | `9999` | the nginx upstream |
+| `DATABASE_URL` | `sqlite:/app/data/zapzap.db` | the bind-mounted file; no `mode=rwc`, so a missing file stops the backend instead of starting it on an empty database |
+| `JWT_SECRET` | `${JWT_SECRET:?...}` | no default: `docker-compose` refuses the file without it, and the binary refuses a blank or published placeholder ([[Backend]]). Production's `.env` has a private 44-character one (checked 2026-09-24); Node's tokens carry the same `{userId, username, isAdmin}` claims, so sessions survive the switch |
+| `RUST_LOG` | `${RUST_LOG:-info}` | stdout only: the Rust backend writes no log file, so there is no `logs/` mount |
+| `GOOGLE_OAUTH_CLIENT_ID` | from `.env` | Google login |
+| `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | the pause between two bot actions, read by `action_delay_from` (`zapzap-rust/src/application/bot/runner.rs`, default 1000 ms like Node's `src/api/bootstrap.js`, but `0` means no pause); production's `.env` sets `2000` |
+| `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
+| `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
+
+The Node-only keys of `.env` — `NODE_ENV`, `ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR`,
+`DB_PATH` — are unused by the Rust service; they stay in production's `.env` for as long as
+a rollback to Node is wanted.
+
+**CORS is wider than Node's.** The Rust router answers every origin
+(`CorsLayer::permissive()`, `zapzap-rust/src/api/mod.rs:32`), where Node, in production,
+granted only the origins of `ALLOWED_ORIGINS` (`src/api/server.js:32-35`). Both clients are
+same-origin under the production domain, and authentication is a bearer token, never a
+cookie, so another site cannot ride a player's session; restricting it is tracked in
+`wip/`.
+
+**Ownership of `data/`.** The image runs as uid 1000 (`zapzap-rust/Dockerfile`, user
+`zapzap`); the Node image ran as root. On the NAS (checked 2026-09-24) `data/` and
+`data/zapzap.db` are `1000:1000`, but `data/bot-strategies/` is `root:root 755`, written by
+Node: Rust can read it but not save an LLM bot's memory there (the save fails and is logged,
+`reflect_on_round.rs`). The switch therefore starts with a one-time `chown` of that
+directory to `1000:1000`, and a check that nothing else in `data/` that SQLite writes (the
+database, and its `-wal`/`-journal` files next to it) is owned by another user — the `deploy`
+skill §0 has the commands. Node, running as root, still reads and writes everything after
+the `chown`, so the rollback needs no `chown` back.
+
+**The schema step on the production database.** At start-up the backend runs the Node DDL,
+all `IF NOT EXISTS`, in one transaction ([[Backend]]). On a database the Node app has opened
+it is a no-op; on a `users` table rebuilt by `scripts/docker-entrypoint.js` and never opened
+by the Node app since, it fails on `idx_users_google_id` and the backend refuses to start with
+the file untouched. Production's database has been opened by the Node app for months (and
+has Google users, so `google_id` exists): the step is expected to be a no-op. The rehearsal
+on a copy checks it — the backend starts, `sqlite_master` is the same before and after, the
+counts of `users`, `parties` and `game_results` are unchanged — before production is touched.
+
+`CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker compose
+build backend`, then the container on an empty database until its compose health check
+passes) and still builds the root `Dockerfile`, so the rollback image stays buildable.
+
+### Rolling back to Node
+
+The rollback is the `deploy` skill's §4 to the last commit before the switch: its
+`docker-compose.yml` declares the Node `backend`, and `docker-compose build` rebuilds it from
+the root `Dockerfile`. What the Rust backend wrote stays readable by Node — checked in the
+code and by a rehearsal (2026-09-24: Node built a database, the production Rust container
+logged users in, played a game to its end and started a second one, then Node opened the
+file):
+
+- the schema is Node's own DDL (`schema.sql`, compared statement by statement with
+  `DatabaseConnection.js` by `zapzap-rust/tests/schema_tests.rs`), and Rust adds no table;
+- timestamps are Unix seconds on both sides (`chrono::Utc::now().timestamp()` in the Rust
+  repositories, `Math.floor(Date.now() / 1000)` in `src/domain/entities/`);
+- `parties.settings_json` holds Node's keys `{playerCount, allowSpectators, roundTimeLimit}`
+  (`party_settings.rs`, `serde(rename_all = "camelCase")`);
+- `game_state.state_json` holds every key Node's `GameState` reads, `eliminatedPlayers` and
+  `startingPlayer` included, plus Rust-only keys Node ignores (`GameState::to_json`); in the
+  rehearsal Node served the Rust-started game's state (same hand, turn, action, deck), played
+  it to its end, and served the finished game's history and statistics;
+- JWTs: same secret, same claims — a token Rust signed is accepted by Node.
+
+**Passwords stay bcrypt.** Rust hashes new passwords with bcrypt at Node's cost and never
+rehashes on login (fix/rust-keeps-bcrypt, #100), so every password Rust set or checked
+verifies on Node. Only a Rust build from before that fix wrote Argon2 hashes; production
+never ran one.
 
 ### The Flutter PWA under `/app/`
 
@@ -97,8 +175,10 @@ it stops at the first failure, a failure on the left of a pipe included):
    up to 90 s; then a 60 s grace for the other services, `docker-compose ps` and the health
    payload.
 
-Between 3 and 4 it also **refuses if the compose file stops declaring one of the essential
-services**, while nothing has been built or stopped: `ESSENTIAL_SERVICES` and
+Between 2 and 3 it also **refuses if `docker-compose` cannot read the compose file** — since
+the Rust backend, a `.env` without `JWT_SECRET` — printing compose's reason, **or if the
+compose file stops declaring one of the essential services**, while nothing has been built
+or stopped: `ESSENTIAL_SERVICES` and
 `PROXY_SERVICE` at the top of `deploy.sh`, `docker-compose.yml` and `nginx/nginx.conf` have
 to change together, and a rename must not silently demote a service that serves the site.
 
@@ -169,7 +249,8 @@ minutes and **~3.6 GB** of Docker storage to the host (measured 2026-09-23: buil
 order including `--remove-orphans`, that a failing build reaches no `down`, that a failing
 `down` retries `up -d`, that an unhealthy **essential** container or a silent `/api/health`
 fails the deploy while an unhealthy `frontend-flutter` only warns and exits 2, that a compose
-file missing an essential service refuses before building, and every refusal — including the
+file missing an essential service, or one `docker-compose` cannot read, refuses before
+building, and every refusal — including the
 subdirectory invocation and git being unavailable. It drives the real `deploy.sh` in a
 sandbox clone with `docker-compose`, `docker`, `curl`, `jq` and `sleep` stubbed, the `docker`
 stub answering a state per service.
@@ -254,3 +335,14 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   > React `GameBoard` and `PartyLobby` must pass `?token=` to `/suscribeupdate`: Rust sends a
   > game's moves and a private party's events only to its players' streams, so tokenless
   > streams would miss them (tracked in `wip/`).
+  > **Status: Outdated** (2026-09-24) — the React `GameBoard` and `PartyLobby` pass the token
+  > (#94), and production runs the Rust backend (the entry below).
+- **Production switches to the Rust backend (2026-09-24).** The user decided the switch once
+  the gaps above were closed: the root compose's `backend` service builds `zapzap-rust/`
+  with the Bedrock feature, under the same service and container names so that nginx and
+  `deploy.sh` stay as they are. The Node backend is kept, buildable and gated in CI, as the
+  rollback, because its database is the same file and Rust writes it in Node's formats —
+  password hashes excepted until fix/rust-keeps-bcrypt (#100) made Rust keep bcrypt. `deploy.sh` gained one refusal:
+  a compose file `docker-compose` cannot read (a `.env` without `JWT_SECRET`) stops the
+  deploy before the build, with compose's reason.
+- **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat found by the local rehearsal is void since fix/rust-keeps-bcrypt (#100: Rust keeps bcrypt, user decision); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.

@@ -42,10 +42,10 @@ A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the proj
 stubbed `gh`, `cargo`, `npm`, `flutter`, `dart`, `docker-compose`, `docker` and `curl` — plus
 `scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh` (and that
 a failed one clears its setup marker), and
-`deploy.sh` (42 cases: the step order that makes a failed deploy a no-op rather than an
-outage, the health wait that stops it reporting success over a dead site, and every refusal
-— [[Deployment]]); it is the `hooks` CI job. `deploy.sh` is not classified by
-`scripts/ci_scope.sh`, so a change to it runs every job, the `hooks` one included.
+`deploy.sh` (45 cases: the step order that makes a failed deploy a no-op rather than an
+outage, the health wait that stops it reporting success over a dead site, and every refusal,
+a compose file `docker-compose` cannot read included — [[Deployment]]); it is the `hooks` CI
+job. `scripts/ci_scope.sh` classifies `deploy.sh` as `hooks`, so a change to it runs that job.
 
 ### What is refused, and on what evidence
 
@@ -96,7 +96,7 @@ are not inspected. The ship-parallel agent prompt says so.
   is not proof the branch is live.
 - **Publishing**: `require-pull-request.sh` reads GitHub, never writes; silent without `gh`,
   unauthenticated, or on a branch with `git config branch.<name>.noPullRequest true`.
-- **The Node backend** (`src/`), which production runs, has no pre-commit gate: CI's `node`
+- **The Node backend** (`src/`), production's rollback since 2026-09-24, has no pre-commit gate: CI's `node`
   job (jest) and `image` job (root `Dockerfile`) are its only checks ([[Testing]]).
 - **Hard enforcement generally**: a missing or non-executable script exits 127, a timeout
   does not block either. They reduce a class of mistake; they do not make it impossible.
@@ -122,3 +122,4 @@ are not inspected. The ship-parallel agent prompt says so.
   its own. Stacked pull requests are refused and a dependent group waits for a later wave,
   branched from `master` once its base merged, so the hook keeps counting from
   `origin/master` and no flag was added.
+- **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.

@@ -646,7 +646,7 @@ mkdir -p "$DSTATES"
 DSERVICES="$SANDBOX/deploy-services" # what `docker-compose config --services` answers
 services_stub() { printf '%s\n' "$@" > "$DSERVICES"; }
 services_stub backend frontend nginx frontend-flutter
-compose_stub() {  # exit code of `build`, of `down`, of `up` (0 = that step succeeds)
+compose_stub() {  # exit code of `build`, of `down`, of `up`, [of `config`] (0 = succeeds)
     cat > "$DTOOLS/docker-compose" <<STUBEOF
 #!/bin/sh
 echo "\$*" >> "$DLOG"
@@ -654,7 +654,12 @@ case "\$1" in
     build) exit $1 ;;
     down)  exit $2 ;;
     up)    exit $3 ;;
-    config) cat "$DSERVICES" ;;             # \`config --services\`
+    config)                                 # \`config --services\`
+        if [ "${4:-0}" != 0 ]; then
+            echo 'Missing mandatory value for "environment" option: JWT_SECRET must be set' >&2
+            exit ${4:-0}
+        fi
+        cat "$DSERVICES" ;;
     port)  echo 0.0.0.0:80 ;;               # \`port <proxy> 80\`
     ps)    [ "\$2" = -q ] && echo "cid-\$3" ;;
 esac
@@ -793,6 +798,16 @@ report "deploy: and builds nothing"                      "" "$(calls)"
 case "$dout" in *"expects a service named 'frontend'"*) got=named ;; *) got="missing from the output" ;; esac
 report "deploy: naming the service and the three files"  named "$got"
 services_stub backend frontend nginx frontend-flutter
+
+# A compose file docker-compose cannot read — since the Rust backend, a .env without
+# JWT_SECRET (`${JWT_SECRET:?...}`) — is refused before anything is built or stopped.
+compose_stub 0 0 0 1
+upstream "a change deployed with no JWT_SECRET in .env"
+run_deploy; rc=$?
+report "deploy: refuses a compose file it cannot read"   1 "$rc"
+report "deploy: and builds nothing then"                 "" "$(calls)"
+case "$dout" in *"JWT_SECRET must be set"*"cannot read the compose file"*) got=said ;; *) got="missing from the output" ;; esac
+report "deploy: printing compose's reason, then its own" said "$got"
 
 # A tracked production database: refuse before the pull, naming the fix.
 compose_stub 0 0 0

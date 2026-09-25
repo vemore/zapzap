@@ -39,6 +39,7 @@ jobs:
       flutter: ${{ steps.flags.outputs.flutter }}
       node: ${{ steps.flags.outputs.node }}
       parity: ${{ steps.flags.outputs.parity }}
+      e2e: ${{ steps.flags.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +60,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\nparity=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\nparity=true\ne2e=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -180,13 +181,25 @@ jobs:
             --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 \
             -v "$PWD/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
             nginx:alpine nginx -t
-      - name: Backend image
-        run: docker build -t zapzap-rust-backend:ci zapzap-rust
-      # The image production runs today (.llmwiki/Deployment.md): node:20-alpine, whose npm
-      # 10 runs `npm ci --only=production`. A package-lock.json a newer local npm accepts
-      # but npm 10 does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here,
-      # not on the NAS.
-      - name: Node backend image (production)
+      # The root compose file parses, and its backend service still requires JWT_SECRET:
+      # production's .env provides it, and the Rust backend has no default.
+      - name: Production compose file is valid
+        run: |
+          JWT_SECRET=ci-only docker compose config --quiet
+          if docker compose config --quiet 2>/dev/null; then
+            echo "docker-compose.yml accepts a missing JWT_SECRET" >&2; exit 1
+          fi
+      # The image production runs (.llmwiki/Deployment.md): the root compose's `backend`
+      # service, the Rust backend built with the Bedrock client of the LLM bots. The script
+      # builds it through compose, starts it on an empty database with a throwaway secret,
+      # and waits for its own compose health check (curl, which the image carries).
+      - name: Rust backend image (production, bedrock) builds and passes its health check
+        run: scripts/backend_image_smoke.sh
+      # The rollback image (.llmwiki/Deployment.md): node:20-alpine, whose npm 10 runs
+      # `npm ci --only=production`. A package-lock.json a newer local npm accepts but npm 10
+      # does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here, not during a
+      # rollback on the NAS.
+      - name: Node backend image (rollback)
         run: docker build -t zapzap-node-backend:ci .
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
@@ -261,12 +274,13 @@ jobs:
 
   # The Flutter end-to-end test (frontend-flutter/integration_test/): the real client, in
   # headless Chrome, registers a user and plays a round against two bots on a Rust backend
-  # started here on an empty database (scripts/flutter_e2e.sh). Not a required check: its
-  # name is free to change until branch protection pins it.
+  # started here on an empty database (scripts/flutter_e2e.sh). It runs on the `e2e` flag:
+  # a Flutter change, and a change to the Rust backend production runs. Not a required
+  # check: its name is free to change until branch protection pins it.
   flutter-e2e:
     name: Flutter end to end — a round against the Rust backend
     needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
+    if: ${{ !cancelled() && needs.scope.outputs.e2e != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -308,19 +322,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # The major the production image runs (Dockerfile: node:20-alpine).
+      # The major the rollback image runs (Dockerfile: node:20-alpine).
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
-      # tests/unit and tests/integration against src/, the code production runs;
+      # tests/unit and tests/integration against src/, the rollback backend;
       # jest.config.js keeps tests/e2e (Playwright), tests/parity (the parity job) and
       # frontend/ (vitest) out.
       - run: npm test
 
-  # The same HTTP scenarios against the Node backend (production) and the Rust backend
-  # (the target), compared (tests/parity, .llmwiki/Testing.md). A difference not listed in
+  # The same HTTP scenarios against the Node backend (the reference, and production's
+  # rollback) and the Rust backend (production), compared (tests/parity, .llmwiki/Testing.md). A difference not listed in
   # tests/parity/divergences.json fails it, and so does a listed one that no longer occurs.
   parity:
     name: Backend parity — Node vs Rust
