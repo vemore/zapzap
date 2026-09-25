@@ -1,9 +1,11 @@
 // End to end: the real client against a live backend — no fake, no fixture.
 //
 // Registers a fresh user, creates a party of three with two easy bots, starts
-// it and plays until the round ends — the hand size when it is this player's
-// to pick, the first card of the hand, a draw from the deck, ZapZap as soon as
-// the hand allows it — then checks the end-of-round screen.
+// it and plays until the round ends — four cards when the hand size is this
+// player's to pick, the suggestion that takes the most points off the hand, a
+// draw from the deck, ZapZap as soon as the hand allows it — then checks the
+// end-of-round screen. Shedding the most points each turn brings the hand to
+// ZapZap within a few turns: the round is held to [maxMoves].
 //
 // It needs a backend with the bot accounts (`zapzap-backend seed`) and is run
 // with `flutter drive`, never `flutter test`: scripts/flutter_e2e.sh does both
@@ -16,10 +18,17 @@ import 'package:zapzap/app.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/services/api_config.dart';
 import 'package:zapzap/widgets/card_fan.dart';
+import 'package:zapzap/widgets/game_hand_size_selector.dart';
 import 'package:zapzap/widgets/game_round_end.dart';
+import 'package:zapzap/widgets/hand_suggestions.dart';
 
-/// How long a round may take: the bots answer within a second or two, and a
-/// round of three is a few dozen turns.
+/// How many moves (a play, a draw, the call) this player may make before the
+/// round must be over: playing the most points each turn, a hand reaches
+/// ZapZap in about ten turns, and a bot's call ends it sooner.
+const maxMoves = 60;
+
+/// How long a round may take, a safety net behind [maxMoves]: the script
+/// starts the bots without a pause between their actions.
 const roundTimeout = Duration(minutes: 5);
 
 /// How long one screen may take to answer (HTTP, then the event stream).
@@ -139,12 +148,17 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
   final zapZap = find.byKey(const Key('call-zapzap'));
   final play = find.byKey(const Key('play-cards'));
   final draw = find.byKey(const Key('draw-card'));
+  final smallestHand = find.byKey(GameHandSizeSelector.sizeKey(4));
+  final bestPlay = find.byKey(HandSuggestions.chipKey(0));
   final firstCard = find.byKey(CardFan.itemKey(0));
   final myTurn = find.byKey(const Key('turnSteps'));
 
   var moves = 0;
   final deadline = DateTime.now().add(roundTimeout);
   while (roundOver.evaluate().isEmpty) {
+    if (moves > maxMoves) {
+      fail('the round did not end within $maxMoves moves\n${screenText()}');
+    }
     if (DateTime.now().isAfter(deadline)) {
       fail(
         'the round did not end within $roundTimeout ($moves moves)\n'
@@ -153,6 +167,7 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
     }
     if (handSize.evaluate().isNotEmpty && isEnabled(tester, handSize)) {
       log('choosing the hand size');
+      if (smallestHand.evaluate().isNotEmpty) await tap(tester, smallestHand);
       await tap(tester, handSize);
     } else if (myTurn.evaluate().isNotEmpty && isEnabled(tester, zapZap)) {
       log('calling ZapZap');
@@ -168,8 +183,11 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
       if (isEnabled(tester, play)) {
         await tap(tester, play);
         moves++;
+      } else if (bestPlay.evaluate().isNotEmpty) {
+        // The suggestions come most points first.
+        await tap(tester, bestPlay);
       } else if (firstCard.evaluate().isNotEmpty) {
-        // Nothing selected yet: one card alone is always a valid play.
+        // No suggestion (jokers only): one card alone is always a valid play.
         await tap(tester, firstCard);
       }
     }
