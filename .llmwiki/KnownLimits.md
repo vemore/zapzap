@@ -9,11 +9,9 @@
 
 | Gap | Where it shows | Why it stays for now |
 |---|---|---|
-| The Node backend (production's rollback since 2026-09-24) has no pre-commit hook gate, and its Playwright e2e suite runs nowhere | [[Hooks]], [[Testing]] | CI gates it since 2026-09-23 (`node` job: jest; `image` job: the root `Dockerfile`, which a rollback builds); the e2e suite needs a browser and both servers |
-| A rollback to Node is not rehearsed by CI | [[Deployment]] "Rolling back to Node" | it needs the Rust image, the Node app and one database file in one job; it was rehearsed by hand at the switch (2026-09-24), which found the Argon2 hashes Node could not verify — fixed by fix/rust-keeps-bcrypt (#100), whose jest `RustBcryptCompat.test.js` now pins that Node verifies Rust's hashes |
 | The hooks cannot see a commit made inside a script, a `git merge`, or a merge through the API | [[Hooks]] | a hook sees a command string only |
 | `AUDIT_REPORT.md` (2025-11) audited the old jQuery/EJS app | removed 2026-09-22 | it described code that no longer exists (git history keeps it) |
-| `BACKEND_API.md` described the Node API with several errors (JWT 24 h instead of 7 days, 2 players minimum instead of 3, SSE heartbeat 15 s instead of 20 s) | removed 2026-09-22 | [[Api]] replaces it, written from the Rust routes |
+| `BACKEND_API.md` described the (since removed) Node API with several errors (JWT 24 h instead of 7 days, 2 players minimum instead of 3, SSE heartbeat 15 s instead of 20 s) | removed 2026-09-22 | [[Api]] replaces it, written from the Rust routes |
 
 ## Decisions & History
 
@@ -29,3 +27,4 @@
 - **The Flutter end-to-end test leaves this table (2026-09-24).** The `flutter-e2e` CI job
   runs it against a Rust backend it starts ([[Testing]]).
 - **Production switches to Rust (2026-09-24).** The Node gates stay: `src/` is the rollback, and a rollback that does not build or does not start is worse than none. The rollback itself joins this table.
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** Its two rows leave this table: its missing hook gate and unrun Playwright suite, and the unrehearsed rollback to it — there is no Node backend to gate or roll back to; a rollback is the previous commit of the Rust deployment ([[Deployment]]). Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/e2e/`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

@@ -1,7 +1,7 @@
 //! Google OAuth: verifies Google ID tokens (the `credential` of Google Identity Services)
-//! and derives a username from the profile. Port of
-//! `src/infrastructure/services/GoogleOAuthService.js`, which relies on
-//! `google-auth-library`; here the RS256 signature is checked against Google's JWKS.
+//! and derives a username from the profile. The Node
+//! backend relied on `google-auth-library`; here the RS256 signature is checked against
+//! Google's JWKS.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -153,8 +153,8 @@ impl GoogleOAuthService {
         }
     }
 
-    /// `Some` when `GOOGLE_OAUTH_CLIENT_ID` is set and not blank, as Node's bootstrap
-    /// (`src/api/bootstrap.js:110-118`); the value is trimmed
+    /// `Some` when `GOOGLE_OAUTH_CLIENT_ID` is set and not blank, as the Node
+    /// backend did; the value is trimmed
     pub fn from_env() -> Option<Self> {
         std::env::var("GOOGLE_OAUTH_CLIENT_ID")
             .ok()

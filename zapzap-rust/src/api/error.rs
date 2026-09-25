@@ -1,7 +1,6 @@
 //! Typed API errors: each use-case error variant maps to the status and `code` the Node
-//! backend answers for it (`src/api/routes/partyRoutes.js`, `gameRoutes.js`), with no
-//! matching on message text. Where Node answers 500 for a client error (a Node bug), the
-//! mapping keeps a 4xx; `.llmwiki/Api.md` lists those cases.
+//! backend answered for it, with no matching on message text. Where Node answered 500 for
+//! a client error (a Node bug), the mapping keeps a 4xx; `.llmwiki/Api.md` lists those cases.
 
 use axum::{
     async_trait,

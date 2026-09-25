@@ -79,7 +79,7 @@ pub struct PartyInfo {
     pub current_round_id: Option<String>,
 }
 
-/// Node's `{playerIndex, userId, username}` (`src/use-cases/game/GetGameState.js`)
+/// A seat as `{playerIndex, userId, username}`, the Node backend's shape
 #[derive(Debug, Serialize)]
 pub struct PlayerInfo {
     #[serde(rename = "userId")]
@@ -257,7 +257,7 @@ impl From<crate::application::game::SeatScore> for SeatScoreInfo {
     }
 }
 
-/// Node's nextRound contract (`src/api/routes/gameRoutes.js`, `src/use-cases/game/NextRound.js`):
+/// The nextRound contract, as the Node backend had it:
 /// a new round sends `round`, `startingPlayer` and `scores`; the end of the game sends
 /// `winner` and `finalScores` instead. Scores are running totals keyed by player index.
 #[derive(Debug, Serialize)]

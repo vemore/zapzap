@@ -1,6 +1,6 @@
 //! Seeding the accounts a fresh database needs: the bot accounts and, on request, the demo
-//! users. `zapzap-backend seed [--demo]` runs it (`main.rs`); it replaces the Node scripts
-//! `scripts/init-bots.js` and `scripts/init-demo-data.js`.
+//! users. `zapzap-backend seed [--demo]` runs it (`main.rs`); it replaced the Node backend's
+//! two seeding scripts.
 //!
 //! Idempotent: the schema step first (`ensure_schema`, a no-op on an existing database),
 //! then an account is created only when its username is free. Run twice, or on the
@@ -18,7 +18,7 @@ use crate::infrastructure::auth::PasswordService;
 use crate::infrastructure::database::repositories::SqliteUserRepository;
 use crate::infrastructure::database::schema::ensure_schema;
 
-/// The bot accounts, as `scripts/init-bots.js` creates them: two of each difficulty.
+/// The bot accounts: two of each difficulty.
 pub const SEED_BOTS: [(&str, BotDifficulty); 8] = [
     ("EasyBot1", BotDifficulty::Easy),
     ("EasyBot2", BotDifficulty::Easy),
@@ -30,7 +30,7 @@ pub const SEED_BOTS: [(&str, BotDifficulty); 8] = [
     ("Thibot2", BotDifficulty::Thibot),
 ];
 
-/// The demo users of `scripts/init-demo-data.js`, all with the password [`DEMO_PASSWORD`].
+/// The demo users, all with the password [`DEMO_PASSWORD`].
 pub const DEMO_USERS: [&str; 5] = ["Vincent", "Thibaut", "Simon", "Lyo", "Laurent"];
 
 /// The demo users' password.

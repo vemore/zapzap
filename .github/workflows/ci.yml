@@ -37,8 +37,6 @@ jobs:
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
-      node: ${{ steps.flags.outputs.node }}
-      parity: ${{ steps.flags.outputs.parity }}
       e2e: ${{ steps.flags.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +58,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\nparity=true\ne2e=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -107,7 +105,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
-      # SQLite, tests/schema_tests.rs checks the schema against the Node DDL in ../src.
+      # SQLite, tests/schema_tests.rs checks the schema against a frozen Node-built one.
       - run: cargo test --locked --lib --bins --tests
 
   native:
@@ -195,12 +193,6 @@ jobs:
       # and waits for its own compose health check (curl, which the image carries).
       - name: Rust backend image (production, bedrock) builds and passes its health check
         run: scripts/backend_image_smoke.sh
-      # The rollback image (.llmwiki/Deployment.md): node:20-alpine, whose npm 10 runs
-      # `npm ci --only=production`. A package-lock.json a newer local npm accepts but npm 10
-      # does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here, not during a
-      # rollback on the NAS.
-      - name: Node backend image (rollback)
-        run: docker build -t zapzap-node-backend:ci .
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
@@ -303,52 +295,7 @@ jobs:
           flutter pub get --enforce-lockfile
           if [ -f l10n.yaml ]; then flutter gen-l10n; fi
       # The runner's Chrome and its matching chromedriver ($CHROMEWEBDRIVER); the backend
-      # gets a fresh database, seeded by `zapzap-backend seed` (no Node), and a generated
+      # gets a fresh database, seeded by `zapzap-backend seed`, and a generated
       # JWT_SECRET, both gone with the job.
       - name: Seed the bots, start the backend and chromedriver, flutter drive
         run: scripts/flutter_e2e.sh
-
-  node:
-    name: Node backend — jest
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.node != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      # The major the rollback image runs (Dockerfile: node:20-alpine).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      # tests/unit and tests/integration against src/, the rollback backend;
-      # jest.config.js keeps tests/e2e (Playwright), tests/parity (the parity job) and
-      # frontend/ (vitest) out.
-      - run: npm test
-
-  # The same HTTP scenarios against the Node backend (the reference, and production's
-  # rollback) and the Rust backend (production), compared (tests/parity, .llmwiki/Testing.md). A difference not listed in
-  # tests/parity/divergences.json fails it, and so does a listed one that no longer occurs.
-  parity:
-    name: Backend parity — Node vs Rust
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.parity != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.92
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: zapzap-rust
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Build the Rust backend (release)
-        working-directory: zapzap-rust
-        run: cargo build --release --locked
-      - run: npm ci
-      - name: Parity suite
-        run: npm run test:parity

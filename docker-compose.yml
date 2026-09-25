@@ -1,8 +1,8 @@
 services:
   # Backend API Service: the Rust backend (zapzap-rust/). The service and container names
   # stay `backend`/`zapzap-backend`: nginx/nginx.conf proxies to `backend:9999` and
-  # deploy.sh's ESSENTIAL_SERVICES names it. The Node backend (root Dockerfile, src/) is the
-  # rollback: the commit before the switch declares it here (.llmwiki/Deployment.md).
+  # deploy.sh's ESSENTIAL_SERVICES names it. A rollback is the previous commit of this
+  # deployment (.llmwiki/Deployment.md).
   backend:
     build:
       context: ./zapzap-rust
@@ -18,8 +18,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env (openssl rand -hex 32)}
       - RUST_LOG=${RUST_LOG:-info}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
-      # The pause between two bot actions (zapzap-rust/src/application/bot/runner.rs);
-      # 1000 is Node's default too
+      # The pause between two bot actions (zapzap-rust/src/application/bot/runner.rs)
       - BOT_ACTION_DELAY_MS=${BOT_ACTION_DELAY_MS:-1000}
       # LLM bots (.llmwiki/Bots.md): passed only when set in .env, because a variable that
       # is present, even empty, changes what the backend does — AWS_BEDROCK_ENABLED decides

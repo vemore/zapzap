@@ -5,7 +5,7 @@
 > routing guard, Google sign-in, real-time channel (SSE), the parties, create-party and lobby screens, the
 > game board, the history and statistics screens, the admin screen, theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -89,7 +89,7 @@
 
 - `baseUrl` is, in order: `--dart-define=API_BASE_URL=<url>`; on the web, the page's
   origin (`Uri.base.origin`) — the PWA is served under `/app/` on the API's own domain, so
-  there is no CORS (the Node backend only accepts `ALLOWED_ORIGINS`, `src/api/server.js:32-57`);
+  there is no cross-origin request;
   elsewhere (Android), `https://zapzap.ombivince.synology.me`. Trailing slashes are stripped.
 - `apiUri('/x')` → `<base>/api/x`; `sseUri` → `<base>/suscribeupdate` (the backend's spelling,
   [[Architecture]]).
@@ -110,23 +110,21 @@
   password (401 `INVALID_CREDENTIALS`) logs nobody out. `AuthProvider` sets it to its
   `logout`, and the router follows to login (the React client only clears, `api.js:34-38`).
 - **`ApiException(status, code, message, details)`** (`services/api_exception.dart`) reads
-  every error shape: `{error, code, details?}` (auth/party/game, both backends);
+  every error shape: `{error, code, details?}` (auth/party/game);
   `{success:false, error}` and `{error}` (admin on Rust, history, stats, bots) — `code` then
   comes from the status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
-  `CONFLICT`, `SERVER_ERROR`, else `HTTP_<n>`); `{error, code, message}` (the 404 of an unknown route on both backends, Node's 500
-  fallback, `src/api/server.js:176-196`); `{message}`; a response with no body.
+  `CONFLICT`, `SERVER_ERROR`, else `HTTP_<n>`); `{error, code, message}` (the 404 of an unknown route); `{message}`; a response with no body.
   No response: status 0, `NETWORK_ERROR` or `TIMEOUT`; a 2xx that is not an object:
   `INVALID_RESPONSE`. `message` is the backend's text for logs — screens pick a localised
   text from `code` (`ApiErrorCode` names the codes they react to).
 - **Repositories** (`repositories/*.dart`), stateless, each `XRepository(ApiClient)`:
   `AuthRepository` (login, register, loginWithGoogle), `PartyRepository` (list,
-  create — `playerCount` required, Node rejects a create without it —, details, join,
+  create — `playerCount` required —, details, join,
   leave, start, delete, bots, connectedPlayers), `GameRepository`
   (state, selectHandSize, play, drawFromDeck, drawFromPlayed, zapZap, nextRound),
   `HistoryRepository` (mine = `GET /history`, public, details), `StatsRepository` (mine,
   user, leaderboard, bots), `AdminRepository` (users, deleteUser, setAdmin, parties,
-  stopParty, deleteParty, statistics). Only routes both backends serve (`/auth/google`
-  too: Rust serves it since #71). A move's answer is not the new table: refetch `GameRepository.state`.
+  stopParty, deleteParty, statistics). A move's answer is not the new table: refetch `GameRepository.state`.
 - **Models** (`models/`): `User`, `AuthSession` (`user.dart`); `Party`, `PartySettings`,
   `PartySummary`, `PartyPlayer`, `PartyDetails`, `CreatePartyResult`, `JoinPartyResult`,
   `RoundInfo`, `StartPartyResult`, `ConnectedPlayer` (`party.dart`); `Bot`; `GameSnapshot`
@@ -138,40 +136,37 @@
   `BotStats`, `BotTotals`, `BotStatsLine` (`stats.dart`); `AdminUser`, `AdminParty`,
   `AdminStatistics`, `GamePeriod`, `ActiveUser` (`admin.dart`); `Page<T>` (`json.dart`).
   Card ids stay `int` (0-53); no model is named `Card`.
-- **Parsing rules** (`models/json.dart`), because the two backends disagree on types:
+- **Parsing rules** (`models/json.dart`), lenient on types (written when the client met two backends):
   maps keyed by player index arrive with string keys (`{"0": 28}`) and become `Map<int, …>`;
   Rust's `nextRound` sent them as `[{playerIndex, score}]` (and `eliminatedPlayers`/`winner`
-  as bare indexes) until 2026-09-24; it now sends Node's shapes, and the tolerant parsing
+  as bare indexes) until 2026-09-24; it now sends maps too, and the tolerant parsing
   stays for such older responses.
   A network failure of any kind (`ClientException`, and the `dart:io` socket/TLS errors that
   can escape it) is `NETWORK_ERROR`; the 10 s timeout is one deadline over headers and body.
   Timestamps are Unix seconds, or milliseconds when `>= 1e10` (`lastAction.timestamp`,
   `connectedAt`), or numeric/RFC 3339 strings (what Rust sent before 2026-09-24); all
-  become UTC `DateTime`. Ids are strings even when a backend sends an integer (party seat
-  `id`). Node's history
-  `handCards` and admin party `settings` are JSON-encoded strings, decoded.
-- **Node vs Rust shapes seen** (fixtures vs `zapzap-rust/src/api/routes/*.rs`): party
-  settings are `{playerCount, allowSpectators, roundTimeLimit}` on both backends since
-  2026-09-24 — `playerCount` 3-8 is required on create (Node: else 500
-  `CREATE_PARTY_ERROR`; Rust: 400 `VALIDATION_ERROR`); Rust sent `{handSize, maxScore,
-  enableGoldenScore, goldenScoreThreshold}` before, which `PartySettings` still reads, all
-  optional; Node `join` has no `playerIndex`; Node play/draw answers carry a raw
-  `gameState` with every hand and the deck, deliberately not parsed.
-- **Shapes both backends share** (Rust aligned on Node in #74 and #83; the models read only
-  these): `zapzap` answers `scores` (the running totals, an object → `totalScores`),
+  become UTC `DateTime`. Ids are strings even when the backend sends an integer (party seat
+  `id`). History `handCards` (the Node backend's) and admin party `settings` are
+  JSON-encoded strings, decoded.
+- **Shapes** (`zapzap-rust/src/api/routes/*.rs`): party settings are `{playerCount,
+  allowSpectators, roundTimeLimit}` since 2026-09-24 — `playerCount` 3-8 is required on
+  create (else 400 `VALIDATION_ERROR`); Rust sent `{handSize, maxScore, enableGoldenScore,
+  goldenScoreThreshold}` before, which `PartySettings` still reads, all optional. Branches
+  for the Node backend's shapes remain in the models (a `join` without `playerIndex`, a raw
+  `gameState` in play/draw answers, deliberately not parsed).
+- **Shapes the models read** (Rust aligned on the Node backend in #74 and #83): `zapzap` answers `scores` (the running totals, an object → `totalScores`),
   `handPoints` (a map), `counteractedBy` (an index or `null` →
   `counteractedByPlayerIndex`) and, on Rust only, the round's own points under
-  `roundScores` (`ZapZapResult.roundScores`, `null` on Node; the finished round's `/state`
-  carries them on both). History entries (`GET /history`, `/history/public`) carry
+  `roundScores` (`ZapZapResult.roundScores`, `null` when absent; the finished round's
+  `/state` carries them too). History entries (`GET /history`, `/history/public`) carry
   `winnerUserId`, `winnerFinalScore`, `totalRounds`, `wasGoldenScore`, all non-null in
-  `GameHistoryEntry`; `userPlacement` and `userScore` on `GET /history` only (Node's since
-  2026-09-24), `visibility` too on Rust. Paging is `pagination {limit, offset, hasMore}`
+  `GameHistoryEntry`; `userPlacement` and `userScore` on `GET /history` only, `visibility` too. Paging is `pagination {limit, offset, hasMore}`
   (history, leaderboard), `pagination {total, limit, offset}` (admin) or top-level `total,
   limit, offset` (`GET /party`), and `Page` reads each. The admin party list carries
-  Node's `ListAllParties` keys on both.
-- **Fixtures** (`test/fixtures/*.json`): answers captured from the local Node backend
-  (`PORT=9911 node app.js` on a worktree database after `npm run init-demo && npm run
-  init-bots`, one game against EasyBot1 and MediumBot1 played through the API to its end),
+  the Node backend's `ListAllParties` keys.
+- **Fixtures** (`test/fixtures/*.json`): answers captured from a local Node backend
+  (production's then; removed, last at `232f168`) on a database seeded with the demo users
+  and the bots, one game against EasyBot1 and MediumBot1 played through the API to its end,
   tokens replaced by placeholders. `error_*.json` are `{status, body}`. `test/fixtures.dart`
   loads them.
 
@@ -206,8 +201,7 @@
   `AutofillGroup`, Next moving on and Done submitting, the password with an eye
   (`AuthPasswordField`) (C3); a spinner in the button while the call runs, then the
   refusal in a red `ErrorBanner` (live region) just above the button (C4). The username
-  is sent trimmed (Node trims it
-  too, `src/use-cases/auth/RegisterUser.js:93`). Server refusals map from
+  is sent trimmed. Server refusals map from
   `ApiException.code`: `INVALID_CREDENTIALS`, `USERNAME_EXISTS`, no response
   (`NETWORK_ERROR`/`TIMEOUT`), else a generic text. Success navigates by itself: the router
   follows `AuthProvider`.
@@ -236,8 +230,7 @@
   id>`. Without it `GoogleSignInConfig` is disabled, `appProviders()` provides
   `DisabledGoogleSignIn`, and login and register show no Google button and no "ou" rule —
   as React hides its button without `VITE_GOOGLE_OAUTH_CLIENT_ID`.
-- **Both platforms ask for the web client id's token**: the backend (Node
-  `src/infrastructure/services/GoogleOAuthService.js:23-27`, Rust since #71) checks the ID
+- **Both platforms ask for the web client id's token**: the backend (since #71) checks the ID
   token's audience against its `GOOGLE_OAUTH_CLIENT_ID`, the web client. On the web it is
   GIS's `clientId`; on Android it is `serverClientId` (`GoogleSignInConfig.resolve`), the
   Android OAuth client only identifying the app (below). Other platforms: disabled.
@@ -271,14 +264,13 @@
 
 ### Real-time channel (SSE)
 
-The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`. Node sends
-every event to every stream; Rust filters per user ([[Backend]]): events without a party and
+The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`. The backend filters
+per user ([[Backend]]): events without a party and
 a public party's lifecycle events (`playerJoined`, `playerLeft`, `partyStarted`,
 `partyDeleted`, `gameFinished`, what `PartyListProvider` reloads on) go to every stream, a
 game's moves and every event of a private party only to its players' streams — so the
 token matters; an initial `event: connected`, then every broadcast as `event:
-event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `retry: 1000`
-(`src/api/server.js:69-130`), Rust a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,
+event` + a JSON object, a `: heartbeat` comment every 20 s, and a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,
 `GameEvent`, `zapzap-rust/src/infrastructure/app_state.rs:230-244`).
 
 - **`SseParser`** (`services/sse_parser.dart`): the `text/event-stream` format, pure, fed
@@ -305,7 +297,7 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
 - **`SseEvent`** (`models/sse_event.dart`): the payload (`data`) plus `type`, `partyId`,
   `userId`, `action`, `timestamp` through the lenient `Json` readers; `isPresence` for
   `userConnected`/`userDisconnected`/`userStatusChanged`. A client may get events of other
-  parties (all of them on Node, public lifecycle ones on Rust): a screen keeps those of its
+  parties (public lifecycle ones): a screen keeps those of its
   `partyId`.
 - **`SseProvider`** (`providers/sse_provider.dart`, a `ChangeNotifier`): `connect(token)`,
   `disconnect()`, `follow(token?)`, `events`, `connected` (notifies on change). One for the
@@ -314,12 +306,11 @@ event` + a JSON object, a `: heartbeat` comment every 20 s; Node also sends `ret
   `AuthProvider` change — connected on sign-in or a restored session, closed on logout (a
   401 included), reopened when the token changes (`test/sse_session_test.dart`).
   `ZapZapApp(sseTransport:)` swaps the transport for tests.
-- Node subscribes a new stream before it broadcasts `userConnected`, so a client hears its
-  own arrival; a user is online while at least one of their streams is open (a second tab,
-  or a reconnection whose new stream opens before the old one closes), and only the first
-  stream's opening and the last one's closing are broadcast (`SessionManager` counts streams
-  per user, `src/infrastructure/services/SessionManager.js`; `tests/unit/api/presence.test.js`).
-  Rust still has the old behaviour (`zapzap-rust/src/api/sse.rs`).
+- The backend subscribes a new stream before it broadcasts `userConnected`, so a client
+  hears its own arrival; a user is online while at least one of their streams is open (a
+  second tab, or a reconnection whose new stream opens before the old one closes), and only
+  the first stream's opening and the last one's closing are broadcast (`sse_handler` and
+  `StreamGuard`, `zapzap-rust/src/api/sse.rs`).
 - Checked against the local Node backend (2026-09-22): a `play` sent by curl as another user
   reached `HttpSseTransport` (a `dart run` script) and `EventSourceSseTransport` (the web build
   in Chromium); the token's user appeared in `GET /api/players/connected`; after the backend
@@ -370,7 +361,7 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   one button. A running game of mine has an amber border, an "In progress" badge and the
   only filled button, Resume; my lobby is green-bordered, Joined, with an outlined Lobby;
   someone else's party has an outlined Join (disabled when full, playing or finished).
-  There is **no "your turn" badge**: neither `GET /party` (Node or Rust) says whose turn it
+  There is **no "your turn" badge**: `GET /party` does not say whose turn it
   is. While the first answer is on its way the list shows three skeleton cards; an empty
   "Available games" ends on an invitation (create yours — `push`es `/parties/new` —, or
   pull down to refresh), worded "no game available" when I have none either. The list
@@ -390,33 +381,34 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   there is none left the seat stays human and the option shows "none available"
   (`CreateParty.jsx:47-74`). Changing the seat count keeps what was already configured
   (React resets). `POST /party` sends `{name, visibility, settings.playerCount, botIds}`.
-  The name is 3 to 50 characters once trimmed (`partyNameMinLength`/`MaxLength`), as Node
-  requires (`src/use-cases/party/CreateParty.js:47-53`): Create stays active, and a name
+  The name is 3 to 50 characters once trimmed (`partyNameMinLength`/`MaxLength`), as the
+  backend requires: Create stays active, and a name
   too short shows its reason once the field was edited and left or Create tapped
-  (`FieldTouch`), and sends nothing; longer cannot be typed — Node would answer a generic
-  500.
+  (`FieldTouch`), and sends nothing; longer cannot be typed.
 - **`PartyLobbyProvider`** (`providers/party_provider.dart`): `GET /party/:id`, then the
   event stream filtered on `partyId` — `playerJoined`/`playerLeft` reload the seats without
   a spinner, `partyStarted` and `partyDeleted` set `outcome` (`LobbyOutcome.started` /
   `.closed`) and the screen navigates to `/game/:id` or `/parties`. A party already
   `playing` when it loads sets `started` too, so returning to it goes straight to the game.
-  `isOwner` falls back to comparing `party.ownerId` with the session's user, because Node's
-  answer carries neither `isOwner` nor `userPlayerIndex`; `canStart` needs the owner and 3
+  `isOwner` comes from the answer, with a fallback comparing `party.ownerId` with the
+  session's user (a branch for the Node backend's answer, which carried neither `isOwner`
+  nor `userPlayerIndex`); `canStart` needs the owner and 3
   players; `canDelete` is the owner **or** the only human at the table
   (`PartyLobby.jsx:140-144`). Delete asks first, in an `AlertDialog`. Its loads are
   sequenced as the board's are (`_loadGeneration`, below): two players joining a moment
   apart start two reloads, and an older answer arriving last is dropped.
-  The hand size is only shown when the party carries one (Rust): on Node the starting
-  player picks it each round (`GAME_RULES.md`), so React's "Hand Size: 7" is wrong there.
+  The hand size is only shown when the party carries one (Rust answers before 2026-09-24):
+  the starting player picks it each round (`GAME_RULES.md`), so React's "Hand Size: 7" is
+  wrong.
 - **The lobby screen** (`screens/party_lobby_screen.dart`, S1–S4 of the UX study) opens on
-  the invite code (`party.inviteCode`, both backends send it), 26 px mono amber with a
+  the invite code (`party.inviteCode`), 26 px mono amber with a
   Copy button (clipboard, then a snack bar); then the settings as one `Wrap` of chips
-  (`InfoChip`, `widgets/player_seat_tile.dart`): seats, hand size (Rust), "you host", the
+  (`InfoChip`, `widgets/player_seat_tile.dart`): seats, hand size (when carried), "you host", the
   status. A seat (`PlayerSeatTile`) shows a green "online" dot for a human the session
   knows is connected — the signed-in player, or one in `ConnectedPlayersProvider`, which
   holds five at most, so no dot means "not known", never "offline" —, a bot's level as an
   amber chip, the owner's crown. A free seat is text only, the first one pointing at the
-  invite code: neither backend can seat a bot in an existing party, so there is no "add a
+  invite code: the backend cannot seat a bot in an existing party, so there is no "add a
   bot". Under the list, pinned: the reason Start is or is not active (players missing,
   "can start", or "the host can start" for a guest), Start named with the player count,
   then Leave. **Delete is in the ⋮ menu** (`AppBarMenuAction`, key `delete-party`), no
@@ -532,11 +524,11 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   waiting banner, the tallest action bar (two-line banner over the invalid-play reason)
   and a Golden Score hand of 10 included — and the wide layout at every scale too; the
   suite's default 1100x3000 hides clipping.
-- Checked against the local Node backend (2026-09-23): a party of Vincent and two bots
+- Checked against the local backend (then Node, 2026-09-23): a party of Vincent and two bots
   played through the web build in Chromium — hand size, play, take from the discard, draw,
   the bots' moves arriving over SSE, the end of the round and the next round. Known local
   limit: a round that ends does not advance on its own when bots are to act (the Node bot
-  orchestrator has no `finished` branch), so the Next round button is what moves it on.
+  orchestrator had no `finished` branch), so the Next round button is what moves it on.
   The end of a round, Next round and the end of the game were checked the same way
   (2026-09-23): a game of Vincent and two bots played to its end over the local backend —
   a successful ZapZap with its standings and revealed hands, three rounds started from the
@@ -612,8 +604,8 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   — "Alice a pris dans la défausse : 7 de Cœur" (`gameActionTookDiscardCard`, `cardName`)
   — and a 24 px `PlayingCard` (`Key('tableMessageCard')`,
   `GameTableArea.takenCardWidth`) follows it. A deck draw never names its card, even when
-  the server sends one (Node does: `src/use-cases/game/DrawCard.js`; Rust does not, and
-  sends `cardId` for a discard take — `test_state_last_action_of_select_play_and_draw` in
+  the server sends one (the Node backend did; Rust does not, and sends `cardId` for a
+  discard take — `test_state_last_action_of_select_play_and_draw` in
   `zapzap-rust/tests/api_tests.rs`); a discard take without `cardId` keeps "a pris une carte
   de la défausse". `test/game_table_message_test.dart`.
 - **The hand-size choice** (T1, T2, `GameHandSizeSelector`): 58 × 50 buttons (≥ 48 dp)
@@ -645,8 +637,8 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
 
 The port of `frontend/src/components/Game/RoundEnd.jsx`, fed by `GameBoard.jsx:374-400`.
 `GameScreen._roundOver` builds it from `GameState` alone — never from the answer of
-`zapzap`, whose `scores` were the running totals on Node and the round's own points on Rust
-(API layer, above; both send the totals since 2026-09-24). It is the `finished` mode of the board, not a route: the phase is
+`zapzap`, whose `scores` were the round's own points on Rust before 2026-09-24 and are the running
+totals since (API layer, above). It is the `finished` mode of the board, not a route: the phase is
 reached and left by `currentAction`, which every move and the other clients' `roundStarted`
 change. A failed refresh leaves it on screen under the stale banner, as any other mode.
 
@@ -662,10 +654,10 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   a tooltip and a semantic label so a row stays one line; "You" on the caller's own row,
   which is also tinted with an amber edge (`isMe`, from `myPlayerIndex`); Eliminated in
   words, not in colour alone. The rank column replaced the `#1` badge. **Eliminated** is
-  `eliminatedPlayers` *or* a total above 100 (`GAME_RULES.md`): Node fills the list, React
-  only compares the total, and either alone misses a case. A player who is out never gets
-  the Lowest Hand badge, as in React: on the last round of a game Node points
-  `lowestHandPlayerIndex` at a seat it has already eliminated, hand empty.
+  `eliminatedPlayers` *or* a total above 100 (`GAME_RULES.md`): the Node backend filled the
+  list, React only compares the total, and the client keeps both. A player who is out never
+  gets the Lowest Hand badge, as in React: on the last round of a game the Node backend
+  pointed `lowestHandPlayerIndex` at a seat it had already eliminated, hand empty.
 - **The ZapZap banner** is green when the call held and red when it was counteracted, and
   then names who counteracted and spells the penalty out:
   `handValue + (activePlayers − 1) × 5`, where `activePlayers` are those whose total
@@ -684,7 +676,7 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   disabled while a move is in flight) with "Round n+1: X picks the hand size" above it, or,
   once `gameFinished`, Back to games, the winner banner (`winner.username`, its final
   score) heading the page. X is the seat after this round's `startingPlayer`, skipping
-  whoever is out (`GAME_RULES.md` "Subsequent Rounds", `src/use-cases/game/NextRound.js`).
+  whoever is out (`GAME_RULES.md` "Subsequent Rounds").
 - Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
   sizes itself to its children hands an unbounded width to its text, which then runs off a
   360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
@@ -715,11 +707,11 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   with a back button that pops (`popOrGo`: to the list, or the history for the details,
   when opened by a link); the statistics are reached from the history through the menu,
   and Back unwinds them one at a time. The tile shows the winner with their score and the
-  number of rounds, which both backends send.
+  number of rounds.
 - **My result first (H1–H3 of the UX study, `feat/flutter-history-ux`).** On My games each
   `HistoryGameTile` opens on a `PlacementBadge` ("1er"/"4e", amber when I won) and shows
-  my score beside the winner's. Both backends send `userPlacement`/`userScore`; a Node
-  older than 2026-09-24 sends neither, so `myPlacement` (`widgets/history_game_tile.dart`)
+  my score beside the winner's. The backend sends `userPlacement`/`userScore`; when
+  they are absent (a Node backend older than 2026-09-24 sent neither), `myPlacement` (`widgets/history_game_tile.dart`)
   falls back to 1 when `winnerUserId` is mine and the badge is left out otherwise. The public tab shows no place. The list opens on `HistorySummary`
   (`widgets/history_summary.dart`): games and wins from `GET /stats/me` (the whole record,
   not the page of entries), the best place (1 as soon as the record holds a win, else the
@@ -812,11 +804,11 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   (`AdminUserTile`, `admin-user-<id>`): name, a "Toi" badge on one's own, an Admin badge,
   created, last login ("Jamais connecté" when null), games and play time (`2h 5m`, React's
   format). Toggle admin (`admin-toggle-<id>`) and delete (`admin-delete-<id>`) show on
-  every row but one's own and `admin`'s (`AdminUsersView.defaultAdmin`, the account Node
-  never lets anyone delete, `src/use-cases/admin/DeleteUser.js:46`); each asks first in an
+  every row but one's own and `admin`'s (`AdminUsersView.defaultAdmin`; the backend refuses
+  to delete oneself or any admin, `zapzap-rust/src/api/routes/admin.rs`); each asks first in an
   `AlertDialog` (`admin-confirm-ok`), then posts and reloads the page. A refusal is a snack
-  bar and the list stays: `adminErrorText` maps 400 (Node's code-less refusal for oneself
-  or the default admin) to "Action refusée", `ADMIN_REQUIRED`/403, 404 and no answer to
+  bar and the list stays: `adminErrorText` maps 400 (the code-less refusal for oneself
+  or an admin) to "Action refusée", `ADMIN_REQUIRED`/403, 404 and no answer to
   their texts. A failed first load is an `ErrorBanner` with Retry. A deleted last row of a
   later page goes back a page.
 - **`AdminPartiesView`** (`widgets/admin_parties.dart`): `GET
@@ -825,7 +817,7 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   filter goes back to the first page), the total (`admin-parties-count`), the pager past 50,
   pull-to-refresh. A row (`AdminPartyTile`, `admin-party-<id>`): name, a status badge in
   React's colours, the invite code, the owner, `Joueurs : 3 / 5 · Publique` — the seats
-  are `playerCount / settings.playerCount`, the settings a JSON string on Node decoded by
+  are `playerCount / settings.playerCount`, the settings a JSON string decoded by
   `PartySettings.fromJson`, `?` when they name no player count (`AdminPartyTile.seats`) —
   and the creation date. Stop (`admin-party-stop-<id>`, not on a finished party) and delete
   (`admin-party-delete-<id>`) ask first (`admin-party-stop-confirm`,
@@ -833,19 +825,17 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   "Action refusée pour cette partie", 404 → the party-not-found text).
 - **`AdminStatisticsView`** (`widgets/admin_stats.dart`): `GET /admin/statistics` once, and
   on pull-to-refresh. Four `StatTile`s in a `StatTileGrid` (users, parties, rounds,
-  completion rate — `Formats.number` then `%`, since Node rounds it to one decimal and Rust
-  does not), the breakdown by status (`admin-stats-{waiting,playing,finished}`), the chart
+  completion rate — `Formats.number` then `%`, since Rust does not round it), the breakdown by status (`admin-stats-{waiting,playing,finished}`), the chart
   card, the most active players (`admin-stats-user-<id>`: `RankBadge`, name, games · wins ·
   win rate), each with its empty text. A failed load is an `ErrorBanner` with Retry.
 - **The chart** (`DailyGamesChart`, `DailyGamesPainter`): `DailyGamesChart.lastDays` turns
-  `gamesOverTime.daily` — only the UTC days that had a finished game, at most 30
-  (`src/infrastructure/database/sqlite/repositories/PartyRepository.js:1143`) — into the
+  `gamesOverTime.daily` — only the UTC days that had a finished game, at most 30 — into the
   last 30 UTC days up to today, oldest first, missing days at 0. The painter draws a
   four-step grid with its scale, one bar per day (a 2 px stub for a day without games, so
   the 30 slots show), the count above a bar when bars are 12 px wide or more, and `dd/MM`
   under every fifth day and the last; its text follows the text scale. The chart is one
   semantics node ("N parties terminées sur les 30 derniers jours"). When the 30 days hold
-  no game — always the case on Rust, which sends `daily: []` — the card says "Pas assez de
+  no game — always the case today: Rust sends `daily: []` (`zapzap-rust/src/api/routes/admin.rs`) — the card says "Pas assez de
   données" instead.
 
 ### Android (`frontend-flutter/android/`)
@@ -860,7 +850,7 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   sets `android:networkSecurityConfig` to `android/app/src/debug/res/xml/network_security_config.xml`
   (`cleartextTrafficPermitted="true"`, system CAs). Profile and release keep Android's
   default, HTTPS only — so they only talk to the production default URL or an `https://` one.
-- The app sends no `Origin` header, which the Node CORS accepts (`src/api/server.js:39-40`).
+- The app sends no `Origin` header; the backend's CORS layer is permissive anyway (`zapzap-rust/src/api/mod.rs`).
 - Launcher icon: the lucide `zap` bolt (the React client's icon set) in amber `#fbbf24` on
   slate `#0f172a`. Sources `frontend-flutter/assets/icon/icon.svg` and `icon_foreground.svg`
   (adaptive-icon foreground, inside the safe zone); the PNGs next to them are rendered with
@@ -1300,3 +1290,4 @@ project `.gitignore`.
   The player count is an icon rather than the word, so the line fits beside the button on
   a phone; the P1–P4 tests load Roboto, as the felt test does, because the test font's
   square glyphs wrap every compact line.
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost its Node-vs-Rust comparisons (CORS, SSE, presence, shapes, the refusals the client pre-empts); the client code keeps its Node-shape branches, described above as such. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

@@ -68,8 +68,8 @@ impl LoginUser {
             return Err(LoginError::InvalidCredentials);
         }
 
-        // Update last login. The hash is never rewritten: it stays the bcrypt hash Node
-        // verifies, so a rollback to the Node backend keeps every login.
+        // Update last login. The hash is never rewritten on login: a bcrypt hash stays
+        // bcrypt, an Argon2 one stays Argon2.
         self.user_repo.update_last_login(&user.id).await?;
 
         // Generate token

@@ -47,7 +47,7 @@ commit_field() {  # description, expected, field, command
 echo "== refusals =================================================="
 guard "pkill -9 -f node kills VS Code under WSL"    2 'pkill -9 -f "node"'
 guard "killall node"                                2 'killall -9 node'
-guard "pkill -f node app.js"                        2 'pkill -f "node app.js"'
+guard "pkill -f node server.js"                     2 'pkill -f "node server.js"'
 guard "pkill of a named process is fine"            0 'pkill -f nodemon'
 guard "killing a port is the alternative"           0 'lsof -ti:9999 | xargs kill 2>/dev/null'
 guard "the words inside an echo (pkill)"            0 'echo "pkill -9 -f node"'
@@ -241,7 +241,7 @@ secret_case() {  # description, expected exit, path
 secret_case "a staged .env"                        2 ".env"
 secret_case "a staged .env.production"             2 ".env.production"
 secret_case "the committed template"               0 ".env.example"
-secret_case "the Google OAuth client"              2 "src/infrastructure/auth/client_secret_123.json"
+secret_case "the Google OAuth client"              2 "client_secret_123.json"
 secret_case "the SQLite database"                  2 "data/zapzap.db"
 secret_case "a backup of the database"            2 "data/zapzap.db.bak-2026-09-22-1356"
 secret_case "an ordinary JSON file"                0 "data/thibot_genetic_params.json"
@@ -286,9 +286,9 @@ stub_tool cargo 0
 tree_commit "a native change with green cargo gates" 0
 stub_tool cargo 1
 unstage "native/src/lib.rs"
-stage "src/api/app.js"
-tree_commit "the legacy Node backend runs no gate" 0
-unstage "src/api/app.js"
+stage "scripts/train-native.js"
+tree_commit "a path outside every gated tree runs no gate" 0
+unstage "scripts/train-native.js"
 # A README edit or a deletion cannot break lint or build, so neither needs node_modules.
 stage "frontend/README.md"
 tree_commit "a frontend README-only commit, tree never set up" 0

@@ -1,5 +1,5 @@
-//! Delete a bot user. Port of `src/use-cases/bot/DeleteBot.js`, plus a refusal Node
-//! lacks: a bot seated in a waiting or playing party is kept, since deleting it would
+//! Delete a bot user. As the Node backend did, plus a refusal it
+//! lacked: a bot seated in a waiting or playing party is kept, since deleting it would
 //! cascade its seat away mid-game.
 
 use std::sync::Arc;

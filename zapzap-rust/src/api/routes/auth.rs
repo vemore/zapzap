@@ -242,7 +242,7 @@ async fn login_handler(
 }
 
 /// POST /api/auth/google - login or sign up with a Google ID token (`credential`), as
-/// Node's `src/api/routes/authRoutes.js:123`
+/// the Node backend did
 async fn google_handler(
     State(state): State<Arc<AppState>>,
     body: Option<Json<serde_json::Value>>,

@@ -56,8 +56,8 @@ pub const LAST_ACTION_PLAY: u8 = 2;
 pub const LAST_ACTION_ZAPZAP: u8 = 3;
 pub const LAST_ACTION_SELECT_HAND_SIZE: u8 = 4;
 
-/// The last move of the round, the `lastAction` Node's use cases write
-/// (`src/use-cases/game/{SelectHandSize,PlayCards,DrawCard,CallZapZap}.js`).
+/// The last move of the round, the `lastAction` the Node backend wrote
+/// (select hand size, play, draw, zapzap).
 /// Which fields mean something depends on [`Self::action_type`]; the zapzap's
 /// `roundScores` and `counterActedByPlayerIndex` live on [`GameState`].
 #[derive(Debug, Clone, Default)]
@@ -824,8 +824,8 @@ mod tests {
         assert_eq!(state.current_turn, 0); // Wraps around, skipping 1
     }
 
-    /// A game state as Node's `GameState.toJSON()` stores it (`src/domain/value-objects/
-    /// GameState.js`), with `lastAction` as `DrawCard.js` writes it
+    /// A game state as the Node backend's `GameState.toJSON()` stored it, with `lastAction`
+    /// as its draw wrote it
     fn node_state(last_action: serde_json::Value) -> String {
         serde_json::json!({
             "deck": [5, 6, 7],

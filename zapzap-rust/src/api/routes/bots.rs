@@ -119,7 +119,7 @@ pub async fn list_bots(
     }))
 }
 
-/// Bot as Node's `User.toPublicObject()` (`src/domain/entities/User.js:335`)
+/// A bot as the Node backend's `User.toPublicObject()` showed it
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BotPublic {
@@ -168,7 +168,7 @@ pub struct DeleteBotResponse {
 }
 
 fn bot_admin_error(e: BotAdminError) -> (StatusCode, Json<ErrorResponse>) {
-    // Node answers every failure of these routes with 400 (src/api/routes/botRoutes.js)
+    // Every failure of these routes is a 400, as the Node backend answered
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

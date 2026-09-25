@@ -5,10 +5,10 @@ import 'package:zapzap/models/json.dart';
 
 /// The raw text of `test/fixtures/<name>.json`.
 ///
-/// The fixtures are answers captured from the local Node backend (the one
-/// production runs), `PORT=9911 node app.js` after `npm run init-demo &&
-/// npm run init-bots`, by playing a game with two bots; tokens are replaced
-/// by placeholders. `error_*.json` wrap the answer as `{status, body}`.
+/// The fixtures are answers captured from a local Node backend (production's
+/// backend then; removed since, last at commit `232f168`), seeded with the
+/// demo users and the bots, by playing a game with two bots; tokens are
+/// replaced by placeholders. `error_*.json` wrap the answer as `{status, body}`.
 String fixtureText(String name) =>
     File('test/fixtures/$name.json').readAsStringSync();
 

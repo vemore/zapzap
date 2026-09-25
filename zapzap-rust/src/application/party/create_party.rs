@@ -7,7 +7,7 @@ use crate::domain::repositories::{PartyRepository, RepositoryError, UserReposito
 use crate::domain::value_objects::PartySettings;
 
 /// Party name bounds once trimmed, in UTF-16 code units as JavaScript's `length`
-/// (Node: CreateParty.js), so "🎲🎲" is 4 long
+/// (as the Node backend counted), so "🎲🎲" is 4 long
 pub const MIN_NAME_LENGTH: usize = 3;
 pub const MAX_NAME_LENGTH: usize = 50;
 
@@ -57,7 +57,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             ));
         }
 
-        // Validate name, trimmed, as Node's CreateParty.js
+        // Validate name, trimmed, as the Node backend did
         let name = input.name.trim().to_string();
         let name_length = name.encode_utf16().count();
         if name_length < MIN_NAME_LENGTH {
@@ -76,7 +76,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             .validate()
             .map_err(CreatePartyError::Validation)?;
 
-        // Node: CreateParty.js
+        // A bot listed twice is refused, as the Node backend did
         let unique_bot_ids: std::collections::HashSet<&String> = input.bot_ids.iter().collect();
         if unique_bot_ids.len() != input.bot_ids.len() {
             return Err(CreatePartyError::Validation(
@@ -84,7 +84,7 @@ impl<U: UserRepository, P: PartyRepository> CreateParty<U, P> {
             ));
         }
 
-        // The owner and the bots must fit in the seats (Node: CreateParty.js)
+        // The owner and the bots must fit in the seats, as the Node backend checked
         let total_players = input.bot_ids.len() + 1;
         if total_players > input.settings.player_count as usize {
             return Err(CreatePartyError::Validation(format!(

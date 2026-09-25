@@ -2,7 +2,7 @@
 
 > Scope: the React + Vite single-page client in `frontend/` — structure, routing, API and SSE clients, Google sign-in, build, tests, image.
 > Related: [[Architecture]] · [[Api]] · [[Backend]] · [[Testing]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -70,7 +70,7 @@
 ### Google OAuth
 - Client id from `import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID` (build-time) — `App.jsx:22`, `components/Auth/Login.jsx:9`, `Register.jsx:9`. When empty, `GoogleOAuthProvider` is not mounted (`App.jsx:121-129`) and the button is hidden (`Login.jsx:56`).
 - `GoogleLoginButton` sends the Google credential to `POST /api/auth/google` (`services/auth.js:174-195`), then stores token/user and navigates to `/parties` (`GoogleLoginButton.jsx:12-17`).
-- The Rust backend serves `POST /api/auth/google` since 2026-09-24 (`zapzap-rust/src/api/routes/auth.rs:16`), with Node's contract; it needs `GOOGLE_OAUTH_CLIENT_ID` on the backend, the same client id as `VITE_GOOGLE_OAUTH_CLIENT_ID` (see [[Api]], [[Backend]]).
+- The Rust backend serves `POST /api/auth/google` since 2026-09-24 (`zapzap-rust/src/api/routes/auth.rs:16`); it needs `GOOGLE_OAUTH_CLIENT_ID` on the backend, the same client id as `VITE_GOOGLE_OAUTH_CLIENT_ID` (see [[Api]], [[Backend]]).
 
 ### Environment variables
 | Var | Where | Effect |
@@ -79,7 +79,7 @@
 | `VITE_API_URL` | `services/sse.js`; build arg `frontend/Dockerfile:10,12`; `frontend/.env.example` | only the SSE base URL; the axios client ignores it (always `/api`) despite `.env.example` suggesting `http://localhost:9999/api` |
 
 ### Dev server and build
-- Vite dev proxy forwards `/api` and `/suscribeupdate` to `http://localhost:9999` — `vite.config.js:7-18`. Run the Rust backend (or legacy Node) on 9999, then `npm run dev`.
+- Vite dev proxy forwards `/api` and `/suscribeupdate` to `http://localhost:9999` — `vite.config.js:7-18`. Run the Rust backend on 9999, then `npm run dev`.
 - ESLint flat config: recommended + react-hooks + react-refresh; `no-unused-vars` errors except variables matching `^([A-Z_]|motion$)` and arguments matching `^[A-Z_]` (core ESLint cannot see a JSX use: `<Icon>`, `<motion.div>`); Node globals allowed in `src/test/` and `__tests__/`; the vendored `public/elements.cardmeister.full.js` is ignored — `frontend/eslint.config.js`.
 
 ### Tests (vitest)
@@ -101,3 +101,4 @@
 - Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red. They joined the `frontend` job, and lint the commit hook, on 2026-09-23 once green ([[Testing]], Decisions).
 - `PlayingCard` called `useEffect` after its joker early return (`react-hooks/rules-of-hooks`): a card switching between joker and standard would have broken React's hook order. The effect now runs before the branch (2026-09-23).
 - The lobby and the game board opened `/suscribeupdate` without a token until 2026-09-24; Node broadcasts every event to every stream, so it did not matter. The Rust backend filters party events by the stream's token (#73), so both now pass it through `services/sse.js`, as ConnectedPlayers already did, before production switches to Rust.
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost the "or legacy Node" dev backend; the root Playwright suite (`tests/e2e`, `playwright.config.js`) that drove this client against Node went with it. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/e2e`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

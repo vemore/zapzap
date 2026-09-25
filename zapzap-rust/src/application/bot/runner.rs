@@ -32,7 +32,7 @@ use crate::infrastructure::bot::strategies::{
 };
 
 /// Pause between two bot actions, so clients can follow them, when `BOT_ACTION_DELAY_MS`
-/// is unset or not a number: Node's default (`src/api/bootstrap.js`)
+/// is unset or not a number: the Node backend's default too
 pub const DEFAULT_ACTION_DELAY: Duration = Duration::from_millis(1000);
 /// Most bot actions one loop takes while a human is still in the game
 const MAX_ACTIONS_WITH_HUMANS: usize = 50;

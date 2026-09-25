@@ -2,7 +2,7 @@
 
 > Scope: where the ZapZap rules (`GAME_RULES.md` at repo root = the reference) are implemented in the Rust backend, and where code and doc disagree.
 > Related: [[Bots]] · [[Backend]] · [[Api]] · [[NativeEngine]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -23,14 +23,14 @@
 - `is_valid_play`: 1 card always valid; ≥2 cards must name each card once (`first_repeated_card`, also used by `PlayCards`) and be same-rank or sequence (`card_analyzer.rs`).
 - Same rank: ≥2 cards, all non-jokers share a rank, jokers wild; all-joker sets are valid (`card_analyzer.rs:81-100`). So "5 + Joker" is a valid pair (the doc only shows a joker as third card).
 - Sequence: ≥3 cards, one suit, jokers fill gaps (`gaps_needed <= joker_count`); no Ace-high wrap (`card_analyzer.rs:103-144`).
-- A card named twice is refused: `PlayCards` answers 400 `INVALID_CARDS` ("Card c played more than once", `PlayCardsError::RepeatedCard`, `zapzap-rust/src/application/game/play_cards.rs`) before any other card check, and `is_valid_play` refuses it too, so `execute_play` never sees one. Before 2026-09-24 `[c, c, c]` passed as a sequence and put three copies of one card on the table. Node still accepts it (`src/use-cases/game/PlayCards.js`; parity item `invariant:illegal.repeated-card-refused@node`). Tests `test_repeated_card_is_no_valid_play` (`card_analyzer.rs`), `test_play_naming_a_card_twice_is_refused_and_plays_nothing` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
+- A card named twice is refused: `PlayCards` answers 400 `INVALID_CARDS` ("Card c played more than once", `PlayCardsError::RepeatedCard`, `zapzap-rust/src/application/game/play_cards.rs`) before any other card check, and `is_valid_play` refuses it too, so `execute_play` never sees one. Before 2026-09-24 `[c, c, c]` passed as a sequence and put three copies of one card on the table. Tests `test_repeated_card_is_no_valid_play` (`card_analyzer.rs`), `test_play_naming_a_card_twice_is_refused_and_plays_nothing` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
 - Clients re-check a selection before posting it: React `frontend/src/utils/validation.js`, Flutter `frontend-flutter/lib/utils/rules.dart` (which also refuses a repeated id). [[FrontendFlutter]]
 - Play enumeration for bots: `find_same_rank_plays` (`card_analyzer.rs:156`, jokers added up to 4-card sets), `find_sequence_plays` (`:203`), `find_all_valid_plays` (`:266`).
 
 ### Round start
 - Party start: 3-8 players (`zapzap-rust/src/domain/entities/party.rs:106-109`); round 1, player index 0 starts (`zapzap-rust/src/application/party/start_party.rs:66-74`).
 - `initialize_round` deals `PROVISIONAL_HAND_SIZE` (5, `zapzap-rust/src/domain/value_objects/game_state.rs:14`; the hand size is not a party setting) and sets phase `SelectHandSize` (`game_service.rs:13-60`); this deal is thrown away by the next step.
-- `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score, and never more than the deck can deal with one card left to flip: at most (54 − 1) / active players, so 6 with 8 players (`hand_size_bounds`, `game_service.rs`; 400 `INVALID_HAND_SIZE` otherwise, test `test_hand_size_fits_the_deck_with_eight_players`). Node does not check the deck and deals short hands; gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
+- `SelectHandSize`: only the current player; 4-7 cards, 4-10 in Golden Score, and never more than the deck can deal with one card left to flip: at most (54 − 1) / active players, so 6 with 8 players (`hand_size_bounds`, `game_service.rs`; 400 `INVALID_HAND_SIZE` otherwise, test `test_hand_size_fits_the_deck_with_eight_players`). Then it gathers all cards, reshuffles, deals, then flips one card to `last_cards_played` (`:77-114`); phase → Play.
 - Next round: starter = `next_starting_player` (`zapzap-rust/src/application/game/next_round.rs`), the seat after this round's starter, clockwise, skipping eliminated seats, as `GAME_RULES.md` "Subsequent Rounds" says; the starter picks the hand size and eliminated seats get no cards. Tests: unit tests in `next_round.rs`, `test_eliminated_player_never_starts_a_round` and `test_starter_rotation_wraps_to_seat_zero` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
 
 ### Turn flow
@@ -43,7 +43,7 @@
 ### ZapZap
 - Allowed only in phase Play, on your turn, hand value ≤5 with Joker = 0 (`zapzap-rust/src/application/game/call_zapzap.rs:70-83`, `card_analyzer.rs:76-78`, re-checked `game_service.rs:215`).
 - Counteract: any active opponent with value ≤ running minimum (ties included) counteracts; the last such player in index order becomes `counteracted_by` / lowest hand (`game_service.rs:227-235`).
-- Scores (`execute_zapzap`, `game_service.rs`): **every** active player whose hand value equals the lowest scores 0 (a Joker in a lowest hand counts 0); others `calculate_hand_score` (Joker 25); a counteracted caller = hand score + `counteract_penalty(active players)` = (active − 1) × `COUNTERACT_PENALTY_PER_OPPONENT` (5), even when tied at the lowest. As Node (`src/use-cases/game/CallZapZap.js`). `lowest_hand_player_index` / `counteracted_by` still name one player (the last of the tied, in seat order). Tests `test_tied_lowest_hands_all_score_zero` (`game_service.rs` and `rules_and_bots_tests.rs`), `test_counteracted_caller_tied_at_lowest_still_takes_the_penalty`.
+- Scores (`execute_zapzap`, `game_service.rs`): **every** active player whose hand value equals the lowest scores 0 (a Joker in a lowest hand counts 0); others `calculate_hand_score` (Joker 25); a counteracted caller = hand score + `counteract_penalty(active players)` = (active − 1) × `COUNTERACT_PENALTY_PER_OPPONENT` (5), even when tied at the lowest. `lowest_hand_player_index` / `counteracted_by` still name one player (the last of the tied, in seat order). Tests `test_tied_lowest_hands_all_score_zero` (`game_service.rs` and `rules_and_bots_tests.rs`), `test_counteracted_caller_tied_at_lowest_still_takes_the_penalty`.
 - Round end state (`zapzap_caller`, `lowest_hand_player_index`, `round_scores`…) stored and phase → Finished (`game_service.rs:284-296`); per-player `round_scores` rows saved (`call_zapzap.rs:108-145`).
 
 ### Elimination, game end, Golden Score
@@ -66,3 +66,4 @@
 - Counteract penalty was changed to depend on active players in 15570c2 (2025-12-15, "correct zapzap caller score calculation to account for active players").
 - Golden Score first implemented d5df375 (2025-12-18) then switched to "lowest hand wins, not lowest total" in ec13b2b (2025-12-21); starting-player rotation added 4ee11f8 (2025-12-20) — all in the Node backend, ported in e4f83da (2025-12-23).
 - The Node backend at one point allowed drawing during the play phase (729aad8, 2025-12-04); the Rust port enforces play-then-draw (`game_service.rs:136-138`), as `GAME_RULES.md:72-74` states.
+- 2026-09-25 (chore/remove-node-backend): the Node backend is removed; the rules live only in the Rust layers above and the two clients' pre-checks, and the page lost its Node comparisons (Node accepted a card named twice, dealt short hands with 8 players, and scored tied lowest hands as Rust does). Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/use-cases/game/CallZapZap.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

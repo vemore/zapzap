@@ -96,7 +96,7 @@ impl Party {
         }
     }
 
-    /// Every seat of `settings.playerCount` is taken (Node: `JoinParty.js`)
+    /// Every seat of `settings.playerCount` is taken
     pub fn is_full(&self, current_player_count: usize) -> bool {
         current_player_count >= self.settings.player_count as usize
     }

@@ -485,7 +485,7 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Who picks the hand size of the next round: the seat after this
   /// round's starting player, skipping whoever is out (`GAME_RULES.md`,
-  /// "Subsequent Rounds"; `NextRound.js` rotates the same way).
+  /// "Subsequent Rounds"; the backend rotates the same way).
   int? _nextChooser(List<RoundEndPlayer> players) {
     final seats = [for (final player in players) player.playerIndex]..sort();
     final out = {
