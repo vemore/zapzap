@@ -42,7 +42,7 @@ A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the proj
 stubbed `gh`, `cargo`, `npm`, `flutter` and `dart` — plus `scripts/cleanup_local.sh`, the
 `flutter pub get` of `scripts/worktree_setup.sh` (and that a failed one clears its setup
 marker) and its `--deploy` links; it is the `hooks` CI job. The same job runs
-`scripts/deploy_nas_selftest.sh`, the production deploy's own table (106 cases, `ssh`,
+`scripts/deploy_nas_selftest.sh`, the production deploy's own table (158 cases, `ssh`,
 `docker`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
 no-op rather than an outage, the health wait, every refusal, `--rollback` — [[Deployment]]).
 `scripts/ci_scope.sh` classifies both scripts, `docker-compose.prod.yml` and
@@ -123,4 +123,4 @@ are not inspected. The ship-parallel agent prompt says so.
   `origin/master` and no flag was added.
 - **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** It had no gate, so the table only loses its `src/` row; the self-test's "no gate" case now stages `scripts/train-native.js`, and its OAuth-secret case a root `client_secret_*.json`. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
-- **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 106 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.
+- **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 158 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.

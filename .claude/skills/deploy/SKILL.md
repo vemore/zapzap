@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the four images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged <short sha>, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>`, and the one-off switch from the old NAS clone. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the four images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged with the 12-character sha, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>` (the compose file that tag ran with), `--build-only`, and the one-off switch from the old NAS clone. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
@@ -16,7 +16,7 @@ NAS pulls.
 |---|---|
 | NAS | `ssh vemore@192.168.1.147`; Docker in `/usr/local/bin` (remote commands start with `export PATH=$PATH:/usr/local/bin;`), `docker-compose` **1.29.2** (v1) |
 | Deploy directory | `/home/vemore/docker/zapzap`: `compose.yaml` (written by the script), `.env` (the secrets — **never print it, never copy it off the NAS**), `data/` (`zapzap.db`, `bot-strategies/`, backups) |
-| Registry | `192.168.1.25:5050`, authenticated; images `zapzap-backend`, `zapzap-frontend`, `zapzap-frontend-flutter`, `zapzap-proxy`, each tagged `<short sha>` and `latest` |
+| Registry | `192.168.1.25:5050`, authenticated; images `zapzap-backend`, `zapzap-frontend`, `zapzap-frontend-flutter`, `zapzap-proxy`, each tagged with the first 12 characters of the sha and `latest` |
 | Configuration | `scripts/deploy.env` (gitignored; from `scripts/deploy.env.example`): `REGISTRY`, `NAS_SSH`, `NAS_DEPLOY_DIR`, `PUBLIC_URL`; the Google client id comes from the repository's `.env` |
 
 Every command on the NAS by hand uses the project name the script uses:
@@ -51,6 +51,11 @@ on the NAS: **the user runs or approves each step.** Its containers have the sam
 the same compose project (`zapzap`) as the deploy directory's, so the first
 `deploy_nas.sh` replaces them.
 
+0. **#106 (the Alpine backend image) is merged *and deployed* first**, through the old clone
+   and its `deploy.sh`, as any deploy before this switch. `docker-compose.prod.yml` checks the
+   backend with `wget`, which only that image carries: `deploy_nas.sh` refuses to push a
+   backend image without it, so building from a master that lacks #106 stops at the build.
+
 1. **The NAS trusts the registry.** `/etc/docker/daemon.json` does not exist there
    (2026-09-25). Restarting the daemon stops every container of the NAS for a few seconds —
    schedule it; `restart: unless-stopped` brings them back. The NAS is an Ubuntu host with
@@ -66,20 +71,32 @@ the same compose project (`zapzap`) as the deploy directory's, so the first
    `ssh -t vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker login 192.168.1.25:5050'`.
 
 3. **The deploy directory, and the secrets**, copied without printing them (the clone keeps
-   its copy as the fallback of step 7; it goes with the clone):
+   its copy as the fallback of step 8; it goes with the clone):
 
    ```bash
    ssh vemore@192.168.1.147 'mkdir -p /home/vemore/docker/zapzap/data && cp -p /home/vemore/workspace/zapzap/.env /home/vemore/docker/zapzap/.env && ls -la /home/vemore/docker/zapzap'
    ```
 
-4. **Count what must survive**, before anything stops:
+4. **Build and push first, while the clone still serves**, from the dev machine (§0 done,
+   §1's clean checkout of master):
+
+   ```bash
+   scripts/deploy_nas.sh --build-only
+   ```
+
+   It builds, checks the backend image has `wget`, and pushes — without touching the NAS,
+   so it does not need the deploy directory's database yet. Step 6's deploy then rebuilds
+   from the Docker cache in seconds and its pushes are no-ops: the downtime is only the
+   data copy, the pull and the start.
+
+5. **Count what must survive**, before anything stops:
 
    ```bash
    ssh vemore@192.168.1.147 'cd /home/vemore/workspace/zapzap && python3 -c "import sqlite3; c=sqlite3.connect(\"file:data/zapzap.db?mode=ro\", uri=True); print([c.execute(f\"SELECT COUNT(*) FROM {t}\").fetchone()[0] for t in (\"users\", \"parties\")])"'
    ```
 
-5. **Stop the clone's stack, back up and copy the data.** Downtime starts here and lasts until
-   step 6 ends (the build and push included: minutes, on a production with one player).
+6. **Stop the clone's stack, back up and copy the data.** Downtime starts here and lasts until
+   step 7's health wait ends (a copy, a pull and a start: the images are pushed already).
    The backend reads only `zapzap.db` and `bot-strategies/` from `data/`; the tracked bot
    parameter files and models there are not read by the Rust backend.
 
@@ -91,22 +108,22 @@ the same compose project (`zapzap`) as the deploy directory's, so the first
      find /home/vemore/docker/zapzap/data -maxdepth 2 ! -uid 1000'    # prints nothing
    ```
 
-6. **The first deploy**, from the dev machine: §1 then §2 (`scripts/deploy_nas.sh`). Then §3,
-   and the checks of the switch itself:
+7. **The first deploy**, from the dev machine: `scripts/deploy_nas.sh` (§2). Then §3, and the
+   checks of the switch itself:
 
    ```bash
    ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker inspect -f "{{range .Mounts}}{{.Source}} {{end}}" zapzap-backend'   # /home/vemore/docker/zapzap/data
    ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker images --format "{{.Repository}}:{{.Tag}}" | grep zapzap'
    ```
 
-   and the counts of step 4 again, run in `/home/vemore/docker/zapzap`: the same numbers.
+   and the counts of step 5 again, run in `/home/vemore/docker/zapzap`: the same numbers.
 
    **If it fails** and no quick fix is in sight, the clone is the fallback, untouched:
    `ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin COMPOSE_PROJECT_NAME=zapzap; cd /home/vemore/docker/zapzap && docker-compose -f compose.yaml down --remove-orphans; cd /home/vemore/workspace/zapzap && docker-compose up -d'`
    — on the database *of the clone*: anything played on the new stack meanwhile is lost,
    so ask the user first if players were on.
 
-7. **At D+7**, the new stack having held: delete the clone (its `.env` goes with it) and its
+8. **At D+7**, the new stack having held: delete the clone (its `.env` goes with it) and its
    locally built images (`zapzap_backend`, `zapzap_frontend`, `zapzap_frontend-flutter`,
    and what `docker image prune` then finds dangling). Ask the user before deleting.
 
@@ -123,9 +140,10 @@ the same compose project (`zapzap`) as the deploy directory's, so the first
   ssh vemore@192.168.1.147 'grep "image:" /home/vemore/docker/zapzap/compose.yaml'
   ```
 
-  The file names exactly what runs: the script rewrites it only once the new images are
-  pulled, and keeps the one before as `compose.yaml.prev`. The script also prints the tag it
-  replaces.
+  The file names exactly what runs (tags are the first 12 characters of the commit sha): the
+  script swaps it only once the new images are pulled and the old stack is down, keeps the
+  one before as `compose.yaml.prev`, and every deployed one as `composes/compose.<tag>.yaml`
+  (the last 10) — what a rollback restores. The script also prints the tag it replaces.
 - Registry login on the dev machine: `docker login 192.168.1.25:5050` if the last push was
   refused.
 - Disk on the NAS: each deploy pulls four images (the backend's is the largest) and keeps the
@@ -147,16 +165,23 @@ In order, stopping at the first failure:
 1. configuration (`REGISTRY`, `NAS_SSH`, `NAS_DEPLOY_DIR`, each named when missing), a clean
    tree, the Google client id;
 2. the NAS check above, **before** a build of several minutes;
-3. four `docker build`s of HEAD, each tagged `<short sha>` and `latest`, labelled with the full
-   revision; four pushes of each tag;
-4. `docker-compose.prod.yml` sent to the NAS as `compose.yaml.next`, the registry and the sha
+3. four `docker build`s of HEAD, each tagged with the first 12 characters of the sha and
+   `latest`, labelled with the full revision; a refusal if the backend image has no `wget`
+   (its health check); four pushes of each tag;
+4. `docker-compose.prod.yml` sent to the NAS as `compose.yaml.next`, the registry and the tag
    written in;
 5. on the NAS: `docker-compose config` (a `.env` without `JWT_SECRET`, or a compose file
    missing an essential service, is refused), `docker-compose pull` — **the old containers
-   still serving** —, the database backup `data/zapzap.db.bak-<date>` (compared with the
-   original), `compose.yaml` → `compose.yaml.prev`, `.next` → `compose.yaml`;
-6. `down --remove-orphans`, `up -d`, and **the health wait**: `backend`, `frontend` and
-   `nginx` healthy and `/api/health` 200 within 90 s; then a 60 s grace for `frontend-flutter`.
+   still serving** —, the database backup `data/zapzap.db.bak-<YYYY-MM-DD-HHMMSS>-<tag>` by
+   SQLite's online backup (python3), checked with `integrity_check`, never over an existing
+   file;
+6. `down --remove-orphans` **with the running compose file**; only once it succeeded,
+   `compose.yaml` → `compose.yaml.prev`, `.next` → `compose.yaml` (and a copy in `composes/`);
+   `up -d`, and **the health wait**: `backend`, `frontend` and `nginx` healthy and
+   `/api/health` 200 within 90 s; then a 60 s grace for `frontend-flutter`.
+
+`scripts/deploy_nas.sh --build-only` stops after the pushes: it needs only `REGISTRY` and
+never contacts the NAS.
 
 **Read its exit status; it is three-valued.**
 
@@ -166,15 +191,16 @@ In order, stopping at the first failure:
 | `1` | refused before touching anything, **or** an outage | the message says which; §4 for an outage |
 | `2` | deployed and serving, but a **non-essential** service is not healthy | §3, then fix that service in a new pull request |
 
-- **Everything up to the pull stops nothing**: a failed build, push, `config` or pull, a
-  missing `.env`, database or ownership — production still serves what it served and
-  `compose.yaml` is unchanged. Fix the cause and run the script again.
+- **Everything up to the backup stops nothing**: a failed build, push, `config`, pull or
+  backup, a backend image without `wget`, a missing `.env`, database or ownership —
+  production still serves what it served and `compose.yaml` is unchanged. Fix the cause and
+  run the script again.
 - **The site is down only for the down/up window**, and the script's `✓ Site answering again
   — downtime was 3.4s` is measured from just before the `down` to the first 200.
 - **A failing `down`, a failing `up -d`, or an essential service not healthy in 90 s are
   outages**, and the script says so: it names each container with its state, prints its
   last 30 log lines, and names the rollback command with the previous tag. A failing `down`
-  immediately retries `up -d`. `up -d` returning 0 is not success: a container crash-looping
+  immediately restarts the compose file that was running — never the new, unchecked images. `up -d` returning 0 is not success: a container crash-looping
   under `restart: unless-stopped` satisfies it.
 - **`frontend-flutter` is deliberately not essential**: nginx resolves it per request, so an
   unhealthy PWA is a 502 on `/app/` and nothing else. The script warns, says a rollback is
@@ -255,15 +281,20 @@ To the sha noted in §1 (or the one the failing deploy printed):
 scripts/deploy_nas.sh --rollback <sha>
 ```
 
-It builds nothing and needs no clean tree. On the NAS it rewrites every image of the
-deployed `compose.yaml` to `:<sha>`, pulls (the tag must have been pushed by an earlier
-deploy — a sha no deploy built is refused at the pull, stopping nothing), backs the database
-up, then `down --remove-orphans`, `up -d` and the same health wait and exit codes as a
-deploy. Verify with §3.
+It builds nothing and needs no clean tree. `<sha>` is a commit (shortened to its 12-character
+tag) or a tag as `composes/` names it. On the NAS it restores **the compose file that tag was
+deployed with** — its environment and health checks, not only its images —,
+`composes/compose.<tag>.yaml`; for a tag older than the last 10 deploys, it uses that
+commit's `docker-compose.prod.yml`, rendered on the dev machine from git, and a tag neither
+stored nor known to the local checkout is refused, stopping nothing. It skips the pull when
+every image is still on the NAS (so a rollback works with the registry down or the login
+expired), otherwise pulls — a tag no deploy pushed is refused there, stopping nothing —, then
+the same backup, `down`, swap, `up -d`, health wait and exit codes as a deploy. Verify with
+§3.
 
 The target is always a commit deployed through the registry; the images the old clone built
 are not in it. A schema change the older backend cannot read needs a database backup
-(`data/zapzap.db.bak-<date>`, one per deploy): restoring it loses what players did since —
+(`data/zapzap.db.bak-<date>-<tag>`, one per deploy and rollback): restoring it loses what players did since —
 ask the user first.
 
 ## 5. After

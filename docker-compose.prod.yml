@@ -1,7 +1,8 @@
 # Production compose for the NAS. scripts/deploy_nas.sh copies it to the deploy directory
 # ($NAS_DEPLOY_DIR/compose.yaml, next to the production .env and data/) with the registry
 # and the tag written in literally, so the file on the NAS names exactly the images that
-# run: <registry>/zapzap-*:<short sha>. `--rollback <sha>` rewrites those tags in place.
+# run: <registry>/zapzap-*:<first 12 characters of the sha>. Each deployed copy is kept as
+# composes/compose.<tag>.yaml, which `--rollback <sha>` restores.
 #
 # Nothing is built here: every image is built on the dev machine and pulled from the LAN
 # registry. The root docker-compose.yml, which builds, stays for local use and CI.

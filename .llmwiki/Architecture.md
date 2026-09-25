@@ -70,7 +70,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Both compose files mount the shared `data/` (`./data` resp. `../data`) at `/app/data`.
 - In both, `nginx` waits for `backend` and `frontend` to be healthy but **not** for `frontend-flutter`: `/app/` is resolved per request through Docker's DNS, so a broken PWA is a 502 on `/app/` and never an outage of `/` and `/api/`. [[Deployment]].
 - The Rust image is built without the `bedrock` feature unless the build arg `CARGO_FEATURES=bedrock` asks for it (`zapzap-rust/Dockerfile`; the root compose sets it, the Rust compose passes the host's `CARGO_FEATURES`, empty by default). Which LLM variable turns which service on: [[Bots]] "LLM bot".
-- Production runs `docker-compose.prod.yml`: the root compose's four services and environment, as registry images `192.168.1.25:5050/zapzap-*:<short sha>` built and pushed by `scripts/deploy_nas.sh` — the proxy as an image of its own, `zapzap-proxy` (`nginx/Dockerfile`, the conf baked in) —, no `build:`, `data/` of the NAS deploy directory. The Rust compose names its own container `zapzap-rust-backend`. [[Deployment]].
+- Production runs `docker-compose.prod.yml`: the root compose's four services and environment, as registry images `192.168.1.25:5050/zapzap-*:<12-char sha>` built and pushed by `scripts/deploy_nas.sh` — the proxy as an image of its own, `zapzap-proxy` (`nginx/Dockerfile`, the conf baked in) —, no `build:`, `data/` of the NAS deploy directory. The Rust compose names its own container `zapzap-rust-backend`. [[Deployment]].
 
 ## Decisions & History
 

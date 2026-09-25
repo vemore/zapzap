@@ -32,7 +32,7 @@ git clone at `/home/vemore/workspace/zapzap` on the NAS, built there (history be
 | `zapzap-proxy` | `zapzap-proxy`, built from `nginx/Dockerfile`: `nginx:alpine` with `nginx/nginx.conf` baked in | nginx | — |
 
 In production all four come from `docker-compose.prod.yml`, as
-`192.168.1.25:5050/<image>:<short sha>` — built on the dev machine, pulled by the NAS, never
+`192.168.1.25:5050/<image>:<first 12 characters of the sha>` — built on the dev machine, pulled by the NAS, never
 built there. The root `docker-compose.yml` builds the same images (the proxy from `nginx:alpine`
 with the conf mounted) for local use and CI. `zapzap-frontend-flutter` has served the
 PWA under `/app/` since #36 (2026-09-23). **The `backend` service is the Rust backend
@@ -90,10 +90,14 @@ passes).
 
 ### Rolling back
 
-`scripts/deploy_nas.sh --rollback <sha>` (the `deploy` skill's §4): every image of the
-deployed `compose.yaml` re-pinned to `:<sha>`, pulled, then the same backup, `down
---remove-orphans`, `up -d` and health wait as a deploy. Nothing is rebuilt, so the target is
-a sha an earlier deploy pushed; the images the old NAS clone built are not in the registry.
+`scripts/deploy_nas.sh --rollback <sha>` (the `deploy` skill's §4) restores the compose
+file the tag was deployed with (`composes/compose.<tag>.yaml`) — not the current one with its
+tags swapped, which would run an old image under a newer environment and health checks. A
+tag older than the ten kept falls back to that commit's `docker-compose.prod.yml`, rendered
+from the dev machine's git; neither is refused. The pull is skipped when every image is
+still on the NAS, so a rollback survives a registry that is down; then the same backup,
+`down`, swap, `up -d` and health wait as a deploy. Nothing is rebuilt: the target is a tag
+an earlier deploy pushed; the images the old NAS clone built are not in the registry.
 
 ### The Flutter PWA under `/app/`
 
@@ -148,16 +152,23 @@ configured by the untracked `scripts/deploy.env` (`REGISTRY`, `NAS_SSH`, `NAS_DE
    uid 1000 owning `data/` — the refusals print the fix;
 3. `docker build` HEAD's four images — `zapzap-backend` (`CARGO_FEATURES=bedrock`),
    `zapzap-frontend`, `zapzap-frontend-flutter` (both with the client id),
-   `zapzap-proxy` — tagged `<short sha>` (`git rev-parse --short=7`) and `latest`, labelled
-   `org.opencontainers.image.revision`; `docker push` both tags;
+   `zapzap-proxy` — tagged with the first 12 characters of the sha (a fixed length, unlike
+   `--short`) and `latest`, labelled `org.opencontainers.image.revision`; **refuse** a backend
+   image without `wget` (`docker run --entrypoint sh … -c 'command -v wget'`), which the
+   production health check runs and only the Alpine image of #106 carries; `docker push`
+   both tags (`--build-only` stops here, never contacting the NAS);
 4. pipe `docker-compose.prod.yml` over ssh to `compose.yaml.next`, with the registry and the
    sha written in (no scp);
 5. on the NAS — the same file, sent over ssh and run as `--remote deploy`: `docker-compose
    config` (a `.env` without `JWT_SECRET`, or a compose file missing an essential service,
    is refused with compose's reason), `docker-compose pull` — **the old containers still
-   serving** —, `cp -p data/zapzap.db data/zapzap.db.bak-<date>` checked with `cmp`, then
-   `compose.yaml` → `compose.yaml.prev` and `.next` → `compose.yaml`;
-6. `down --remove-orphans`, `up -d`, and **wait until `backend`, `frontend` and `nginx` are
+   serving** —, the database backup `data/zapzap.db.bak-<YYYY-MM-DD-HHMMSS>-<tag>` by SQLite's
+   online backup API (python3 on the NAS: a file copy could catch a write half-way), checked
+   with `integrity_check`, refused rather than written over an existing file;
+6. `down --remove-orphans` with the **running** compose file; only after it succeeded
+   `compose.yaml` → `compose.yaml.prev`, `.next` → `compose.yaml`, and a copy kept as
+   `composes/compose.<tag>.yaml` (the last 10); a failed `down` restarts the running file,
+   never the unchecked images; then `up -d`, and **wait until `backend`, `frontend` and `nginx` are
    `healthy` (or `running`) and `/api/health` answers 200**, polling every 2 s for up to 90 s;
    then a 60 s grace for the other services, `ps` and the health payload.
 
@@ -195,8 +206,8 @@ Non-zero so no script can miss it, distinct so no script mistakes it for an outa
 
 **Everything that can fail slowly happens before the `down`**: the build and the push on the
 dev machine, the `config` and the `pull` on the NAS. Any of them failing stops nothing and
-leaves `compose.yaml` as it was — production serves what it served. Only the backup, `down`
-and `up -d` remain after the pull, all local to the NAS. The build's room — ≥ 6 GB for
+leaves `compose.yaml` as it was — production serves what it served. The backup comes before
+the `down` too; only `down` and `up -d` remain, local to the NAS. The build's room — ≥ 6 GB for
 Docker (the Flutter builder stage alone ~3.5 GB) and ≥ 2 GB of RAM for `dart2js` — is needed
 on the dev machine now; the NAS stores only the pulled images.
 
@@ -213,19 +224,21 @@ leave nothing running.
 otherwise survives, and the `down` then reports `Network ... Resource is still in use` —
 reproduced locally on `docker-compose` v2, and v1 1.29.2 (what the NAS runs) only warns.
 
-`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 106 cases): a
+`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 158 cases): a
 sandbox repository and deploy directory, `ssh` stubbed to run the remote half locally, and
 `docker`, `docker-compose`, `curl`, `jq` and `sleep` stubbed, the `docker` stub answering a
 state per service. It asserts each refusal and that it builds, pulls and stops nothing, the
-order `pull`, `down --remove-orphans`, `up -d`, the backup, the pinned `compose.yaml`, the
-split health verdict (exit 1 / 2), and `--rollback`.
+order `pull`, `down --remove-orphans`, `up -d`, the online backup and its naming, the pinned
+and stored `compose.yaml`, that a failed `down` restarts the old file, the `wget` refusal,
+`--build-only`, the split health verdict (exit 1 / 2), and `--rollback` (stored compose,
+rendered from git, no pull when the images are present, refusals).
 
 ### The production database
 
 `data/zapzap.db` in the deploy directory, bind-mounted into the backend as `/app/data`. No
 git checkout exists on the NAS any more, so no `git pull` can reach it. Every deploy and
-rollback backs it up first (`data/zapzap.db.bak-<YYYY-MM-DD-HHMM>`); prune old backups by
-hand. Backups are gitignored (`data/*.db.bak-*`) and the commit hook refuses them
+rollback backs it up first (`data/zapzap.db.bak-<YYYY-MM-DD-HHMMSS>-<tag>`, SQLite's online
+backup, never overwritten); prune old backups by hand. Backups are gitignored (`data/*.db.bak-*`) and the commit hook refuses them
 ([[Hooks]]) — on a dev machine that holds one.
 
 ## Decisions & History
