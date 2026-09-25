@@ -1,6 +1,6 @@
-//! Health checks, with Node's keys: `/api/health` answers `{status, timestamp, uptime}`
-//! (`src/api/routes/index.js`), `/health` answers `{status, timestamp, api}`
-//! (`src/api/server.js`). Healthchecks and deploy.sh read only the status code.
+//! Health checks, with the Node backend's keys: `/api/health` answers
+//! `{status, timestamp, uptime}`, `/health` answers `{status, timestamp, api}`.
+//! Healthchecks and deploy.sh read only the status code.
 
 use axum::Json;
 use serde::Serialize;

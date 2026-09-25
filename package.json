@@ -1,60 +1,14 @@
 {
   "name": "zapzap",
   "version": "1.0.0",
-  "description": "zapzap card game",
-  "main": "app.js",
-  "scripts": {
-    "start": "NODE_ENV=development nodemon app.js",
-    "init-demo": "node scripts/init-demo-data.js",
-    "init-bots": "node scripts/init-bots.js",
-    "test": "jest",
-    "test:parity": "node --test tests/parity/parity.test.js",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:smoke": "playwright test smoke.spec.js",
-    "simulate": "node scripts/run-simulation.js"
-  },
+  "private": true,
+  "description": "Root tooling only: Playwright, the headless browser fallback of .llmwiki/ParallelDelivery.md. The backend is zapzap-rust/, the clients frontend/ and frontend-flutter/.",
+  "license": "ISC",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vemore/zapzap.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/vemore/zapzap/issues"
-  },
-  "homepage": "https://github.com/vemore/zapzap#readme",
-  "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1138.0",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "@tensorflow/tfjs-node-gpu": "^4.22.0",
-    "bcryptjs": "^3.0.3",
-    "cards": "^1.2.0",
-    "cors": "^2.8.5",
-    "deck-of-cards": "^0.1.8",
-    "dotenv": "^17.2.3",
-    "ejs": "^3.0.2",
-    "events": "^3.1.0",
-    "express": "^4.22.3",
-    "google-auth-library": "^10.5.0",
-    "jquery": "^3.4.1",
-    "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0",
-    "nodemon": "^2.0.20",
-    "sqlite3": "^6.0.1",
-    "uuid": "^14.0.2",
-    "winston": "^3.18.3"
-  },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
-    "better-sqlite3": "^12.5.0",
-    "eslint": "^9.37.0",
-    "eventsource": "^4.0.0",
-    "jest": "^29.7.0",
-    "stoppable": "^1.1.0"
+    "playwright": "1.57.0"
   }
 }

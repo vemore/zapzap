@@ -32,8 +32,8 @@ enum BearerError {
     Malformed,
 }
 
-/// The token of an `Authorization: Bearer <token>` header, read as Node's middlewares do
-/// (`authMiddleware.js`): split on single spaces, exactly two parts, the first `Bearer`.
+/// The token of an `Authorization: Bearer <token>` header, read as the Node backend's
+/// middlewares did: split on single spaces, exactly two parts, the first `Bearer`.
 fn bearer_token(headers: &HeaderMap) -> Result<&str, BearerError> {
     let header = match headers.get(AUTHORIZATION) {
         Some(h) if !h.is_empty() => h,
@@ -46,7 +46,7 @@ fn bearer_token(headers: &HeaderMap) -> Result<&str, BearerError> {
     }
 }
 
-/// A 401 in Node's shape (`authMiddleware.js`): `{error, code, details?}`.
+/// A 401 in the Node backend's shape: `{error, code, details?}`.
 fn unauthorized(error: &str, code: &str, details: Option<serde_json::Value>) -> Response {
     let mut body = serde_json::json!({ "error": error, "code": code });
     if let Some(details) = details {
@@ -55,10 +55,10 @@ fn unauthorized(error: &str, code: &str, details: Option<serde_json::Value>) -> 
     (StatusCode::UNAUTHORIZED, Json(body)).into_response()
 }
 
-/// Extract authenticated user from request. Refusals match Node's `authMiddleware.js`:
+/// Extract authenticated user from request. Refusals match the Node backend's:
 /// no header is `MISSING_AUTH_HEADER`, a header that is not exactly `Bearer <token>` is
 /// `INVALID_AUTH_FORMAT`, and a bad or expired token, or one whose user no longer exists
-/// (Node: `ValidateToken.js` throws, the middleware answers the same), is `INVALID_TOKEN`.
+/// (the Node backend answered the same), is `INVALID_TOKEN`.
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request,
@@ -83,7 +83,7 @@ pub async fn auth_middleware(
         }
     };
 
-    // The user must still exist (Node: ValidateToken.js), one primary-key lookup
+    // The user must still exist, one primary-key lookup
     if !user_exists(&state, &claims.user_id).await {
         return invalid_token();
     }
@@ -115,7 +115,7 @@ pub async fn optional_auth_middleware(
 
 /// Admin middleware - requires an authenticated user who is an admin *now*: the flag is
 /// read from the database, not from the token, so a revoked admin loses access at once
-/// (Node: `adminMiddleware.js`, same statuses, messages and codes). Mounted inside
+/// (the Node backend's statuses, messages and codes). Mounted inside
 /// `auth_middleware`, which sets the claims.
 pub async fn admin_middleware(
     State(state): State<Arc<AppState>>,

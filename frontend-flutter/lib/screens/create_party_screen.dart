@@ -67,8 +67,8 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final name = _name.text.trim();
-    // Node refuses a name outside 3-50 characters with a generic 500
-    // (`src/use-cases/party/CreateParty.js:47-53`): refuse it here instead.
+    // The Node backend refused a name outside 3-50 characters with a generic
+    // 500: refuse it here instead.
     final nameError = !_nameTouch.touched
         ? null
         : name.isEmpty

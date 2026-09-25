@@ -38,7 +38,7 @@ the repository a path remote leads to). A throwaway repository an agent builds u
 scratchpad to test a script is not that, and pushing to or committing on its master passes.
 A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
 
-`scripts/hooks_selftest.sh` exercises all of it — 196 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 201 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter`, `dart`, `docker-compose`, `docker` and `curl` — plus
 `scripts/cleanup_local.sh`, the `flutter pub get` of `scripts/worktree_setup.sh` (and that
 a failed one clears its setup marker), and
@@ -71,7 +71,7 @@ under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERG
 | `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
 | `frontend/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `dart format --output=none --set-exit-if-changed lib test` (plus `integration_test` when it exists; the whole tree, not only the staged files, so drift another commit let through is caught — under a second; the refusal names `dart format lib test`), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get`; a `pubspec.lock` the pub get rewrote and that is left unstaged (not under `-a`) → refusal naming `git add` |
-| anything else (docs, legacy `src/`) | none |
+| anything else (docs, `scripts/`, the root `package.json`) | none |
 
 The test suites run in CI, not here. A setup refusal says to run the install as **its own**
 Bash call: the hook judges the whole line before any of it runs.
@@ -96,8 +96,6 @@ are not inspected. The ship-parallel agent prompt says so.
   is not proof the branch is live.
 - **Publishing**: `require-pull-request.sh` reads GitHub, never writes; silent without `gh`,
   unauthenticated, or on a branch with `git config branch.<name>.noPullRequest true`.
-- **The Node backend** (`src/`), production's rollback since 2026-09-24, has no pre-commit gate: CI's `node`
-  job (jest) and `image` job (root `Dockerfile`) are its only checks ([[Testing]]).
 - **Hard enforcement generally**: a missing or non-executable script exits 127, a timeout
   does not block either. They reduce a class of mistake; they do not make it impossible.
 
@@ -123,3 +121,4 @@ are not inspected. The ship-parallel agent prompt says so.
   branched from `master` once its base merged, so the hook keeps counting from
   `origin/master` and no flag was added.
 - **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** It had no gate, so the table only loses its `src/` row; the self-test's "no gate" case now stages `scripts/train-native.js`, and its OAuth-secret case a root `client_secret_*.json`. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

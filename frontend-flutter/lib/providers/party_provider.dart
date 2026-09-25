@@ -30,8 +30,7 @@ abstract final class PartyErrorCode {
 const int minPartyPlayers = 3;
 const int maxPartyPlayers = 8;
 
-/// A party name is 3 to 50 characters once trimmed, as Node requires
-/// (`src/use-cases/party/CreateParty.js:47-53`).
+/// A party name is 3 to 50 characters once trimmed, as the backend requires.
 const int partyNameMinLength = 3;
 const int partyNameMaxLength = 50;
 

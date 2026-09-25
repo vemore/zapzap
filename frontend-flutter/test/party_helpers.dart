@@ -97,7 +97,7 @@ JsonMap connectedPlayerJson(
 };
 
 /// The two easy and two medium bots the local backend seeds
-/// (`npm run init-bots`, `test/fixtures/bots.json`).
+/// (`zapzap-backend seed`, `test/fixtures/bots.json`).
 final List<JsonMap> defaultBots = [
   botJson('bot-easy-1', 'EasyBot1', 'easy'),
   botJson('bot-easy-2', 'EasyBot2', 'easy'),

@@ -20,7 +20,7 @@ SCRATCH="$(mktemp -d)"
 DATA="$SCRATCH/data"
 
 # The image runs as uid 1000, whatever uid runs this script: the scratch database must be
-# writable by it. An empty file is enough — the backend creates the Node schema itself.
+# writable by it. An empty file is enough — the backend creates its schema itself.
 mkdir -p "$DATA"
 : > "$DATA/zapzap.db"
 chmod 777 "$DATA"

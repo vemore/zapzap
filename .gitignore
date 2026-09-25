@@ -14,10 +14,12 @@ playwright-report/
 
 # Test results
 test-results/
+# Left in a main checkout by the removed Playwright suite (tests/e2e)
 tests/e2e/results/
 
 # Database
 data/zapzap.db
+# Left in a main checkout by the removed Node test suites
 data/zapzap.test.db
 # Backups the deploy skill takes before a deploy (data/zapzap.db.bak-<date>)
 data/*.db.bak-*
@@ -141,8 +143,9 @@ native/artifacts/
 # DRL model checkpoints (large binary files)
 data/models/*.safetensors
 
-# Google OAuth credentials (secrets)
-src/infrastructure/auth/client_secret_*.json
+# Google OAuth credentials (secrets), wherever a download lands (the Node backend kept
+# them under src/infrastructure/auth/, which a main checkout may still hold untracked)
+client_secret_*.json
 
 # Local work tracking: one file per entry, never committed (scripts/wip.sh, .llmwiki/ParallelDelivery.md)
 /wip/

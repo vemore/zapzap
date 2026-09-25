@@ -16,7 +16,7 @@ use zapzap_backend::infrastructure::database::schema::ensure_schema;
 /// The `sqlite_master` of a Node-built database, in creation order.
 const NODE_BUILT_SCHEMA: &str = include_str!("fixtures/node_built_schema.sql");
 
-/// The two users indexes `scripts/docker-entrypoint.js` added to databases it migrated;
+/// The two users indexes the Node image's entrypoint added to databases it migrated;
 /// the Rust schema does not create them.
 const ENTRYPOINT_INDEXES: [&str; 2] = ["idx_users_username", "idx_users_user_type"];
 
@@ -217,7 +217,7 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// A `users` table rebuilt by `scripts/docker-entrypoint.js` (its `users_new` has no
+/// A `users` table rebuilt by the Node image's entrypoint (its `users_new` has no
 /// `google_id`/`email`) and not yet opened by the Node app: the schema step cannot create
 /// `idx_users_google_id` on it. It must fail as a whole, leaving the database unchanged —
 /// not commit the tables it created before the failing statement.

@@ -59,7 +59,8 @@
   it (ship-parallel agent prompt); a check that needs a clean origin is serialised.
 - **When the MCP browser is unavailable**, the fallback is a headless script, run by path
   from the agent's scratchpad subdirectory: `require('<MAIN>/node_modules/playwright')`
-  (the root `package.json` devDependency, browsers in `~/.cache/ms-playwright`), then
+  (the only devDependency of the root `package.json`, installed by `npm ci` at the root of
+  the main checkout; browsers in `~/.cache/ms-playwright`), then
   `chromium.launch()`, `browser.newPage({ viewport })`, `page.goto(url)`,
   `page.screenshot({ path })`, `browser.close()`. It shares nothing with any other agent.
 - The server writes screenshots, console logs and network dumps to `.playwright-mcp/` in the
@@ -86,8 +87,7 @@ size, most often). The PWA ships under `/app/` since #36 ([[Deployment]]), so it
 deployed like any other (`ship-parallel` §4); the proxy does not depend on it, so a broken
 bundle takes down `/app/` and not the site. A change that also touches the backend, `nginx/`
 or the compose files is judged on those. Since 2026-09-24 the backend a merge deploys is
-`zapzap-rust/`; a change to `src/` (the Node backend) deploys nothing — it is production's
-rollback, built only by a rollback ([[Deployment]]).
+`zapzap-rust/` ([[Deployment]]).
 
 The reviewing agent gets these rules: verify each finding against the PR head; a wiki page
 or README the change makes false is at least Medium; read a page's `Decisions & History`
@@ -132,3 +132,4 @@ moves from `todo_nr/` to `todo/` (at most 12).
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
 - **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** A `src/` merge no longer exists, and the root `package.json` now holds only Playwright, for the headless browser fallback. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

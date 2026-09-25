@@ -174,8 +174,7 @@ After **each** merge, so a regression points at one pull request:
 | Paths changed | Do |
 |---|---|
 | `zapzap-rust/`, `frontend/`, `frontend-flutter/`, `nginx/`, `docker-compose.yml`, `data/` | `deploy` skill — production runs the Rust backend (`.llmwiki/Deployment.md`) |
-| `src/`, `app.js`, root `Dockerfile`, `package*.json` | nothing to deploy — the Node backend is production's rollback, built only when rolling back (`deploy` skill §4) |
-| `native/`, docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
+| `native/`, root `package*.json`, docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
 
 Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, the frontend
 loads, and the path the pull request changed, driven for real (Playwright). Record it.

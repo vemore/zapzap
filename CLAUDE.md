@@ -4,9 +4,8 @@
 
 ZapZap is a multiplayer rummy-style card game: a Rust backend (`zapzap-rust/`, axum + SQLite,
 **what production runs**), a React + Vite frontend (`frontend/`), a Flutter client in the
-making (`frontend-flutter/`, Android + PWA), a Rust simulation engine for bot training
-(`native/`), and the legacy Node backend (`src/`), kept as production's rollback
-(`.llmwiki/Deployment.md`).
+making (`frontend-flutter/`, Android + PWA), and a Rust simulation engine for bot training
+(`native/`).
 
 ## Read the wiki first
 
@@ -78,9 +77,6 @@ flutter build web --base-href /app/ && flutter build apk --debug
 # Native engine and training
 cd native && cargo test
 node scripts/train-native.js                     # .llmwiki/NativeEngine.md
-
-# Legacy Node backend (production's rollback)
-npm start                                        # :9999
 
 # Tooling
 scripts/wip.sh list all                          # the local backlog

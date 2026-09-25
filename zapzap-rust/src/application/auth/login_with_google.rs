@@ -1,4 +1,4 @@
-//! Login or sign up with a Google ID token. Port of `src/use-cases/auth/LoginWithGoogle.js`.
+//! Login or sign up with a Google ID token. Behaves as the Node backend's use case did.
 
 use std::sync::Arc;
 
@@ -128,8 +128,8 @@ impl LoginWithGoogle {
     }
 }
 
-/// Errors. `is_auth_failure` tells which ones Node answers with 401 `GOOGLE_AUTH_FAILED`
-/// (its message contains "Token" or "Google", `src/api/routes/authRoutes.js:158`).
+/// Errors. `is_auth_failure` tells which ones answer 401 `GOOGLE_AUTH_FAILED`
+/// (the Node backend's rule: its message contains "Token" or "Google").
 #[derive(Debug, thiserror::Error)]
 pub enum LoginWithGoogleError {
     #[error("Token Google requis")]

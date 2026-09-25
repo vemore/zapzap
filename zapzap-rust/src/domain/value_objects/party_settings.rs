@@ -3,13 +3,13 @@ use serde_json::Value;
 
 use super::MAX_PLAYERS;
 
-/// Fewest seats a party can have (Node: `PartySettings.js`, `validate`)
+/// Fewest seats a party can have (as the Node backend validated)
 pub const MIN_PLAYER_COUNT: u8 = 3;
 /// Most seats a party can have: the game state's `MAX_PLAYERS`
 pub const MAX_PLAYER_COUNT: u8 = MAX_PLAYERS as u8;
 
-/// Party settings, Node's `{playerCount, allowSpectators, roundTimeLimit}`
-/// (`src/domain/value-objects/PartySettings.js`). They are stored as JSON in
+/// Party settings, `{playerCount, allowSpectators, roundTimeLimit}`, the Node
+/// backend's keys. They are stored as JSON in
 /// `parties.settings_json`, where Node writes the same three keys. The hand size is
 /// not a setting: the starting player picks it at the start of each round.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

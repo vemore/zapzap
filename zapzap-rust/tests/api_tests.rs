@@ -3285,7 +3285,7 @@ async fn test_unserved_method_answers_route_not_found() {
 }
 
 /// Node checks the token and the admin flag on every `/api/admin` path before routing
-/// (`router.use` in `adminRoutes.js`): only an admin learns that a path does not exist.
+/// (its admin router's `router.use`): only an admin learns that a path does not exist.
 #[tokio::test]
 async fn test_unknown_admin_path_is_behind_auth_and_admin() {
     let (mut app, state) = create_test_app_with_state().await;
@@ -3755,8 +3755,8 @@ async fn test_next_round_after_the_game_ending_zapzap_is_refused() {
 }
 
 // ============================================================================
-// The last parity items: Node's answers to a bad set-admin body, a join of a full
-// started party and a delete by a non-member (tests/parity/divergences.json)
+// The last items of the former Node/Rust comparison: Node's answers to a bad set-admin
+// body, a join of a full started party and a delete by a non-member
 // ============================================================================
 
 #[tokio::test]
@@ -3808,7 +3808,7 @@ async fn test_join_full_started_party_answers_party_full() {
     .await;
     assert_eq!(status, StatusCode::OK, "start: {body}");
 
-    // Node checks a full party before anything else (JoinParty.js)
+    // Node checked a full party before anything else
     let (late, _) = register(&mut app, "fullstart_d").await;
     let (status, body) = post_json_auth(
         &mut app,
@@ -3828,7 +3828,7 @@ async fn test_delete_party_by_a_non_member_answers_not_in_party() {
     let waiting_id = create_party(&mut app, &owner, "Not yours").await;
     let (playing_id, tokens) = started_party(&mut app, "nonmember_game").await;
 
-    // Node's order (DeleteParty.js): membership first, whatever the party's state
+    // Node's order: membership first, whatever the party's state
     for party_id in [&waiting_id, &playing_id] {
         let path = format!("/api/party/{party_id}");
         let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&outsider)).await;

@@ -1,5 +1,5 @@
-//! Create a bot user. Port of `src/use-cases/bot/CreateBot.js`; the error messages are
-//! Node's, including the username checks of its `User` entity (`src/domain/entities/User.js:47-62`).
+//! Create a bot user. The error messages are the Node
+//! backend's, including the username checks of its `User` entity.
 
 use std::sync::Arc;
 

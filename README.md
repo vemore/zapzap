@@ -1,9 +1,8 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production runs the Rust backend; the earlier Node.js/Express backend stays in the repository as its rollback. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production runs the Rust backend. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![API Version](https://img.shields.io/badge/API-v2.0-blue.svg)](.llmwiki/Api.md)
 
 ---
@@ -19,12 +18,12 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 - 📊 **Live Updates**: Real-time game state synchronization across all players
 
 ### Technical Features
-- 🏗️ **Clean Architecture**: Domain-driven design with clear layer separation
+- 🏗️ **Layered backend**: domain, application (use cases), infrastructure and API layers in `zapzap-rust/`
 - 🔐 **JWT Authentication**: Secure token-based user management
 - 💾 **Database Persistence**: SQLite for game state and user data
 - 🎪 **Multi-Party Support**: Multiple concurrent games
 - 📡 **RESTful API**: Well-designed API with proper HTTP methods
-- ✅ **Comprehensive Testing**: Unit and integration tests included
+- ✅ **Tested**: Rust unit and API integration tests, vitest, Flutter tests and an end-to-end round, all in CI
 
 ---
 
@@ -32,8 +31,8 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 
 ### Prerequisites
 
-- **Node.js** 16.0.0 or higher
-- **npm** 7.0.0 or higher
+- **Rust**, the toolchain `zapzap-rust/rust-toolchain.toml` pins (rustup installs it)
+- **Node.js** and **npm**, for the React frontend (`frontend/`)
 
 ### Installation
 
@@ -41,9 +40,6 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 # Clone the repository
 git clone https://github.com/vemore/zapzap.git
 cd zapzap
-
-# Install dependencies
-npm install
 
 # Seed the bot accounts and the 5 demo users into data/zapzap.db (the Rust backend's
 # seed command; idempotent, creates the file and its tables when missing)
@@ -53,11 +49,14 @@ npm install
 ### Running the Game
 
 ```bash
-# Development mode with auto-reload
-npm start
+# The backend (JWT_SECRET is required)
+cd zapzap-rust && JWT_SECRET=$(openssl rand -hex 32) cargo run
+
+# The React frontend, in another shell: http://localhost:5173, proxies /api to :9999
+cd frontend && npm ci && npm run dev
 ```
 
-The server will start on **port 9999** by default.
+The backend listens on **port 9999** by default (`PORT`).
 
 ### Demo Login Credentials
 
@@ -68,10 +67,7 @@ After a `seed --demo`, you can login with:
 ### Quick Test
 
 ```bash
-# Test the API
-node scripts/test-api.js
-
-# Expected output: All API tests passed! ✓
+curl -s http://localhost:9999/api/health     # {"status":"ok",...}
 ```
 
 ---
@@ -183,8 +179,7 @@ docker-compose ps
 
 The following directories are persisted:
 
-- `./data/` - SQLite database files
-- `./logs/` - Application logs
+- `./data/` - the SQLite database and the LLM bots' memory (`data/bot-strategies/`)
 
 Data persists across container restarts and rebuilds.
 
@@ -315,7 +310,6 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
 | Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register (password or Google), the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
-| Legacy backend | `src/`, `app.js` | Node.js, Express, clean architecture | production's rollback (`.llmwiki/Deployment.md`) |
 
 The Flutter client, from `frontend-flutter/`:
 
@@ -348,12 +342,9 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 `.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
 unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
-compose's Rust backend with the Bedrock feature, started until its health check passes; the
-Node backend a rollback builds — root `Dockerfile`, npm 10 —; both frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
-debug apk builds), Flutter end to end (a round against the Rust backend), Node backend (`npm test`: the jest suites in `tests/unit` and
-`tests/integration`, on Node 20), backend parity (`npm run test:parity`: the same HTTP
-scenarios against the Node and Rust backends, every known difference listed in
-`tests/parity/divergences.json`). `master` accepts only
+compose's Rust backend with the Bedrock feature, started until its health check passes; both
+frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web and
+debug apk builds), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
 
@@ -364,17 +355,14 @@ squash-merged pull requests with green checks. What CI does not run yet, and why
 ### Available Scripts
 
 ```bash
-# Start development server
-npm start
+# Backend (zapzap-rust/)
+JWT_SECRET=$(openssl rand -hex 32) cargo run    # the API on :9999
+cargo run -- seed --demo                        # the bot accounts and the demo users
+cargo fmt && cargo clippy --all-targets -- -D warnings
+cargo test
 
-# Seed the bot accounts and the demo users
-(cd zapzap-rust && cargo run -- seed --demo)
-
-# Run tests
-npm test
-
-# Test API integration
-node scripts/test-api.js
+# Frontend (frontend/)
+npm run dev && npm run lint && npx vitest run && npm run build
 ```
 
 ### API Endpoints
@@ -399,24 +387,19 @@ node scripts/test-api.js
 **Real-time:**
 - `GET /suscribeupdate` - SSE event stream
 
-These are the Node routes. The Rust backend's complete list: [`.llmwiki/Api.md`](.llmwiki/Api.md).
+The complete list, with auth and failure codes: [`.llmwiki/Api.md`](.llmwiki/Api.md).
 
 ### Running Tests
 
 ```bash
-# Run all tests with coverage (tests/unit and tests/integration; jest.config.js
-# leaves tests/e2e to Playwright and frontend/ to vitest)
-npm test
-
-# Run specific test file
-npx jest player.test.js
-
-# Run API integration tests (server must be running)
-node scripts/test-api.js
-
-# Compare the Node and Rust backends (needs the Rust release build)
-(cd zapzap-rust && cargo build --release) && npm run test:parity
+(cd zapzap-rust && cargo test)                  # unit + API integration tests
+(cd native && cargo test)                       # the simulation engine
+(cd frontend && npx vitest run)                 # the React client
+(cd frontend-flutter && flutter test)           # the Flutter client
+scripts/flutter_e2e.sh                          # a round, Flutter client against the Rust backend
 ```
+
+Every suite and what CI runs: [`.llmwiki/Testing.md`](.llmwiki/Testing.md).
 
 ### Demo Data
 
@@ -432,29 +415,20 @@ node scripts/test-api.js
 The seed opens the database the server would (`DATABASE_URL`, else `DB_PATH`, else
 `./data/zapzap.db`), creates it and its tables when missing, and creates only the accounts
 whose username is free: run it twice, or on a database in use, and nothing is duplicated.
-It needs no `JWT_SECRET` and no running server. Unlike the Node `npm run init-demo`, it
-creates no demo party.
+It needs no `JWT_SECRET` and no running server. It creates no demo party.
 
 ### Environment Variables
 
-Create a `.env` file (optional):
+The backend reads them from its environment (`zapzap-rust/src/main.rs`, `zapzap-rust/src/infrastructure/app_state.rs`):
 
 ```env
-# Server Configuration
-PORT=9999
-NODE_ENV=development
-
-# Database (the Node backend; the Rust backend and its seed read DATABASE_URL, else
-# DB_PATH; default data/zapzap.db)
-DB_PATH=./data/zapzap.db
-
-# JWT
-JWT_SECRET=your-secret-key-change-in-production
-
-# Logging
-LOG_LEVEL=info
-LOG_DIR=./logs
+PORT=9999                          # default 9999
+DATABASE_URL=sqlite:./data/zapzap.db   # else DB_PATH, else ./data/zapzap.db
+JWT_SECRET=...                     # required: openssl rand -hex 32
+RUST_LOG=info                      # tracing filter
 ```
+
+The complete list, Docker included: [`.llmwiki/Backend.md`](.llmwiki/Backend.md) and `.env.example`.
 
 ---
 
@@ -672,7 +646,7 @@ Player 4: 10 points
 
 ⚠️ **Current Implementation**:
 - Basic JWT authentication
-- Bcrypt password hashing
+- bcrypt password hashing (Argon2 hashes still verify)
 - Input validation
 - SQL injection protection via parameterized queries
 
@@ -688,7 +662,7 @@ Player 4: 10 points
 ## 🗺️ Roadmap
 
 ### Current Progress
-- [x] Clean architecture implementation
+- [x] Layered backend (Rust)
 - [x] JWT authentication
 - [x] Database persistence
 - [x] API documentation
@@ -720,7 +694,7 @@ Contributions are welcome! Please follow these steps:
 1. **Fork the repository**
 2. **Create a feature branch**: `git checkout -b feature/your-feature`
 3. **Make your changes** with tests
-4. **Run tests**: `npm test`
+4. **Run tests**: `cargo test` in `zapzap-rust/`, and the suites of what you changed ([Testing](.llmwiki/Testing.md))
 5. **Commit**: `git commit -m "feat: add feature"`
 6. **Push**: `git push origin feature/your-feature`
 7. **Create Pull Request**
@@ -728,9 +702,9 @@ Contributions are welcome! Please follow these steps:
 ### Development Guidelines
 
 - ✅ Write tests for new features
-- ✅ Follow clean architecture principles
+- ✅ Keep the backend's layers (domain, application, infrastructure, API)
 - ✅ Use meaningful commit messages ([Conventional Commits](https://www.conventionalcommits.org/))
-- ✅ Add JSDoc comments for public APIs
+- ✅ Document public items (Rust doc comments, JSDoc in the frontend)
 - ✅ Update documentation
 
 ---
@@ -743,11 +717,10 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 ## 🙏 Acknowledgments
 
-- **[cards](https://www.npmjs.com/package/cards)** - Card deck library
-- **[deck-of-cards](https://www.npmjs.com/package/deck-of-cards)** - Visual card animations
-- **[Express](https://expressjs.com/)** - Web framework
-- **[Jest](https://jestjs.io/)** - Testing framework
+- **[axum](https://github.com/tokio-rs/axum)** - Web framework of the backend
 - **[SQLite](https://www.sqlite.org/)** - Embedded database
+- **[deck-of-cards](https://www.npmjs.com/package/deck-of-cards)** - Visual card animations (React client)
+- **[Flutter](https://flutter.dev/)** - The Android and PWA client
 
 ---
 
@@ -758,6 +731,6 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 ---
 
-**Made with ❤️ and Clean Architecture**
+**Made with ❤️**
 
 *Happy ZapZapping! 🃏⚡*

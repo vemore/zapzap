@@ -21,11 +21,9 @@ frontend=false
 image=false
 hooks=false
 flutter=false
-node=false
-parity=false
 e2e=false
 
-everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; node=true; parity=true; e2e=true; }
+everything() { rust=true; native=true; frontend=true; image=true; hooks=true; flutter=true; e2e=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -34,11 +32,8 @@ while IFS= read -r path; do
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 
         # The Rust backend -- what production runs (.llmwiki/Deployment.md) -- and the
-        # image built from it; the parity suite runs its release build against the Node
-        # backend, and the Flutter end-to-end run plays a round against it.
-        # Password hashing and its fixture: jest's RustBcryptCompat.test.js checks Node reads them.
-        zapzap-rust/src/infrastructure/auth/*|zapzap-rust/tests/fixtures/bcrypt_node_compat.json) rust=true; node=true; image=true; parity=true; e2e=true ;;
-        zapzap-rust/*) rust=true; image=true; parity=true; e2e=true ;;
+        # image built from it; the Flutter end-to-end run plays a round against it.
+        zapzap-rust/*) rust=true; image=true; e2e=true ;;
 
         # Bot parameters and models: zapzap-rust/data is a symlink to data/.
         data/*) rust=true ;;
@@ -68,24 +63,9 @@ while IFS= read -r path; do
         # The smoke tests the image job runs: the Flutter PWA image, the production backend.
         scripts/pwa_image_smoke.sh|scripts/backend_image_smoke.sh) image=true ;;
 
-        # The Node backend, production's rollback since the switch to Rust
-        # (.llmwiki/Deployment.md): its code and dependencies are tested by jest, baked into
-        # the root Dockerfile's image (which a rollback builds), and compared with the Rust
-        # backend by the parity suite. Not e2e: the Flutter end-to-end run seeds its bots
-        # with `zapzap-backend seed` and runs no Node.
-        src/*|app.js|logger.js|package.json|package-lock.json) node=true; image=true; parity=true ;;
-
-        # What the Node image holds but jest does not load, and the image's own recipe.
-        views/*|public/*|Dockerfile|.dockerignore) image=true ;;
-
-        # The parity suite (node --test, outside jest): Node against Rust.
-        tests/parity/*) parity=true ;;
-
-        # The jest suites and their configuration.
-        tests/*|jest.config.js) node=true ;;
-
-        # Configurations no job runs: Playwright (tests/e2e) and the root ESLint.
-        playwright.config.js|eslint.config.mjs) ;;
+        # The root package.json holds only Playwright, the headless browser fallback of
+        # .llmwiki/ParallelDelivery.md: no job installs it.
+        package.json|package-lock.json) ;;
 
         # Everything else: .github/, .claude/, scripts/, a root config, a path
         # nobody has classified yet.
@@ -93,4 +73,4 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\nnode=%s\nparity=%s\ne2e=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$node" "$parity" "$e2e"
+printf 'rust=%s\nnative=%s\nfrontend=%s\nimage=%s\nhooks=%s\nflutter=%s\ne2e=%s\n' "$rust" "$native" "$frontend" "$image" "$hooks" "$flutter" "$e2e"

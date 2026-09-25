@@ -5,7 +5,7 @@
 // to pick, the first card of the hand, a draw from the deck, ZapZap as soon as
 // the hand allows it — then checks the end-of-round screen.
 //
-// It needs a backend with the bot accounts (`npm run init-bots`) and is run
+// It needs a backend with the bot accounts (`zapzap-backend seed`) and is run
 // with `flutter drive`, never `flutter test`: scripts/flutter_e2e.sh does both
 // (CI runs it); the procedure, and the `API_BASE_URL` it takes, are in
 // .llmwiki/Testing.md.
