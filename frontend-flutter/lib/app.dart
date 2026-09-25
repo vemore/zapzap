@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -83,6 +84,12 @@ class _ZapZapAppState extends State<ZapZapApp> {
           GlobalCupertinoLocalizations.delegate,
         ],
         localeResolutionCallback: resolveLocale,
+        // Under every screen, so the navigation bar at the bottom is dark
+        // whatever the route; app bars set the same style at the top.
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppTheme.systemOverlayStyle,
+          child: child ?? const SizedBox.shrink(),
+        ),
         routerConfig: _router ??= createRouter(
           auth: context.read<AuthProvider>(),
           initialLocation: widget.initialLocation,
