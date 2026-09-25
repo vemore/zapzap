@@ -336,6 +336,9 @@ The release build signs with the upload key `zapzap-upload` named by
 `frontend-flutter/android/key.properties` (never committed; copy `key.properties.template`,
 generate the keystore once with `scripts/generate_keystore.sh`). Without it a release APK
 falls back to the debug key, with a warning, and a release bundle is refused: [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md) § Android.
+A bundle is checked by `scripts/verify_aab.sh` and published to Google Play from the
+developer's machine by `scripts/play_publish.py` (never from CI): the `release-android`
+skill, and [`.llmwiki/Release.md`](.llmwiki/Release.md).
 
 An end-to-end test plays a round through the client against a live backend and a
 chromedriver (`integration_test/`, `flutter drive`). `scripts/flutter_e2e.sh` starts the

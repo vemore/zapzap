@@ -13,3 +13,7 @@ key.properties
 **/*.keystore
 **/*.jks
 /.kotlin/
+
+# Gradle's root build directory (a failed build's reports/problems/ lands here); the
+# Flutter project's own build/ is ignored by frontend-flutter/.gitignore.
+/build/

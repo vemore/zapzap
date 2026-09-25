@@ -157,3 +157,7 @@ client_secret_*.json
 
 # scripts/worktree_setup.sh marker (cleanup_local.sh keeps a worktree that has one)
 /.zapzap-setup-in-progress
+
+# Python bytecode and pytest caches (scripts/test_*.py)
+__pycache__/
+.pytest_cache/

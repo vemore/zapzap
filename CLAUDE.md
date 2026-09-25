@@ -15,7 +15,7 @@ guess at architecture, routes, rules or deployment — a page already has it. `[
 wiki page resolves to `.llmwiki/Name.md`. The game rules are `GAME_RULES.md`.
 
 Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip-refine`,
-`deploy`.
+`deploy`, `release-android`, `flutter-device-test`.
 
 ## Non-negotiables
 

@@ -889,7 +889,11 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
 ### Android (`frontend-flutter/android/`)
 
 - **No store yet**: the release build signs with the upload key when there is one (below),
-  but no bundle has been sent to Play.
+  but no bundle has been sent to Play. The procedure that builds, verifies
+  (`scripts/verify_aab.sh`) and publishes (`scripts/play_publish.py`) a bundle is the
+  **`release-android`** skill; the Play state is [[Release]]. Driving the app on the user's
+  phone (Wi-Fi adb, the screenshot loop, the integration round against a LAN backend) is the
+  **`flutter-device-test`** skill.
 - **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
   push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
   the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
@@ -972,7 +976,10 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   `test/system_ui_test.dart` pins the style the app sends and the window themes.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET`, the
   debug-only cleartext, the release signing with its debug-key fallback and R8, the
-  Flutter and google_sign_in keep rules, and the ignored `key.properties` and keystores.
+  Flutter and google_sign_in keep rules, the ignored `key.properties`, keystores and Gradle
+  root `build/` (`android/.gitignore`: a failed Gradle build writes
+  `android/build/reports/problems/`), and the template's commented-out `playServiceAccount=`
+  line (the Play API key, [[Release]]).
 - **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
   id (`zapzap-481109`), an OAuth client of type **Android**
   for the package `com.zapzap.app` and the SHA-1 of the key that signs the APK. Nothing of
@@ -992,13 +999,14 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   3. build with the web client id: `flutter build apk --debug
      --dart-define=GOOGLE_CLIENT_ID=<web client id>` (the NAS `.env`'s
      `VITE_GOOGLE_OAUTH_CLIENT_ID`).
-  The Android flow has not been run on a device yet (2026-09-24: no AVD, and `/dev/kvm`
-  is not usable by the user — below).
+  Google sign-in passed on the user's Pixel 9 Pro XL on 2026-09-25 (debug build, local
+  debug key); the `flutter-device-test` skill repeats the check.
 - Emulator: `~/sdk/android` has an `android-31` `google_apis` x86_64 image but no AVD, and
   the emulator needs KVM (`/dev/kvm`, group `kvm`); without it, check the APK instead:
   `~/sdk/android/build-tools/36.0.0/aapt2 dump badging <apk>` (package, label,
   permissions) and `aapt2 dump xmltree --file AndroidManifest.xml <apk>`
-  (`networkSecurityConfig` present in the debug APK only).
+  (`networkSecurityConfig` present in the debug APK only). A real phone is the
+  `flutter-device-test` skill.
 
 ### Theme (`frontend-flutter/lib/utils/app_theme.dart`)
 

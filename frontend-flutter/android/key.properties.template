@@ -16,3 +16,8 @@ storeFile=/home/USER/zapzap-upload-keystore.jks
 storePassword=YOUR_STORE_PASSWORD
 keyAlias=zapzap-upload
 keyPassword=YOUR_KEY_PASSWORD
+
+# Optional: the Google Play service-account JSON key scripts/play_publish.py publishes with
+# (release-android skill, "Play API access"). Absolute path, outside the repository, mode
+# 600; never committed -- the commit hook refuses any service-account key.
+#playServiceAccount=/home/USER/.config/zapzap/play-service-account.json
