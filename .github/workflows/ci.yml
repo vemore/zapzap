@@ -195,7 +195,8 @@ jobs:
       # The image production runs (.llmwiki/Deployment.md): the root compose's `backend`
       # service, the Rust backend built with the Bedrock client of the LLM bots. The script
       # builds it through compose, starts it on an empty database with a throwaway secret,
-      # and waits for its own compose health check (curl, which the image carries).
+      # and waits for its own compose health check (busybox wget: the Alpine image has no
+      # curl), then checks the image user (uid 1000), its CA store and its size (< 40 MB).
       - name: Rust backend image (production, bedrock) builds and passes its health check
         run: scripts/backend_image_smoke.sh
       - name: Frontend image

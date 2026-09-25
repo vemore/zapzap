@@ -38,7 +38,8 @@ On the dev machine that deploys (the main checkout, or a worktree set up with
   refuses to build without it). Read it without printing the file:
   `grep -c '^VITE_GOOGLE_OAUTH_CLIENT_ID=.' .env` answers `1`.
 - **Room to build is needed here, on the dev machine, not on the NAS**: ≥ 6 GB free for
-  Docker (the Flutter builder stage alone is ~3.5 GB, the Rust builder adds its own) and
+  Docker (the Flutter builder stage alone is ~3.5 GB; the Rust builder, `rust:1.92-alpine`
+  with `musl-dev cmake perl make clang linux-headers`, adds its own for a ~29 MB image) and
   ≥ 2 GB free RAM (`dart2js`). `df -h /var/lib/docker; free -m; docker system df`. A build
   short of it fails before anything is pushed, which costs nothing but the minutes. The NAS
   only needs room for the pulled images.
