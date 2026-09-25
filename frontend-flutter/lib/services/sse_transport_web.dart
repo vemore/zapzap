@@ -11,8 +11,9 @@ SseTransport createSseTransport() => EventSourceSseTransport();
 /// Server-sent events over the browser's `EventSource`, the transport of
 /// the PWA.
 ///
-/// Listens to the backends' named `event` events and to unnamed `message`
-/// ones. On an error the source is closed rather than left to the
+/// Listens to the backend's named `event` events, the only broadcasts it
+/// sends (`zapzap-rust/src/api/sse.rs`). On an error the source is closed
+/// rather than left to the
 /// browser's own reconnection, so `SseClient` alone decides when to retry,
 /// as the React `useSSE` does.
 class EventSourceSseTransport implements SseTransport {
@@ -37,7 +38,6 @@ class EventSourceSseTransport implements SseTransport {
         source = opened;
         opened.onopen = ((web.Event _) => onOpen?.call()).toJS;
         opened.addEventListener('event', forward.toJS);
-        opened.addEventListener('message', forward.toJS);
         opened.onerror = ((web.Event _) {
           opened.close();
           controller.addError(

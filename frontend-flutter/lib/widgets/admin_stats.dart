@@ -128,7 +128,7 @@ class _AdminStatisticsViewState extends State<AdminStatisticsView> {
                       key: const Key('admin-stats-completion'),
                       icon: Icons.trending_up,
                       label: l10n.adminStatsCompletion,
-                      // Node rounds to one decimal, Rust does not.
+                      // The backend does not round it.
                       value: '${Formats.number(stats.completionRate)}%',
                       color: StatsColors.zapzap,
                     ),

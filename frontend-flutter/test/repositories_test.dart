@@ -89,18 +89,18 @@ void main() {
     final created = await party.create(
       name: 'Friday',
       playerCount: 4,
-      settings: const PartySettings(playerCount: 8, handSize: 5),
+      settings: const PartySettings(playerCount: 8, allowSpectators: true),
       botIds: ['b1'],
     );
     expect(created.botsJoined, 2);
     expect(backend.lastBody, {
       'name': 'Friday',
       'visibility': 'public',
-      'settings': {'playerCount': 4, 'handSize': 5},
+      'settings': {'playerCount': 4, 'allowSpectators': true},
       'botIds': ['b1'],
     });
-    // Without settings, playerCount is still sent (Node rejects a create
-    // without it).
+    // Without settings, playerCount is still sent (the backend answers 400
+    // VALIDATION_ERROR without it), and never a key it no longer has.
     await party.create(name: 'Bare', playerCount: 3);
     expect(backend.lastBody, {
       'name': 'Bare',
@@ -124,6 +124,30 @@ void main() {
     expect(backend.last.url.queryParameters, {'difficulty': 'easy'});
     expect(backend.lastAuthenticated, isFalse);
     expect(await party.connectedPlayers(), isEmpty);
+  });
+
+  test('party: create sends {playerCount, allowSpectators, roundTimeLimit}, '
+      'never handSize or maxScore', () async {
+    final backend = FakeBackend({'POST /api/party': 'party_create'});
+    await PartyRepository(backend.api).create(
+      name: 'Friday',
+      playerCount: 5,
+      settings: const PartySettings(allowSpectators: false, roundTimeLimit: 0),
+    );
+    final settings = (backend.lastBody! as Map)['settings'] as Map;
+    expect(settings, {
+      'playerCount': 5,
+      'allowSpectators': false,
+      'roundTimeLimit': 0,
+    });
+    for (final key in [
+      'handSize',
+      'maxScore',
+      'enableGoldenScore',
+      'goldenScoreThreshold',
+    ]) {
+      expect(settings.containsKey(key), isFalse, reason: key);
+    }
   });
 
   test('game: every move', () async {

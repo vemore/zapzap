@@ -268,8 +268,9 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
     );
   }
 
-  /// S2: the settings as one line of chips — seats, the hand size where the
-  /// party carries one, "you host", the status.
+  /// S2: the settings as one line of chips — seats, "you host", the status.
+  /// The hand size is no party setting: the starting player picks it each
+  /// round (`GAME_RULES.md`).
   Widget _settings(BuildContext context, PartyDetails details) {
     final l10n = AppLocalizations.of(context);
     final status = details.party.status;
@@ -279,13 +280,6 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
       runSpacing: 8,
       children: [
         InfoChip(text: l10n.lobbySeatsChip(_lobby.maxPlayers)),
-        // Only the Rust backend carries a party hand size; on Node the
-        // starting player picks it each round (`GAME_RULES.md`), so there
-        // is nothing to show.
-        if (details.party.settings.handSize != null)
-          InfoChip(
-            text: l10n.lobbyHandSizeChip(details.party.settings.handSize!),
-          ),
         if (_lobby.isOwner) InfoChip(text: l10n.lobbyYouHostChip),
         InfoChip(
           key: const Key('lobby-status'),
@@ -326,6 +320,9 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: PlayerSeatTile(
             player: player,
+            // Which seat is the owner's: only `ownerId` says so for every
+            // seat. The backend computes `isOwner` from the same `ownerId`,
+            // so the crown on my seat and the "you host" chip agree.
             isOwner: ownerId != null && player.userId == ownerId,
             online: online.contains(player.userId),
           ),

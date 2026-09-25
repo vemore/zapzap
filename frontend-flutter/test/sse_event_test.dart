@@ -7,19 +7,22 @@ SseEvent? _parse(String data, {String event = 'event'}) =>
 
 void main() {
   group('SseEvent', () {
-    test('a Node game broadcast', () {
+    // `GameEvent` (zapzap-rust/src/infrastructure/app_state.rs) as the
+    // selectHandSize route sends it: `data` flattened into the object.
+    test('a game broadcast', () {
       final event = _parse(
-        '{"partyId":"p1","userId":3,"action":"selectHandSize","handSize":5}',
+        '{"type":"gameUpdate","partyId":"p1","userId":"u1",'
+        '"action":"selectHandSize","handSize":5,"timestamp":1726999999999}',
       )!;
+      expect(event.type, 'gameUpdate');
       expect(event.partyId, 'p1');
-      expect(event.userId, '3');
+      expect(event.userId, 'u1');
       expect(event.action, 'selectHandSize');
-      expect(event.type, isNull);
       expect(event.isPresence, isFalse);
       expect(event.data['handSize'], 5);
     });
 
-    test('a Rust broadcast carries a type and a millisecond timestamp', () {
+    test('a broadcast carries a millisecond timestamp', () {
       final event = _parse(
         '{"type":"gameUpdate","partyId":"p1","userId":"u1",'
         '"action":"play","timestamp":1726999999999}',
@@ -29,22 +32,30 @@ void main() {
       expect(event.timestamp, DateTime.utc(2024, 9, 22, 10, 13, 19, 999));
     });
 
-    test('presence events', () {
-      for (final type in [
-        'userConnected',
-        'userDisconnected',
-        'userStatusChanged',
-      ]) {
-        expect(_parse('{"type":"$type","userId":"u1"}')!.isPresence, isTrue);
+    test('presence events: no party, a username (api/sse.rs)', () {
+      for (final type in ['userConnected', 'userDisconnected']) {
+        final event = _parse(
+          '{"type":"$type","partyId":null,"userId":"u1",'
+          '"username":"Ana","timestamp":1726999999999}',
+        )!;
+        expect(event.isPresence, isTrue);
+        expect(event.partyId, isNull);
+        expect(event.userId, 'u1');
       }
     });
 
-    test('an unnamed message is read too', () {
-      expect(_parse('{"partyId":"p1"}', event: 'message')!.partyId, 'p1');
+    test('only the named event `event` is a broadcast', () {
+      expect(_parse('{"partyId":"p1"}', event: 'message'), isNull);
     });
 
     test('the initial connected event and unreadable data are skipped', () {
-      expect(_parse('{"type":"connected"}', event: 'connected'), isNull);
+      expect(
+        _parse(
+          '{"message":"Connected to SSE stream","timestamp":1726999999999}',
+          event: 'connected',
+        ),
+        isNull,
+      );
       expect(_parse('not json'), isNull);
       expect(_parse('[1,2]'), isNull);
     });

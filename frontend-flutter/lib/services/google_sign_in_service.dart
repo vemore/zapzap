@@ -12,7 +12,7 @@ import 'google_sign_in_script_stub.dart'
     as script;
 
 /// Which Google OAuth client asks for the ID token, for this build and
-/// platform. The backend (Node and Rust) checks the token's audience against
+/// platform. The backend checks the token's audience against
 /// the **web** client id, so both platforms name that one:
 ///
 /// - on the web, as the Google Identity Services `clientId`, as the React

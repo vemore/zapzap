@@ -435,8 +435,9 @@ class _GameScreenState extends State<GameScreen> {
   // The end of a round, and the end of the game: everything comes from
   // `GameState` — `allHands`, `handPoints`, `roundScores`, `zapZapCaller`,
   // `lowestHandPlayerIndex`, `wasCounterActed`, `counterActedByPlayerIndex`,
-  // `gameFinished`, `winner` — never from the answer of a move, because the
-  // two backends disagree on what `zapzap` returns ([[FrontendFlutter]]).
+  // `gameFinished`, `winner` — never from the answer of a move: a round a
+  // bot or another player ends reaches this screen as an event and a
+  // refetch of `/state`, never as an answer, so `/state` is the one path.
   // ---------------------------------------------------------------------
 
   /// What [playerIndex] scored this round, as `GameBoard.jsx:374-400`
@@ -459,7 +460,7 @@ class _GameScreenState extends State<GameScreen> {
           player: () {
             final index = ordered[seat].playerIndex;
             final total = _game.scoreOf(index);
-            // Both sources: Node fills `eliminatedPlayers`, and
+            // Both sources: the state's `eliminatedPlayers`, and
             // `GAME_RULES.md` puts anybody above 100 points out.
             final out = _game.isEliminated(index) || total > 100;
             return RoundEndPlayer(

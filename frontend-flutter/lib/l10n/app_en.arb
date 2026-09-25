@@ -129,7 +129,6 @@
   "lobbyCopyInviteCode": "Copy",
   "lobbyInviteCodeCopied": "Code copied: send it to your friends.",
   "lobbySeatsChip": "{count, plural, =1{1 seat} other{{count} seats}}",
-  "lobbyHandSizeChip": "{count, plural, =1{1 card in hand} other{{count} cards in hand}}",
   "lobbyYouHostChip": "You host",
   "lobbySeatOnline": "online",
   "lobbySeatHost": "host",

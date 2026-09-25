@@ -206,7 +206,7 @@ class _GameTableAreaState extends State<GameTableArea> {
 
   /// The card the last action took from the discard pile — public, it lay
   /// face up —, or `null`. A deck draw never names its card, even when the
-  /// server sends one (Node does: `2026-09-22-node-play-draw-leak-all-hands`).
+  /// server were to send one (the Node backend did, until its removal).
   int? _takenCard() {
     final action = widget.lastAction;
     if (action == null || action.type != 'draw') return null;

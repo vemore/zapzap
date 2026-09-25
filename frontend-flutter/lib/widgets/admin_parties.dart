@@ -150,7 +150,7 @@ class _AdminPartiesViewState extends State<AdminPartiesView> {
       adminErrorText(
         l10n,
         error,
-        // Node answers 400 when stopping a finished party.
+        // The backend answers 400 when stopping a finished party.
         refused: l10n.adminErrorPartyRefused,
         notFound: l10n.errorPartyNotFound,
       );
@@ -278,7 +278,7 @@ class AdminPartyTile extends StatelessWidget {
   final VoidCallback? onDelete;
 
   /// The seats of [party] as React writes them: `3 / 5`, `3 / ?` when its
-  /// settings name no player count (Rust settings, or unreadable JSON).
+  /// settings name no player count (unreadable JSON).
   static String seats(AdminParty party) =>
       '${party.playerCount} / ${party.settings.playerCount ?? '?'}';
 

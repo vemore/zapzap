@@ -17,7 +17,7 @@ import 'history_helpers.dart';
 void main() {
   const vincentId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e';
 
-  /// A `GET /history` entry as both backends send it: the winner, and my
+  /// A `GET /history` entry as the backend sends it: the winner, and my
   /// own `userPlacement` and `userScore`.
   Map<String, Object?> myGame(
     String id, {
@@ -38,22 +38,6 @@ void main() {
     'visibility': 'public',
     'userPlacement': ?placement,
     'userScore': ?score,
-  };
-
-  /// An older Node `GET /history` entry (before 2026-09-24): a winner id and
-  /// score, no place of mine.
-  Map<String, Object?> nodeGame(String id, {required String winnerId}) => {
-    'id': 1,
-    'partyId': id,
-    'partyName': 'Partie $id',
-    'winnerUserId': winnerId,
-    'winnerUsername': winnerId == vincentId ? 'Vincent' : 'MediumBot1',
-    'winnerFinalScore': 40,
-    'totalRounds': 5,
-    'wasGoldenScore': false,
-    'playerCount': 3,
-    'finishedAt': 1790094408,
-    'visibility': 'public',
   };
 
   String page(List<Map<String, Object?>> games) => jsonEncode({
@@ -159,17 +143,14 @@ void main() {
       expect(inTile('lost', find.text('toi : 134 pts')), findsOneWidget);
     });
 
-    testWidgets('Node: a win of mine still shows first, a loss no badge', (
+    testWidgets('an entry without a place of mine shows no badge', (
       tester,
     ) async {
-      await pumpHistory(tester, [
-        nodeGame('won', winnerId: vincentId),
-        nodeGame('lost', winnerId: 'someone-else'),
-      ]);
+      // A winner id is no place: the badge reads `userPlacement` only.
+      await pumpHistory(tester, [myGame('won', winner: 'Vincent')]);
 
-      expect(inTile('won', find.text('1er')), findsOneWidget);
       expect(
-        inTile('lost', find.byKey(const Key('history-placement'))),
+        inTile('won', find.byKey(const Key('history-placement'))),
         findsNothing,
       );
       expect(find.byKey(const Key('history-my-score')), findsNothing);
@@ -266,8 +247,8 @@ void main() {
     testWidgets('unknown figures show a dash, the link still works', (
       tester,
     ) async {
-      // No /stats/me body: that read fails; Node gives no place.
-      await pumpHistory(tester, [nodeGame('a', winnerId: 'someone-else')]);
+      // No /stats/me body: that read fails; the entry gives no place.
+      await pumpHistory(tester, [myGame('a')]);
 
       expect(find.byKey(const Key('history-summary')), findsOneWidget);
       expect(
