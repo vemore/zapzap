@@ -32,6 +32,36 @@
 
   <title>ZapZap</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Holds back Google's GIS script. The google_sign_in_web plugin inserts it when it
+    registers, before the app's main, in every build, with or without a client id. It is
+    appended only when the app first uses Google sign-in (zapzapLoadGoogleScript, called by
+    lib/services/google_sign_in_script_web.dart), so a build without GOOGLE_CLIENT_ID, or a
+    signed-in session, never contacts accounts.google.com. .llmwiki/FrontendFlutter.md
+  -->
+  <script>
+    (function () {
+      var GIS = 'https://accounts.google.com/gsi/client';
+      var appendChild = Node.prototype.appendChild;
+      var held = [];
+      var released = false;
+      Node.prototype.appendChild = function (child) {
+        if (!released && child instanceof HTMLScriptElement &&
+            String(child.src).indexOf(GIS) === 0) {
+          held.push([this, child]);
+          return child;
+        }
+        return appendChild.call(this, child);
+      };
+      window.zapzapLoadGoogleScript = function () {
+        released = true;
+        held.splice(0).forEach(function (entry) {
+          appendChild.call(entry[0], entry[1]);
+        });
+      };
+    })();
+  </script>
 </head>
 <body>
   <!--

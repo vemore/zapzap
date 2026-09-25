@@ -42,6 +42,10 @@ List<SingleChildWidget> appProviders({
   Provider<AuthRepository>(
     create: (context) => AuthRepository(context.read<ApiClient>()),
   ),
+  // Created once: the plugin may be initialised only once.
+  Provider<GoogleSignInService>(
+    create: (_) => googleSignIn ?? _platformGoogleSignIn(),
+  ),
   // Not lazy: the stored session is read at start-up, while the splash shows.
   ChangeNotifierProvider<AuthProvider>(
     lazy: false,
@@ -49,11 +53,8 @@ List<SingleChildWidget> appProviders({
       repository: context.read<AuthRepository>(),
       apiClient: context.read<ApiClient>(),
       storage: tokenStorage ?? TokenStorage.platform(),
+      google: context.read<GoogleSignInService>(),
     )..restore(),
-  ),
-  // Created once: the plugin may be initialised only once.
-  Provider<GoogleSignInService>(
-    create: (_) => googleSignIn ?? _platformGoogleSignIn(),
   ),
   Provider<PartyRepository>(
     create: (context) => PartyRepository(context.read<ApiClient>()),
