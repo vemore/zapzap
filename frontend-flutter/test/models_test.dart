@@ -62,7 +62,7 @@ void main() {
       expect(party.createdAt, utc(1790094174));
     });
 
-    test('list paging sits at the top level (both backends)', () {
+    test('list paging sits at the top level', () {
       final page = Page.fromJson(
         {
           'success': true,

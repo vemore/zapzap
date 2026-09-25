@@ -10,7 +10,7 @@ import 'json.dart';
 /// partyId, userId, action?, timestamp, ...}`, the fields an event adds
 /// flattened into it. Two families: a party or game change (`type` names it,
 /// `partyId` its party), and presence (`type: userConnected |
-/// userDisconnected`, no `partyId`, `api/sse.rs`). A screen keeps those whose
+/// userDisconnected`, `partyId: null`, `api/sse.rs`). A screen keeps those whose
 /// [partyId] is its party.
 class SseEvent {
   const SseEvent(this.data);

@@ -320,6 +320,9 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: PlayerSeatTile(
             player: player,
+            // Which seat is the owner's: only `ownerId` says so for every
+            // seat. The backend computes `isOwner` from the same `ownerId`,
+            // so the crown on my seat and the "you host" chip agree.
             isOwner: ownerId != null && player.userId == ownerId,
             online: online.contains(player.userId),
           ),

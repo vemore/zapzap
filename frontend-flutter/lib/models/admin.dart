@@ -64,7 +64,7 @@ class AdminParty {
     ownerUsername: Json.stringOrNull(json, 'ownerUsername'),
     inviteCode: Json.stringOrNull(json, 'inviteCode'),
     visibility: Json.stringOrNull(json, 'visibility'),
-    // Both backends send the settings JSON-encoded, as stored.
+    // The backend sends the settings JSON-encoded, as stored.
     settings: PartySettings.fromJson(json['settings']),
     currentRoundId: Json.stringOrNull(json, 'currentRoundId'),
     createdAt: Json.timestamp(json, 'createdAt'),

@@ -294,7 +294,7 @@ event` + a JSON object, a `: heartbeat` comment every 20 s, and a `type` on ever
     connection, closed with it; a non-200 fails; **60 s** without a byte fails (heartbeats
     are every 20 s, so a half-open socket after a network change is noticed).
   - `EventSourceSseTransport` (`sse_transport_web.dart`, PWA): `package:web` `EventSource`,
-    listeners on `event` and `message`; on `onerror` it closes the source, so the browser's
+    a listener on `event` only (the backend names every broadcast so); on `onerror` it closes the source, so the browser's
     own retry never runs alongside ours.
 - **`SseClient`** (`services/sse_client.dart`, plain Dart): `connect(token)` opens
   `<sseUri>?token=<jwt>` — with the token the backend registers the user as online, so
@@ -1247,7 +1247,7 @@ project `.gitignore`.
   data (`GameRoundEnd`), not a route of its own: the round's end is a phase of the board,
   reached and left by `currentAction`, and a route would have to be pushed and popped by
   every event that changes it. The standings are read from `GameState` rather than from the
-  `zapzap` answer, because the two backends disagree on what that answer's scores mean.
+  `zapzap` answer, because the two backends disagreed on what that answer's scores mean; with Rust alone, a round another player ends reaches the board only as an event and a `/state` refetch, so `/state` stays the one path.
   `lowestHandPlayerIndex` decides the crown, where React looks for the first player who
   scored 0 and is still alive — the same thing until two players tie on 0 — but a player
   the round has just put out never keeps it: checked against the local backend, Node names
