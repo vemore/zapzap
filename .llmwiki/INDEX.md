@@ -33,8 +33,8 @@ Load this file first. Then read only the pages your task touches.
 |---|---|---|
 | [[Deployment]] | The NAS, the four containers (the Rust backend in production since 2026-09-24), its environment and `data/` ownership, `deploy.sh`, the rollback to Node and what it loses, the tracked-database trap | 2026-09-25 |
 | [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Node vs Rust parity suite, the Flutter end-to-end procedure | 2026-09-25 |
-| [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-24 |
-| [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser, lanes A–D, cleanup, local `wip/` | 2026-09-24 |
+| [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-25 |
+| [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser (`.mcp.json`, `--isolated`), scratchpad and `gh` pitfalls, lanes A–D, cleanup, local `wip/` | 2026-09-25 |
 | [[Documentation]] | Which documents a change implicates; the `CLAUDE.md` budget | 2026-09-22 |
 | [[KnownLimits]] | What is deliberately left out of the gates, and why | 2026-09-25 |
 

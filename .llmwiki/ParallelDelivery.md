@@ -3,7 +3,7 @@
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
 > risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -45,13 +45,32 @@
 
 ### The shared browser
 
-- The Playwright MCP server is **one browser for every agent of the session**: a parallel
+- The Playwright MCP server is declared in the committed `.mcp.json` (project scope) as
+  `npx @playwright/mcp@latest --isolated`. `--isolated` keeps the browser profile in memory
+  (`@playwright/mcp` 0.0.82 `--help`), so each Claude Code session's server gets its own
+  browser: a second session no longer fails with "Browser is already in use for
+  …/mcp-chrome-…, use --isolated". The cost: no login, cookie or localStorage survives
+  from one run to the next — sign in within the check. Claude Code asks once to approve a
+  project-scope server, and a same-name server in the user's local scope (`~/.claude.json`)
+  takes precedence over it.
+- Within one session it is still **one browser for every agent**: a parallel
   agent's reload lands on whichever page is current, and every tab shares localStorage and
   tokens. So each agent opens its own tab (`browser_tabs` new), works only in it and closes
   it (ship-parallel agent prompt); a check that needs a clean origin is serialised.
+- **When the MCP browser is unavailable**, the fallback is a headless script, run by path
+  from the agent's scratchpad subdirectory: `require('<MAIN>/node_modules/playwright')`
+  (the root `package.json` devDependency, browsers in `~/.cache/ms-playwright`), then
+  `chromium.launch()`, `browser.newPage({ viewport })`, `page.goto(url)`,
+  `page.screenshot({ path })`, `browser.close()`. It shares nothing with any other agent.
 - The server writes screenshots, console logs and network dumps to `.playwright-mcp/` in the
   checkout it runs from. The directory is gitignored and nothing in it is tracked; it is
   debris, never committed, and not an agent's to delete while others run.
+- **The scratchpad is shared too**: every agent of a session gets the same scratchpad
+  directory. An agent writes its scripts, PR body and commit messages under
+  `<scratchpad>/<branch-slug>/` (the branch name, `/` → `-`), never at the root.
+- **`gh pr edit` fails** here: gh 2.45.0 still queries `projectCards` (Projects classic),
+  which GitHub removed. A PR's title or body is edited with `gh api -X PATCH
+  repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
 
 ### Lanes — chosen at planning time, from what a change will touch
 
@@ -104,6 +123,12 @@ moves from `todo_nr/` to `todo/` (at most 12).
 - **A Flutter merge is deployed (2026-09-24).** The lane rule said the client was not
   deployed, so a merge reached no user; that stopped being true with #36, and #62–#64 were
   deployed through the `deploy` skill while the rule still said otherwise.
+- **The Playwright MCP server runs `--isolated`, from a committed `.mcp.json` (2026-09-25).**
+  Declared in the user's local scope with no flag, it kept one on-disk profile, and a
+  second session's server was refused it ("Browser is already in use", #78, #98); agents
+  fell back to headless Chromium. Isolated trades the persisted login for that. The
+  per-branch scratchpad subdirectory and the `gh api` PR edit came the same day, after an
+  agent overwrote another's `pr.md` (#71) and `gh pr edit` failed on #68.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
 - **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.
