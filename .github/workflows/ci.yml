@@ -240,7 +240,8 @@ jobs:
       - uses: actions/checkout@v4
       # The Android Gradle plugin (frontend-flutter/android) needs a JDK 17+; the
       # runner's default may change under us, so it is set here. The Android SDK is
-      # the runner's preinstalled one ($ANDROID_HOME).
+      # the runner's preinstalled one ($ANDROID_HOME), with the packages the build needs
+      # installed below rather than trusted to the image.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -249,6 +250,26 @@ jobs:
           cache-dependency-path: |
             frontend-flutter/android/*.gradle*
             frontend-flutter/android/gradle/wrapper/gradle-wrapper.properties
+      # android/gradle.properties asks for -Xmx8G -XX:MaxMetaspaceSize=4G, more than a
+      # standard runner has. The gradle.properties of GRADLE_USER_HOME takes precedence
+      # over the project's, so this caps the heap without touching the committed file.
+      # Written after setup-java, whose cache covers only ~/.gradle/caches and wrapper.
+      - name: Cap the Gradle heap for CI
+        run: |
+          mkdir -p "$HOME/.gradle"
+          {
+            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError"
+            echo "kotlin.daemon.jvmargs=-Xmx2g"
+            echo "org.gradle.workers.max=2"
+          } >> "$HOME/.gradle/gradle.properties"
+      # Flutter 3.47's Gradle plugin compiles against SDK 36 (flutter.compileSdkVersion)
+      # with build-tools 36.0.0. Accepting the licences also lets the Android Gradle
+      # plugin download the pinned NDK if the image lacks it.
+      - name: Install pinned Android SDK packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       # Pinned with the SDK the client is written against (.llmwiki/FrontendFlutter.md):
       # a newer analyzer is a red build.
       - uses: subosito/flutter-action@v2
@@ -272,7 +293,18 @@ jobs:
       # flags the image builds with (frontend-flutter/Dockerfile), so this job fails on
       # whatever the image would fail on.
       - run: flutter build web --base-href /app/ --no-web-resources-cdn
+      # Debug, not release: no release signing yet (.llmwiki/FrontendFlutter.md § Android).
+      # The APK talks to production over HTTPS by default (lib/services/api_config.dart).
       - run: flutter build apk --debug
+      # The APK to try on a phone: the run's page → Artifacts → app-debug (a zip holding
+      # app-debug.apk), or `gh run download <run id> -n app-debug`.
+      - name: Upload the debug APK (artifact app-debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: frontend-flutter/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
 
   # The Flutter end-to-end test (frontend-flutter/integration_test/): the real client, in
   # headless Chrome, registers a user and plays a round against two bots on a Rust backend
