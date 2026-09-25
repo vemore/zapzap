@@ -10,7 +10,7 @@
 | Gap | Where it shows | Why it stays for now |
 |---|---|---|
 | The Node backend (production's rollback since 2026-09-24) has no pre-commit hook gate, and its Playwright e2e suite runs nowhere | [[Hooks]], [[Testing]] | CI gates it since 2026-09-23 (`node` job: jest; `image` job: the root `Dockerfile`, which a rollback builds); the e2e suite needs a browser and both servers |
-| A rollback to Node is not rehearsed by CI | [[Deployment]] "Rolling back to Node" | it needs the Rust image, the Node app and one database file in one job; it was rehearsed by hand at the switch (2026-09-24), which found the Argon2 hashes Node cannot verify (until fix/rust-keeps-bcrypt merges) |
+| A rollback to Node is not rehearsed by CI | [[Deployment]] "Rolling back to Node" | it needs the Rust image, the Node app and one database file in one job; it was rehearsed by hand at the switch (2026-09-24), which found the Argon2 hashes Node could not verify — fixed by fix/rust-keeps-bcrypt (#100), whose jest `RustBcryptCompat.test.js` now pins that Node verifies Rust's hashes |
 | The hooks cannot see a commit made inside a script, a `git merge`, or a merge through the API | [[Hooks]] | a hook sees a command string only |
 | `AUDIT_REPORT.md` (2025-11) audited the old jQuery/EJS app | removed 2026-09-22 | it described code that no longer exists (git history keeps it) |
 | `BACKEND_API.md` described the Node API with several errors (JWT 24 h instead of 7 days, 2 players minimum instead of 3, SSE heartbeat 15 s instead of 20 s) | removed 2026-09-22 | [[Api]] replaces it, written from the Rust routes |

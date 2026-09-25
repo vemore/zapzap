@@ -129,9 +129,9 @@ has the new compose file) and **before** `./deploy.sh`; nothing here stops produ
    so the counts may move afterwards — that is the game, not the schema step. `diff` must
    print nothing: production has been opened by the Node app for months, so the step that
    fails on an entrypoint-rebuilt `users` table should not (`.llmwiki/Deployment.md`). Then
-   check against `http://127.0.0.1:19999` the login of §3's post-switch block (a dedicated
-   test account is best: until fix/rust-keeps-bcrypt merges, a password login on Rust makes
-   that password unusable on Node), `GET /api/admin/parties?status=playing` with an admin
+   check against `http://127.0.0.1:19999` the login of §3's post-switch block (any password
+   account; Rust keeps bcrypt, so the login changes nothing Node reads),
+   `GET /api/admin/parties?status=playing` with an admin
    token, and `GET /api/game/<id>/state` for the playing parties that account plays in.
 
    ```bash
@@ -144,9 +144,8 @@ has the new compose file) and **before** `./deploy.sh`; nothing here stops produ
    curl -fsS http://127.0.0.1:19999/api/health
    ```
 
-   Check the login of a user who did **not** log in on Rust during the rehearsal (one who
-   did gets 401 until fix/rust-keeps-bcrypt merges: `.llmwiki/Deployment.md`) and a party's
-   state. Then clean up — the Node container ran as root, so its files go through a
+   Check a password login — the account that just logged in on Rust included: its hash is
+   still bcrypt (fix/rust-keeps-bcrypt, #100) — and a party's state. Then clean up — the Node container ran as root, so its files go through a
    container too:
 
    ```bash
@@ -298,9 +297,9 @@ serves, and serves the players' data**, from your own machine:
 ```bash
 ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker inspect -f "{{.Config.Image}} {{.Config.Cmd}} {{.Created}}" zapzap-backend; docker logs zapzap-backend 2>&1 | grep -m1 "Starting ZapZap backend"'
 # A password login through the public URL. The operator types the account and password;
-# nothing is echoed, stored or put on a command line. Prefer a dedicated test account:
-# until fix/rust-keeps-bcrypt merges, a password login on Rust makes that password
-# unusable on Node after a rollback.
+# nothing is echoed, stored or put on a command line. A dedicated test account keeps a
+# player's password out of it, but any account works: Rust keeps bcrypt, so the login
+# changes nothing a rollback to Node would read.
 read -rp 'user: ' U; read -rsp 'password: ' PW; echo
 TOKEN=$(jq -n --arg u "$U" --arg p "$PW" '{username: $u, password: $p}' \
   | curl -fsS -H 'content-type: application/json' -d @- https://zapzap.ombivince.synology.me/api/auth/login \
@@ -371,13 +370,10 @@ switch steps): its compose file builds the Node `backend` from the root `Dockerf
 CI keeps building. The Rust container is replaced by the Node one under the same names, and
 the database stays: Rust writes Node's schema, settings keys, Unix-second timestamps and
 game states, and Node served and finished a Rust-started game in the rehearsal of
-2026-09-24 (`.llmwiki/Deployment.md` "Rolling back to Node"). **What is lost: password
-logins.** Rust stores Argon2 hashes — for every account registered on it, and for every
-bcrypt account that logged in with its password on it — which Node cannot verify: those
-users get 401 from Node's login (their tokens, signed with the same secret, keep working for
-up to 7 days; Google logins are unaffected). Tell the user before rolling back, with the
-number of accounts it touches: `SELECT COUNT(*) FROM users WHERE password_hash LIKE
-'$argon2%'` on a copy. `.env` needs nothing: the Node keys were kept. No `chown` back: Node
+2026-09-24 (`.llmwiki/Deployment.md` "Rolling back to Node"). Passwords too: Rust hashes
+with bcrypt at Node's cost and never rehashes (fix/rust-keeps-bcrypt, #100), and tokens are
+signed with the same secret, so nobody is logged out. `.env` needs nothing: the Node keys
+were kept. No `chown` back: Node
 runs as root.
 
 ## 5. After

@@ -109,15 +109,10 @@ file):
   it to its end, and served the finished game's history and statistics;
 - JWTs: same secret, same claims — a token Rust signed is accepted by Node.
 
-**One Rust write Node cannot read, until fix/rust-keeps-bcrypt merges: Argon2 password
-hashes.** Rust hashes a new password with Argon2 and **rehashes a bcrypt hash to Argon2 on
-every successful password login** (`login_user.rs`); Node's `bcryptjs.compare` answers
-`false` for an Argon2 hash. After a rollback, every password user who logged in on Rust, and
-every user registered on Rust, gets 401 `INVALID_CREDENTIALS` from Node (reproduced in the
-rehearsal) — until their token expires (7 days) they stay signed in. Google users are
-unaffected. The user decided (2026-09-24) that Rust keeps bcrypt during the transition:
-fix/rust-keeps-bcrypt changes registration and login, and once it merges this paragraph no
-longer holds for passwords set or used after that deploy.
+**Passwords stay bcrypt.** Rust hashes new passwords with bcrypt at Node's cost and never
+rehashes on login (fix/rust-keeps-bcrypt, #100), so every password Rust set or checked
+verifies on Node. Only a Rust build from before that fix wrote Argon2 hashes; production
+never ran one.
 
 ### The Flutter PWA under `/app/`
 
@@ -347,7 +342,7 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   with the Bedrock feature, under the same service and container names so that nginx and
   `deploy.sh` stay as they are. The Node backend is kept, buildable and gated in CI, as the
   rollback, because its database is the same file and Rust writes it in Node's formats —
-  password hashes excepted, found while checking that claim. `deploy.sh` gained one refusal:
+  password hashes excepted until fix/rust-keeps-bcrypt (#100) made Rust keep bcrypt. `deploy.sh` gained one refusal:
   a compose file `docker-compose` cannot read (a `.env` without `JWT_SECRET`) stops the
   deploy before the build, with compose's reason.
-- **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat holds until fix/rust-keeps-bcrypt merges (user decision: Rust keeps bcrypt during the transition); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.
+- **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat found by the local rehearsal is void since fix/rust-keeps-bcrypt (#100: Rust keeps bcrypt, user decision); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.

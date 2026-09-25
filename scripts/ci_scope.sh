@@ -36,6 +36,8 @@ while IFS= read -r path; do
         # The Rust backend -- what production runs (.llmwiki/Deployment.md) -- and the
         # image built from it; the parity suite runs its release build against the Node
         # backend, and the Flutter end-to-end run plays a round against it.
+        # Password hashing and its fixture: jest's RustBcryptCompat.test.js checks Node reads them.
+        zapzap-rust/src/infrastructure/auth/*|zapzap-rust/tests/fixtures/bcrypt_node_compat.json) rust=true; node=true; image=true; parity=true; e2e=true ;;
         zapzap-rust/*) rust=true; image=true; parity=true; e2e=true ;;
 
         # Bot parameters and models: zapzap-rust/data is a symlink to data/.
