@@ -1726,6 +1726,10 @@
   "@gameHandEmpty": {
     "description": "Shown when the caller holds no card"
   },
+  "gameCardNew": "Nouveau",
+  "@gameCardNew": {
+    "description": "Badge on the card that just arrived in the hand (a draw), for 2 s"
+  },
   "gameTurnWaiting": "En attente de {player}",
   "@gameTurnWaiting": {
     "description": "Turn banner: another player is to move",
