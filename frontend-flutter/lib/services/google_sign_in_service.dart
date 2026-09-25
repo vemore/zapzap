@@ -7,6 +7,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'google_sign_in_button_stub.dart'
     if (dart.library.js_interop) 'google_sign_in_button_web.dart'
     as platform;
+import 'google_sign_in_script_stub.dart'
+    if (dart.library.js_interop) 'google_sign_in_script_web.dart'
+    as script;
 
 /// Which Google OAuth client asks for the ID token, for this build and
 /// platform. The backend (Node and Rust) checks the token's audience against
@@ -83,6 +86,12 @@ abstract class GoogleSignInService {
   /// `false` when the build has no client id: the button is hidden.
   bool get enabled;
 
+  /// Completes once Google is ready to sign in; fails if it cannot be. On the
+  /// web it may never complete: Google's script blocked or unreachable. The
+  /// section therefore waits for it with a timeout
+  /// (`GoogleSignInSection.readyTimeout`).
+  Future<void> ready();
+
   /// The ID token of each completed sign-in. An error is a
   /// [GoogleSignInFailure]; a sign-in the user closes emits nothing.
   Stream<String> get idTokens;
@@ -96,6 +105,10 @@ abstract class GoogleSignInService {
   /// Starts a sign-in; completes when it is over, its token on [idTokens].
   /// Throws a [GoogleSignInFailure] for a failure [idTokens] does not carry.
   Future<void> signIn();
+
+  /// Forgets the Google account on this device, so the next person is not
+  /// offered it. Called on logout; a no-op when Google was never used.
+  Future<void> signOut();
 }
 
 /// No client id: nothing to show, nothing to do.
@@ -109,14 +122,25 @@ class DisabledGoogleSignIn implements GoogleSignInService {
   Stream<String> get idTokens => const Stream.empty();
 
   @override
+  Future<void> ready() async {}
+
+  @override
   Widget? platformButton(BuildContext context) => null;
 
   @override
   Future<void> signIn() async {}
+
+  @override
+  Future<void> signOut() async {}
 }
 
 /// The `google_sign_in` plugin (Google Identity Services on the web,
 /// Credential Manager on Android), initialised once on first use.
+///
+/// On the web, Google's GIS script is held back by `web/index.html` until
+/// the first use releases it ([script.loadGoogleScript]): a build without a
+/// client id, or a session that never shows the login screen, never contacts
+/// accounts.google.com.
 class PluginGoogleSignInService implements GoogleSignInService {
   PluginGoogleSignInService(this.config);
 
@@ -125,32 +149,42 @@ class PluginGoogleSignInService implements GoogleSignInService {
 
   static GoogleSignIn get _google => GoogleSignIn.instance;
 
-  Future<void> _initialize() => _initialized ??= _google.initialize(
-    clientId: config.clientId,
-    serverClientId: config.serverClientId,
-  );
+  Future<void> _initialize() => _initialized ??= () {
+    script.loadGoogleScript();
+    return _google.initialize(
+      clientId: config.clientId,
+      serverClientId: config.serverClientId,
+    );
+  }();
 
   @override
   bool get enabled => config.enabled;
 
   @override
-  Stream<String> get idTokens => Stream.fromFuture(_initialize()).asyncExpand(
-    (_) => _google.authenticationEvents.transform(
-      StreamTransformer.fromHandlers(
-        handleData: (event, sink) {
-          if (event is! GoogleSignInAuthenticationEventSignIn) return;
-          final token = event.user.authentication.idToken;
-          if (token == null || token.isEmpty) {
-            sink.addError(const GoogleSignInFailure('no ID token'));
-          } else {
-            sink.add(token);
-          }
-        },
-        // A failure does not end the stream: the next sign-in still arrives.
-        handleError: (error, stack, sink) {
-          if (!_isCancel(error)) sink.addError(_failure(error), stack);
-        },
-      ),
+  Future<void> ready() => _initialize();
+
+  // A failed initialisation is reported by [ready], which hides the section,
+  // and by [signIn]: not here as well.
+  @override
+  Stream<String> get idTokens => Stream.fromFuture(
+    _initialize().then((_) => true, onError: (Object _) => false),
+  ).asyncExpand((ok) => ok ? _signIns : const Stream<String>.empty());
+
+  Stream<String> get _signIns => _google.authenticationEvents.transform(
+    StreamTransformer.fromHandlers(
+      handleData: (event, sink) {
+        if (event is! GoogleSignInAuthenticationEventSignIn) return;
+        final token = event.user.authentication.idToken;
+        if (token == null || token.isEmpty) {
+          sink.addError(const GoogleSignInFailure('no ID token'));
+        } else {
+          sink.add(token);
+        }
+      },
+      // A failure does not end the stream: the next sign-in still arrives.
+      handleError: (error, stack, sink) {
+        if (!_isCancel(error)) sink.addError(_failure(error), stack);
+      },
     ),
   );
 
@@ -171,6 +205,16 @@ class PluginGoogleSignInService implements GoogleSignInService {
       // shows it.
       throw _failure(error);
     }
+  }
+
+  @override
+  Future<void> signOut() async {
+    // Never initialised: no account to forget (and the web plugin would wait
+    // for an initialisation that never comes).
+    final initialized = _initialized;
+    if (initialized == null) return;
+    await initialized;
+    await _google.signOut();
   }
 
   static bool _isCancel(Object error) =>
