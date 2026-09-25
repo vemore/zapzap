@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,11 +9,13 @@ import 'package:zapzap/providers/auth_provider.dart';
 import 'package:zapzap/repositories/auth_repository.dart';
 import 'package:zapzap/services/api_client.dart';
 import 'package:zapzap/services/api_exception.dart';
+import 'package:zapzap/services/google_sign_in_service.dart';
 import 'package:zapzap/services/token_storage.dart';
 import 'package:zapzap/services/token_storage_web.dart';
 
 import 'auth_helpers.dart';
 import 'fixtures.dart';
+import 'google_fakes.dart';
 
 void main() {
   AuthProvider providerWith(ApiClient api, TokenStorage storage) =>
@@ -165,6 +168,68 @@ void main() {
       expect(api.token, isNull);
       expect(storage.values, isEmpty);
     });
+
+    test('signs out of Google too, so the next person is not offered the '
+        'account', () async {
+      final google = FakeGoogleSignIn();
+      final api = unusedApi();
+      final auth = AuthProvider(
+        repository: AuthRepository(api),
+        apiClient: api,
+        storage: storedSession(validToken),
+        google: google,
+      );
+      await auth.restore();
+
+      await auth.logout();
+      expect(google.signOuts, 1);
+
+      // Idempotent: already signed out, Google is not asked again.
+      await auth.logout();
+      expect(google.signOuts, 1);
+    });
+
+    test('a Google sign-out that fails still signs out', () async {
+      final google = FakeGoogleSignIn()
+        ..signOutThrows = const GoogleSignInFailure('no GIS');
+      final api = unusedApi();
+      final storage = storedSession(validToken);
+      final auth = AuthProvider(
+        repository: AuthRepository(api),
+        apiClient: api,
+        storage: storage,
+        google: google,
+      );
+      await auth.restore();
+
+      await auth.logout();
+      await pumpEventQueue();
+
+      expect(google.signOuts, 1);
+      expect(auth.isAuthenticated, isFalse);
+      expect(api.token, isNull);
+      expect(storage.values, isEmpty);
+    });
+
+    test(
+      'a Google sign-out that never answers does not hold the logout',
+      () async {
+        final google = FakeGoogleSignIn()
+          ..onSignOut = () => Completer<void>().future;
+        final api = unusedApi();
+        final auth = AuthProvider(
+          repository: AuthRepository(api),
+          apiClient: api,
+          storage: storedSession(validToken),
+          google: google,
+        );
+        await auth.restore();
+
+        await auth.logout();
+        expect(google.signOuts, 1);
+        expect(auth.isAuthenticated, isFalse);
+      },
+    );
 
     test('a 401 on an authenticated call signs out, once for many', () async {
       final unauthorized = errorFixture('error_invalid_token');

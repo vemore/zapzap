@@ -88,7 +88,7 @@ class GameWinner {
     this.score,
   });
 
-  /// Accepts the object both backends send, or a bare player index (the
+  /// Accepts the object the backend sends, or a bare player index (the
   /// Rust `nextRound` before 2026-09-24, kept for such older responses).
   static GameWinner? fromJsonOrNull(Object? value) {
     if (value is Map) {
@@ -242,7 +242,7 @@ class GameSnapshot {
   /// Only `id`, `name`, `status` and `currentRoundId` are set.
   final Party party;
 
-  /// `playerIndex`, `userId`, `username` on both backends (Rust sent
+  /// `playerIndex`, `userId`, `username` (Rust sent
   /// `userType` and `botDifficulty` too before 2026-09-24).
   final List<PartyPlayer> players;
   final RoundInfo? round;

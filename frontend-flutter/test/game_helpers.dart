@@ -15,7 +15,7 @@ const List<JsonMap> gamePlayersJson = [
   {'playerIndex': 2, 'userId': 'b2', 'username': 'MediumBot1'},
 ];
 
-/// A `gameState` of `GET /game/:id/state`, in Node's shape.
+/// A `gameState` of `GET /game/:id/state` (`game_state_playing.json`).
 JsonMap gameStateJson({
   required int currentTurn,
   required String currentAction,

@@ -8,8 +8,8 @@ class HistoryRepository {
 
   final ApiClient _api;
 
-  /// `GET /history`: the caller's games (Rust also serves `/my-games`, Node
-  /// does not).
+  /// `GET /history`: the caller's games (the backend also serves it as
+  /// `/history/my-games`).
   Future<Page<GameHistoryEntry>> mine({int? limit, int? offset}) async =>
       Page.fromJson(
         await _api.get('/history', query: _paging(limit, offset)),

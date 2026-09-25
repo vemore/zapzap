@@ -87,7 +87,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               return HistorySummary(
                 gamesPlayed: stats?.gamesPlayed,
                 wins: stats?.wins,
-                bestPlace: _bestPlace(games, userId, stats),
+                bestPlace: _bestPlace(games, stats),
                 // `push`, never `go`: Back returns to the history.
                 onOpenStats: () => context.push(AppRoutes.stats),
               );
@@ -109,15 +109,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// The best place among [games] — first as soon as the record holds a
   /// win, even one past this page of entries.
-  static int? _bestPlace(
-    List<GameHistoryEntry> games,
-    String? userId,
-    UserStats? stats,
-  ) {
+  static int? _bestPlace(List<GameHistoryEntry> games, UserStats? stats) {
     if ((stats?.wins ?? 0) > 0) return 1;
     int? best;
     for (final game in games) {
-      final place = myPlacement(game, userId);
+      final place = game.userPlacement;
       if (place != null && (best == null || place < best)) best = place;
     }
     return best;

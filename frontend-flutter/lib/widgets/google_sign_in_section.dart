@@ -14,7 +14,9 @@ import '../utils/app_theme.dart';
 /// hands over is posted as `credential` to `POST /auth/google`
 /// ([AuthProvider.loginWithGoogle]); on success the router, which follows
 /// [AuthProvider], leaves the screen. Absent when the build has no client
-/// id ([GoogleSignInSection.isShown]).
+/// id ([GoogleSignInSection.isShown]), and collapses when Google is not ready
+/// within [GoogleSignInSection.readyTimeout] or fails to initialise (its
+/// script blocked, no route to Google): the password form alone remains.
 class GoogleSignInSection extends StatefulWidget {
   const GoogleSignInSection({
     super.key,
@@ -26,6 +28,13 @@ class GoogleSignInSection extends StatefulWidget {
   /// Whether this build shows the section at all.
   static bool isShown(BuildContext context) =>
       context.read<GoogleSignInService>().enabled;
+
+  /// How long Google may take to get ready before the section gives up.
+  static const readyTimeout = Duration(seconds: 8);
+
+  /// The services that did not get ready in time, so the next screen starts
+  /// without the section instead of waiting again.
+  static final _unavailable = Expando<bool>();
 
   /// `false` while the screen's own form is being sent.
   final bool enabled;
@@ -45,6 +54,9 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
   StreamSubscription<String>? _tokens;
   bool _busy = false;
 
+  // Shown while Google gets ready; hidden once it has not in time.
+  late bool _available;
+
   // Google's web button, built once per locale: the GIS plugin keys its
   // widget on a configuration without a hashCode, so a new one on every
   // build (each keystroke in the fields) re-renders Google's iframe.
@@ -56,6 +68,31 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
     super.initState();
     _google = context.read<GoogleSignInService>();
     _tokens = _google.idTokens.listen(_signIn, onError: _failed);
+    _available = GoogleSignInSection._unavailable[_google] != true;
+    final ready = _google.ready();
+    // Ready late after all (a slow network): the section comes back.
+    ready.then((_) {
+      GoogleSignInSection._unavailable[_google] = false;
+      _setAvailable(true);
+    }, onError: (Object _) {});
+    // Already given up on by a previous screen: no second wait.
+    if (!_available) return;
+    ready
+        .timeout(GoogleSignInSection.readyTimeout)
+        .then(
+          (_) {},
+          onError: (Object error) {
+            debugPrint('Google sign-in unavailable: $error');
+            GoogleSignInSection._unavailable[_google] = true;
+            _setAvailable(false);
+          },
+        );
+  }
+
+  void _setAvailable(bool available) {
+    if (mounted && available != _available) {
+      setState(() => _available = available);
+    }
   }
 
   @override
@@ -113,6 +150,7 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_available) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     final button =
         _platformButton ??
@@ -144,6 +182,8 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
             const Expanded(child: Divider(color: AppColors.slate600)),
           ],
         ),
+        // Here rather than in the card: it goes when the section collapses.
+        const SizedBox(height: 16),
       ],
     );
   }

@@ -16,7 +16,7 @@ String adminErrorText(
   if (error is! ApiException) return l10n.errorGeneric;
   if (error.isConnectivity) return l10n.errorNetwork;
   return switch (error.code) {
-    // Node answers 400 for oneself and the default admin, without a code.
+    // The backend answers 400, without a code, for oneself and an admin.
     ApiErrorCode.badRequest => refused ?? l10n.adminErrorRefused,
     ApiErrorCode.adminRequired ||
     ApiErrorCode.forbidden => l10n.adminErrorForbidden,

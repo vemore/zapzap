@@ -86,7 +86,7 @@ class LeaderboardEntry {
     required this.gamesPlayed,
     required this.wins,
     required this.winRate,
-    this.averageScore,
+    this.averageScore = 0,
   });
 
   factory LeaderboardEntry.fromJson(JsonMap json) => LeaderboardEntry(
@@ -96,9 +96,7 @@ class LeaderboardEntry {
     gamesPlayed: Json.integer(json, 'gamesPlayed'),
     wins: Json.integer(json, 'wins'),
     winRate: Json.number(json, 'winRate'),
-    averageScore: json['averageScore'] is num
-        ? Json.number(json, 'averageScore')
-        : null,
+    averageScore: Json.number(json, 'averageScore'),
   );
 
   final int rank;
@@ -107,9 +105,7 @@ class LeaderboardEntry {
   final int gamesPlayed;
   final int wins;
   final double winRate;
-
-  /// Node only.
-  final double? averageScore;
+  final double averageScore;
 }
 
 /// Totals over every bot (`totals` of `GET /stats/bots`).

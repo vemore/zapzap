@@ -2,8 +2,9 @@ import '../models/admin.dart';
 import '../models/json.dart';
 import '../services/api_client.dart';
 
-/// `/api/admin`: admin accounts only, else 403 (`ADMIN_REQUIRED` on Node,
-/// `{success: false, error}` without a code on Rust).
+/// `/api/admin`: admin accounts only, else 403 `{success: false, error,
+/// code: ADMIN_REQUIRED}`; the routes' own refusals are `{success: false,
+/// error}`, without a code.
 class AdminRepository {
   const AdminRepository(this._api);
 

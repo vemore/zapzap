@@ -56,7 +56,7 @@ class AuthSession {
 
   final User user;
 
-  /// The JWT for `Authorization: Bearer` (24 h on Node, 7 days on Rust).
+  /// The JWT for `Authorization: Bearer` (valid 7 days).
   final String token;
 
   /// Google sign-in only: the account was created by this call.

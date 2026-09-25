@@ -2,13 +2,13 @@ import 'package:intl/intl.dart';
 
 /// The formats the history and statistics screens share.
 ///
-/// Dates come out of the models as UTC [DateTime] (the backends send Unix
+/// Dates come out of the models as UTC [DateTime] (the backend sends Unix
 /// seconds, `models/json.dart`) and are shown in the device's zone, in the
 /// app's locale — the React client hard-codes `fr-FR`
 /// (`frontend/src/components/History/GameHistory.jsx:36`).
 abstract final class Formats {
-  /// Shown when a value is missing (a Rust history entry has no winner
-  /// score, a game that never finished has no date).
+  /// Shown when a value is missing (a game that never finished has no
+  /// date).
   static const missing = '—';
 
   /// Date and time of [value] in [locale], the clock as the locale writes

@@ -8,8 +8,7 @@ import 'package:zapzap/services/api_client.dart';
 
 import 'auth_helpers.dart';
 
-/// A row of `GET /party`, in the shape Node sends
-/// (`test/fixtures/party_list.json`).
+/// A row of `GET /party` (`test/fixtures/party_list.json`).
 JsonMap partySummaryJson({
   required String id,
   String name = 'Fixture party',
@@ -26,6 +25,7 @@ JsonMap partySummaryJson({
   'playerCount': playerCount,
   'maxPlayers': maxPlayers,
   'isMember': isMember,
+  'isMyTurn': false,
   'createdAt': 1790094174,
 };
 
@@ -46,7 +46,8 @@ JsonMap partyPlayerJson({
   'joinedAt': 1790094174,
 };
 
-/// The whole answer of `GET /party/:id`.
+/// The whole answer of `GET /party/:id`, as [currentUserId] gets it: whether
+/// they own the party and their seat, as the backend computes them.
 JsonMap partyDetailsJson({
   required String id,
   String name = 'Fixture party',
@@ -54,6 +55,7 @@ JsonMap partyDetailsJson({
   String status = 'waiting',
   int playerCount = 5,
   List<JsonMap> players = const [],
+  String currentUserId = 'u1',
 }) => {
   'success': true,
   'party': {
@@ -73,6 +75,11 @@ JsonMap partyDetailsJson({
     'updatedAt': 1790094174,
   },
   'players': players,
+  'isOwner': ownerId == currentUserId,
+  'userPlayerIndex': [
+    for (final player in players)
+      if (player['userId'] == currentUserId) player['playerIndex'],
+  ].firstOrNull,
 };
 
 /// A bot account of `GET /bots`.
