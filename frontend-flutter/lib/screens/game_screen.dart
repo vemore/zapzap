@@ -320,6 +320,9 @@ class _GameScreenState extends State<GameScreen> {
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
+    playedByMe:
+        _game.lastAction != null &&
+        _game.lastAction!.playerIndex == _game.myPlayerIndex,
     playerName: _nameOf,
     cardWidth: cardWidth,
     drawPlayedWidth: drawPlayedWidth,
