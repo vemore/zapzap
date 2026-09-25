@@ -55,17 +55,6 @@ impl JwtService {
                 _ => JwtError::Verify(e.to_string()),
             })
     }
-
-    /// Decode without verification (for debugging)
-    pub fn decode_without_verify(&self, token: &str) -> Result<Claims, JwtError> {
-        let mut validation = Validation::default();
-        validation.insecure_disable_signature_validation();
-        validation.validate_exp = false;
-
-        decode::<Claims>(token, &self.decoding_key, &validation)
-            .map(|data| data.claims)
-            .map_err(|e| JwtError::Verify(e.to_string()))
-    }
 }
 
 /// JWT error types
