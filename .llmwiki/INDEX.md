@@ -20,7 +20,7 @@ Load this file first. Then read only the pages your task touches.
 |---|---|---|
 | [[Architecture]] | The five code bases (Rust backend in production, React frontend, Flutter client, native engine, legacy Node as the rollback), runtime topology, SSE, `data/`, the compose files | 2026-09-25 |
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-24 |
-| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (the Node DDL), the `seed` command (bots, demo users) | 2026-09-25 |
+| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (`schema.sql`, tested against a frozen Node-built schema), the `seed` command (bots, demo users) | 2026-09-25 |
 | [[Api]] | Every Rust route, its auth and failure codes (typed, with the cases where Node answers 500), the zapzap response contract; where the Node/Rust differences are listed | 2026-09-24 |
 | [[Bots]] | Bot types and strategies, LLM bot, parameters in `data/` | 2026-09-25 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-24 |
