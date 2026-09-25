@@ -1,0 +1,46 @@
+ZapZap is a multiplayer rummy-style card game, played online by 3 to 8 players, with friends or against bots.
+
+The goal: empty your hand faster than everyone else. When your hand is worth 5 points or less, call ZapZap! If nobody holds a hand as low as yours, you win the round. But if someone does as well or better, your ZapZap is counteracted and you take a heavy penalty.
+
+HOW TO PLAY
+
+On your turn, you play cards:
+• a single card, or a pair, three or four of a kind;
+• a run of at least three consecutive cards of the same suit;
+• jokers stand in for any card in a pair or a run.
+
+Then you draw a card: the face-down card from the deck, or one of the cards the previous player just played.
+
+An ace is worth 1 point, cards 2 to 10 their face value, the jack 11, the queen 12 and the king 13. A joker counts 0 when you call ZapZap… but 25 points if it is still in your hand at the end of the round.
+
+Above 100 points, you are out. When only two players remain, the game goes to Golden Score: one last deciding round. The last player standing wins.
+
+PLAY WITH YOUR FRIENDS
+
+• Create a public game, or a private one with an invite code to send to your friends.
+• Pick the number of players and fill the free seats with bots.
+• The other players' moves show up live, without reloading.
+
+OR AGAINST BOTS
+
+Not enough players? Fill the table with bots, from Easy to Hard, and start a game whenever you like.
+
+A TABLE THAT READS ITSELF
+
+• The plays your hand allows are suggested to you.
+• Your hand's value stays on screen: you know when you can call ZapZap.
+• At the end of every round, you see every player's hand and points.
+
+HISTORY AND STATISTICS
+
+• Find every game you finished, with the final standings and the detail of each round.
+• Follow your statistics: games played, wins, average score, your ZapZap success rate.
+• See how you rank against the other players on the global leaderboard.
+
+YOUR ACCOUNT
+
+Sign in with your Google account, or create an account with a username and a password. Your games, your history and your statistics follow you from the Android app to the browser.
+
+ZapZap is free, with no ads and no in-app purchases. An Internet connection is required to play.
+
+The app is available in English and French.
