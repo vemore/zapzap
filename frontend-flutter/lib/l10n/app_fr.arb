@@ -2252,5 +2252,53 @@
   "gameZapZapBadge": "ZapZap",
   "@gameZapZapBadge": {
     "description": "Badge of the player who called ZapZap"
+  },
+  "deletedPlayer": "Joueur supprimé",
+  "@deletedPlayer": {
+    "description": "Name shown in the history for a player who deleted their account"
+  },
+  "deleteAccountMenu": "Supprimer mon compte",
+  "@deleteAccountMenu": {
+    "description": "App-bar menu entry that deletes the signed-in account"
+  },
+  "deleteAccountTitle": "Supprimer ton compte ?",
+  "@deleteAccountTitle": {
+    "description": "Title of the account deletion dialog"
+  },
+  "deleteAccountBody": "C'est définitif : ton compte et ta connexion sont effacés. Les parties terminées restent dans l'historique des autres joueurs, sous le nom « Joueur supprimé ».",
+  "@deleteAccountBody": {
+    "description": "What deleting the account does"
+  },
+  "deleteAccountPasswordLabel": "Ton mot de passe",
+  "@deleteAccountPasswordLabel": {
+    "description": "Password field confirming the account deletion"
+  },
+  "deleteAccountGoogleHint": "Confirme avec ton compte Google pour supprimer ce compte.",
+  "@deleteAccountGoogleHint": {
+    "description": "A Google account confirms its deletion with Google, not a password"
+  },
+  "deleteAccountGoogleButton": "Confirmer avec Google",
+  "@deleteAccountGoogleButton": {
+    "description": "Button that confirms the account deletion with Google"
+  },
+  "deleteAccountConfirm": "Supprimer définitivement",
+  "@deleteAccountConfirm": {
+    "description": "Button that deletes the account"
+  },
+  "deleteAccountErrorPassword": "Mot de passe incorrect.",
+  "@deleteAccountErrorPassword": {
+    "description": "The password confirming the deletion is wrong"
+  },
+  "deleteAccountErrorGoogle": "La confirmation Google a échoué, ou ce n'est pas le bon compte Google.",
+  "@deleteAccountErrorGoogle": {
+    "description": "The Google confirmation of the deletion was refused"
+  },
+  "deleteAccountErrorActiveParty": "Quitte ou termine d'abord tes parties en cours.",
+  "@deleteAccountErrorActiveParty": {
+    "description": "The account is seated in or owns a game that is not finished"
+  },
+  "deleteAccountErrorLastAdmin": "Tu es le seul administrateur : ton compte ne peut pas être supprimé.",
+  "@deleteAccountErrorLastAdmin": {
+    "description": "The only admin cannot delete their account"
   }
 }

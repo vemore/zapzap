@@ -26,6 +26,21 @@ impl RepositoryError {
     }
 }
 
+/// Outcome of `UserRepository::delete_account`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountDeletion {
+    /// The user is gone; `anonymised_as` names the anonymous user their finished games
+    /// now belong to, `None` when they had played none
+    Deleted {
+        anonymised_as: Option<String>,
+    },
+    NotFound,
+    /// Seated in, or owner of, a waiting or playing party: nothing was changed
+    ActiveParty,
+    /// The only admin: nothing was changed
+    LastAdmin,
+}
+
 /// User repository trait
 #[async_trait]
 pub trait UserRepository: Send + Sync {
@@ -55,6 +70,11 @@ pub trait UserRepository: Send + Sync {
 
     /// Delete user; `false` when no row was deleted
     async fn delete(&self, id: &str) -> Result<bool, RepositoryError>;
+
+    /// Delete an account, in one transaction: its finished games are handed to a new
+    /// anonymous user (`DELETED_USER_ID_PREFIX`), so they stay in the other players'
+    /// history, then the user row goes (and with it the Google id and email)
+    async fn delete_account(&self, id: &str) -> Result<AccountDeletion, RepositoryError>;
 
     /// Whether the user holds a seat in a waiting or playing party
     async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError>;

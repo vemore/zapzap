@@ -29,12 +29,12 @@ the NAS, built there; the clone and its images are deleted (history below).
 | `zapzap-backend` | built from `zapzap-rust/Dockerfile` with `CARGO_FEATURES=bedrock`: a static musl binary on `alpine:3.22` with `ca-certificates` only (29 MB), runs as uid 1000 | `/app/zapzap-backend` | `data/ → /app/data` |
 | `zapzap-frontend` | `zapzap-frontend`, built from `frontend/Dockerfile` | nginx serving the Vite build | — |
 | `zapzap-frontend-flutter` | `zapzap-frontend-flutter`, built from `frontend-flutter/Dockerfile` | nginx serving the Flutter web bundle under `/app/` | — |
-| `zapzap-proxy` | `zapzap-proxy`, built from `nginx/Dockerfile`: `nginx:alpine` with `nginx/nginx.conf` baked in | nginx | — |
+| `zapzap-proxy` | `zapzap-proxy`, built from `nginx/Dockerfile`: `nginx:alpine` with `nginx/nginx.conf` and `nginx/privacy.html` baked in | nginx | — |
 
 In production all four come from `docker-compose.prod.yml`, as
 `192.168.1.25:5050/<image>:<first 12 characters of the sha>` — built on the dev machine, pulled by the NAS, never
 built there. The root `docker-compose.yml` builds the same images (the proxy from `nginx:alpine`
-with the conf mounted) for local use and CI. `zapzap-frontend-flutter` has served the
+with the conf and the privacy page mounted) for local use and CI. `zapzap-frontend-flutter` has served the
 PWA under `/app/` since #36 (2026-09-23). **The `backend` service is the Rust backend
 (`zapzap-rust/`) from the switch of 2026-09-24 on**; until then it was the Node backend,
 removed from the repository since (history below). `zapzap-rust/docker-compose.yml` is a
@@ -148,6 +148,19 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   zapzap-proxy` restores `/` and `/api/` at once.
 - CI builds the image and runs `scripts/pwa_image_smoke.sh` against it (the `image` job):
   `/app/`, the deep links, the manifest scope, the icons, the cache headers.
+
+### The privacy policy at `/privacy`
+
+- `https://zapzap.ombivince.synology.me/privacy` (and `/privacy.html`) is served by the proxy
+  itself, not proxied: `location = /privacy` in `nginx/nginx.conf` aliases
+  `/usr/share/nginx/zapzap/privacy.html`, which `nginx/Dockerfile` copies into the image. Google
+  Play links to it.
+- The page is generated from the root `privacy_policy.md` by `scripts/build_privacy_page.py`
+  (pandoc 3.6.4, pinned in the script; `--check` fails when the committed page is stale). Edit
+  the Markdown, run the script, commit both; the next deploy of the proxy image publishes it.
+  Nothing else is needed: no environment variable, no file in the deploy directory.
+- The web page for deleting an account (also asked by Play, named in the policy) is the React
+  client's `/account/delete` ([[Frontend]]).
 
 ### How a deploy happens
 
@@ -351,3 +364,4 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   (34918bab08a6) came up healthy with 25 users and 29 parties before and after; the user deleted
   the clone and its `zapzap_*` images the same day instead of waiting a week, and the Node-only
   keys left the `.env`. The step-by-step switch left the `deploy` skill.
+- 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.

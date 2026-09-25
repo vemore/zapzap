@@ -399,5 +399,17 @@
   "gameNextRoundChooser": "Round {number}: {player} picks the hand size",
   "gameNextRoundChooserMe": "Round {number}: you pick the hand size",
   "gameLowestHandBadge": "Lowest hand",
-  "gameZapZapBadge": "ZapZap"
+  "gameZapZapBadge": "ZapZap",
+  "deletedPlayer": "Deleted player",
+  "deleteAccountMenu": "Delete my account",
+  "deleteAccountTitle": "Delete your account?",
+  "deleteAccountBody": "This cannot be undone: your account and your sign-in are erased. Finished games stay in the other players' history, under the name “Deleted player”.",
+  "deleteAccountPasswordLabel": "Your password",
+  "deleteAccountGoogleHint": "Confirm with your Google account to delete this account.",
+  "deleteAccountGoogleButton": "Confirm with Google",
+  "deleteAccountConfirm": "Delete permanently",
+  "deleteAccountErrorPassword": "Wrong password.",
+  "deleteAccountErrorGoogle": "The Google confirmation failed, or this is not the right Google account.",
+  "deleteAccountErrorActiveParty": "Leave or finish your ongoing games first.",
+  "deleteAccountErrorLastAdmin": "You are the only administrator: your account cannot be deleted."
 }

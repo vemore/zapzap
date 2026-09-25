@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models/history.dart';
 import '../utils/app_theme.dart';
+import '../utils/player_name.dart';
 import 'stats_common.dart';
 
 /// The final standings of a finished game: every player in finishing order,
@@ -55,7 +56,7 @@ class _StandingsRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  player.username,
+                  playerName(l10n, player.userId, player.username),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),

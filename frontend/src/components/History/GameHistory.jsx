@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { History, Globe, User, Trophy, Calendar, Users, Loader, ChevronRight } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import { playerName } from '../../utils/playerName';
 
 function GameHistory() {
   const [activeTab, setActiveTab] = useState('personal');
@@ -137,7 +138,7 @@ function GameHistory() {
                       <div className="flex items-center text-gray-400 text-sm space-x-4">
                         <span className="flex items-center">
                           <Trophy className="w-4 h-4 mr-1 text-amber-400" />
-                          {game.winnerUsername} ({game.winnerFinalScore} pts)
+                          {playerName(game.winnerUserId, game.winnerUsername)} ({game.winnerFinalScore} pts)
                         </span>
                         <span className="flex items-center">
                           <Users className="w-4 h-4 mr-1" />

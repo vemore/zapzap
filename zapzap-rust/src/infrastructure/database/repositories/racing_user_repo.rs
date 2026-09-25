@@ -9,7 +9,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 use crate::domain::entities::{BotDifficulty, User};
-use crate::domain::repositories::{RepositoryError, UserRepository};
+use crate::domain::repositories::{AccountDeletion, RepositoryError, UserRepository};
 use crate::infrastructure::database::repositories::SqliteUserRepository;
 use crate::infrastructure::database::schema::ensure_schema;
 
@@ -113,6 +113,9 @@ impl UserRepository for RacingUserRepo {
     }
     async fn delete(&self, id: &str) -> Result<bool, RepositoryError> {
         self.inner.delete(id).await
+    }
+    async fn delete_account(&self, id: &str) -> Result<AccountDeletion, RepositoryError> {
+        self.inner.delete_account(id).await
     }
     async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError> {
         self.inner.is_in_active_party(id).await

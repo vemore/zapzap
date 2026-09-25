@@ -7,6 +7,7 @@ import '../repositories/history_repository.dart';
 import '../router.dart';
 import '../services/api_exception.dart';
 import '../utils/app_theme.dart';
+import '../utils/player_name.dart';
 import '../utils/date_format.dart';
 import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
@@ -113,7 +114,10 @@ class _Summary extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
-    final winner = game.winnerUsername;
+    final winnerUsername = game.winnerUsername;
+    final winner = winnerUsername == null
+        ? null
+        : playerName(l10n, game.winnerUserId, winnerUsername);
     final score = game.winnerFinalScore;
     return SectionCard(
       icon: Icons.emoji_events,

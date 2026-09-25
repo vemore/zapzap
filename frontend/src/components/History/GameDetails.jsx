@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Trophy, Crown, Zap, ArrowLeft, Loader, Users, Calendar, Target } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import { playerName } from '../../utils/playerName';
 import PlayingCard from '../Game/PlayingCard';
 
 function GameDetails() {
@@ -109,7 +110,7 @@ function GameDetails() {
               <span className="text-2xl font-bold text-yellow-400">WINNER</span>
               <Crown className="w-8 h-8 text-yellow-400 ml-2" />
             </div>
-            <p className="text-3xl font-bold text-white text-center">{game.winner.username}</p>
+            <p className="text-3xl font-bold text-white text-center">{playerName(game.winner.userId, game.winner.username)}</p>
             <p className="text-amber-300 text-center mt-2">Final Score: {game.winner.finalScore} points</p>
           </div>
 
@@ -164,7 +165,7 @@ function GameDetails() {
                     {player.finishPosition}
                   </span>
                   <div>
-                    <p className="text-white font-semibold">{player.username}</p>
+                    <p className="text-white font-semibold">{playerName(player.userId, player.username)}</p>
                     <div className="flex items-center text-gray-400 text-sm space-x-3">
                       <span className="flex items-center">
                         <Zap className="w-3 h-3 mr-1 text-purple-400" />
@@ -196,7 +197,7 @@ function GameDetails() {
                   <th className="text-left text-gray-400 py-3 px-4">Round</th>
                   {players.map((player) => (
                     <th key={player.userId} className="text-center text-gray-400 py-3 px-4">
-                      {player.username}
+                      {playerName(player.userId, player.username)}
                     </th>
                   ))}
                 </tr>

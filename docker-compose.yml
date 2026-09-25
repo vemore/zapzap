@@ -94,6 +94,7 @@ services:
       - "${PROXY_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/privacy.html:/usr/share/nginx/zapzap/privacy.html:ro
     # No condition on frontend-flutter, deliberately: a PWA that fails its health check
     # would otherwise hold zapzap-proxy in Created and take the whole site down, since
     # the deploy has already stopped the old containers. The /app/ location resolves the

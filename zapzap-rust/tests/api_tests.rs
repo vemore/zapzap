@@ -2632,6 +2632,75 @@ mod google_and_bot_admin {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
     }
+
+    #[tokio::test]
+    async fn test_google_account_deletes_itself_with_a_fresh_google_token() {
+        let (mut app, state) = app_with_state(true).await;
+        let (status, login) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-del", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{login}");
+        let token = login["token"].as_str().unwrap().to_string();
+        let delete = |body: Value| {
+            let token = token.clone();
+            let mut app = app.clone();
+            async move {
+                send_raw(
+                    &mut app,
+                    "DELETE",
+                    "/api/auth/me",
+                    &body.to_string(),
+                    Some("application/json"),
+                    Some(&token),
+                )
+                .await
+            }
+        };
+
+        // No password to give, and another Google account's token is not this one's
+        let (status, body) = delete(json!({"password": "whatever"})).await;
+        assert_error(
+            status,
+            &body,
+            StatusCode::BAD_REQUEST,
+            "MISSING_CONFIRMATION",
+        );
+        let (status, body) =
+            delete(json!({"credential": google_token("g-other", CLIENT_ID)})).await;
+        assert_error(status, &body, StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED");
+        let (status, body) =
+            delete(json!({"credential": google_token("g-del", "another-client")})).await;
+        assert_error(status, &body, StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED");
+        assert!(state
+            .user_repo
+            .find_by_google_id("g-del")
+            .await
+            .unwrap()
+            .is_some());
+
+        let (status, body) = delete(json!({"credential": google_token("g-del", CLIENT_ID)})).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["deletedUserId"], login["user"]["id"]);
+        // The Google link went with the user: the same Google account signs up anew
+        assert!(state
+            .user_repo
+            .find_by_google_id("g-del")
+            .await
+            .unwrap()
+            .is_none());
+        let (status, _) = get_auth(&mut app, "/api/stats/me", &token).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (_, again) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-del", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(again["isNewUser"], true, "{again}");
+    }
 }
 
 // ============================================================================
@@ -4074,4 +4143,210 @@ async fn test_seed_with_demo_users_lets_a_demo_user_log_in_with_demo123() {
         assert_eq!(body["user"]["username"], username);
         assert!(body["token"].is_string());
     }
+}
+
+// ============================================================================
+// A player deletes their own account (DELETE /api/auth/me)
+// ============================================================================
+
+/// DELETE /api/auth/me with a JSON body
+async fn delete_me(app: &mut Router, token: &str, body: Value) -> (StatusCode, Value) {
+    send_raw(
+        app,
+        "DELETE",
+        "/api/auth/me",
+        &body.to_string(),
+        Some("application/json"),
+        Some(token),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_delete_own_account_then_its_token_is_refused() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, user_id) = register(&mut app, "leaving").await;
+
+    // Unconfirmed or wrongly confirmed: 400 / 403 (not 401, which signs the client out),
+    // and nothing is deleted
+    let (status, body) = delete_me(&mut app, &token, json!({})).await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "MISSING_CONFIRMATION",
+    );
+    let (status, body) = delete_me(&mut app, &token, json!({"password": "wrong-one"})).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "INVALID_PASSWORD");
+    assert!(state
+        .user_repo
+        .find_by_id(&user_id)
+        .await
+        .unwrap()
+        .is_some());
+    let (status, _) = get_auth(&mut app, "/api/history", &token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Without a token: the usual 401
+    let (status, _) = send_raw(&mut app, "DELETE", "/api/auth/me", "{}", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, body) = delete_me(&mut app, &token, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, json!({"success": true, "deletedUserId": user_id}));
+    assert!(state
+        .user_repo
+        .find_by_id(&user_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    // The token names nobody now, the password opens nothing, the name is free again
+    let (status, body) = get_auth(&mut app, "/api/history", &token).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    let (status, _) = delete_me(&mut app, &token, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": "leaving", "password": "password123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    register(&mut app, "leaving").await;
+}
+
+#[tokio::test]
+async fn test_deleted_player_stays_anonymised_in_the_others_history() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (leaver, leaver_id) = register(&mut app, "gonewinner").await;
+    let (stayer, stayer_id) = register(&mut app, "stayer").await;
+    // The leaver owns the party and won it: the deepest ties a user has to a game
+    let party_id = create_party(&mut app, &leaver, "Shared table").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &stayer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    finish_party(&state, &party_id).await;
+    let results = [
+        (leaver_id.as_str(), 3, 1, true),
+        (stayer_id.as_str(), 40, 2, false),
+    ];
+    record_finished_game(&state, &party_id, &leaver_id, &results, false, 1700000300).await;
+    for (user_id, index) in [(&leaver_id, 0), (&stayer_id, 1)] {
+        sqlx::query(
+            "INSERT INTO round_scores (party_id, round_number, user_id, player_index,
+                 score_this_round, total_score_after, hand_points, created_at)
+             VALUES (?, 1, ?, ?, 3, 3, 3, 1700000300)",
+        )
+        .bind(&party_id)
+        .bind(user_id)
+        .bind(index)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+
+    let (status, body) = delete_me(&mut app, &leaver, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The stayer's history still lists the game, the leaver under an anonymous user
+    let (status, body) = get_auth(&mut app, "/api/history", &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let games = body["games"].as_array().unwrap();
+    assert_eq!(games.len(), 1, "{body}");
+    let anon_id = games[0]["winnerUserId"].as_str().unwrap().to_string();
+    assert!(anon_id.starts_with("deleted-"), "{body}");
+    assert_ne!(games[0]["winnerUsername"], "gonewinner");
+    assert_eq!(games[0]["partyId"], party_id.as_str());
+    assert_eq!(games[0]["userPlacement"], 2);
+
+    let (status, body) = get_auth(&mut app, &format!("/api/history/{party_id}"), &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let text = body.to_string();
+    assert!(!text.contains("gonewinner"), "{body}");
+    assert!(!text.contains(&leaver_id), "{body}");
+    assert!(text.contains(&anon_id), "{body}");
+    assert!(text.contains("stayer"), "{body}");
+
+    // Nothing of the leaver remains under their id
+    for (table, column) in [
+        ("parties", "owner_id"),
+        ("party_players", "user_id"),
+        ("round_scores", "user_id"),
+        ("game_results", "winner_user_id"),
+        ("player_game_results", "user_id"),
+    ] {
+        let left: i64 =
+            sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
+                .bind(&leaver_id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+        assert_eq!(left, 0, "{table}.{column}");
+    }
+
+    // The anonymous user is no account: not on the leaderboard, not in the admin lists,
+    // and nobody can sign in as it
+    let (status, body) =
+        request_no_auth(&mut app, "GET", "/api/stats/leaderboard?minGames=1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body.to_string().contains("deleted-"), "{body}");
+    assert!(state
+        .user_repo
+        .find_all_humans(50, 0)
+        .await
+        .unwrap()
+        .iter()
+        .all(|u| !u.id.starts_with("deleted-")));
+    let (status, _) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": anon_id, "password": "password123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_delete_account_seated_in_an_active_party_is_409() {
+    let (mut app, state) = create_test_app_with_state().await;
+
+    // Owner of a waiting party
+    let (owner, owner_id) = register(&mut app, "waitowner").await;
+    create_party(&mut app, &owner, "Waiting table").await;
+    let (status, body) = delete_me(&mut app, &owner, json!({"password": "password123"})).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "ACTIVE_PARTY");
+    assert!(state
+        .user_repo
+        .find_by_id(&owner_id)
+        .await
+        .unwrap()
+        .is_some());
+
+    // Seated, not owner, in a game in progress
+    let (_, tokens) = started_party(&mut app, "active").await;
+    let (status, body) = delete_me(&mut app, &tokens[1], json!({"password": "password123"})).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "ACTIVE_PARTY");
+    let (status, _) = get_auth(&mut app, "/api/history", &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_the_only_admin_cannot_delete_their_account() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, admin_id) = register(&mut app, "soleadmin").await;
+    state.user_repo.set_admin(&admin_id, true).await.unwrap();
+    let (status, body) = delete_me(&mut app, &admin, json!({"password": "password123"})).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "LAST_ADMIN");
+
+    // With a second admin, the first may go
+    let (_, other_id) = register(&mut app, "otheradmin").await;
+    state.user_repo.set_admin(&other_id, true).await.unwrap();
+    let (status, body) = delete_me(&mut app, &admin, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
 }

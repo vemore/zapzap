@@ -23,12 +23,13 @@
 | GET | `/health` | none | `root_health_handler`, same file | `{status:"ok", timestamp, api:"v2 (Clean Architecture)"}`. Healthchecks and `scripts/deploy_nas.sh` read only the status code |
 | GET | `/suscribeupdate?token=` | token optional (query) | `zapzap-rust/src/api/sse.rs` | SSE; events without a party and a public party's lifecycle events to all, a game's moves and private-party events only to that party's players (a token of a deleted user names nobody). See [[Backend]] |
 
-### Auth — `/api/auth` (`zapzap-rust/src/api/routes/auth.rs:12-17`)
+### Auth — `/api/auth` (`create_auth_router`, `zapzap-rust/src/api/routes/auth.rs:20`)
 | Method | Path | Auth | Handler | Success | Failures |
 |---|---|---|---|---|---|
 | POST | `/register` | none | `auth.rs:101` | 201 `{success, user{id,username,createdAt}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 409 `USERNAME_EXISTS`, 500 `REGISTRATION_ERROR` |
 | POST | `/login` | none | `auth.rs:177` | 200 `{success, user{id,username,isAdmin}, token}` | 400 `MISSING_CREDENTIALS`/`VALIDATION_ERROR`, 401 `INVALID_CREDENTIALS`, 500 `LOGIN_ERROR` |
 | POST | `/google` | none | `auth.rs:252` | 200 `{success, user{id,username,email,isAdmin,isGoogleUser}, token, isNewUser}`; finds the user by `google_id`, else creates a password-less human with a unique username (`zapzap-rust/src/application/auth/login_with_google.rs`) | 400 `MISSING_CREDENTIAL` (`credential` absent or falsy), 401 `GOOGLE_AUTH_FAILED` (invalid/forged/expired token, wrong `aud`/`iss`, `email_verified` false, or `GOOGLE_OAUTH_CLIENT_ID` unset: `Google OAuth non configuré sur ce serveur`), 500 `GOOGLE_AUTH_ERROR` (`details` is generic; the database message is only logged). Token check in [[Backend]] § Google OAuth |
+| DELETE | `/me` | JWT | `delete_me_handler`, `auth.rs:352` | 200 `{success, deletedUserId}`. Body `{password}`, or for an account without a password (created with Google) `{credential}`, a fresh Google ID token verified as `/google` does and of the same `google_id`. Deletes the user row (password hash, Google id, email), forgets their session (`userDisconnected`); their finished games go to a new anonymous user `deleted-<uuid>` (`DeleteAccount`, `zapzap-rust/src/application/auth/delete_account.rs`; [[Backend]] § Account deletion) | 401 as every JWT route; 400 `MISSING_CONFIRMATION` (no password, or no credential for a Google account); **403** `INVALID_PASSWORD`, 403 `GOOGLE_AUTH_FAILED` (bad token, another Google account, Google not configured) — 403, not 401, because both clients sign out on a 401; 409 `ACTIVE_PARTY` (seated in or owner of a `waiting`/`playing` party: nothing is changed); 409 `LAST_ADMIN` (the only admin); 500 `DELETE_ACCOUNT_ERROR` (the database's message only logged) |
 
 ### Party — `/api/party` (`zapzap-rust/src/api/routes/mod.rs:65-126`)
 | Method | Path | Auth | Handler | Failures |
@@ -83,7 +84,7 @@ Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the p
 |---|---|---|---|---|
 | GET | `/me` | JWT | `zapzap-rust/src/api/routes/stats.rs:174` | 404 user not found |
 | GET | `/user/:userId` | none | `stats.rs:182` | public stats for any id |
-| GET | `/leaderboard` | none | `stats.rs:304` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only, by win rate then wins. Body: `{success, leaderboard[{rank, userId, username, gamesPlayed, wins, winRate, averageScore}], criteria{minGames, sortBy:"winRate"}, pagination{limit, offset, hasMore}}` — `hasMore` is "the page is full", no total |
+| GET | `/leaderboard` | none | `stats.rs:304` | `minGames` default 5, `limit` 50, `offset` 0 (`stats.rs:21-36`); humans only, not the anonymous `deleted-` users; by win rate then wins. Body: `{success, leaderboard[{rank, userId, username, gamesPlayed, wins, winRate, averageScore}], criteria{minGames, sortBy:"winRate"}, pagination{limit, offset, hasMore}}` — `hasMore` is "the page is full", no total |
 | GET | `/bots` | none | `stats.rs:378` | per-difficulty bot stats |
 
 ### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:200-225`)
@@ -93,10 +94,12 @@ Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the p
 | GET | `/public` | none | `history.rs:281` | finished public games only (`visibility = 'public'`); the same body without `visibility`, `userPlacement`, `userScore` |
 | GET | `/:partyId` | JWT | `history.rs:301` | 404 `Game not found`; 403 `{error:"Access denied. Party is private."}` for a **private** game to a user in neither `party_players` nor `player_game_results`; public games stay readable by any signed-in user |
 
+A player who deleted their account appears in these bodies as an anonymous user: a `userId` / `winnerUserId` starting with `deleted-`, and that same string as username. Both clients show « Joueur supprimé » / "Deleted player" for it, keyed on the id prefix (`DELETED_USER_ID_PREFIX`).
+
 ### Admin — `/api/admin` (`create_admin_router`, `zapzap-rust/src/api/routes/mod.rs`), all admin: 401 without a token, 403 `ADMIN_REQUIRED` for a non-admin
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:262` | humans only, `limit` 50 (`admin.rs:38-40`) |
+| GET | `/users` | `zapzap-rust/src/api/routes/admin.rs:262` | humans only, not the anonymous `deleted-` users (nor in `/statistics`' counts and most active users), `limit` 50 (`admin.rs:38-40`) |
 | DELETE | `/users/:userId` | `admin.rs:372` | `{success, deletedUserId, deletedUsername}`; 400 self-delete (`admin.rs:377`) or target is admin (`admin.rs:412`), 404 |
 | POST | `/users/:userId/admin` | `admin.rs:446` | body `{isAdmin}` → `{success, userId, username, isAdmin}`; 404; a missing, non-boolean or unreadable `isAdmin` answers 400 `{success: false, error: "isAdmin must be a boolean"}` (`ApiJson`, `SetAdminRequest::invalid_body`) |
 | GET | `/parties` | `admin.rs:512` | `status`, `limit`, `offset` → `parties[{id, name, ownerId, ownerUsername, inviteCode, visibility, status, settings, currentRoundId, playerCount, createdAt, updatedAt}]`, `pagination{total, limit, offset}`; `settings` is the stored settings **JSON-encoded as a string** (the React admin `JSON.parse`s it) |
@@ -135,3 +138,4 @@ Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the p
 - The `/suscribeupdate` typo is kept for compatibility with the frontend and nginx config.
 - 2026-09-24 (feat/rust-google-and-bot-admin): `POST /api/auth/google`, `POST /api/bots` and `DELETE /api/bots/:botId` ported from Node with Node's bodies and messages. The bot mutations were made admin-only because Node leaving them open lets anyone create or delete bot accounts; no client calls them (the React and Flutter clients only list bots).
 - 2026-09-25 (chore/remove-node-backend): the Node backend is removed. The page lost its Node columns ("Where Rust answers a 4xx and Node a 500": create-party validation, join already-in/not-waiting/private, leave during a game, start not-enough-players/finished, game actions on a party not playing, invalid play, empty deck, draw in the wrong phase, malformed JSON, private party details — Node answered 500 to each), the parity-suite pointer (`tests/parity/divergences.json`) and its per-route comparisons; the routes now describe only what Rust does. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/routes/partyRoutes.js`, `git show 232f168:tests/parity/divergences.json`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- 2026-09-25 (feat/delete-own-account): `DELETE /api/auth/me`, which Google Play requires of an app that creates accounts. User decision: **anonymise** — the user row, sessions and Google link go, the finished games stay in the others' history. The foreign keys cascade (`ON DELETE CASCADE` on every user reference), so the rows are handed to a new `deleted-<uuid>` user before the user row is deleted, one per deleted account (the `UNIQUE(party_id, user_id)` indexes forbid one shared stand-in for two players of a game). A waiting or playing party refuses with 409 rather than being left or deleted for the player: deleting would cascade their seat out of a game in progress, and an owner's party with it. The only admin is refused (409 `LAST_ADMIN`), so production cannot lose its last admin by mistake. Wrong confirmations are 403, not 401, so the clients' 401 sign-out does not fire on a typo.
