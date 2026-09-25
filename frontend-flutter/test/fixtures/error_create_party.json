@@ -1,8 +1,7 @@
 {
-  "status": 500,
+  "status": 400,
   "body": {
-    "error": "Failed to create party",
-    "code": "CREATE_PARTY_ERROR",
-    "details": "Player count must be between 3 and 8"
+    "error": "Player count must be between 3 and 8",
+    "code": "VALIDATION_ERROR"
   }
 }

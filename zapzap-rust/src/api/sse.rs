@@ -116,7 +116,7 @@ async fn parties_of(state: &AppState, user_id: &str) -> HashSet<String> {
 
 /// One authenticated event stream. When the client goes away axum drops the stream, and
 /// the stream drops this guard: the stream is unregistered, and the user's last one
-/// broadcasts `userDisconnected` (Node: the `close` handler in `src/api/server.js`).
+/// broadcasts `userDisconnected` (as the Node backend's `close` handler did).
 struct StreamGuard {
     state: Arc<AppState>,
     user_id: String,
@@ -142,7 +142,7 @@ pub async fn sse_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SseParams>,
 ) -> impl IntoResponse {
-    // Validate token if provided; a deleted user's token names nobody (Node: ValidateToken.js)
+    // Validate token if provided; a deleted user's token names nobody
     let claims = match params.token {
         Some(token) => state.jwt_service.verify(&token).ok(),
         None => None,

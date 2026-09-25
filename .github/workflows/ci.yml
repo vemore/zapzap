@@ -37,8 +37,7 @@ jobs:
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
-      node: ${{ steps.flags.outputs.node }}
-      parity: ${{ steps.flags.outputs.parity }}
+      e2e: ${{ steps.flags.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +58,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\nnode=true\nparity=true\n'
+          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -106,7 +105,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
-      # SQLite, tests/schema_tests.rs checks the schema against the Node DDL in ../src.
+      # SQLite, tests/schema_tests.rs checks the schema against a frozen Node-built one.
       - run: cargo test --locked --lib --bins --tests
 
   native:
@@ -170,24 +169,36 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # nginx/nginx.conf is baked into no image, only mounted by compose, so nothing else
-      # reads it before production does: a typo there is a crash-looping proxy after
-      # deploy.sh has stopped the old containers. --add-host: nginx resolves the hosts of
-      # its upstream blocks when it loads the configuration.
-      - name: Proxy configuration is valid
+      # The production proxy is nginx:alpine with nginx/nginx.conf baked in (nginx/Dockerfile,
+      # pushed as zapzap-proxy by scripts/deploy_nas.sh). A typo in the conf is a
+      # crash-looping proxy after the deploy has stopped the old containers, so nginx -t runs
+      # in the very image. --add-host: nginx resolves the hosts of its upstream blocks when
+      # it loads the configuration.
+      - name: Proxy image builds and its configuration is valid
         run: |
+          docker build -t zapzap-proxy:ci nginx
           docker run --rm \
             --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 \
-            -v "$PWD/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
-            nginx:alpine nginx -t
-      - name: Backend image
-        run: docker build -t zapzap-rust-backend:ci zapzap-rust
-      # The image production runs today (.llmwiki/Deployment.md): node:20-alpine, whose npm
-      # 10 runs `npm ci --only=production`. A package-lock.json a newer local npm accepts
-      # but npm 10 does not (#39: "Missing: picomatch@4.0.7 from lock file") fails here,
-      # not on the NAS.
-      - name: Node backend image (production)
-        run: docker build -t zapzap-node-backend:ci .
+            zapzap-proxy:ci nginx -t
+      # Both compose files parse, and their backend service still requires JWT_SECRET:
+      # production's .env provides it, and the Rust backend has no default. The root one
+      # builds (local use, CI); docker-compose.prod.yml is what the NAS runs, registry
+      # images only.
+      - name: Compose files are valid (root and production)
+        run: |
+          for f in docker-compose.yml docker-compose.prod.yml; do
+            JWT_SECRET=ci-only docker compose -f "$f" config --quiet
+            if docker compose -f "$f" config --quiet 2>/dev/null; then
+              echo "$f accepts a missing JWT_SECRET" >&2; exit 1
+            fi
+          done
+      # The image production runs (.llmwiki/Deployment.md): the root compose's `backend`
+      # service, the Rust backend built with the Bedrock client of the LLM bots. The script
+      # builds it through compose, starts it on an empty database with a throwaway secret,
+      # and waits for its own compose health check (busybox wget: the Alpine image has no
+      # curl), then checks the image user (uid 1000), its CA store and its size (< 40 MB).
+      - name: Rust backend image (production, bedrock) builds and passes its health check
+        run: scripts/backend_image_smoke.sh
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
@@ -211,6 +222,10 @@ jobs:
       # The table drives the guards with payloads in sandbox repositories and a
       # stubbed gh, cargo, npm, flutter and dart: nothing is built and nothing leaves the runner.
       - run: scripts/hooks_selftest.sh
+      # The production deploy (scripts/deploy_nas.sh), with ssh, docker and docker-compose
+      # stubbed: its refusals, the order pull/down/up, the health wait, --rollback.
+      - name: Deploy script self-test
+        run: scripts/deploy_nas_selftest.sh
 
   flutter:
     name: Flutter client — analyze, test, build web and apk
@@ -225,7 +240,8 @@ jobs:
       - uses: actions/checkout@v4
       # The Android Gradle plugin (frontend-flutter/android) needs a JDK 17+; the
       # runner's default may change under us, so it is set here. The Android SDK is
-      # the runner's preinstalled one ($ANDROID_HOME).
+      # the runner's preinstalled one ($ANDROID_HOME), with the packages the build needs
+      # installed below rather than trusted to the image.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -234,6 +250,26 @@ jobs:
           cache-dependency-path: |
             frontend-flutter/android/*.gradle*
             frontend-flutter/android/gradle/wrapper/gradle-wrapper.properties
+      # android/gradle.properties asks for -Xmx8G -XX:MaxMetaspaceSize=4G, more than a
+      # standard runner has. The gradle.properties of GRADLE_USER_HOME takes precedence
+      # over the project's, so this caps the heap without touching the committed file.
+      # Written after setup-java, whose cache covers only ~/.gradle/caches and wrapper.
+      - name: Cap the Gradle heap for CI
+        run: |
+          mkdir -p "$HOME/.gradle"
+          {
+            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError"
+            echo "kotlin.daemon.jvmargs=-Xmx2g"
+            echo "org.gradle.workers.max=2"
+          } >> "$HOME/.gradle/gradle.properties"
+      # Flutter 3.47's Gradle plugin compiles against SDK 36 (flutter.compileSdkVersion)
+      # with build-tools 36.0.0. Accepting the licences also lets the Android Gradle
+      # plugin download the pinned NDK if the image lacks it.
+      - name: Install pinned Android SDK packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       # Pinned with the SDK the client is written against (.llmwiki/FrontendFlutter.md):
       # a newer analyzer is a red build.
       - uses: subosito/flutter-action@v2
@@ -257,16 +293,40 @@ jobs:
       # flags the image builds with (frontend-flutter/Dockerfile), so this job fails on
       # whatever the image would fail on.
       - run: flutter build web --base-href /app/ --no-web-resources-cdn
+      # The debug APK is the one uploaded: CI holds no upload key (.llmwiki/FrontendFlutter.md
+      # § Android). It talks to production over HTTPS by default (lib/services/api_config.dart).
       - run: flutter build apk --debug
+      # The APK to try on a phone: the run's page → Artifacts → app-debug (a zip holding
+      # app-debug.apk), or `gh run download <run id> -n app-debug`.
+      - name: Upload the debug APK (artifact app-debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: frontend-flutter/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+      # The release build with R8 (minify, shrink, android/app/proguard-rules.pro), and with
+      # no android/key.properties here: it must fall back to the debug key and still build.
+      - name: Release build without key.properties (R8, debug-key fallback)
+        run: flutter build apk --release
+      # A Play bundle is never debug-signed: without key.properties, `flutter build
+      # appbundle` must fail, before any task runs, naming the file.
+      - name: Release bundle without key.properties is refused
+        run: |
+          if flutter build appbundle --release > appbundle.log 2>&1; then
+            cat appbundle.log; echo "appbundle built without key.properties"; exit 1
+          fi
+          grep -F "No android/key.properties: a release bundle" appbundle.log
 
   # The Flutter end-to-end test (frontend-flutter/integration_test/): the real client, in
   # headless Chrome, registers a user and plays a round against two bots on a Rust backend
-  # started here on an empty database (scripts/flutter_e2e.sh). Not a required check: its
-  # name is free to change until branch protection pins it.
+  # started here on an empty database (scripts/flutter_e2e.sh). It runs on the `e2e` flag:
+  # a Flutter change, and a change to the Rust backend production runs. Not a required
+  # check: its name is free to change until branch protection pins it.
   flutter-e2e:
     name: Flutter end to end — a round against the Rust backend
     needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
+    if: ${{ !cancelled() && needs.scope.outputs.e2e != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -275,12 +335,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zapzap-rust
-      # scripts/init-bots.js seeds the bot accounts: the Node DDL, which the Rust backend
-      # takes as is (.llmwiki/Backend.md).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.2
@@ -289,58 +343,13 @@ jobs:
       - name: Build the Rust backend (debug)
         working-directory: zapzap-rust
         run: cargo build --locked
-      - run: npm ci
       - name: flutter pub get and gen-l10n
         working-directory: frontend-flutter
         run: |
           flutter pub get --enforce-lockfile
           if [ -f l10n.yaml ]; then flutter gen-l10n; fi
       # The runner's Chrome and its matching chromedriver ($CHROMEWEBDRIVER); the backend
-      # gets a fresh database and a generated JWT_SECRET, both gone with the job.
+      # gets a fresh database, seeded by `zapzap-backend seed`, and a generated
+      # JWT_SECRET, both gone with the job.
       - name: Seed the bots, start the backend and chromedriver, flutter drive
         run: scripts/flutter_e2e.sh
-
-  node:
-    name: Node backend — jest
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.node != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      # The major the production image runs (Dockerfile: node:20-alpine).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      # tests/unit and tests/integration against src/, the code production runs;
-      # jest.config.js keeps tests/e2e (Playwright), tests/parity (the parity job) and
-      # frontend/ (vitest) out.
-      - run: npm test
-
-  # The same HTTP scenarios against the Node backend (production) and the Rust backend
-  # (the target), compared (tests/parity, .llmwiki/Testing.md). A difference not listed in
-  # tests/parity/divergences.json fails it, and so does a listed one that no longer occurs.
-  parity:
-    name: Backend parity — Node vs Rust
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.parity != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.92
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: zapzap-rust
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Build the Rust backend (release)
-        working-directory: zapzap-rust
-        run: cargo build --release --locked
-      - run: npm ci
-      - name: Parity suite
-        run: npm run test:parity

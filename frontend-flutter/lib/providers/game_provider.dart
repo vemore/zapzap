@@ -21,7 +21,7 @@ abstract final class GameErrorCode {
   static const invalidHandSize = 'INVALID_HAND_SIZE';
   static const roundNotFinished = 'ROUND_NOT_FINISHED';
 
-  /// The caller has no seat at this table (both backends).
+  /// The caller has no seat at this table.
   static const notInParty = 'NOT_IN_PARTY';
 }
 

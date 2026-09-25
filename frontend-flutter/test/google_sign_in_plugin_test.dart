@@ -10,6 +10,7 @@ import 'package:zapzap/services/google_sign_in_service.dart';
 class _FakePlatform extends GoogleSignInPlatform {
   InitParameters? initParams;
   Object? initError;
+  int signOuts = 0;
   Object? error;
   AuthenticationResults? result;
 
@@ -21,6 +22,9 @@ class _FakePlatform extends GoogleSignInPlatform {
 
   @override
   bool supportsAuthenticate() => true;
+
+  @override
+  Future<void> signOut(SignOutParams params) async => signOuts++;
 
   @override
   Future<AuthenticationResults> authenticate(
@@ -113,4 +117,40 @@ void main() {
       await expectLater(fresh.signIn(), throwsA(isA<GoogleSignInFailure>()));
     },
   );
+
+  test('ready completes once initialised', () async {
+    await expectLater(service.ready(), completes);
+  });
+
+  test('a failed initialisation fails ready and puts nothing on idTokens: '
+      'the section hides itself, no error shown', () async {
+    await subscription?.cancel();
+    platform.initError = StateError('init failed');
+    final fresh = PluginGoogleSignInService(
+      const GoogleSignInConfig(serverClientId: webId),
+    );
+    subscription = fresh.idTokens.listen(tokens.add, onError: errors.add);
+    await expectLater(fresh.ready(), throwsStateError);
+    await pumpEventQueue();
+    expect(tokens, isEmpty);
+    expect(errors, isEmpty);
+  });
+
+  test('signOut signs the plugin out once initialised', () async {
+    await service.signOut();
+    expect(platform.signOuts, 1);
+  });
+
+  test('signOut before any use does not initialise Google', () async {
+    await subscription?.cancel();
+    subscription = null;
+    platform = _FakePlatform();
+    GoogleSignInPlatform.instance = platform;
+    final unused = PluginGoogleSignInService(
+      const GoogleSignInConfig(serverClientId: webId),
+    );
+    await unused.signOut();
+    expect(platform.initParams, isNull);
+    expect(platform.signOuts, 0);
+  });
 }

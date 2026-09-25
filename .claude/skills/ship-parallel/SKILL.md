@@ -88,16 +88,26 @@ Rules:
 5. Working in parallel with other agents:
    - A browser check (Playwright MCP) happens in a tab you open (`browser_tabs` new) and
      only in it; close it when done. Never navigate, reload or read another tab: it is
-     another agent's, with its tokens. Screenshots land in `.playwright-mcp/` (gitignored):
-     never commit them, never delete that directory.
+     another agent's, with its tokens. The browser keeps no login between sessions
+     (`--isolated`): sign in in your tab. Screenshots land in `.playwright-mcp/`
+     (gitignored): never commit them, never delete that directory. If the MCP browser is
+     unavailable, run a headless `chromium.launch()` script from your scratchpad subdirectory,
+     requiring `<MAIN>/node_modules/playwright` (.llmwiki/ParallelDelivery.md § The shared
+     browser).
    - Never rename a CI job's `name:` in `.github/workflows/ci.yml`: branch protection
      requires those names verbatim, and a renamed required job blocks every merge with all
      checks green. Say what a job grew to do in a step name or a comment.
    - A compound command (heredoc, `$(…)`, `cd … && …`) refused as "too complex to verify
      that it stays inside the worktree" is the harness's check, not a repository hook: write
-     the script to your scratchpad and run it by path (`bash <scratchpad>/x.sh`).
+     the script to your own subdirectory of the scratchpad, `<scratchpad>/<type>-<topic>/`
+     (the branch name, `/` → `-`), and run it by path. Your PR body and commit messages go
+     there too, never to a shared name at the scratchpad root: every agent of the session
+     shares that scratchpad.
+   - `gh pr edit` fails on this repo (gh 2.45 queries Projects classic). Edit a PR's title or
+     body with `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
 6. Commit (the hook runs the gates in this worktree), `git push -u origin <type>/<topic>`,
-   `gh pr create --base master` with a body saying what changed and why.
+   `gh pr create --base master` with a body saying what changed and why
+   (`--body-file <scratchpad>/<type>-<topic>/pr.md`).
 7. `gh pr checks <n> --watch` until every check is green or skipped (a job the scope job
    ruled out reports `skipping`, which counts as passing).
    Circuit breaker: after three fix attempts on the same failing check or test, stop — no
@@ -163,9 +173,8 @@ After **each** merge, so a regression points at one pull request:
 
 | Paths changed | Do |
 |---|---|
-| `frontend/`, `frontend-flutter/`, `nginx/`, `docker-compose.yml`, `Dockerfile`, `src/`, `package*.json`, `data/` | `deploy` skill |
-| `zapzap-rust/` | nothing yet — production runs the Node backend (`.llmwiki/Deployment.md`); the switch is a wip entry |
-| `native/`, docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
+| `zapzap-rust/`, `frontend/`, `frontend-flutter/`, `nginx/`, `docker-compose.prod.yml` | `deploy` skill (`scripts/deploy_nas.sh`, run from the main checkout on the merged `master`) — production runs the Rust backend (`.llmwiki/Deployment.md`) |
+| `native/`, `data/` (the Rust backend reads none of its tracked files), root `package*.json`, `docker-compose.yml` (local and CI only), docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
 
 Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, the frontend
 loads, and the path the pull request changed, driven for real (Playwright). Record it.

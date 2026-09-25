@@ -24,8 +24,7 @@ class AdminUsersView extends StatefulWidget {
   /// The rows asked for at a time, as React does.
   static const pageSize = 50;
 
-  /// The account the backends never let anyone delete
-  /// (`src/use-cases/admin/DeleteUser.js:46`).
+  /// The account the backend never lets anyone delete.
   static const defaultAdmin = 'admin';
 
   /// A total play time as React writes it: `0h`, `5m`, `2h 5m`.

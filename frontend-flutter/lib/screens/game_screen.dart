@@ -320,6 +320,9 @@ class _GameScreenState extends State<GameScreen> {
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
+    playedByMe:
+        _game.lastAction != null &&
+        _game.lastAction!.playerIndex == _game.myPlayerIndex,
     playerName: _nameOf,
     cardWidth: cardWidth,
     drawPlayedWidth: drawPlayedWidth,
@@ -432,8 +435,9 @@ class _GameScreenState extends State<GameScreen> {
   // The end of a round, and the end of the game: everything comes from
   // `GameState` — `allHands`, `handPoints`, `roundScores`, `zapZapCaller`,
   // `lowestHandPlayerIndex`, `wasCounterActed`, `counterActedByPlayerIndex`,
-  // `gameFinished`, `winner` — never from the answer of a move, because the
-  // two backends disagree on what `zapzap` returns ([[FrontendFlutter]]).
+  // `gameFinished`, `winner` — never from the answer of a move: a round a
+  // bot or another player ends reaches this screen as an event and a
+  // refetch of `/state`, never as an answer, so `/state` is the one path.
   // ---------------------------------------------------------------------
 
   /// What [playerIndex] scored this round, as `GameBoard.jsx:374-400`
@@ -456,7 +460,7 @@ class _GameScreenState extends State<GameScreen> {
           player: () {
             final index = ordered[seat].playerIndex;
             final total = _game.scoreOf(index);
-            // Both sources: Node fills `eliminatedPlayers`, and
+            // Both sources: the state's `eliminatedPlayers`, and
             // `GAME_RULES.md` puts anybody above 100 points out.
             final out = _game.isEliminated(index) || total > 100;
             return RoundEndPlayer(
@@ -485,7 +489,7 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Who picks the hand size of the next round: the seat after this
   /// round's starting player, skipping whoever is out (`GAME_RULES.md`,
-  /// "Subsequent Rounds"; `NextRound.js` rotates the same way).
+  /// "Subsequent Rounds"; the backend rotates the same way).
   int? _nextChooser(List<RoundEndPlayer> players) {
     final seats = [for (final player in players) player.playerIndex]..sort();
     final out = {

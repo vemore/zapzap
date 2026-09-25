@@ -60,10 +60,8 @@ class AuthCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
-                    if (alternative != null) ...[
-                      alternative!,
-                      const SizedBox(height: 16),
-                    ],
+                    // It brings its own spacing below: it may collapse.
+                    ?alternative,
                     AutofillGroup(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,

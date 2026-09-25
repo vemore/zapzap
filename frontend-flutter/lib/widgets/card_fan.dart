@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
+import '../utils/motion.dart';
 import 'playing_card.dart';
 
 /// The player's hand: cards overlapping left to right, each one leaving at
@@ -20,7 +23,11 @@ import 'playing_card.dart';
 /// A [compact] fan is to be read, not played — the hand in the draw step:
 /// one row whatever the count, straight, cards at most
 /// [CardSizes.handCompact] wide, opaque, and no room kept for a lift.
-class CardFan extends StatelessWidget {
+///
+/// The card a draw brings in carries a "Nouveau" badge for
+/// [Motion.freshCard]; a selected card rises in [Motion.lift] — at once
+/// under reduced motion ([Motion]).
+class CardFan extends StatefulWidget {
   const CardFan({
     super.key,
     required this.cards,
@@ -42,22 +49,66 @@ class CardFan extends StatelessWidget {
   /// How far below its centre a row's end cards sit.
   static const bow = 4.0;
 
+  /// How far above a card's top edge its "Nouveau" badge sits.
+  static const badgeRise = 8.0;
+
   /// The key of the card at [index], for tests and the game board.
   static Key itemKey(int index) => ValueKey('cardFanItem-$index');
+
+  /// The key of the "Nouveau" badge on the card [cardId].
+  static Key freshBadgeKey(int cardId) => ValueKey('freshCard-$cardId');
 
   /// Where each card lies, for a hand of [count] cards [width] wide.
   static FanLayout layoutFor(int count, double width, {bool compact = false}) =>
       FanLayout._(count, width, compact: compact);
 
   @override
+  State<CardFan> createState() => _CardFanState();
+}
+
+/// Follows the hand from one build to the next to spot the card that just
+/// arrived — a draw adds exactly one card and takes none away — and badges
+/// it "Nouveau" for [Motion.freshCard] (J9 of the UX study).
+class _CardFanState extends State<CardFan> {
+  int? _fresh;
+  Timer? _freshTimer;
+
+  @override
+  void didUpdateWidget(CardFan oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final before = oldWidget.cards.toSet();
+    final added = [
+      for (final id in widget.cards)
+        if (!before.contains(id)) id,
+    ];
+    // Exactly one more card, and every card of before still held: a draw.
+    // A new deal, a play or a reorder is not.
+    if (added.length == 1 && widget.cards.length == before.length + 1) {
+      _fresh = added.single;
+      _freshTimer?.cancel();
+      _freshTimer = Timer(Motion.freshCard, () {
+        if (mounted) setState(() => _fresh = null);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _freshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final cards = widget.cards;
     if (cards.isEmpty) return const SizedBox.shrink();
+    final fresh = cards.indexOf(_fresh ?? -1);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fan = layoutFor(
+        final fan = CardFan.layoutFor(
           cards.length,
           constraints.maxWidth,
-          compact: compact,
+          compact: widget.compact,
         );
         return SizedBox(
           width: fan.width,
@@ -66,7 +117,9 @@ class CardFan extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               for (var i = 0; i < cards.length; i++)
-                _card(fan, i, selectedCards.contains(cards[i])),
+                _card(context, fan, i, widget.selectedCards.contains(cards[i])),
+              // Over every card, so the next one in the row never hides it.
+              if (fresh >= 0) _badge(context, fan, fresh),
             ],
           ),
         );
@@ -74,20 +127,72 @@ class CardFan extends StatelessWidget {
     );
   }
 
-  Widget _card(FanLayout fan, int index, bool selected) {
-    final id = cards[index];
+  double _top(FanLayout fan, int index) =>
+      fan.cardRect(index).top -
+      (widget.selectedCards.contains(widget.cards[index])
+          ? CardSizes.selectedLift
+          : 0);
+
+  Widget _card(BuildContext context, FanLayout fan, int index, bool selected) {
+    final id = widget.cards[index];
     final rest = fan.cardRect(index);
-    return Positioned(
-      key: itemKey(index),
+    return AnimatedPositioned(
+      key: CardFan.itemKey(index),
+      duration: Motion.of(context, Motion.lift),
+      curve: Curves.easeOutCubic,
       left: rest.left,
-      top: rest.top - (selected ? CardSizes.selectedLift : 0),
+      top: _top(fan, index),
       child: PlayingCard(
         cardId: id,
         selected: selected,
-        disabled: disabled,
-        dimmed: compact ? false : null,
+        disabled: widget.disabled,
+        dimmed: widget.compact ? false : null,
         width: fan.cardWidth,
-        onTap: onCardTap == null ? null : () => onCardTap!(id),
+        onTap: widget.onCardTap == null ? null : () => widget.onCardTap!(id),
+      ),
+    );
+  }
+
+  /// "Nouveau" across the top edge of card [index], at its left, where the
+  /// card's own strip shows. It pops in; under reduced motion it is simply
+  /// there, and it goes when its time is up either way.
+  Widget _badge(BuildContext context, FanLayout fan, int index) {
+    final l10n = AppLocalizations.of(context);
+    final id = widget.cards[index];
+    final label = Container(
+      key: CardFan.freshBadgeKey(id),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.amber400,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 3)],
+      ),
+      child: Text(
+        l10n.gameCardNew,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppColors.slate900,
+          height: 1.2,
+        ),
+      ),
+    );
+    return Positioned(
+      left: fan.cardRect(index).left + 2,
+      top: math.max(0, _top(fan, index) - CardFan.badgeRise),
+      child: IgnorePointer(
+        child: Motion.enabled(context)
+            ? TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: Motion.badgeIn,
+                curve: Curves.easeOutBack,
+                builder: (context, t, child) => Opacity(
+                  opacity: t.clamp(0, 1),
+                  child: Transform.scale(scale: 0.6 + 0.4 * t, child: child),
+                ),
+                child: label,
+              )
+            : label,
       ),
     );
   }

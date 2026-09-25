@@ -1,8 +1,8 @@
 # NativeEngine
 
-> Scope: `native/` — the Rust cdylib (napi) simulation engine used offline for DRL training and genetic tuning of bots, plus the Node scripts in `scripts/` that drive it. Not used by either backend at runtime except the legacy Node Thibot's optional load.
+> Scope: `native/` — the Rust cdylib (napi) simulation engine used offline for DRL training and genetic tuning of bots, plus the two Node scripts in `scripts/` that drive it. The backend does not use it at runtime.
 > Related: [[Architecture]] · [[Bots]] · [[GameRules]] · [[Testing]]
-> Updated: 2026-09-23
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -16,12 +16,11 @@
 | Release profile | `lto = true`, `opt-level = 3` | `native/Cargo.toml:41-43` |
 | Toolchain | pinned `1.92` + rustfmt, clippy | `native/rust-toolchain.toml:3-4` |
 | Node build | `npm run build` = `napi build --platform --release` (needs `@napi-rs/cli` ^2.18.0); `npm test` = `cargo test` | `native/package.json:14-21` |
-| JS entry | `index.js` (napi loader, committed) + `index.d.ts` typings; built `*.node` is gitignored | `native/package.json:4-5`, `.gitignore:123` |
-| Lockfile | `native/Cargo.lock` is gitignored and untracked (unlike `zapzap-rust/Cargo.lock`) | `.gitignore:122` |
+| JS entry | `index.js` (napi loader, committed) + `index.d.ts` typings; built `*.node` is gitignored | `native/package.json:4-5`, `.gitignore:129` |
+| Lockfile | `native/Cargo.lock` is gitignored and untracked (unlike `zapzap-rust/Cargo.lock`) | `.gitignore:128` |
 | Lint | `#![deny(clippy::all)]` at crate root; CI and the commit hook run `cargo clippy --all-targets -- -D warnings` | `native/src/lib.rs:5`, `native` job of `.github/workflows/ci.yml`, `.claude/hooks/guard-bash.sh` |
-| Ad-hoc JS checks | `native/benchmark.js`, `native/test-comparison.js`, `native/test-ml-components.js` (not wired into npm/CI) | `native/` |
 
-Consumers: only `scripts/train-native.js` (`require('../native/index.js')`, `scripts/train-native.js:486`), `scripts/genetic-optimize-thibot.js:21`, and the legacy Node Thibot bot, which falls back to JS if the addon is missing (`src/infrastructure/bot/strategies/ThibotBotStrategy.js:20-23`). `zapzap-rust` does not depend on it.
+Consumers: only `scripts/train-native.js` (`require('../native/index.js')`, `scripts/train-native.js:486`) and `scripts/genetic-optimize-thibot.js:21`. `zapzap-rust` does not depend on it.
 
 ### Modules (`native/src/`)
 | Module | Role | Source |
@@ -66,7 +65,7 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 - Rewards: engine uses `finalize_simple` — sparse, only last transition gets +1.0 (win) / −0.25 (loss) (`native/src/headless_engine.rs:152-158`, `native/src/training/collector.rs:159-184`). The collector module doc still describes dense potential-based shaping (`collector.rs:5-10`); `finalize_dense` exists but is unused by the engine (`collector.rs:223`).
 - Weight sync to simulated DRL players each game via `set_drl_weights` (burn → FastDQN flat layout) (`native/src/lib.rs:313`, `native/src/headless_engine.rs:90`).
 - Model I/O: single `weights` F32 tensor in `.safetensors`, JSON metadata under key `metadata` (`native/src/training/model_io.rs:93-135`). `trainer_save_model` writes `TrainingConfig::default()` as metadata, not the config actually used (`native/src/lib.rs:1056-1073`).
-- Checked-in models: `data/models/rust-drl.safetensors`, `data/models/rust-drl-hard.safetensors` (+ untracked checkpoints), `data/models/default/{config,weights}.json` (legacy JS model) — `git ls-files data`.
+- Checked-in models: `data/models/rust-drl.safetensors`, `data/models/rust-drl-hard.safetensors` (+ untracked checkpoints) — `git ls-files data`.
 
 ### napi exports (`native/src/lib.rs`, camelCase in JS)
 | Group | Functions | Lines |
@@ -85,7 +84,7 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 
 **`scripts/genetic-optimize-thibot.js`** (native): fitness = win rate of `thibot` vs 3 `hard` via `runGamesBatch` (`scripts/genetic-optimize-thibot.js:305-326`). Defaults: generations 30, population 16 (forced even), elite 2, mutation 0.1, mutation-range 0.3, crossover 0.7, games 2000, output `data/thibot_genetic_params.json`, `--seed` (`:25-72`). Nothing reads the output file back; tuned values are hand-copied into `ThibotParams::default` / `THIBOT_PARAMS`.
 
-**Not native** (legacy Node JS engine in `src/simulation/`): `scripts/run-simulation.js` (JS `SimulationRunner`/`ParallelDRLRunner`/curriculum; defaults games 10000, strategies `ml,hard,medium,easy`, workers min(12, CPUs), `--drl`, `--pretrain`, `--curriculum`; `scripts/run-simulation.js:15-22,29-40,110-130`), `scripts/genetic-optimize-hard-vince.js` (JS `HardVinceBotStrategy` + worker threads; same GA defaults, output `data/hard_vince_genetic_params.json`; `scripts/genetic-optimize-hard-vince.js:20,24-35`), `scripts/optimize-hard-vince.js` (parameter sweep). CLAUDE.md's `genetic-optimize-hard.js` does not exist.
+`data/hard_vince_genetic_params.json` was written by a JS genetic optimiser that went with the Node backend; no script regenerates it now.
 
 ### Known defects
 - `--bench` is broken: calls `benchmarkSimulation(1000, [...])` against signature `(playerCount, gameCount)` and reads `.gamesPerSecond/.totalMs/.opsPerSecond` from functions that return a plain number (`scripts/train-native.js:191-206` vs `native/src/lib.rs:394,499,590`).
@@ -101,3 +100,4 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 - FastDQN was introduced to mirror the burn DuelingDQN layout for cheap in-simulation inference and weight sync (`6e2cc04`, `55c4378`; `native/src/fast_dqn.rs:3-13`).
 - Thibot added (`e445ed5`), later coordination/safety timeout (`cbdc7ac`); golden-score-by-lowest-hand (`d5df375`) and starting-player rotation (`4ee11f8`) were applied to the engine at the same time as the backend.
 - `rust-toolchain.toml` pins 1.92 so the commit hook and CI share one rustfmt/clippy (`native/rust-toolchain.toml:1`, commit `0773216`, squash-merged as `1e063d6`).
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost the JS simulation and training (`src/simulation/`, `scripts/run-simulation.js`, the JS hard_vince optimisers, the JS ML models in `data/`) and the ad-hoc `native/*.js` checks that required it. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/simulation/SimulationRunner.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

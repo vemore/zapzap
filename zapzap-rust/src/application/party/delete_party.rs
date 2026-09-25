@@ -42,7 +42,7 @@ impl<U: UserRepository, P: PartyRepository> DeleteParty<U, P> {
             .await?
             .ok_or(DeletePartyError::PartyNotFound)?;
 
-        // Node's order (DeleteParty.js): a member, then the owner or the only human
+        // The Node backend's order: a member, then the owner or the only human
         // player, then a party not in play
         let players = self.party_repo.get_party_players(&input.party_id).await?;
         if !players.iter().any(|p| p.user_id == input.user_id) {

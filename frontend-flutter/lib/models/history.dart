@@ -2,9 +2,8 @@ import 'json.dart';
 
 /// A finished game in a history listing (`GET /history`, `/history/public`).
 ///
-/// Both backends send the same entry. `userPlacement` and `userScore` come
-/// on `GET /history` only (Node's since 2026-09-24); `visibility` too on
-/// Rust, while Node also sends it on `/history/public`.
+/// `userPlacement`, `userScore` and `visibility` come on `GET /history` only
+/// (`HistoryRow::into_entry`, `zapzap-rust/src/api/routes/history.rs`).
 class GameHistoryEntry {
   const GameHistoryEntry({
     required this.partyId,
@@ -177,7 +176,7 @@ class RoundPlayerScore {
   final int totalScoreAfter;
   final int handPoints;
 
-  /// Card ids. Node sends a JSON-encoded string (`"[17,28,1]"`), Rust a list.
+  /// Card ids.
   final List<int> handCards;
   final bool isZapZapCaller;
   final bool zapZapSuccess;

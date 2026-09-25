@@ -7,6 +7,7 @@ import '../models/card.dart';
 import '../models/game_state.dart';
 import '../utils/app_theme.dart';
 import '../utils/card_l10n.dart';
+import '../utils/motion.dart';
 import 'card_back.dart';
 import 'felt_painter.dart';
 import 'playing_card.dart';
@@ -30,6 +31,13 @@ enum TableStep {
 /// the felt takes an amber edge and says what to tap, the pile goes to full
 /// opacity and the deck becomes a target too.
 ///
+/// A card that comes onto the felt — played this turn, or straight onto
+/// the pile by a player who played and drew in one go — glides in (J9 of
+/// the UX study): up from the hand when this player played it, down from
+/// the players otherwise. A card already on the felt, going from the
+/// played row to the pile, does not move again. Nothing glides under
+/// reduced motion ([Motion]).
+///
 /// Given a height it must fill (tight constraints), it fills it, its
 /// content centred; given a loose one, it takes the height its content
 /// needs up to that. Either way its content scrolls inside the edge past
@@ -49,6 +57,7 @@ class GameTableArea extends StatefulWidget {
     this.takeCard,
     this.cardWidth = CardSizes.tablePhone,
     this.drawPlayedWidth,
+    this.playedByMe = false,
   });
 
   final List<int> cardsPlayed;
@@ -86,6 +95,16 @@ class GameTableArea extends StatefulWidget {
   /// the height they leave going to the hand.
   final double? drawPlayedWidth;
 
+  /// The last move was this player's: the cards it brought glide up from
+  /// the hand, under the felt, instead of down from the players.
+  final bool playedByMe;
+
+  /// How far, in card heights, a card starts from where it lands.
+  static const glideDistance = 1.5;
+
+  /// The key of the glide around card [cardId], while it glides in.
+  static Key glideKey(int cardId) => ValueKey('feltGlide-$cardId');
+
   /// How long the "Reshuffled!" banner stays, as React
   /// (`TableArea.jsx:222`).
   static const reshuffleDuration = Duration(milliseconds: 2500);
@@ -115,6 +134,9 @@ class _GameTableAreaState extends State<GameTableArea> {
   bool _showReshuffle = false;
   Object? _shownAction;
 
+  /// The cards gliding in, and where from: below (the hand) or above.
+  final Map<int, bool> _gliding = {};
+
   @override
   void initState() {
     super.initState();
@@ -125,6 +147,39 @@ class _GameTableAreaState extends State<GameTableArea> {
   void didUpdateWidget(GameTableArea oldWidget) {
     super.didUpdateWidget(oldWidget);
     _followReshuffle();
+    _followArrivals(oldWidget);
+  }
+
+  /// The cards on the felt now that were not on it before glide in; a card
+  /// gone from the felt stops. The first table drawn does not glide: it was
+  /// not just played.
+  void _followArrivals(GameTableArea oldWidget) {
+    final now = {...widget.cardsPlayed, ...widget.lastCardsPlayed};
+    _gliding.removeWhere((id, _) => !now.contains(id));
+    if (!Motion.enabled(context)) {
+      _gliding.clear();
+      return;
+    }
+    final before = {...oldWidget.cardsPlayed, ...oldWidget.lastCardsPlayed};
+    for (final id in now.difference(before)) {
+      _gliding[id] = widget.playedByMe;
+    }
+  }
+
+  /// [card], gliding in if it just came onto the felt.
+  Widget _landing(int id, Widget card) {
+    final fromBelow = _gliding[id];
+    if (fromBelow == null) return card;
+    return _Glide(
+      key: GameTableArea.glideKey(id),
+      from: Offset(
+        0,
+        fromBelow ? GameTableArea.glideDistance : -GameTableArea.glideDistance,
+      ),
+      // Done: it stays where it landed, with no wrapper left to restart.
+      onDone: () => _gliding.remove(id),
+      child: card,
+    );
   }
 
   @override
@@ -151,7 +206,7 @@ class _GameTableAreaState extends State<GameTableArea> {
 
   /// The card the last action took from the discard pile — public, it lay
   /// face up —, or `null`. A deck draw never names its card, even when the
-  /// server sends one (Node does: `2026-09-22-node-play-draw-leak-all-hands`).
+  /// server were to send one (the Node backend did, until its removal).
   int? _takenCard() {
     final action = widget.lastAction;
     if (action == null || action.type != 'draw') return null;
@@ -313,13 +368,16 @@ class _GameTableAreaState extends State<GameTableArea> {
                                 _label(l10n.gameTablePlayedLabel),
                                 _cards(
                                   widget.cardsPlayed,
-                                  (id) => PlayingCard(
-                                    cardId: id,
-                                    width: drawing
-                                        ? widget.drawPlayedWidth ??
-                                              widget.cardWidth
-                                        : widget.cardWidth,
-                                    disabled: true,
+                                  (id) => _landing(
+                                    id,
+                                    PlayingCard(
+                                      cardId: id,
+                                      width: drawing
+                                          ? widget.drawPlayedWidth ??
+                                                widget.cardWidth
+                                          : widget.cardWidth,
+                                      disabled: true,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -411,15 +469,18 @@ class _GameTableAreaState extends State<GameTableArea> {
       else
         _cards(
           widget.lastCardsPlayed,
-          (id) => PlayingCard(
-            key: GameTableArea.discardKey(id),
-            cardId: id,
-            width: widget.cardWidth,
-            selected: widget.selectedDiscardCard == id,
-            disabled: widget.onDiscardTap == null,
-            onTap: widget.onDiscardTap == null
-                ? null
-                : () => widget.onDiscardTap!(id),
+          (id) => _landing(
+            id,
+            PlayingCard(
+              key: GameTableArea.discardKey(id),
+              cardId: id,
+              width: widget.cardWidth,
+              selected: widget.selectedDiscardCard == id,
+              disabled: widget.onDiscardTap == null,
+              onTap: widget.onDiscardTap == null
+                  ? null
+                  : () => widget.onDiscardTap!(id),
+            ),
           ),
         ),
     ],
@@ -474,5 +535,58 @@ class _GameTableAreaState extends State<GameTableArea> {
     spacing: 4,
     runSpacing: 4,
     children: [for (final id in cards) build(id)],
+  );
+}
+
+/// A card gliding [from] an offset, in card sizes, to where it lies, fading
+/// in over the first half of the way; run once, when it is built.
+class _Glide extends StatefulWidget {
+  const _Glide({
+    super.key,
+    required this.from,
+    required this.onDone,
+    required this.child,
+  });
+
+  final Offset from;
+  final VoidCallback onDone;
+  final Widget child;
+
+  @override
+  State<_Glide> createState() => _GlideState();
+}
+
+class _GlideState extends State<_Glide> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: Motion.glide,
+  );
+  late final Animation<Offset> _offset = Tween(
+    begin: widget.from,
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+  late final Animation<double> _opacity = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 0.5, curve: Curves.easeOut),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward().whenCompleteOrCancel(() {
+      if (mounted && _controller.isCompleted) widget.onDone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SlideTransition(
+    position: _offset,
+    child: FadeTransition(opacity: _opacity, child: widget.child),
   );
 }

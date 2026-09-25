@@ -15,6 +15,22 @@ void main() {
     );
   });
 
+  test('index.html holds Google\'s GIS script back until the app releases '
+      'it, under the name the app calls', () {
+    final html = _read('web/index.html');
+    expect(html, contains("'https://accounts.google.com/gsi/client'"));
+    expect(html, contains('window.zapzapLoadGoogleScript = function'));
+    // Before the Flutter bootstrap, which registers the plugin.
+    expect(
+      html.indexOf('zapzapLoadGoogleScript'),
+      lessThan(html.indexOf('flutter_bootstrap.js')),
+    );
+    expect(
+      _read('lib/services/google_sign_in_script_web.dart'),
+      contains("'zapzapLoadGoogleScript'"),
+    );
+  });
+
   test('both compose files feed it from the .env\'s web client id', () {
     for (final compose in [
       '../docker-compose.yml',

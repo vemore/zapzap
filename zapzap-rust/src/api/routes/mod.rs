@@ -225,8 +225,8 @@ fn create_history_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
 }
 
 /// Create admin router: every path under `/admin`, served or not, behind
-/// `auth_middleware` (401), then `admin_middleware` (403 for a non-admin), as Node's
-/// `router.use(authMiddleware); router.use(adminMiddleware)` (`adminRoutes.js`); only an
+/// `auth_middleware` (401), then `admin_middleware` (403 for a non-admin), as the Node
+/// backend's admin router did (both middlewares before any route); only an
 /// admin reaches the `ROUTE_NOT_FOUND` 404 of an unknown path or an unserved method. So
 /// `layer`, which wraps the fallbacks too, not `route_layer`.
 fn create_admin_router(state: Arc<AppState>) -> Router<Arc<AppState>> {

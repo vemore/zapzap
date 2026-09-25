@@ -3,10 +3,9 @@
 > Budget: ≤ 120 lines; anything past it moves to the wiki page that owns it.
 
 ZapZap is a multiplayer rummy-style card game: a Rust backend (`zapzap-rust/`, axum + SQLite,
-the target), a React + Vite frontend (`frontend/`), a Flutter client in the making
-(`frontend-flutter/`, Android + PWA), a Rust simulation engine for bot training (`native/`),
-and the legacy Node backend (`src/`) — **which production still runs** until the switch to
-Rust (`.llmwiki/Deployment.md`).
+**what production runs**), a React + Vite frontend (`frontend/`), a Flutter client in the
+making (`frontend-flutter/`, Android + PWA), and a Rust simulation engine for bot training
+(`native/`).
 
 ## Read the wiki first
 
@@ -20,8 +19,8 @@ Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip
 
 ## Non-negotiables
 
-1. **The database never enters git.** `data/zapzap.db` holds every account; in production it
-   is a file in the NAS clone that a careless `git pull` can delete (`deploy` skill §0).
+1. **The database never enters git.** `data/zapzap.db` holds every account; production's
+   lives in the NAS deploy directory, which holds no clone (`deploy` skill).
 2. **A rule change updates `GAME_RULES.md`** and the test that proves it, in the same change.
 
 What a hook refuses outright — killing node, secrets, the database, `wip/` in a commit, red
@@ -63,6 +62,7 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
 ```bash
 # Rust backend (toolchain pinned: rust-toolchain.toml)
 cd zapzap-rust && JWT_SECRET=<openssl rand -hex 32> cargo run   # :9999, JWT_SECRET required; needs the DB file
+cargo run -- seed --demo                         # bots + demo users (demo123); idempotent, creates the DB file
 cargo fmt && cargo clippy --all-targets -- -D warnings
 cargo test                                       # unit + API integration tests: .llmwiki/Testing.md
 
@@ -77,10 +77,6 @@ flutter build web --base-href /app/ && flutter build apk --debug
 # Native engine and training
 cd native && cargo test
 node scripts/train-native.js                     # .llmwiki/NativeEngine.md
-
-# Legacy Node backend (what production runs)
-npm start                                        # :9999
-npm run init-demo && npm run init-bots           # demo users (demo123), bot users
 
 # Tooling
 scripts/wip.sh list all                          # the local backlog

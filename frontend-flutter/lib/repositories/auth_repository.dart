@@ -29,8 +29,7 @@ class AuthRepository {
         ),
       );
 
-  /// `POST /auth/google` with a Google ID token (both backends; Rust since
-  /// #71) → 401 `GOOGLE_AUTH_FAILED` for a token it refuses, 400
+  /// `POST /auth/google` with a Google ID token → 401 `GOOGLE_AUTH_FAILED` for a token it refuses, 400
   /// `MISSING_CREDENTIAL` for none. A new Google user is created on
   /// the way (`isNewUser`, not read).
   Future<AuthSession> loginWithGoogle(String credential) async =>

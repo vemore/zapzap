@@ -4,21 +4,23 @@
 # freshly started Rust backend.
 #
 # On a throwaway database in a temporary directory: seeds the bot accounts
-# (scripts/init-bots.js, the Node DDL the Rust backend accepts as is), starts the Rust
+# (`zapzap-backend seed`, which creates the file and its schema), starts the Rust
 # backend with a generated JWT_SECRET, waits for /api/health, starts a chromedriver, then
 # runs `flutter drive` on headless Chrome (a phone-sized page). Everything it started is
 # stopped on exit, by process id; the database goes with the directory. The CI job
 # `flutter-e2e` runs it; the procedure by hand is in .llmwiki/Testing.md.
 #
-# Needs: the backend built (`cd zapzap-rust && cargo build --locked`), `npm ci` at the
-# root (init-bots), `flutter pub get` in frontend-flutter/, Chrome, and a chromedriver of
-# Chrome's major version.
+# Needs: the backend built (`cd zapzap-rust && cargo build --locked`), `flutter pub get`
+# in frontend-flutter/, Chrome, and a chromedriver of Chrome's major version. No Node.
 #
 # Usage: scripts/flutter_e2e.sh
 #   E2E_BACKEND_BIN   the backend binary (default: the debug build under
 #                     $CARGO_TARGET_DIR, else zapzap-rust/target)
 #   E2E_API_PORT      the backend's port (default 9921)
 #   E2E_DRIVER_PORT   chromedriver's port (default 4461)
+#   E2E_BOT_ACTION_DELAY_MS
+#                     the bots' pause between two actions (default 0: the backend's own
+#                     default, 1000 ms, stretched a round past the test's limit)
 #   CHROMEDRIVER      the chromedriver binary (default: $CHROMEWEBDRIVER/chromedriver on a
 #                     GitHub runner, else `chromedriver` on the PATH)
 # Exits with flutter drive's status: 0 only on `All tests passed.`
@@ -28,6 +30,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API_PORT="${E2E_API_PORT:-9921}"
 DRIVER_PORT="${E2E_DRIVER_PORT:-4461}"
+BOT_DELAY="${E2E_BOT_ACTION_DELAY_MS:-0}"
 BACKEND_BIN="${E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$ROOT/zapzap-rust/target}/debug/zapzap-backend}"
 if [ -z "${CHROMEDRIVER:-}" ]; then
     if [ -n "${CHROMEWEBDRIVER:-}" ]; then
@@ -70,12 +73,13 @@ wait_for() {  # label, url, seconds
 }
 
 echo "== seeding the bot accounts on $DB"
-(cd "$ROOT" && DB_PATH="$DB" node scripts/init-bots.js >/dev/null)
+DB_PATH="$DB" "$BACKEND_BIN" seed
 
-echo "== starting the Rust backend on :$API_PORT"
+echo "== starting the Rust backend on :$API_PORT (bots pause $BOT_DELAY ms)"
 # Run from zapzap-rust/: its data/ link holds the bot parameters.
 (cd "$ROOT/zapzap-rust" && exec env JWT_SECRET="$(openssl rand -hex 32)" DB_PATH="$DB" \
-    PORT="$API_PORT" RUST_LOG="${RUST_LOG:-info}" "$BACKEND_BIN") >"$BACKEND_LOG" 2>&1 &
+    PORT="$API_PORT" RUST_LOG="${RUST_LOG:-info}" BOT_ACTION_DELAY_MS="$BOT_DELAY" \
+    "$BACKEND_BIN") >"$BACKEND_LOG" 2>&1 &
 pids+=($!)
 wait_for backend "http://localhost:$API_PORT/api/health" 60
 

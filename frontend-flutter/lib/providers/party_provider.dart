@@ -30,8 +30,7 @@ abstract final class PartyErrorCode {
 const int minPartyPlayers = 3;
 const int maxPartyPlayers = 8;
 
-/// A party name is 3 to 50 characters once trimmed, as Node requires
-/// (`src/use-cases/party/CreateParty.js:47-53`).
+/// A party name is 3 to 50 characters once trimmed, as the backend requires.
 const int partyNameMinLength = 3;
 const int partyNameMaxLength = 50;
 
@@ -210,9 +209,7 @@ class PartyLobbyProvider extends ChangeNotifier {
   final String partyId;
   final PartyRepository _repository;
 
-  /// Who is signed in: the owner and the "only human" rules need it, and
-  /// Node's `GET /party/:id` carries neither `isOwner` nor
-  /// `userPlayerIndex` (`test/fixtures/party_details.json`).
+  /// Who is signed in: the "only human" rule compares it with the seats.
   final String? currentUserId;
 
   late final StreamSubscription<SseEvent> _subscription;
@@ -243,12 +240,8 @@ class PartyLobbyProvider extends ChangeNotifier {
   int get maxPlayers =>
       _details?.party.settings.playerCount ?? defaultPartyPlayers;
 
-  /// The caller owns the party. Rust says so; on Node the owner's id is
-  /// compared instead.
-  bool get isOwner =>
-      _details != null &&
-      (_details!.isOwner ||
-          (currentUserId != null && _details!.party.ownerId == currentUserId));
+  /// The caller owns the party: `isOwner` of `GET /party/:id`.
+  bool get isOwner => _details?.isOwner ?? false;
 
   /// The caller is the only human at the table (every other seat is a bot):
   /// they may delete the party even without owning it

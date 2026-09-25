@@ -47,7 +47,7 @@ commit_field() {  # description, expected, field, command
 echo "== refusals =================================================="
 guard "pkill -9 -f node kills VS Code under WSL"    2 'pkill -9 -f "node"'
 guard "killall node"                                2 'killall -9 node'
-guard "pkill -f node app.js"                        2 'pkill -f "node app.js"'
+guard "pkill -f node server.js"                     2 'pkill -f "node server.js"'
 guard "pkill of a named process is fine"            0 'pkill -f nodemon'
 guard "killing a port is the alternative"           0 'lsof -ti:9999 | xargs kill 2>/dev/null'
 guard "the words inside an echo (pkill)"            0 'echo "pkill -9 -f node"'
@@ -241,10 +241,34 @@ secret_case() {  # description, expected exit, path
 secret_case "a staged .env"                        2 ".env"
 secret_case "a staged .env.production"             2 ".env.production"
 secret_case "the committed template"               0 ".env.example"
-secret_case "the Google OAuth client"              2 "src/infrastructure/auth/client_secret_123.json"
+secret_case "the Google OAuth client"              2 "client_secret_123.json"
 secret_case "the SQLite database"                  2 "data/zapzap.db"
 secret_case "a backup of the database"            2 "data/zapzap.db.bak-2026-09-22-1356"
 secret_case "an ordinary JSON file"                0 "data/thibot_genetic_params.json"
+secret_case "the Android upload keystore (.jks)"   2 "android/zapzap-upload-keystore.jks"
+secret_case "a .keystore"                          2 "android/app/release.keystore"
+secret_case "key.properties, the keystore passwords" 2 "android/key.properties"
+secret_case "the committed key.properties.template" 0 "android/key.properties.template"
+secret_case "a service-account key, by its name"   2 "play-service-account.json"
+# A service-account key is refused by its content, whatever it is named.
+sa_case() {  # description, expected exit, path, content, [commit command]
+    printf '%s\n' "$4" > "$TREE/$3"
+    git -C "$TREE" add -f "$3"
+    out=$(payload "${5:-git commit -m x}" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+    report "$1" "$2" "$?"
+    git -C "$TREE" rm -q --cached "$3" && rm "$TREE/$3"
+}
+sa_case "a service-account key under another name" 2 "credentials.json" \
+    '{ "type": "service_account", "project_id": "zapzap-481109", "private_key": "x" }'
+sa_case "the same, compact JSON"                   2 "gcp.json" '{"type":"service_account"}'
+sa_case "a JSON whose type is something else"      0 "config.json" '{ "type": "authorized_user" }'
+# Under `commit -a` the key is only in the working file when the hook runs.
+echo '{}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "settings" >/dev/null 2>&1
+echo '{"type": "service_account"}' > "$TREE/settings.json"
+out=$(payload "git commit -am x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a service-account key written into a tracked JSON, commit -a" 2 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/settings.json"
 # Untracking the database is a deletion, not a leak.
 echo x > "$TREE/data.db" && git -C "$TREE" add -f data.db
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "db" >/dev/null 2>&1
@@ -286,9 +310,18 @@ stub_tool cargo 0
 tree_commit "a native change with green cargo gates" 0
 stub_tool cargo 1
 unstage "native/src/lib.rs"
-stage "src/api/app.js"
-tree_commit "the legacy Node backend runs no gate" 0
-unstage "src/api/app.js"
+stage "scripts/train-native.js"
+tree_commit "a path outside every gated tree runs no gate" 0
+unstage "scripts/train-native.js"
+# A README edit or a deletion cannot break lint or build, so neither needs node_modules.
+stage "frontend/README.md"
+tree_commit "a frontend README-only commit, tree never set up" 0
+unstage "frontend/README.md"
+stage "frontend/src/old.jsx"
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "old.jsx" >/dev/null 2>&1
+git -C "$TREE" rm -rq frontend
+tree_commit "a frontend deletion-only commit, tree never set up" 0
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
 stage "frontend/src/App.jsx"
 tree_commit "a frontend change in a tree never set up" 2 "npm ci --prefix"
 mkdir -p "$TREE/frontend/node_modules"
@@ -605,232 +638,8 @@ if [ "$(id -u)" != 0 ]; then
     report "cleanup --apply: a failed removal prints git's error" explained "$got"
 fi
 
-echo "== deploy ===================================================="
-# deploy.sh is the production path: the order of its steps is what makes a failed deploy
-# a no-op instead of an outage, and it can only be asserted offline. A sandbox clone with
-# a real origin drives the real script, with docker-compose, curl, jq and sleep stubbed —
-# the compose stub logs its arguments, so the *order* of build/down/up is the assertion.
-DREMOTE="$SANDBOX/deploy-remote.git"
-DPROD="$SANDBOX/deploy-prod"
-DTOOLS="$SANDBOX/deploy-tools"
-DLOG="$SANDBOX/compose.log"
-mkdir -p "$DTOOLS"
-git init -q --bare "$DREMOTE"
-git init -q "$SANDBOX/deploy-src"
-git -C "$SANDBOX/deploy-src" config user.email t@t
-git -C "$SANDBOX/deploy-src" config user.name t
-mkdir -p "$SANDBOX/deploy-src/data"
-cp "$ROOT/deploy.sh" "$SANDBOX/deploy-src/deploy.sh"
-chmod +x "$SANDBOX/deploy-src/deploy.sh"
-git -C "$SANDBOX/deploy-src" add -A
-git -C "$SANDBOX/deploy-src" commit -qm "deploy.sh"
-git -C "$SANDBOX/deploy-src" remote add origin "$DREMOTE"
-git -C "$SANDBOX/deploy-src" push -q -u origin HEAD:refs/heads/main 2>/dev/null
-git clone -q -b main "$DREMOTE" "$DPROD" 2>/dev/null
-git -C "$DPROD" config user.email t@t
-git -C "$DPROD" config user.name t
-printf '#!/bin/sh\nexit 0\n' > "$DTOOLS/sleep"
-printf '#!/bin/sh\ncat >/dev/null 2>&1 || true\nexit 0\n' > "$DTOOLS/jq"
-chmod +x "$DTOOLS/sleep" "$DTOOLS/jq"
-DSTATES="$SANDBOX/deploy-states"     # one file per service, holding its container state
-mkdir -p "$DSTATES"
-DSERVICES="$SANDBOX/deploy-services" # what `docker-compose config --services` answers
-services_stub() { printf '%s\n' "$@" > "$DSERVICES"; }
-services_stub backend frontend nginx frontend-flutter
-compose_stub() {  # exit code of `build`, of `down`, of `up` (0 = that step succeeds)
-    cat > "$DTOOLS/docker-compose" <<STUBEOF
-#!/bin/sh
-echo "\$*" >> "$DLOG"
-case "\$1" in
-    build) exit $1 ;;
-    down)  exit $2 ;;
-    up)    exit $3 ;;
-    config) cat "$DSERVICES" ;;             # \`config --services\`
-    port)  echo 0.0.0.0:80 ;;               # \`port <proxy> 80\`
-    ps)    [ "\$2" = -q ] && echo "cid-\$3" ;;
-esac
-exit 0
-STUBEOF
-    chmod +x "$DTOOLS/docker-compose"
-}
-# `docker inspect -f ... cid-<service>` answers per service, so one container can be
-# unhealthy while the others are fine — which is the whole point of the split verdict.
-cat > "$DTOOLS/docker" <<STUBEOF
-#!/bin/sh
-case "\$1" in
-    inspect)
-        for a in "\$@"; do last=\$a; done
-        svc=\${last#cid-}
-        if [ -f "$DSTATES/\$svc" ]; then cat "$DSTATES/\$svc"; else echo healthy; fi ;;
-esac
-exit 0
-STUBEOF
-chmod +x "$DTOOLS/docker"
-health_stub() {  # service, state -- everything not named is healthy
-    rm -f "$DSTATES"/*
-    [ $# -eq 0 ] || echo "$2" > "$DSTATES/$1"
-}
-site_stub() {  # exit code of curl: 0 = /api/health answers, 7 = nothing listening
-    printf '#!/bin/sh\nexit %s\n' "$1" > "$DTOOLS/curl"
-    chmod +x "$DTOOLS/curl"
-}
-upstream() {  # push one more commit to the sandbox origin
-    git -C "$SANDBOX/deploy-src" commit -q --allow-empty -m "$1"
-    git -C "$SANDBOX/deploy-src" push -q origin HEAD:refs/heads/main 2>/dev/null
-}
-run_deploy() {  # -> the deploy's exit code; $dout is its output, $DLOG the compose calls
-    : > "$DLOG"
-    dout=$(cd "$DPROD" && PATH="$DTOOLS:$PATH" ./deploy.sh 2>&1)
-    return $?
-}
-run_deploy_from_subdir() {  # the same, invoked as `../deploy.sh` from data/
-    : > "$DLOG"
-    dout=$(cd "$DPROD/data" && PATH="${1:+$1:}$DTOOLS:$PATH" ../deploy.sh 2>&1)
-    return $?
-}
-# Only the three steps that change what is running; the health poll's `config`/`ps`/`port`
-# and the failure path's `logs` are noise for an order assertion.
-calls() { grep -E '^(build|down|up)( |$)' "$DLOG" | tr '\n' '|' | sed 's/|$//'; }
-any_call() { tr '\n' '|' < "$DLOG" | sed 's/|$//'; }
-
-# The happy path: pull, build, and only then down/up. `down` carries --remove-orphans so
-# a rollback to a compose file without frontend-flutter cleans up after itself.
-compose_stub 0 0 0; health_stub; site_stub 0
-upstream "a change to deploy"
-run_deploy; rc=$?
-report "deploy: exits 0 on the happy path"          0 "$rc"
-report "deploy: builds before it stops anything"    "build|down --remove-orphans|up -d" "$(calls)"
-case "$dout" in *"downtime was "*) got=printed ;; *) got="no downtime figure" ;; esac
-report "deploy: prints the downtime it caused"      printed "$got"
-
-# A failed build must not reach `down`: production keeps serving the old images. The clone
-# is at the new commit by then, though, so the message must not call it a clean no-op.
-compose_stub 1 0 0
-upstream "a change whose build fails"
-run_deploy; rc=$?
-report "deploy: a failed build exits non-zero"      1 "$rc"
-report "deploy: a failed build stops nothing"       "build" "$(calls)"
-case "$dout" in *"nothing was stopped"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and says so"                        said "$got"
-case "$dout" in *"now at the new commit"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and that the clone moved anyway"    said "$got"
-# The pull happened, so the fix is just to run it again once the cause is fixed.
-compose_stub 0 0 0
-run_deploy; rc=$?
-report "deploy: re-running after a fixed build works" 0 "$rc"
-
-# A failing `down` is the one step that can leave nothing running: it must not end the
-# script silently, and it must try to bring the stack back before it gives up.
-compose_stub 0 1 0
-upstream "a change whose down fails"
-run_deploy; rc=$?
-report "deploy: a failing down exits non-zero"      1 "$rc"
-report "deploy: and tries to start the stack again" "build|down --remove-orphans|up -d" "$(calls)"
-case "$dout" in *"may be DOWN"*) got=warned ;; *) got="missing from the output" ;; esac
-report "deploy: and says production may be down"    warned "$got"
-
-# `up -d` returning 0 proves nothing: a container that crash-loops satisfies it. An
-# *essential* one — what serves /, /api/ and /suscribeupdate — is an outage: fail loudly
-# with the container and its logs.
-compose_stub 0 0 0; health_stub backend restarting
-upstream "a change that builds and then crash-loops"
-run_deploy; rc=$?
-report "deploy: an unhealthy backend fails the deploy"   1 "$rc"
-case "$dout" in *"backend(restarting)"*) got=named ;; *) got="missing from the output" ;; esac
-report "deploy: and names the container and its state"   named "$got"
-case "$dout" in *"last 30 lines of backend"*) got=shown ;; *) got="missing from the output" ;; esac
-report "deploy: and shows its logs"                      shown "$got"
-case "$dout" in *"production is DOWN"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and calls it an outage"                  said "$got"
-
-# A *non-essential* one is not. `frontend-flutter` is resolved per request by nginx
-# (#36), so an unhealthy PWA costs /app/ a 502 and nothing else: the script must warn,
-# not cry outage, or the operator rolls back a site that is serving.
-health_stub frontend-flutter unhealthy
-upstream "a change whose PWA container is broken"
-run_deploy; rc=$?
-report "deploy: an unhealthy PWA does not read as an outage" 2 "$rc"
-case "$dout" in *"production is DOWN"*) got="called it an outage" ;; *) got=no ;; esac
-report "deploy: and never says production is down"       no "$got"
-case "$dout" in *"WARNING"*"frontend-flutter(unhealthy)"*) got=warned ;; *) got="missing from the output" ;; esac
-report "deploy: names it in a warning instead"           warned "$got"
-case "$dout" in *"Site answering again"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and confirms the site came back"         said "$got"
-case "$dout" in *'`/app/`'*502*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: says what it costs (/app/ answers 502)"  said "$got"
-case "$dout" in *"Rolling back is OPTIONAL"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and that a rollback is optional"         said "$got"
-case "$dout" in *"last 30 lines of frontend-flutter"*) got=shown ;; *) got="missing from the output" ;; esac
-report "deploy: shows its logs too"                      shown "$got"
-case "$dout" in *"DEGRADED"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and its final banner is not a success"   said "$got"
-
-# Containers all up, but the site does not answer: still a failed deploy, not a success.
-health_stub; site_stub 7
-upstream "a change that starts but does not serve"
-run_deploy; rc=$?
-report "deploy: a silent /api/health fails the deploy"   1 "$rc"
-case "$dout" in *"does not answer 200"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and says so"                             said "$got"
-site_stub 0
-
-# A compose file that does not declare an essential service: the split verdict would
-# silently treat a missing `frontend` as optional, so refuse before building anything.
-services_stub backend nginx
-upstream "a change that drops the frontend service"
-run_deploy; rc=$?
-report "deploy: refuses a compose file missing an essential service" 1 "$rc"
-report "deploy: and builds nothing"                      "" "$(calls)"
-case "$dout" in *"expects a service named 'frontend'"*) got=named ;; *) got="missing from the output" ;; esac
-report "deploy: naming the service and the three files"  named "$got"
-services_stub backend frontend nginx frontend-flutter
-
-# A tracked production database: refuse before the pull, naming the fix.
-compose_stub 0 0 0
-mkdir -p "$DPROD/data"
-echo x > "$DPROD/data/zapzap.db"
-git -C "$DPROD" add -f data/zapzap.db
-upstream "a change nobody gets to deploy"
-before=$(git -C "$DPROD" rev-parse HEAD)
-run_deploy; rc=$?
-report "deploy: refuses while data/zapzap.db is tracked" 1 "$rc"
-report "deploy: and does not pull"                  "$before" "$(git -C "$DPROD" rev-parse HEAD)"
-report "deploy: and runs no docker-compose"         "" "$(any_call)"
-case "$dout" in *"git rm --cached data/zapzap.db"*) got=named ;; *) got="missing from the output" ;; esac
-report "deploy: names the fix"                      named "$got"
-
-# The same, invoked from a subdirectory: the check is relative to the clone, not to $PWD,
-# or it answers "not tracked" about a path that does not exist and pulls anyway.
-run_deploy_from_subdir; rc=$?
-report "deploy: refuses from a subdirectory too"    1 "$rc"
-report "deploy: and still does not pull"            "$before" "$(git -C "$DPROD" rev-parse HEAD)"
-report "deploy: and still runs no docker-compose"   "" "$(any_call)"
-
-# git itself unavailable (not on PATH on the NAS, where the skill has to export it): the
-# question is unanswered, which is not the same as a clean answer.
-DNOGIT="$SANDBOX/deploy-nogit"
-mkdir -p "$DNOGIT"
-printf '#!/bin/sh\necho "git: command not found" >&2\nexit 127\n' > "$DNOGIT/git"
-chmod +x "$DNOGIT/git"
-run_deploy_from_subdir "$DNOGIT"; rc=$?
-report "deploy: refuses when git cannot answer"     1 "$rc"
-report "deploy: and runs no docker-compose then"    "" "$(any_call)"
-case "$dout" in *"cannot ask git"*) got=said ;; *) got="missing from the output" ;; esac
-report "deploy: and says the check could not run"   said "$got"
-
-git -C "$DPROD" rm -q --cached data/zapzap.db
-report "deploy: git rm --cached keeps the file"     kept "$([ -f "$DPROD/data/zapzap.db" ] && echo kept || echo gone)"
-
-# A pull that would not fast-forward — a hand edit on the NAS, or a detached HEAD after a
-# rollback — is refused rather than merged blind, and again nothing is stopped. The
-# message must carry git's own reason, since the cause is not always a diverged branch.
-git -C "$DPROD" commit -q --allow-empty -m "someone edited production by hand"
-upstream "and meanwhile master moved"
-run_deploy; rc=$?
-report "deploy: refuses a pull that is not a fast-forward" 1 "$rc"
-report "deploy: and stops nothing"                  "" "$(any_call)"
-case "$dout" in *"fatal:"*) got=quoted ;; *) got="git's own reason is missing" ;; esac
-report "deploy: and quotes git's own reason"        quoted "$got"
+# The production deploy, scripts/deploy_nas.sh, has its own self-test:
+# scripts/deploy_nas_selftest.sh, a step of the same CI job.
 
 echo "== wiring ===================================================="
 # wip/ lives in the main checkout: found from its root, a subdirectory and a worktree.
@@ -862,6 +671,51 @@ report "worktree_setup.sh: and clears its setup marker" gone \
     "$([ -e "$WIPREPO/.zapzap-setup-in-progress" ] && echo kept || echo gone)"
 case "$err" in *"Rerun: cd $WIPREPO/frontend-flutter && flutter pub get"*) got=named ;; *) got="$err" ;; esac
 report "worktree_setup.sh: and names the command to rerun" named "$got"
+
+# --deploy links the main checkout's .env and scripts/deploy.env into a worktree, never
+# copies them, and without the flag links nothing.
+echo "JWT_SECRET=x" > "$WIPREPO/.env"
+echo "REGISTRY=r:1" > "$WIPREPO/scripts/deploy.env"
+"$WIPREPO/scripts/worktree_setup.sh" --no-frontend --no-rust --no-flutter "$SANDBOX/wipwt" >/dev/null 2>&1
+report "worktree_setup.sh without --deploy links no deploy.env" none \
+    "$([ -e "$SANDBOX/wipwt/scripts/deploy.env" ] && echo linked || echo none)"
+"$WIPREPO/scripts/worktree_setup.sh" --no-frontend --no-rust --no-flutter --deploy "$SANDBOX/wipwt" >/dev/null 2>&1
+report "worktree_setup.sh --deploy links scripts/deploy.env" "$WIPREPO/scripts/deploy.env" \
+    "$(readlink "$SANDBOX/wipwt/scripts/deploy.env" 2>/dev/null)"
+report "worktree_setup.sh --deploy links .env" "$WIPREPO/.env" "$(readlink "$SANDBOX/wipwt/.env" 2>/dev/null)"
+
+# generate_keystore.sh writes the upload key to $HOME, never into a repository, and never
+# overwrites one. A stub keytool creates the file named by -keystore and logs its arguments.
+KHOME="$SANDBOX/khome"
+mkdir -p "$KHOME"
+cat > "$TOOLS/keytool" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$KEYTOOL_LOG"
+umask > "$KEYTOOL_LOG.umask"
+while [ $# -gt 0 ]; do [ "$1" = -keystore ] && { echo key > "$2"; }; shift; done
+STUB
+chmod +x "$TOOLS/keytool"
+export KEYTOOL_LOG="$SANDBOX/keytool.log"
+gen() { HOME="$KHOME" PATH="$TOOLS:$PATH" "$ROOT/scripts/generate_keystore.sh" "$@" >/dev/null 2>&1 </dev/null; }
+gen
+report "generate_keystore.sh succeeds" 0 "$?"
+report "generate_keystore.sh writes to \$HOME" present \
+    "$([ -f "$KHOME/zapzap-upload-keystore.jks" ] && echo present || echo missing)"
+report "generate_keystore.sh: alias zapzap-upload, JKS, RSA 2048" yes \
+    "$(grep -q -- '-storetype JKS -keyalg RSA -keysize 2048 .*-alias zapzap-upload' "$KEYTOOL_LOG" && echo yes || echo no)"
+report "generate_keystore.sh: the keystore is mode 600" 600 "$(stat -c %a "$KHOME/zapzap-upload-keystore.jks" 2>/dev/null)"
+report "generate_keystore.sh: keytool runs under umask 077" 0077 "$(cat "$KEYTOOL_LOG.umask" 2>/dev/null)"
+: > "$KEYTOOL_LOG"
+gen
+report "generate_keystore.sh refuses to overwrite a keystore" 1 "$?"
+report "generate_keystore.sh: and leaves it untouched" "key" "$(cat "$KHOME/zapzap-upload-keystore.jks")"
+report "generate_keystore.sh: keytool never ran" "" "$(cat "$KEYTOOL_LOG")"
+ZAPZAP_KEYSTORE="$WIPREPO/zapzap-upload-keystore.jks" gen
+report "generate_keystore.sh refuses a path inside a repository" 1 "$?"
+report "generate_keystore.sh: nothing written there" none \
+    "$([ -e "$WIPREPO/zapzap-upload-keystore.jks" ] && echo written || echo none)"
+ZAPZAP_KEYSTORE="relative.jks" gen
+report "generate_keystore.sh refuses a relative path" 1 "$?"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

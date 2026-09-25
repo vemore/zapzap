@@ -128,7 +128,7 @@ class _AdminStatisticsViewState extends State<AdminStatisticsView> {
                       key: const Key('admin-stats-completion'),
                       icon: Icons.trending_up,
                       label: l10n.adminStatsCompletion,
-                      // Node rounds to one decimal, Rust does not.
+                      // The backend does not round it.
                       value: '${Formats.number(stats.completionRate)}%',
                       color: StatsColors.zapzap,
                     ),
@@ -277,8 +277,7 @@ class DailyGamesChart extends StatelessWidget {
   /// The last [days] UTC days up to [now], oldest first, each with the
   /// count [daily] gives it (`2026-09-22`) or 0. The backends group the
   /// games by UTC day (`strftime('%Y-%m-%d', datetime(finished_at,
-  /// 'unixepoch'))`, `src/infrastructure/database/sqlite/repositories/
-  /// PartyRepository.js:1166`) and send only the days that have some.
+  /// 'unixepoch'))`) and send only the days that have some.
   static List<GamePeriod> lastDays(
     List<GamePeriod> daily,
     DateTime now, {

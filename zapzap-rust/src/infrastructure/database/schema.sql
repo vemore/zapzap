@@ -1,9 +1,10 @@
--- The ZapZap SQLite schema, as the Node backend creates it:
--- src/infrastructure/database/sqlite/DatabaseConnection.js, createSchema() (the DDL string)
--- and runMigrations() (the two users indexes at the end of this file).
+-- The ZapZap SQLite schema, the one source of truth for it. It started as the Node
+-- backend's DDL verbatim (createSchema() plus the two users indexes of runMigrations(), at
+-- the end of this file), so production's database, which Node built, already has it.
 --
--- Every statement is IF NOT EXISTS, so running it on a database the Node backend already
--- built is a no-op. Keep it identical to the Node DDL: tests/schema_tests.rs compares the two.
+-- Every statement is IF NOT EXISTS, so running it on that database is a no-op:
+-- tests/schema_tests.rs checks it against tests/fixtures/node_built_schema.sql, a frozen
+-- copy of a Node-built schema.
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (

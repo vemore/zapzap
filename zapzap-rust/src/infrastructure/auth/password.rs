@@ -8,8 +8,8 @@ pub const BCRYPT_COST: u32 = 10;
 
 /// Password hasher service
 ///
-/// Passwords are hashed with bcrypt while the Node backend is the rollback: Node verifies
-/// with `bcryptjs.compare` only, so every hash Rust writes stays bcrypt. Argon2 hashes, which
+/// Passwords are hashed with bcrypt, the format the Node backend wrote and verified (it was
+/// production's rollback when this was decided; it is removed since). Argon2 hashes, which
 /// earlier Rust builds wrote, still verify.
 pub struct PasswordService;
 
@@ -64,7 +64,7 @@ mod tests {
     use super::*;
     use argon2::password_hash::{PasswordHasher, SaltString};
 
-    /// Hashes shared with the Node test `tests/unit/infrastructure/auth/RustBcryptCompat.test.js`:
+    /// Hashes shared with a test of the Node backend (removed; last at `232f168`):
     /// `rustHash` was written by `PasswordService::hash`, `nodeHash` by `bcryptjs.hash(pw, 10)`.
     const FIXTURE: &str = include_str!("../../../tests/fixtures/bcrypt_node_compat.json");
 

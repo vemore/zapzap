@@ -3285,7 +3285,7 @@ async fn test_unserved_method_answers_route_not_found() {
 }
 
 /// Node checks the token and the admin flag on every `/api/admin` path before routing
-/// (`router.use` in `adminRoutes.js`): only an admin learns that a path does not exist.
+/// (its admin router's `router.use`): only an admin learns that a path does not exist.
 #[tokio::test]
 async fn test_unknown_admin_path_is_behind_auth_and_admin() {
     let (mut app, state) = create_test_app_with_state().await;
@@ -3755,8 +3755,8 @@ async fn test_next_round_after_the_game_ending_zapzap_is_refused() {
 }
 
 // ============================================================================
-// The last parity items: Node's answers to a bad set-admin body, a join of a full
-// started party and a delete by a non-member (tests/parity/divergences.json)
+// The last items of the former Node/Rust comparison: Node's answers to a bad set-admin
+// body, a join of a full started party and a delete by a non-member
 // ============================================================================
 
 #[tokio::test]
@@ -3808,7 +3808,7 @@ async fn test_join_full_started_party_answers_party_full() {
     .await;
     assert_eq!(status, StatusCode::OK, "start: {body}");
 
-    // Node checks a full party before anything else (JoinParty.js)
+    // Node checked a full party before anything else
     let (late, _) = register(&mut app, "fullstart_d").await;
     let (status, body) = post_json_auth(
         &mut app,
@@ -3828,7 +3828,7 @@ async fn test_delete_party_by_a_non_member_answers_not_in_party() {
     let waiting_id = create_party(&mut app, &owner, "Not yours").await;
     let (playing_id, tokens) = started_party(&mut app, "nonmember_game").await;
 
-    // Node's order (DeleteParty.js): membership first, whatever the party's state
+    // Node's order: membership first, whatever the party's state
     for party_id in [&waiting_id, &playing_id] {
         let path = format!("/api/party/{party_id}");
         let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&outsider)).await;
@@ -4002,4 +4002,76 @@ async fn test_only_human_deletes_a_playing_party_against_bots() {
     assert_error(status, &body, StatusCode::CONFLICT, "PARTY_PLAYING");
     let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&other)).await;
     assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
+}
+
+// ========== Seeding (`zapzap-backend seed [--demo]`) ==========
+
+#[tokio::test]
+async fn test_seed_twice_on_an_empty_database_creates_each_bot_once() {
+    use zapzap_backend::infrastructure::database::seed::{self, SEED_BOTS};
+
+    // A file that does not exist yet: the seed creates it and its schema
+    let path = std::env::temp_dir().join(format!("zapzap-seed-{}.db", uuid::Uuid::new_v4()));
+    let db = seed::open(path.to_str().unwrap()).await.unwrap();
+
+    let first = seed::seed(&db, false).await.unwrap();
+    assert_eq!(first.created.len(), SEED_BOTS.len());
+    assert!(first.existing.is_empty());
+
+    let second = seed::seed(&db, false).await.unwrap();
+    assert!(
+        second.created.is_empty(),
+        "second seed created {:?}",
+        second.created
+    );
+    assert_eq!(second.existing.len(), SEED_BOTS.len());
+
+    for (username, difficulty) in SEED_BOTS {
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT user_type, bot_difficulty FROM users WHERE username = ?")
+                .bind(username)
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            rows,
+            vec![("bot".to_string(), Some(difficulty.as_str().to_string()))],
+            "{username}"
+        );
+    }
+    // No demo user without --demo
+    let humans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE user_type = 'human'")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(humans, 0);
+
+    db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_seed_with_demo_users_lets_a_demo_user_log_in_with_demo123() {
+    use zapzap_backend::infrastructure::database::seed::{self, DEMO_USERS};
+    let (mut app, state) = create_test_app_with_state().await;
+
+    seed::seed(&state.db, true).await.unwrap();
+    let again = seed::seed(&state.db, true).await.unwrap();
+    assert!(
+        again.created.is_empty(),
+        "second seed created {:?}",
+        again.created
+    );
+
+    for username in DEMO_USERS {
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/login",
+            json!({ "username": username, "password": "demo123" }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{username}: {body}");
+        assert_eq!(body["user"]["username"], username);
+        assert!(body["token"].is_string());
+    }
 }

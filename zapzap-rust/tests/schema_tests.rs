@@ -1,9 +1,9 @@
-//! The schema the Rust backend creates must be the one the Node backend creates, and
-//! running it on a database the Node backend built must change nothing.
+//! The schema the Rust backend creates must be the one production's database has, and
+//! running it on that database must change nothing.
 //!
-//! The Node DDL is read from the Node source itself
-//! (`src/infrastructure/database/sqlite/DatabaseConnection.js`), so the two cannot drift
-//! apart without this file going red.
+//! Production's database was built by the Node backend. Its schema is frozen in
+//! `tests/fixtures/node_built_schema.sql` (how it was generated is at the top of that
+//! file), so these tests need nothing outside `zapzap-rust/`.
 
 use std::str::FromStr;
 
@@ -13,10 +13,12 @@ use sqlx::{Row, SqlitePool};
 use zapzap_backend::infrastructure::app_state::AppState;
 use zapzap_backend::infrastructure::database::schema::ensure_schema;
 
-const NODE_SOURCE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../src/infrastructure/database/sqlite/DatabaseConnection.js"
-));
+/// The `sqlite_master` of a Node-built database, in creation order.
+const NODE_BUILT_SCHEMA: &str = include_str!("fixtures/node_built_schema.sql");
+
+/// The two users indexes the Node image's entrypoint added to databases it migrated;
+/// the Rust schema does not create them.
+const ENTRYPOINT_INDEXES: [&str; 2] = ["idx_users_username", "idx_users_user_type"];
 
 const NODE_TABLES: [&str; 9] = [
     "game_actions",
@@ -30,62 +32,9 @@ const NODE_TABLES: [&str; 9] = [
     "users",
 ];
 
-/// The statements a fresh Node database receives, in order: the `createSchema()` DDL
-/// string, then what `runMigrations()` runs — its `ALTER TABLE ... ADD COLUMN` statements
-/// (Node ignores "duplicate column name", so on a fresh database only a column the DDL
-/// lacks is added) and its `CREATE INDEX` calls. The password_hash rebuild is skipped on
-/// a fresh database (password_hash is already nullable), so it is not replayed.
-fn node_statements() -> Vec<String> {
-    let start = NODE_SOURCE
-        .find("const schema = `")
-        .expect("createSchema() DDL not found in DatabaseConnection.js")
-        + "const schema = `".len();
-    let len = NODE_SOURCE[start..]
-        .find('`')
-        .expect("end of the createSchema() DDL not found");
-    let mut statements = vec![NODE_SOURCE[start..start + len].to_string()];
-
-    let migrations = &NODE_SOURCE[NODE_SOURCE
-        .find("async runMigrations()")
-        .expect("runMigrations() not found")..];
-    let migrations = &migrations[..migrations
-        .find("async migratePasswordHashNullable()")
-        .expect("migratePasswordHashNullable() not found")];
-    let (mut alters, mut indexes) = (0, 0);
-    for line in migrations.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("sql: 'ALTER TABLE") {
-            let stmt = rest.split('\'').next().unwrap();
-            statements.push(format!("ALTER TABLE{stmt}"));
-            alters += 1;
-        } else if let Some(rest) = line.strip_prefix("await this.run('CREATE INDEX") {
-            let stmt = rest.split("')").next().unwrap();
-            statements.push(format!("CREATE INDEX{stmt};"));
-            indexes += 1;
-        }
-    }
-    assert!(
-        alters >= 5,
-        "the ALTER TABLE statements of runMigrations() were not read"
-    );
-    assert_eq!(
-        indexes, 2,
-        "expected the two users indexes of runMigrations()"
-    );
-    statements
-}
-
-/// Build the schema a fresh Node database gets, as `DatabaseConnection.js` does.
+/// Give `db` the schema of a Node-built database.
 async fn build_node_schema(db: &SqlitePool) {
-    for stmt in node_statements() {
-        if let Err(e) = sqlx::raw_sql(&stmt).execute(db).await {
-            // runMigrations() ignores exactly this error, and nothing else.
-            assert!(
-                stmt.starts_with("ALTER TABLE") && e.to_string().contains("duplicate column name"),
-                "{stmt}: {e}"
-            );
-        }
-    }
+    sqlx::raw_sql(NODE_BUILT_SCHEMA).execute(db).await.unwrap();
 }
 
 async fn memory_pool() -> SqlitePool {
@@ -144,7 +93,7 @@ async fn dump_rows(db: &SqlitePool) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn rust_schema_matches_node_schema() {
+async fn rust_schema_matches_the_node_built_schema() {
     let node = memory_pool().await;
     build_node_schema(&node).await;
 
@@ -159,14 +108,19 @@ async fn rust_schema_matches_node_schema() {
         .filter(|o| o.0 == "table")
         .map(|o| o.1.as_str())
         .collect();
-    assert_eq!(tables, NODE_TABLES, "the Node DDL was not read in full");
+    assert_eq!(tables, NODE_TABLES, "the fixture was not read in full");
     assert_eq!(
         node_objects.iter().filter(|o| o.0 == "index").count(),
-        21,
-        "the Node DDL was not read in full"
+        23,
+        "the fixture was not read in full"
     );
 
-    // Same tables, columns, types, constraints and indexes, statement for statement.
+    // Same tables, columns, types, constraints and indexes, statement for statement,
+    // but for the indexes only the entrypoint migration made.
+    let node_objects: Vec<_> = node_objects
+        .into_iter()
+        .filter(|o| !ENTRYPOINT_INDEXES.contains(&o.1.as_str()))
+        .collect();
     assert_eq!(rust_objects, node_objects);
 }
 
@@ -182,8 +136,8 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
     ));
     let url = format!("sqlite:{}", path.display());
 
-    // A production-shaped database: the Node schema, the extra users indexes the
-    // docker-entrypoint migration leaves behind, and data in every table.
+    // A production-shaped database: the Node-built schema (the extra users indexes of
+    // the docker-entrypoint migration included), and data in every table.
     let node = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(
@@ -195,9 +149,7 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
         .unwrap();
     build_node_schema(&node).await;
     sqlx::raw_sql(
-        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-         CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type);
-         INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, is_admin,
+        "INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, is_admin,
                             last_login_at, total_play_time_seconds, google_id, email,
                             created_at, updated_at)
            VALUES ('u1', 'alice', '$2b$10$hash', 'human', NULL, 1, 1700000100, 3600,
@@ -265,7 +217,7 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// A `users` table rebuilt by `scripts/docker-entrypoint.js` (its `users_new` has no
+/// A `users` table rebuilt by the Node image's entrypoint (its `users_new` has no
 /// `google_id`/`email`) and not yet opened by the Node app: the schema step cannot create
 /// `idx_users_google_id` on it. It must fail as a whole, leaving the database unchanged —
 /// not commit the tables it created before the failing statement.

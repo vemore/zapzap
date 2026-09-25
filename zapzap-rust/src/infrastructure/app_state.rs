@@ -86,17 +86,7 @@ impl AppState {
         // The signing secret first: without one the server must not start at all
         let jwt_secret = jwt_secret_from(std::env::var("JWT_SECRET").ok())?;
 
-        // Get database path from environment
-        let db_path = std::env::var("DATABASE_URL")
-            .or_else(|_| std::env::var("DB_PATH"))
-            .unwrap_or_else(|_| "sqlite:./data/zapzap.db".to_string());
-
-        // Ensure path has sqlite: prefix
-        let db_url = if db_path.starts_with("sqlite:") {
-            db_path
-        } else {
-            format!("sqlite:{}", db_path)
-        };
+        let db_url = database_url();
 
         tracing::info!("Connecting to database: {}", db_url);
 
@@ -248,6 +238,19 @@ impl AppState {
                 tracing::warn!("Failed to broadcast event: {:?}", e);
             }
         }
+    }
+}
+
+/// The database URL: `DATABASE_URL`, else `DB_PATH`, else `./data/zapzap.db`, with the
+/// `sqlite:` prefix. The server and `zapzap-backend seed` open the same file.
+pub fn database_url() -> String {
+    let db_path = std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("DB_PATH"))
+        .unwrap_or_else(|_| "sqlite:./data/zapzap.db".to_string());
+    if db_path.starts_with("sqlite:") {
+        db_path
+    } else {
+        format!("sqlite:{}", db_path)
     }
 }
 

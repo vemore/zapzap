@@ -96,7 +96,7 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
             .get_player_index(&input.party_id, &input.user_id)
             .await?;
 
-        // Only a player of the party sees its state (Node: GetGameState.js)
+        // Only a player of the party sees its state
         if player_index.is_none() {
             return Err(GetGameStateError::NotInParty);
         }

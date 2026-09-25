@@ -183,7 +183,7 @@ impl<P: PartyRepository> NextRound<P> {
                 .await?;
 
             // Once the game is over every other seat is out, as on Node, where the golden
-            // score's loser joins the players past 100 (`src/use-cases/game/NextRound.js`)
+            // score's loser joins the players past 100
             let mut eliminated: Vec<SeatScore> = players
                 .iter()
                 .filter(|p| p.player_index != winner)

@@ -156,17 +156,32 @@ refuse() {
 }
 
 # 1. Secrets and the database ------------------------------------------------
-secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$' \
+secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$|(^|/)key\.properties$|\.(jks|keystore)$|service-account[^/]*\.json$' \
           | grep -vE '(^|/)\.env\.example$')
+# A Google service-account key is recognised by its content, whatever it is named: the
+# staged blob, or the working file when `commit -a` stages it after this hook runs.
+sa_key='"type"[[:space:]]*:[[:space:]]*"service_account"'
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    printf '%s\n' "$secrets" | grep -qxF "$f" && continue
+    if git show ":$f" 2>/dev/null | grep -qE "$sa_key" || { [ -f "$f" ] && grep -qE "$sa_key" "$f"; }; then
+        secrets="${secrets:+$secrets$'\n'}$f"
+    fi
+done < <(printf '%s\n' "$added" | grep -E '\.json$')
 if [ -n "$secrets" ]; then
     refuse "Refused: this commit would add a secret or a database to the repository.
 
 $secrets
 
 Every .env holds JWT_SECRET and the cloud credentials; client_secret_*.json is the Google
-OAuth client; data/zapzap.db holds every account and password hash. All are gitignored,
-so reaching this point took a \`git add -f\`. Unstage with \`git reset <path>\` and commit
-again. .env.example is the committed template."
+OAuth client; data/zapzap.db holds every account and password hash. A *.jks / *.keystore
+is the Android upload key and key.properties its passwords: whoever holds them can sign
+an update of the app. A Google service-account key (\"type\": \"service_account\") acts
+on the Cloud project and can publish to Play. All are gitignored, so reaching this point
+took a \`git add -f\` -- or a service-account key under another name. Unstage with
+\`git reset <path>\` and commit again. .env.example and
+frontend-flutter/android/key.properties.template are the committed templates; the keys
+live outside the repository (.llmwiki/FrontendFlutter.md, Android)."
 fi
 
 # 2. Work tracking ----------------------------------------------------------
@@ -268,7 +283,15 @@ if printf '%s\n' "$paths" | grep -qE '^native/'; then
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 
-if printf '%s\n' "$paths" | grep -qE '^frontend/'; then
+# A client gate (frontend/, frontend-flutter/) runs only for a file the commit leaves in
+# the tree and that is not a `.md`: a README edit or a deletion (`git rm -r frontend`
+# included) cannot break lint, build or the analyzer, so it runs no gate and needs no setup.
+gate_paths() {  # directory
+    printf '%s\n' "$paths" | grep -E "^$1/" | grep -vE '\.md$' \
+        | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done
+}
+
+if [ -n "$(gate_paths frontend)" ]; then
     [ -d "$ROOT/frontend/node_modules" ] || needs_setup "frontend/node_modules is missing (this tree was never set up)" "npm ci --prefix $ROOT/frontend"
     run_gate "npm run lint (frontend)" bash -c "cd '$ROOT/frontend' && npm run lint --silent"
     run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
@@ -279,11 +302,7 @@ fi
 # filled) follows a pubspec change. The generated lib/l10n/app_localizations*.dart are not committed and go
 # stale with every ARB change; neither `flutter analyze` nor a pub get that finds nothing
 # to resolve regenerates them, so `flutter gen-l10n` does, before the analyzer runs.
-# Only a file the commit leaves in the tree, and not a `.md`, can break the analyzer: a
-# README edit or a deletion (`git rm -r frontend-flutter` included) runs no gate.
-flutter_paths=$(printf '%s\n' "$paths" | grep -E '^frontend-flutter/' | grep -vE '\.md$' \
-    | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done)
-if [ -n "$flutter_paths" ]; then
+if [ -n "$(gate_paths frontend-flutter)" ]; then
     command -v flutter >/dev/null 2>&1 || needs_setup "flutter is not on PATH" "install Flutter 3.47.2 (.llmwiki/FrontendFlutter.md), then: cd $ROOT/frontend-flutter && flutter pub get"
     [ -d "$ROOT/frontend-flutter/.dart_tool" ] || needs_setup "frontend-flutter/.dart_tool is missing (flutter pub get never ran in this tree)" "cd $ROOT/frontend-flutter && flutter pub get"
     run_gate "flutter pub get --offline (frontend-flutter; if a package is missing from the cache: cd $ROOT/frontend-flutter && flutter pub get)" \
