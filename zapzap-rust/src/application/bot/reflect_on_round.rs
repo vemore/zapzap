@@ -103,9 +103,8 @@ impl ReflectOnRound {
                 memory_guard.clear_round_decisions(&input.party_id, input.round_number);
                 memory_guard.increment_rounds_analyzed();
 
-                if let Err(e) = memory_guard.save().await {
-                    error!("Failed to save LLM memory: {}", e);
-                }
+                // An unwritable directory keeps the insights in memory (it warns once)
+                memory_guard.save_or_keep().await;
                 drop(memory_guard);
 
                 info!(
@@ -448,6 +447,71 @@ mod tests {
         assert_eq!(memory.get_decisions_for_round("other", 1).len(), 1);
         assert!(memory.has_strategies());
         drop(memory);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// An LLM that answers at once
+    struct QuickLlm;
+
+    #[async_trait]
+    impl LlmService for QuickLlm {
+        async fn invoke(&self, _system: &str, _user: &str) -> Result<String, LlmError> {
+            Ok("[zapzap_timing] Annoncer ZapZap tôt quand la main vaut deux".to_string())
+        }
+
+        async fn health_check(&self) -> bool {
+            true
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_reflection_in_a_read_only_strategies_dir_keeps_the_insights_in_memory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // A root-owned data/bot-strategies seen from the uid-1000 container: read-only
+        let dir = std::env::temp_dir().join(format!("zapzap-ro-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let writable = std::fs::write(dir.join("probe"), b"").is_ok();
+
+        let mut memory = LlmBotMemory::new("bot", Some(dir.clone()));
+        memory.load().await;
+        memory.track_decision("party", 1, decision("play"));
+        let memory = Arc::new(RwLock::new(memory));
+
+        let output = ReflectOnRound::new(Arc::new(QuickLlm))
+            .execute(
+                ReflectOnRoundInput {
+                    bot_user_id: "bot".to_string(),
+                    party_id: "party".to_string(),
+                    round_number: 1,
+                    outcome: RoundOutcome {
+                        won: true,
+                        counteracted: false,
+                        score_change: 0,
+                        hand_points: 2,
+                        final_hand: vec![0, 13],
+                        is_golden_score: false,
+                    },
+                },
+                memory.clone(),
+            )
+            .await;
+
+        // The reflection succeeds and its insight is kept, though no file was written
+        assert!(output.success, "{:?}", output.reason);
+        assert_eq!(output.insights_generated, 1);
+        let mut guard = memory.write().await;
+        assert!(guard.has_strategies());
+        if !writable {
+            assert!(!dir.join("bot.json").exists());
+            // Saving again fails again, quietly, and changes nothing
+            assert!(!guard.save_or_keep().await);
+            assert!(guard.has_strategies());
+        }
+        drop(guard);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         let _ = std::fs::remove_dir_all(dir);
     }
 }

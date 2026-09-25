@@ -31,8 +31,9 @@ use crate::infrastructure::bot::strategies::{
     ThibotStrategy, VinceBotStrategy,
 };
 
-/// Pause between two bot actions, so clients can follow them
-const ACTION_PAUSE: Duration = Duration::from_millis(200);
+/// Pause between two bot actions, so clients can follow them, when `BOT_ACTION_DELAY_MS`
+/// is unset or not a number: Node's default (`src/api/bootstrap.js`)
+pub const DEFAULT_ACTION_DELAY: Duration = Duration::from_millis(1000);
 /// Most bot actions one loop takes while a human is still in the game
 const MAX_ACTIONS_WITH_HUMANS: usize = 50;
 /// Most bot actions one loop takes when only bots remain (they play the game out)
@@ -139,15 +140,55 @@ pub enum LoopEnd {
     Capped,
 }
 
+/// The pause between two bot actions from the value of `BOT_ACTION_DELAY_MS`, in
+/// milliseconds; unset or not a number gives `DEFAULT_ACTION_DELAY`. Unlike Node, whose
+/// `parseInt(...) || 1000` turns `0` into 1000, `0` means no pause.
+pub fn action_delay_from(value: Option<String>) -> Duration {
+    value
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(DEFAULT_ACTION_DELAY, Duration::from_millis)
+}
+
 /// The per-party bot loops of the server (one per `AppState`)
-#[derive(Default)]
 pub struct BotRunner {
     parties: Mutex<HashMap<String, Arc<PartySlot>>>,
+    /// Pause after each bot action
+    action_delay: Duration,
+}
+
+impl Default for BotRunner {
+    fn default() -> Self {
+        Self::with_action_delay(DEFAULT_ACTION_DELAY)
+    }
 }
 
 impl BotRunner {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The runner of the server: its pause from `BOT_ACTION_DELAY_MS`
+    pub fn from_env() -> Self {
+        Self::with_action_delay(action_delay_from(std::env::var("BOT_ACTION_DELAY_MS").ok()))
+    }
+
+    pub fn with_action_delay(action_delay: Duration) -> Self {
+        Self {
+            parties: Mutex::new(HashMap::new()),
+            action_delay,
+        }
+    }
+
+    /// Pause after each bot action
+    pub fn action_delay(&self) -> Duration {
+        self.action_delay
+    }
+
+    /// Drop the bots of a deleted party. A loop that runs meanwhile finds no game state
+    /// at its next action and ends.
+    pub fn drop_party(&self, party_id: &str) {
+        let mut parties = self.parties.lock().unwrap_or_else(|e| e.into_inner());
+        parties.remove(party_id);
     }
 
     fn slot(&self, party_id: &str) -> Arc<PartySlot> {
@@ -481,7 +522,7 @@ async fn run_bot_loop(
         }
         actions += 1;
 
-        tokio::time::sleep(ACTION_PAUSE).await;
+        tokio::time::sleep(state.bot_runner.action_delay()).await;
     }
 
     tracing::warn!("Bot loop of party {} hit its action cap", party_id);
@@ -597,6 +638,24 @@ pub async fn trigger_llm_reflection(
 mod tests {
     use super::*;
     use crate::domain::services::{execute_zapzap, initialize_round};
+
+    #[test]
+    fn test_action_delay_comes_from_bot_action_delay_ms() {
+        assert_eq!(
+            action_delay_from(Some("2000".into())),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            action_delay_from(Some(" 250 ".into())),
+            Duration::from_millis(250)
+        );
+        assert_eq!(action_delay_from(Some("0".into())), Duration::ZERO);
+        // Unset or not a number: Node's default
+        assert_eq!(action_delay_from(None), DEFAULT_ACTION_DELAY);
+        assert_eq!(action_delay_from(Some("fast".into())), DEFAULT_ACTION_DELAY);
+        assert_eq!(action_delay_from(Some("".into())), DEFAULT_ACTION_DELAY);
+        assert_eq!(DEFAULT_ACTION_DELAY, Duration::from_millis(1000));
+    }
 
     #[test]
     fn test_round_outcome_records_the_real_score_change() {

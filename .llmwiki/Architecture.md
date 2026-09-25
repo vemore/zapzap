@@ -2,7 +2,7 @@
 
 > Scope: the five code bases of the repository (zapzap-rust, frontend, frontend-flutter, native, legacy src/), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -36,10 +36,10 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### Real-time updates (SSE)
 
 - Endpoint `GET /suscribeupdate` (spelling is historical and must be kept, frontend and nginx use it) — `zapzap-rust/src/api/mod.rs:24`, handler `zapzap-rust/src/api/sse.rs:18`.
-- Optional `?token=<JWT>`: when valid the user is registered in the session manager and a `userConnected` event is broadcast (`zapzap-rust/src/api/sse.rs:23-39`); `userDisconnected` on stream end (`zapzap-rust/src/api/sse.rs:86-92`).
+- Optional `?token=<JWT>`: when valid the stream is registered in the session manager, and the user's first stream broadcasts `userConnected`; when the client goes away the stream's guard unregisters it, and the user's last stream broadcasts `userDisconnected` (`StreamGuard`, `zapzap-rust/src/api/sse.rs`; streams counted per user, as Node).
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A game's moves and every event of a private party reach only its players' streams; events without a party and a public party's lifecycle events (joined, left, started, deleted, finished) reach every stream ([[Backend]]).
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:112-115`).
-- Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js:37`); `PartyLobby` and `GameBoard` connect **without** token (`frontend/src/components/Party/PartyLobby.jsx:43`, `frontend/src/components/Game/GameBoard.jsx:147`), only `ConnectedPlayers` passes it (`frontend/src/components/Party/ConnectedPlayers.jsx:80`). Against the Rust backend those two tokenless streams miss a game's moves and every private-party event, since it filters per user; the switch needs them to pass the token (tracked in `wip/`). Details: [[Backend]], [[Frontend]].
+- Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js`); `PartyLobby` and `GameBoard` open the stream at `sseUrl()` (`frontend/src/services/sse.js`), which carries the user's token since #94 — without it the Rust backend, which filters per user, would send them none of a game's moves nor any private-party event. Details: [[Backend]], [[Frontend]].
 - Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
@@ -67,7 +67,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 | File | Era | Services |
 |------|-----|----------|
 | `docker-compose.yml` (root, production) | Rust | `backend` built from `zapzap-rust/Dockerfile` with the build arg `CARGO_FEATURES=bedrock`, container `zapzap-backend`, no published port; `frontend`; `frontend-flutter` from `./frontend-flutter` (container `zapzap-frontend-flutter`); `nginx` = `zapzap-proxy`. Env `PORT`, `DATABASE_URL`, `JWT_SECRET` (required), `RUST_LOG`, `GOOGLE_OAUTH_CLIENT_ID`, `BOT_ACTION_DELAY_MS`, `BOT_STRATEGIES_DIR`, the `AWS_*` LLM variables passed only when set ([[Deployment]] has the table). Until 2026-09-24 its `backend` was the Node one (root `Dockerfile`, node:20-alpine, `CMD node scripts/docker-entrypoint.js`), which a rollback builds again |
-| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `frontend-flutter` from `../frontend-flutter`; `nginx` from `../nginx/nginx.conf`. Env `PORT`, `DATABASE_URL`, `JWT_SECRET` (required, no default: `${JWT_SECRET:?...}`), `RUST_LOG`, `BOT_STRATEGIES_DIR=/app/data/bot-strategies`, and the LLM variables `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `ENABLE_LLM_BOTS`, each passed only when set on the host; build arg `CARGO_FEATURES` (`zapzap-rust/docker-compose.yml`) |
+| `zapzap-rust/docker-compose.yml` | Rust | `backend` from `zapzap-rust/Dockerfile` (multi-stage, debian bookworm-slim runtime, non-root uid 1000, curl healthcheck on `/api/health`), container **`zapzap-rust-backend`**, publishes 9999; `frontend` from `../frontend`; `frontend-flutter` from `../frontend-flutter`; `nginx` from `../nginx/nginx.conf`. Env `PORT`, `DATABASE_URL`, `JWT_SECRET` (required, no default: `${JWT_SECRET:?...}`), `RUST_LOG`, `BOT_STRATEGIES_DIR=/app/data/bot-strategies`, `BOT_ACTION_DELAY_MS` (default 1000), and the LLM variables `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `ENABLE_LLM_BOTS`, each passed only when set on the host; build arg `CARGO_FEATURES` (`zapzap-rust/docker-compose.yml`) |
 
 - Both compose files mount the shared `data/` (`./data` resp. `../data`) at `/app/data`.
 - In both, `nginx` waits for `backend` and `frontend` to be healthy but **not** for `frontend-flutter`: `/app/` is resolved per request through Docker's DNS, so a broken PWA is a 502 on `/app/` and never an outage of `/` and `/api/`. [[Deployment]].

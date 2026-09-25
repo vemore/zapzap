@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built and started, where its data and secrets
 > live, the Rust backend service, and the rollback to the Node backend.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-24
+> Updated: 2026-09-25
 
 ## Facts
 
@@ -50,13 +50,20 @@ proxies `/api/` and `/suscribeupdate` to `backend:9999`, and `deploy.sh`'s
 | `JWT_SECRET` | `${JWT_SECRET:?...}` | no default: `docker-compose` refuses the file without it, and the binary refuses a blank or published placeholder ([[Backend]]). Production's `.env` has a private 44-character one (checked 2026-09-24); Node's tokens carry the same `{userId, username, isAdmin}` claims, so sessions survive the switch |
 | `RUST_LOG` | `${RUST_LOG:-info}` | stdout only: the Rust backend writes no log file, so there is no `logs/` mount |
 | `GOOGLE_OAUTH_CLIENT_ID` | from `.env` | Google login |
-| `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | Node's default (`src/api/bootstrap.js`); production's `.env` sets `2000` |
+| `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | the pause between two bot actions, read by `action_delay_from` (`zapzap-rust/src/application/bot/runner.rs`, default 1000 ms like Node's `src/api/bootstrap.js`, but `0` means no pause); production's `.env` sets `2000` |
 | `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
 | `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
 
 The Node-only keys of `.env` — `NODE_ENV`, `ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR`,
 `DB_PATH` — are unused by the Rust service; they stay in production's `.env` for as long as
 a rollback to Node is wanted.
+
+**CORS is wider than Node's.** The Rust router answers every origin
+(`CorsLayer::permissive()`, `zapzap-rust/src/api/mod.rs:32`), where Node, in production,
+granted only the origins of `ALLOWED_ORIGINS` (`src/api/server.js:32-35`). Both clients are
+same-origin under the production domain, and authentication is a bearer token, never a
+cookie, so another site cannot ride a player's session; restricting it is tracked in
+`wip/`.
 
 **Ownership of `data/`.** The image runs as uid 1000 (`zapzap-rust/Dockerfile`, user
 `zapzap`); the Node image ran as root. On the NAS (checked 2026-09-24) `data/` and
@@ -102,13 +109,15 @@ file):
   it to its end, and served the finished game's history and statistics;
 - JWTs: same secret, same claims — a token Rust signed is accepted by Node.
 
-**One Rust write Node cannot read: Argon2 password hashes.** Rust hashes a new password with
-Argon2 and **rehashes a bcrypt hash to Argon2 on every successful password login**
-(`login_user.rs`); Node's `bcryptjs.compare` answers `false` for an Argon2 hash. After a
-rollback, every password user who logged in on Rust, and every user registered on Rust, gets
-401 `INVALID_CREDENTIALS` from Node (reproduced in the rehearsal) — until their token expires
-(7 days) they stay signed in. Google users are unaffected. A rollback is therefore lossy for
-password logins; the fix is tracked in `wip/`.
+**One Rust write Node cannot read, until fix/rust-keeps-bcrypt merges: Argon2 password
+hashes.** Rust hashes a new password with Argon2 and **rehashes a bcrypt hash to Argon2 on
+every successful password login** (`login_user.rs`); Node's `bcryptjs.compare` answers
+`false` for an Argon2 hash. After a rollback, every password user who logged in on Rust, and
+every user registered on Rust, gets 401 `INVALID_CREDENTIALS` from Node (reproduced in the
+rehearsal) — until their token expires (7 days) they stay signed in. Google users are
+unaffected. The user decided (2026-09-24) that Rust keeps bcrypt during the transition:
+fix/rust-keeps-bcrypt changes registration and login, and once it merges this paragraph no
+longer holds for passwords set or used after that deploy.
 
 ### The Flutter PWA under `/app/`
 
@@ -331,7 +340,8 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   > React `GameBoard` and `PartyLobby` must pass `?token=` to `/suscribeupdate`: Rust sends a
   > game's moves and a private party's events only to its players' streams, so tokenless
   > streams would miss them (tracked in `wip/`).
-  > **Status: Outdated** (2026-09-24) — production runs the Rust backend (the entry below).
+  > **Status: Outdated** (2026-09-24) — the React `GameBoard` and `PartyLobby` pass the token
+  > (#94), and production runs the Rust backend (the entry below).
 - **Production switches to the Rust backend (2026-09-24).** The user decided the switch once
   the gaps above were closed: the root compose's `backend` service builds `zapzap-rust/`
   with the Bedrock feature, under the same service and container names so that nginx and
@@ -340,3 +350,4 @@ alongside the staged `D data/zapzap.db` as the two entries a clean NAS shows tod
   password hashes excepted, found while checking that claim. `deploy.sh` gained one refusal:
   a compose file `docker-compose` cannot read (a `.env` without `JWT_SECRET`) stops the
   deploy before the build, with compose's reason.
+- **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat holds until fix/rust-keeps-bcrypt merges (user decision: Rust keeps bcrypt during the transition); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.

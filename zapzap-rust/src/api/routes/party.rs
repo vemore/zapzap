@@ -546,6 +546,8 @@ pub async fn delete_party(
             party_id,
         })
         .await?;
+    // The only human may delete a game against bots: its bots are dropped with it
+    state.bot_runner.drop_party(&party_id_for_event);
 
     // Emit SSE event for partyDeleted
     let event = GameEvent::new(

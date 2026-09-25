@@ -29,11 +29,11 @@ check "1 0 0 0 0 0 0 0 0" "data/thibot_genetic_params.json"
 check "0 1 0 0 0 0 0 0 0" "native/src/headless_engine.rs"
 check "0 0 1 1 0 0 0 0 0" "frontend/src/App.jsx"
 check "0 0 0 1 0 0 0 0 0" "nginx/nginx.conf"
-check "0 0 0 1 0 0 1 1 0" "src/api/app.js" "package-lock.json"
-check "0 0 0 1 0 0 1 1 0" "package.json"
-check "1 0 0 1 0 0 1 1 0" "src/infrastructure/database/sqlite/DatabaseConnection.js"
-check "0 0 0 1 0 0 1 1 0" "src/infrastructure/database/sqlite/connection.js"
-check "0 0 0 1 0 0 1 1 0" "app.js" "logger.js"
+check "0 0 0 1 0 0 1 1 1" "src/api/app.js" "package-lock.json"
+check "0 0 0 1 0 0 1 1 1" "package.json"
+check "1 0 0 1 0 0 1 1 1" "src/infrastructure/database/sqlite/DatabaseConnection.js"
+check "0 0 0 1 0 0 1 1 1" "src/infrastructure/database/sqlite/connection.js"
+check "0 0 0 1 0 0 1 1 1" "app.js" "logger.js"
 check "0 0 0 0 0 0 1 0 0" "tests/unit/use-cases/auth/LoginUser.test.js"
 check "0 0 0 0 0 0 1 0 0" "jest.config.js"
 check "0 0 0 1 0 0 0 0 0" "Dockerfile"
@@ -66,8 +66,10 @@ check "1 0 0 1 0 1 0 1 1" "zapzap-rust/src/main.rs" "frontend-flutter/test/app_t
 # The production backend's image (zapzap-rust/Dockerfile) and the production compose file.
 check "1 0 0 1 0 0 0 1 1" "zapzap-rust/Dockerfile"
 check "0 0 0 0 0 0 0 0 0" "zapzap-rust/README.md"
-# The rollback backend: jest, its image and the parity suite, no end-to-end run.
-check "0 0 0 1 0 0 1 1 0" "src/api/bootstrap.js"
+# The rollback backend: jest, its image, the parity suite, and the end-to-end run whose
+# bots scripts/init-bots.js seeds through src/.
+check "0 0 0 1 0 0 1 1 1" "src/api/bootstrap.js"
+check "0 0 0 1 0 0 1 1 1" "src/domain/entities/User.js"
 check "0 0 0 0 0 0 0 0 0"   # no paths at all
 
 echo "ci_scope: $((n - fail))/$n cases pass"

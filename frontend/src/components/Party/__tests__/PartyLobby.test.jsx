@@ -13,7 +13,13 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 // No real EventSource in these tests
-vi.mock('../../../hooks/useSSE', () => ({ default: () => ({ connected: true }) }));
+const sseHook = vi.hoisted(() => ({ urls: [] }));
+vi.mock('../../../hooks/useSSE', () => ({
+  default: (url) => {
+    sseHook.urls.push(url);
+    return { connected: true };
+  },
+}));
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -54,6 +60,22 @@ describe('Phase 3: PartyLobby Component Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authState.user = { id: 'user-1', username: 'TestUser' };
+  });
+
+  describe('Real-time stream', () => {
+    it('opens /suscribeupdate with the URL-encoded token of the signed-in user', async () => {
+      localStorage.setItem('token', 'a.b/c+d=');
+      sseHook.urls = [];
+      mockPartyResponse();
+
+      renderLobby();
+
+      await waitFor(() => expect(sseHook.urls.length).toBeGreaterThan(0));
+      expect(sseHook.urls.at(-1)).toBe(
+        `${window.location.origin}/suscribeupdate?token=a.b%2Fc%2Bd%3D`
+      );
+      localStorage.removeItem('token');
+    });
   });
 
   describe('Party Display', () => {

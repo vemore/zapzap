@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Strategy categories
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -145,6 +145,8 @@ pub struct LlmBotMemory {
     data: MemoryData,
     loaded: bool,
     dirty: bool,
+    /// A failed save was already reported as a warning
+    save_warned: bool,
 }
 
 impl LlmBotMemory {
@@ -165,13 +167,23 @@ impl LlmBotMemory {
             data: MemoryData::new(bot_user_id),
             loaded: false,
             dirty: false,
+            save_warned: false,
         }
     }
 
-    /// Load memory from file
-    pub async fn load(&mut self) -> Result<(), std::io::Error> {
-        // Ensure directory exists
-        fs::create_dir_all(&self.base_dir).await?;
+    /// Load memory from file. Never fails: a file that cannot be read or parsed leaves the
+    /// memory empty, and a directory that cannot be created is only a warning (the bot
+    /// plays on with a memory kept in the process, see `save_or_keep`).
+    pub async fn load(&mut self) {
+        if let Err(e) = fs::create_dir_all(&self.base_dir).await {
+            warn!(
+                "LLM bot memory directory {} cannot be created ({}): the memory of bot {} \
+                 stays in memory only",
+                self.base_dir.display(),
+                e,
+                self.bot_user_id
+            );
+        }
 
         match fs::read_to_string(&self.file_path).await {
             Ok(content) => match serde_json::from_str(&content) {
@@ -195,13 +207,15 @@ impl LlmBotMemory {
                 self.loaded = true;
             }
             Err(e) => {
-                error!("Failed to load memory: {}", e);
+                warn!(
+                    "LLM bot memory {} cannot be read, starting fresh: {}",
+                    self.file_path.display(),
+                    e
+                );
                 self.data = MemoryData::new(&self.bot_user_id);
                 self.loaded = true;
             }
         }
-
-        Ok(())
     }
 
     /// Load memory synchronously (blocking)
@@ -258,6 +272,34 @@ impl LlmBotMemory {
         );
 
         Ok(())
+    }
+
+    /// Save memory to file, or keep it in memory when the directory is not writable (a
+    /// root-owned `BOT_STRATEGIES_DIR` under a uid-1000 container): the first failure is
+    /// a warning, the next ones are debug lines, and the bot plays on. Returns whether the
+    /// file is up to date.
+    pub async fn save_or_keep(&mut self) -> bool {
+        match self.save().await {
+            Ok(()) => {
+                self.save_warned = false;
+                true
+            }
+            Err(e) => {
+                if self.save_warned {
+                    debug!("LLM bot memory {} still not saved: {}", self.bot_user_id, e);
+                } else {
+                    warn!(
+                        "LLM bot memory of {} cannot be saved in {} ({}): it stays in memory \
+                         only, and is lost at restart",
+                        self.bot_user_id,
+                        self.base_dir.display(),
+                        e
+                    );
+                    self.save_warned = true;
+                }
+                false
+            }
+        }
     }
 
     /// Check if bot has any strategies

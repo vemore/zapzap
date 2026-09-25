@@ -34,9 +34,12 @@ services:
       - $DATA:/app/data
 EOF
 
+# --env-file /dev/null: a developer's .env at the root (a real JWT_SECRET, AWS keys that
+# would switch Bedrock on) must not reach the smoke container.
 compose() {
     JWT_SECRET=smoke-test-only-secret \
-        docker compose -p "$PROJECT" -f "$ROOT/docker-compose.yml" -f "$SCRATCH/override.yml" "$@"
+        docker compose --env-file /dev/null -p "$PROJECT" \
+        -f "$ROOT/docker-compose.yml" -f "$SCRATCH/override.yml" "$@"
 }
 
 cleanup() {

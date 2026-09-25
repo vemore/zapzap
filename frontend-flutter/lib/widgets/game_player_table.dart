@@ -35,10 +35,28 @@ class GameSeat {
 /// backs, the player to move on an amber edge, and each score's bar towards
 /// 100 — the elimination line — turning red above 80. Every line has the
 /// same height, whatever it holds.
+///
+/// Given [onToggle], the table folds: unless [expanded], it shows one line,
+/// the player to move's, and a chevron at the end of its first line unfolds
+/// every line, then folds them back. The phone board folds it so the felt
+/// gets the height of the other lines. The caller holds [expanded], so the
+/// choice outlives a rebuild of the board for the whole game.
 class GamePlayerTable extends StatelessWidget {
-  const GamePlayerTable({super.key, required this.seats});
+  const GamePlayerTable({
+    super.key,
+    required this.seats,
+    this.expanded = true,
+    this.onToggle,
+  });
 
   final List<GameSeat> seats;
+
+  /// Every line when true; only the player to move's when false and the
+  /// table folds ([onToggle] given).
+  final bool expanded;
+
+  /// Folds or unfolds the table; null for a table that never folds.
+  final VoidCallback? onToggle;
 
   /// Past this total a player is out (`GAME_RULES.md`, Game Elimination).
   static const eliminationScore = 100;
@@ -55,6 +73,12 @@ class GamePlayerTable extends StatelessWidget {
       ValueKey('seatCardCount-$playerIndex');
   static Key scoreBarKey(int playerIndex) =>
       ValueKey('seatScoreBar-$playerIndex');
+  static const toggleKey = Key('gamePlayersToggle');
+
+  /// The line a folded table shows: the player to move, or the first in
+  /// turn order when nobody is (the round's starting player).
+  static GameSeat foldedSeat(List<GameSeat> seats) =>
+      seats.firstWhere((seat) => seat.isCurrentTurn, orElse: () => seats.first);
 
   /// The height of every line: one line of text at the current scale, plus
   /// room for the card back. Fixed, so a line holding a badge, a card back
@@ -75,16 +99,66 @@ class GamePlayerTable extends StatelessWidget {
       );
     }
     final height = rowHeight(context);
+    final toggle = onToggle;
+    final shown = toggle == null || expanded ? seats : [foldedSeat(seats)];
+    final rows = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final seat in shown) _SeatRow(seat: seat, height: height),
+      ],
+    );
     return Card(
       color: AppColors.slate800,
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final seat in seats) _SeatRow(seat: seat, height: height),
-          ],
+        child: toggle == null
+            ? rows
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: rows),
+                  _Chevron(expanded: expanded, height: height, onTap: toggle),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// The chevron that folds or unfolds the table, as tall as a line.
+class _Chevron extends StatelessWidget {
+  const _Chevron({
+    required this.expanded,
+    required this.height,
+    required this.onTap,
+  });
+
+  final bool expanded;
+  final double height;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Semantics(
+      container: true,
+      button: true,
+      expanded: expanded,
+      label: expanded ? l10n.gamePlayersCollapse : l10n.gamePlayersExpand,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        key: GamePlayerTable.toggleKey,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 44,
+          height: height,
+          child: Icon(
+            expanded ? Icons.expand_less : Icons.expand_more,
+            color: AppColors.slate400,
+          ),
         ),
       ),
     );
