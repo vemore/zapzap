@@ -196,7 +196,9 @@ Non-zero so no script can miss it, distinct so no script mistakes it for an outa
 **Everything that can fail slowly happens before the `down`**: the build and the push on the
 dev machine, the `config` and the `pull` on the NAS. Any of them failing stops nothing and
 leaves `compose.yaml` as it was — production serves what it served. Only the backup, `down`
-and `up -d` remain after the pull, all local to the NAS.
+and `up -d` remain after the pull, all local to the NAS. The build's room — ≥ 6 GB for
+Docker (the Flutter builder stage alone ~3.5 GB) and ≥ 2 GB of RAM for `dart2js` — is needed
+on the dev machine now; the NAS stores only the pulled images.
 
 **Downtime is measured to the first 200, not to `up -d` returning.** `up -d` exits 0 as soon
 as the containers are created — a container crash-looping under `restart: unless-stopped`

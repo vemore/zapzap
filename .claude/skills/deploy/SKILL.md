@@ -37,6 +37,11 @@ On the dev machine that deploys (the main checkout, or a worktree set up with
 - `.env` at the repository root holds `VITE_GOOGLE_OAUTH_CLIENT_ID` (not a secret; the script
   refuses to build without it). Read it without printing the file:
   `grep -c '^VITE_GOOGLE_OAUTH_CLIENT_ID=.' .env` answers `1`.
+- **Room to build is needed here, on the dev machine, not on the NAS**: ≥ 6 GB free for
+  Docker (the Flutter builder stage alone is ~3.5 GB, the Rust builder adds its own) and
+  ≥ 2 GB free RAM (`dart2js`). `df -h /var/lib/docker; free -m; docker system df`. A build
+  short of it fails before anything is pushed, which costs nothing but the minutes. The NAS
+  only needs room for the pulled images.
 
 ### First deploy: switching the NAS from the old clone
 
@@ -221,6 +226,20 @@ The image carries the deployed revision in its label, the log has the start-up l
 login answers a token, and each `/state` answers 200 — a 500 there, with `Invalid game state
 JSON` in the log, is a stored game state the backend cannot read. A party the account does
 not play in is checked by its players; watch the log (`docker logs -f zapzap-backend`).
+
+**One real LLM bot move, after a deploy that changed the backend image.** No test crosses
+the Bedrock TLS handshake from the production image, so prove it: in a browser, start a
+party with an `llm` bot among the players, play until the bot has played a turn, then
+
+```bash
+ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker logs --since 15m zapzap-backend 2>&1 | grep -E "LLM (selected play|draw decision|play selection failed|draw decision failed|ZapZap decision failed)"'
+```
+
+`LLM selected play` / `LLM draw decision` lines are a Bedrock round trip that worked
+(`zapzap-rust/src/infrastructure/bot/strategies/llm_bot.rs`); a `… failed` line — or none,
+the bot quietly playing like Hard — means the LLM service is broken or off
+(`AWS Bedrock LLM service initialized` missing at start-up). The site still serves: fix it in
+a new pull request, not by a rollback, unless the user wants the LLM bots back at once.
 
 All four containers `healthy`, health answers 200, `/` still serves the React client, `/app/`
 carries the `/app/` base href, `/app/parties` answers 200, no error at startup. Then drive

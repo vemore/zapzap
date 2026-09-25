@@ -43,8 +43,8 @@ services:
     networks:
       - zapzap-network
     healthcheck:
-      # The Alpine image carries busybox wget, not curl.
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9999/api/health"]
+      # The Alpine image carries busybox wget, not curl; 127.0.0.1, since localhost may be ::1.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9999/api/health"]
       interval: 30s
       timeout: 3s
       retries: 3
