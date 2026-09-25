@@ -228,9 +228,16 @@ async function oneGame(rec, ctx, n) {
 
 async function game(rec, ctx) {
     const results = await Promise.all([...Array(GAMES).keys()].map((n) => oneGame(rec, ctx, n + 1)));
-    for (const r of results) rec.value('game.finished', r.finished ? 'finished' : `not finished: ${r.why}`);
+    for (const r of results) {
+        rec.value('game.finished', r.finished ? 'finished' : `not finished: ${r.why}`);
+        // Both backends agreeing is not enough: every game must reach its end.
+        rec.check('game.reached-end', r.finished, () => `game in party ${r.partyId}: ${r.why}`);
+    }
     ctx.gameParty = results[0].partyId;
     ctx.gameRounds = results.map((r) => r.rounds).join('+');
+    // How many times each game checked its winner: parity.test.js wants at least one each.
+    ctx.games = GAMES;
+    ctx.winnerChecks = results.map((r) => r.winnerChecks || 0);
     rec.value('game.hand-size', HAND_SIZE);
 }
 
@@ -262,6 +269,11 @@ async function readOnly(rec, ctx) {
     await rec.call('health.api', 'GET', '/api/health', { values: ['status'] });
     await rec.call('players.connected', 'GET', '/api/players/connected');
     await rec.call('route.unknown', 'GET', '/api/nope');
+    await rec.call('route.unknown.root', 'GET', '/nope', { values: ['path'] });
+    // A served path with a method it does not serve: Node falls through to its 404
+    await rec.call('route.wrong-method', 'PUT', '/api/party', { values: ['path'] });
+    // Only POST is behind the auth middleware there: a GET without a token is a 404
+    await rec.call('route.wrong-method.auth-route', 'GET', `/api/party/${UNKNOWN_ID}/join`, { values: ['path'] });
 }
 
 async function admin(rec, ctx) {
@@ -291,6 +303,13 @@ async function admin(rec, ctx) {
     await rec.call('admin.stop-party.unknown', 'POST', `/api/admin/parties/${UNKNOWN_ID}/stop`, { token });
     await rec.call('admin.delete-party.ok', 'DELETE', `/api/admin/parties/${ctx.illegalParty}`, { token });
     await rec.call('admin.delete-party.unknown', 'DELETE', `/api/admin/parties/${UNKNOWN_ID}`, { token });
+    // Every /api/admin path, served or not, is behind the token and admin checks
+    await rec.call('admin.unknown.no-token', 'GET', '/api/admin/nope');
+    await rec.call('admin.unknown.non-admin', 'GET', '/api/admin/nope', { token: alice.token });
+    await rec.call('admin.unknown', 'GET', '/api/admin/nope', { token, values: ['path'] });
+    await rec.call('admin.root.no-token', 'GET', '/api/admin');
+    await rec.call('admin.wrong-method.no-token', 'PUT', '/api/admin/users');
+    await rec.call('admin.wrong-method', 'PUT', '/api/admin/users', { token, values: ['path'] });
 }
 
 module.exports = [

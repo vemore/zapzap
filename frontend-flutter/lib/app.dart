@@ -9,6 +9,7 @@ import 'providers/auth_provider.dart';
 import 'router.dart';
 import 'services/api_client.dart';
 import 'services/api_config.dart';
+import 'services/google_sign_in_service.dart';
 import 'services/sse_transport.dart';
 import 'services/token_storage.dart';
 import 'utils/app_theme.dart';
@@ -23,6 +24,7 @@ class ZapZapApp extends StatefulWidget {
     this.apiClient,
     this.tokenStorage,
     this.sseTransport,
+    this.googleSignIn,
   });
 
   final ApiConfig apiConfig;
@@ -38,6 +40,9 @@ class ZapZapApp extends StatefulWidget {
   final ApiClient? apiClient;
   final TokenStorage? tokenStorage;
   final SseTransport? sseTransport;
+
+  /// Replaces Google sign-in, for tests.
+  final GoogleSignInService? googleSignIn;
 
   @override
   State<ZapZapApp> createState() => _ZapZapAppState();
@@ -62,6 +67,7 @@ class _ZapZapAppState extends State<ZapZapApp> {
         apiClient: widget.apiClient,
         tokenStorage: widget.tokenStorage,
         sseTransport: widget.sseTransport,
+        googleSignIn: widget.googleSignIn,
       ),
       builder: (context, _) => MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,

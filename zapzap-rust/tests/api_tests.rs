@@ -25,14 +25,14 @@ async fn create_test_app_with_state() -> (Router, Arc<AppState>) {
     // Set test environment
     std::env::set_var("DATABASE_URL", "sqlite::memory:");
     std::env::set_var("JWT_SECRET", "test-secret-key");
+    // Bots pause 200 ms between actions, not production's seconds
+    std::env::set_var("BOT_ACTION_DELAY_MS", "200");
 
     let state = AppState::new().await.expect("Failed to create app state");
     let state = Arc::new(state);
 
-    let app = Router::new()
-        .nest("/api", api::routes::create_api_router(state.clone()))
-        .route("/suscribeupdate", axum::routing::get(api::sse::sse_handler))
-        .with_state(state.clone());
+    // The application main.rs serves, fallbacks and root routes included
+    let app = api::build_app(state.clone());
     (app, state)
 }
 
@@ -192,7 +192,10 @@ async fn test_register_success() {
     assert_eq!(body["success"], true);
     assert!(body["user"]["id"].is_string());
     assert_eq!(body["user"]["username"], "testuser");
-    assert!(body["user"]["createdAt"].is_string());
+    assert!(
+        body["user"]["createdAt"].is_i64(),
+        "Unix seconds as Node: {body}"
+    );
     assert!(body["token"].is_string());
 }
 
@@ -359,10 +362,9 @@ async fn test_create_party_success() {
             "name": "My Test Party",
             "visibility": "public",
             "settings": {
-                "handSize": 5,
-                "maxScore": 100,
-                "enableGoldenScore": true,
-                "goldenScoreThreshold": 100
+                "playerCount": 4,
+                "allowSpectators": true,
+                "roundTimeLimit": 90
             }
         }),
         token,
@@ -377,9 +379,15 @@ async fn test_create_party_success() {
     assert!(body["party"]["inviteCode"].is_string());
     assert_eq!(body["party"]["visibility"], "public");
     assert_eq!(body["party"]["status"], "waiting");
-    assert_eq!(body["party"]["settings"]["handSize"], 5);
-    assert_eq!(body["party"]["settings"]["maxScore"], 100);
-    assert!(body["party"]["createdAt"].is_string());
+    // Node's settings keys, and only them
+    assert_eq!(
+        body["party"]["settings"],
+        json!({"playerCount": 4, "allowSpectators": true, "roundTimeLimit": 90})
+    );
+    assert!(
+        body["party"]["createdAt"].is_i64(),
+        "Unix seconds as Node: {body}"
+    );
     assert!(body["botsJoined"].is_number());
 }
 
@@ -447,6 +455,19 @@ async fn register(app: &mut Router, username: &str) -> (String, String) {
 /// Create a public party owned by `token`; returns its id
 async fn create_party(app: &mut Router, token: &str, name: &str) -> String {
     let (status, body) = post_json_auth(app, "/api/party", json!({"name": name}), token).await;
+    assert_eq!(status, StatusCode::CREATED, "create party: {body}");
+    body["party"]["id"].as_str().unwrap().to_string()
+}
+
+/// Create a public party of `seats` (settings.playerCount) owned by `token`; returns its id
+async fn create_party_with_seats(app: &mut Router, token: &str, name: &str, seats: u8) -> String {
+    let (status, body) = post_json_auth(
+        app,
+        "/api/party",
+        json!({"name": name, "settings": {"playerCount": seats}}),
+        token,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "create party: {body}");
     body["party"]["id"].as_str().unwrap().to_string()
 }
@@ -599,7 +620,7 @@ async fn test_join_full_party_is_409() {
     let (mut app, state) = create_test_app_with_state().await;
     let (owner, _) = register(&mut app, "full_owner").await;
     let (late, _) = register(&mut app, "full_late").await;
-    let party_id = create_party(&mut app, &owner, "Full party").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Full party", 8).await;
     for i in 0..7 {
         let bot_id = create_bot(&state, &format!("full_bot_{i}")).await;
         let (status, body) = post_json_auth(
@@ -781,7 +802,7 @@ async fn test_create_party_unreadable_body_is_400_json() {
     let (status, body) = post_json_auth(
         &mut app,
         "/api/party",
-        json!({"name": "Typed", "settings": {"handSize": "five"}}),
+        json!({"name": "Typed", "settings": {"playerCount": "five"}}),
         &token,
     )
     .await;
@@ -898,7 +919,7 @@ async fn test_add_bot_errors() {
     let (mut app, state) = create_test_app_with_state().await;
     let (owner, _) = register(&mut app, "bote_owner").await;
     let (member, member_id) = register(&mut app, "bote_member").await;
-    let party_id = create_party(&mut app, &owner, "Bot errors").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Bot errors", 8).await;
     post_json_auth(
         &mut app,
         &format!("/api/party/{party_id}/join"),
@@ -2532,4 +2553,1374 @@ mod google_and_bot_admin {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body, json!({"success": false, "error": "Bot not found"}));
     }
+}
+
+// ============================================================================
+// Party settings (Node's playerCount), name bounds, Node's JSON types
+// ============================================================================
+
+#[tokio::test]
+async fn test_join_past_player_count_is_409_party_full() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "pc_owner").await;
+    let (second, _) = register(&mut app, "pc_second").await;
+    let (third, _) = register(&mut app, "pc_third").await;
+    let (fourth, _) = register(&mut app, "pc_fourth").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Three seats", 3).await;
+    let join = format!("/api/party/{party_id}/join");
+    for token in [&second, &third] {
+        let (status, body) = post_json_auth(&mut app, &join, json!({}), token).await;
+        assert_eq!(status, StatusCode::OK, "join: {body}");
+    }
+
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &fourth).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+    assert_eq!(seats(&mut app, &party_id, &owner).await, vec![0, 1, 2]);
+
+    // The list shows the seats as Node: maxPlayers is settings.playerCount
+    let (_, list) = get_auth(&mut app, "/api/party", &owner).await;
+    let row = list["parties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == party_id.as_str())
+        .unwrap();
+    assert_eq!(row["maxPlayers"], 3, "{row}");
+    assert_eq!(row["playerCount"], 3, "{row}");
+
+    // A full party starts
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+}
+
+#[tokio::test]
+async fn test_add_bot_past_player_count_is_409_party_full() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "pcb_owner").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Bot seats 3", 3).await;
+    let path = format!("/api/party/{party_id}/bots");
+    for i in 0..2 {
+        let id = create_bot(&state, &format!("pcb_bot_{i}")).await;
+        let (status, body) = post_json_auth(&mut app, &path, json!({"botId": id}), &owner).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let extra = create_bot(&state, "pcb_extra").await;
+    let (status, body) = post_json_auth(&mut app, &path, json!({"botId": extra}), &owner).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_create_party_player_count_validation() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "pc_validator").await;
+
+    // Outside 3-8, or missing from the settings: 400, and no party is created
+    for settings in [
+        json!({"playerCount": 2}),
+        json!({"playerCount": 9}),
+        json!({"allowSpectators": true}),
+    ] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Bad seats", "settings": settings}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+
+    // No settings at all: Node's PartySettings.createDefault()
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", json!({"name": "Defaults"}), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        body["party"]["settings"],
+        json!({"playerCount": 5, "allowSpectators": false, "roundTimeLimit": 0})
+    );
+
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    let names: Vec<&str> = list["parties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["Defaults"]);
+}
+
+#[tokio::test]
+async fn test_create_party_name_bounds() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "name_bounds").await;
+    let create = |name: String| json!({"name": name, "settings": {"playerCount": 3}});
+
+    // Shorter than 3 characters once trimmed, or longer than 50: 400 VALIDATION_ERROR
+    for name in ["P".to_string(), "  ab  ".to_string(), "x".repeat(51)] {
+        let (status, body) = post_json_auth(&mut app, "/api/party", create(name), &token).await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+
+    // 3 and 50 characters are accepted; the name is stored trimmed
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        create("  abc  ".to_string()),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["party"]["name"], "abc");
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("é".repeat(50)), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn test_create_party_with_more_bots_than_seats_is_400() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "bots_seats").await;
+    let mut bots = Vec::new();
+    for i in 0..8 {
+        bots.push(create_bot(&state, &format!("bs_bot_{i}")).await);
+    }
+
+    // The owner and 8 bots do not fit in 8 seats, nor the owner and 3 bots in 3
+    for (seats, count) in [(8, 8), (3, 3)] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Crowded", "settings": {"playerCount": seats}, "botIds": &bots[..count]}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    assert_eq!(list["parties"], json!([]), "no party is left behind");
+
+    // 7 bots fill an 8-seat party
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Full house", "settings": {"playerCount": 8}, "botIds": &bots[..7]}),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["botsJoined"], 7);
+}
+
+#[tokio::test]
+async fn test_party_timestamps_and_player_ids_are_numbers() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "types_owner").await;
+    let (other, _) = register(&mut app, "types_other").await;
+    let (status, created) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Typed party", "settings": {"playerCount": 4}}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert!(created["party"]["createdAt"].is_i64(), "{created}");
+    let party_id = created["party"]["id"].as_str().unwrap().to_string();
+
+    // Details, for a member and for a non-member of a public party
+    for token in [&owner, &other] {
+        let (status, details) = get_auth(&mut app, &format!("/api/party/{party_id}"), token).await;
+        assert_eq!(status, StatusCode::OK, "{details}");
+        let party = &details["party"];
+        assert!(party["createdAt"].is_i64(), "{details}");
+        assert!(party["updatedAt"].is_i64(), "{details}");
+        assert_eq!(
+            party["settings"],
+            json!({"playerCount": 4, "allowSpectators": false, "roundTimeLimit": 0})
+        );
+        let player = &details["players"][0];
+        assert!(player["id"].is_i64(), "{details}");
+        assert!(player["joinedAt"].is_i64(), "{details}");
+    }
+
+    // The list: Unix seconds, and Node's keys (no visibility: only public parties are listed)
+    for list in [
+        get_auth(&mut app, "/api/party", &owner).await.1,
+        request_no_auth(&mut app, "GET", "/api/party").await.1,
+    ] {
+        let row = &list["parties"][0];
+        assert!(row["createdAt"].is_i64(), "{list}");
+        assert!(row.get("visibility").is_none(), "{list}");
+    }
+}
+
+#[tokio::test]
+async fn test_party_with_node_written_settings() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "node_owner").await;
+    let (second, _) = register(&mut app, "node_second").await;
+    let (third, _) = register(&mut app, "node_third").await;
+    let (late, _) = register(&mut app, "node_late").await;
+
+    // A party row as Node's PartyRepository writes it (PartySettings.toJSON())
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query(
+        "INSERT INTO parties (id, name, owner_id, invite_code, visibility, status,
+                              settings_json, current_round_id, created_at, updated_at)
+         VALUES ('node-party', 'Node table', ?, 'NODE1234', 'public', 'waiting',
+                 '{\"playerCount\":3,\"allowSpectators\":false,\"roundTimeLimit\":0}',
+                 NULL, ?, ?)",
+    )
+    .bind(&owner_id)
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO party_players (party_id, user_id, player_index, joined_at)
+         VALUES ('node-party', ?, 0, ?)",
+    )
+    .bind(&owner_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+
+    let (status, details) = get_auth(&mut app, "/api/party/node-party", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{details}");
+    assert_eq!(
+        details["party"]["settings"],
+        json!({"playerCount": 3, "allowSpectators": false, "roundTimeLimit": 0})
+    );
+    assert_eq!(details["party"]["createdAt"], now);
+
+    // Its playerCount holds: two more join, a fourth player is refused
+    let join = "/api/party/node-party/join";
+    for token in [&second, &third] {
+        let (status, body) = post_json_auth(&mut app, join, json!({}), token).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let (status, body) = post_json_auth(&mut app, join, json!({}), &late).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_create_party_refuses_duplicate_bot_ids() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "dup_bots").await;
+    let bot = create_bot(&state, "dup_bot").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Twice", "settings": {"playerCount": 4}, "botIds": [&bot, &bot]}),
+        &token,
+    )
+    .await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    assert_eq!(body["error"], "Duplicate bot IDs detected");
+    let (_, list) = get_auth(&mut app, "/api/party", &token).await;
+    assert_eq!(list["parties"], json!([]), "no party is left behind");
+}
+
+#[tokio::test]
+async fn test_create_party_name_length_counts_utf16_units() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "utf16_names").await;
+    let create = |name: String| json!({"name": name, "settings": {"playerCount": 3}});
+
+    // "🎲🎲" is 2 characters but 4 UTF-16 units, JavaScript's length: accepted, as on Node
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲🎲".to_string()), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // 25 dice are 50 units, 26 are 52
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲".repeat(25)), &token).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) =
+        post_json_auth(&mut app, "/api/party", create("🎲".repeat(26)), &token).await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    assert_eq!(body["error"], "Party name must not exceed 50 characters");
+}
+
+#[tokio::test]
+async fn test_create_party_player_count_out_of_range_message() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "pc_message").await;
+    for count in [json!(300), json!(-1), json!(3.5), json!(2)] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            "/api/party",
+            json!({"name": "Odd seats", "settings": {"playerCount": count}}),
+            &token,
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+        assert_eq!(
+            body["error"], "Player count must be between 3 and 8",
+            "{count}"
+        );
+    }
+    // A whole float is a whole number, as in JavaScript
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party",
+        json!({"name": "Float seats", "settings": {"playerCount": 4.0}}),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["party"]["settings"]["playerCount"], 4);
+}
+
+/// Replay a lost race on a seat: `intruder_id` takes the lowest free seat of `party_id`
+/// at once, but the seat reads miss it until an insert has collided with it, as when a
+/// concurrent join commits between a player's read of the seats and its insert.
+/// `party_players` becomes a view over the real table; its insert trigger records the
+/// collision (`INSERT OR FAIL` keeps that record when the seat insert fails) and the
+/// view shows the intruder from then on.
+async fn steal_next_seat(state: &AppState, party_id: &str, intruder_id: &str) {
+    sqlx::raw_sql(&format!(
+        "INSERT INTO party_players (party_id, user_id, player_index, joined_at)
+           SELECT '{party_id}', '{intruder_id}', MIN(free.i), 0
+           FROM (SELECT 0 AS i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
+                 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7) AS free
+           WHERE free.i NOT IN (SELECT player_index FROM party_players
+                                WHERE party_id = '{party_id}');
+         CREATE TABLE seat_race_lost (lost INTEGER);
+         ALTER TABLE party_players RENAME TO party_players_real;
+         CREATE VIEW party_players AS
+           SELECT * FROM party_players_real
+           WHERE user_id != '{intruder_id}' OR EXISTS (SELECT 1 FROM seat_race_lost);
+         CREATE TRIGGER party_players_insert INSTEAD OF INSERT ON party_players
+         BEGIN
+           INSERT INTO seat_race_lost
+             SELECT 1 WHERE EXISTS (SELECT 1 FROM party_players_real
+                                    WHERE party_id = NEW.party_id
+                                      AND player_index = NEW.player_index);
+           INSERT OR FAIL INTO party_players_real (party_id, user_id, player_index, joined_at)
+             VALUES (NEW.party_id, NEW.user_id, NEW.player_index, NEW.joined_at);
+         END;"
+    ))
+    .execute(&state.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_join_that_loses_its_seat_takes_the_next_one() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_owner").await;
+    let (joiner, _) = register(&mut app, "race_joiner").await;
+    let (_, intruder_id) = register(&mut app, "race_intruder").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race", 4).await;
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &joiner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["playerIndex"], 2,
+        "seat 1 went to the intruder: {body}"
+    );
+    assert_eq!(seats(&mut app, &party_id, &owner).await, vec![0, 1, 2]);
+}
+
+#[tokio::test]
+async fn test_join_that_loses_the_last_seat_is_party_full() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_full_owner").await;
+    let (second, _) = register(&mut app, "race_full_second").await;
+    let (joiner, _) = register(&mut app, "race_full_joiner").await;
+    let (_, intruder_id) = register(&mut app, "race_full_intruder").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race full", 3).await;
+    let join = format!("/api/party/{party_id}/join");
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &second).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(&mut app, &join, json!({}), &joiner).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_add_bot_that_loses_its_seat_takes_the_next_one() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "race_bot_owner").await;
+    let (_, intruder_id) = register(&mut app, "race_bot_intruder").await;
+    let bot = create_bot(&state, "race_bot").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Race bot", 4).await;
+    steal_next_seat(&state, &party_id, &intruder_id).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/bots"),
+        json!({"botId": bot}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["playerIndex"], 2, "{body}");
+}
+
+#[tokio::test]
+async fn test_party_with_loosely_typed_node_settings_keeps_its_seats() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "loose_owner").await;
+    sqlx::query(
+        "INSERT INTO parties (id, name, owner_id, invite_code, visibility, status,
+                              settings_json, current_round_id, created_at, updated_at)
+         VALUES ('loose-party', 'Loose', ?, 'LOOSE123', 'public', 'waiting',
+                 '{\"playerCount\":6,\"allowSpectators\":1}', NULL, 1700000000, 1700000000)",
+    )
+    .bind(&owner_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let (status, details) = get_auth(&mut app, "/api/party/loose-party", &owner).await;
+    assert_eq!(status, StatusCode::OK, "{details}");
+    assert_eq!(
+        details["party"]["settings"],
+        json!({"playerCount": 6, "allowSpectators": true, "roundTimeLimit": 0})
+    );
+}
+
+// ============================================================================
+// Auth refusals, unknown routes and health answer Node's bodies
+// ============================================================================
+
+/// A GET with a raw Authorization header value (None: no header at all).
+async fn get_with_auth_header(
+    app: &mut Router,
+    path: &str,
+    header: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method("GET").uri(path);
+    if let Some(value) = header {
+        builder = builder.header("Authorization", value);
+    }
+    let response = ServiceExt::<Request<Body>>::ready(app)
+        .await
+        .unwrap()
+        .call(builder.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&body_bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn test_auth_missing_header_answers_missing_auth_header() {
+    let mut app = create_test_app().await;
+    for path in ["/api/stats/me", "/api/history", "/api/admin/users"] {
+        for header in [None, Some("")] {
+            let (status, body) = get_with_auth_header(&mut app, path, header).await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "{path} {header:?}: {body}"
+            );
+            assert_eq!(
+                body,
+                json!({"error": "Missing authorization header", "code": "MISSING_AUTH_HEADER"}),
+                "{path} {header:?}"
+            );
+        }
+    }
+    let (status, body) = request_no_auth(&mut app, "POST", "/api/party").await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::UNAUTHORIZED,
+        "MISSING_AUTH_HEADER",
+    );
+}
+
+#[tokio::test]
+async fn test_auth_malformed_header_answers_invalid_auth_format() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "formatuser").await;
+    let bad = [
+        token.clone(),
+        format!("Basic {token}"),
+        format!("bearer {token}"),
+        "Bearer".to_string(),
+        format!("Bearer  {token}"),
+        format!("Bearer {token} extra"),
+    ];
+    for header in bad {
+        let (status, body) = get_with_auth_header(&mut app, "/api/stats/me", Some(&header)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{header}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Invalid authorization header format",
+                "code": "INVALID_AUTH_FORMAT",
+                "details": {"expected": "Bearer <token>"}
+            }),
+            "{header}"
+        );
+    }
+    // The well-formed header with the same token gets in
+    let (status, body) =
+        get_with_auth_header(&mut app, "/api/stats/me", Some(&format!("Bearer {token}"))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn test_auth_bad_token_answers_invalid_token() {
+    let mut app = create_test_app().await;
+    let (status, body) =
+        get_with_auth_header(&mut app, "/api/stats/me", Some("Bearer not-a-jwt")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(
+        body,
+        json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"})
+    );
+}
+
+#[tokio::test]
+async fn test_auth_token_of_deleted_user_answers_invalid_token() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, user_id) = register(&mut app, "vanisheduser").await;
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    let (status, body) = get_auth(&mut app, "/api/stats/me", &token).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(
+        body,
+        json!({"error": "Invalid or expired token", "code": "INVALID_TOKEN"})
+    );
+    // Behind the admin routes too: the token check comes before the admin check
+    let (status, body) = get_auth(&mut app, "/api/admin/users", &token).await;
+    assert_error(status, &body, StatusCode::UNAUTHORIZED, "INVALID_TOKEN");
+}
+
+#[tokio::test]
+async fn test_unknown_api_route_answers_route_not_found() {
+    let mut app = create_test_app().await;
+    for (method, path, want_path) in [
+        ("GET", "/api/nope", "/api/nope"),
+        ("POST", "/api/party/abc/nothing", "/api/party/abc/nothing"),
+        ("GET", "/api/nope?x=1", "/api/nope"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Not Found",
+                "code": "ROUTE_NOT_FOUND",
+                "path": want_path,
+                "message": "The requested endpoint does not exist"
+            }),
+            "{method} {path}"
+        );
+    }
+}
+
+/// A timestamp as JavaScript's `toISOString()` writes it: UTC, milliseconds, `Z`.
+fn assert_iso_timestamp(value: &Value) {
+    let text = value.as_str().expect("timestamp is a string");
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(text).is_ok() && text.ends_with('Z'),
+        "{text}"
+    );
+    assert_eq!(text.len(), "2026-09-24T12:00:00.000Z".len(), "{text}");
+}
+
+#[tokio::test]
+async fn test_api_health_answers_status_timestamp_uptime() {
+    let mut app = create_test_app().await;
+    let (status, body) = request_no_auth(&mut app, "GET", "/api/health").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_object().unwrap().len(), 3, "{body}");
+    assert_eq!(body["status"], "ok");
+    assert_iso_timestamp(&body["timestamp"]);
+    assert!(body["uptime"].as_f64().unwrap() >= 0.0, "{body}");
+}
+
+#[tokio::test]
+async fn test_root_health_and_unknown_root_path_answer_nodes_bodies() {
+    // create_test_app is api::build_app, the router main.rs serves
+    let mut app = create_test_app().await;
+
+    let (status, body) = request_no_auth(&mut app, "GET", "/health").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_object().unwrap().len(), 3, "{body}");
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["api"], "v2 (Clean Architecture)");
+    assert_iso_timestamp(&body["timestamp"]);
+
+    let (status, body) = request_no_auth(&mut app, "GET", "/nowhere").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["code"], "ROUTE_NOT_FOUND");
+    assert_eq!(body["path"], "/nowhere");
+}
+
+/// Node routes by method and path together, so a served path asked with another method
+/// falls through to its 404 like an unknown path; axum's bare 405 must not show.
+#[tokio::test]
+async fn test_unserved_method_answers_route_not_found() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "methoduser").await;
+    for (method, path) in [
+        ("PUT", "/api/party"),
+        // Only POST is behind auth_middleware there: no 401 for a GET, as on Node
+        ("GET", "/api/party/some-party/join"),
+        ("PATCH", "/api/game/some-party/play"),
+        ("PUT", "/api/bots"),
+        ("POST", "/api/stats/leaderboard"),
+        ("DELETE", "/api/health"),
+        ("POST", "/health"),
+        ("POST", "/suscribeupdate"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method} {path}");
+        assert_eq!(body["path"], path, "{method} {path}");
+    }
+    // With a token too
+    let (status, body) = send_raw(&mut app, "PUT", "/api/party", "", None, Some(&token)).await;
+    assert_error(status, &body, StatusCode::NOT_FOUND, "ROUTE_NOT_FOUND");
+}
+
+/// Node checks the token and the admin flag on every `/api/admin` path before routing
+/// (`router.use` in `adminRoutes.js`): only an admin learns that a path does not exist.
+#[tokio::test]
+async fn test_unknown_admin_path_is_behind_auth_and_admin() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (user, _) = register(&mut app, "plainadminprobe").await;
+    let (admin, admin_id) = register(&mut app, "realadminprobe").await;
+    sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
+        .bind(&admin_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    for (method, path) in [
+        ("GET", "/api/admin/nope"),
+        ("GET", "/api/admin/users/someone/nothing"),
+        // A served path with an unserved method
+        ("PUT", "/api/admin/users"),
+    ] {
+        let (status, body) = request_no_auth(&mut app, method, path).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}: {body}");
+        assert_eq!(body["code"], "MISSING_AUTH_HEADER", "{method} {path}");
+
+        let (status, body) = send_raw(&mut app, method, path, "", None, Some(&user)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ADMIN_REQUIRED", "{method} {path}");
+
+        let (status, body) = send_raw(&mut app, method, path, "", None, Some(&admin)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+        assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method} {path}");
+        assert_eq!(body["path"], path, "{method} {path}");
+    }
+}
+
+// ============================================================================
+// GET /state and POST /nextRound answer Node's shapes
+// ============================================================================
+
+/// The keys of a JSON object, sorted
+fn keys_of(v: &Value) -> Vec<String> {
+    let mut keys: Vec<String> = v
+        .as_object()
+        .unwrap_or_else(|| panic!("not an object: {v}"))
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+async fn game_state(app: &mut Router, party_id: &str, token: &str) -> Value {
+    let (status, body) = get_auth(app, &format!("/api/game/{party_id}/state"), token).await;
+    assert_eq!(status, StatusCode::OK, "state: {body}");
+    body
+}
+
+#[tokio::test]
+async fn test_state_sends_nodes_always_present_keys() {
+    let (mut app, _state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "sk").await;
+
+    let body = game_state(&mut app, &party_id, &tokens[0]).await;
+    assert!(body["party"]["currentRoundId"].is_string(), "{body}");
+    assert_eq!(body["gameState"]["wasCounterActed"], false, "{body}");
+    assert_eq!(body["gameState"]["gameFinished"], false, "{body}");
+    // Node's players are {playerIndex, userId, username}
+    for p in body["players"].as_array().unwrap() {
+        assert_eq!(keys_of(p), ["playerIndex", "userId", "username"], "{p}");
+    }
+    // No move yet this round
+    assert!(body["gameState"]["lastAction"].is_null(), "{body}");
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_select_play_and_draw() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "la").await;
+    let url = |a: &str| format!("/api/game/{party_id}/{a}");
+
+    // selectHandSize: {type, playerIndex, handSize}, no timestamp (as Node)
+    let starter = game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["currentTurn"]
+        .as_u64()
+        .unwrap() as usize;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("selectHandSize"),
+        json!({"handSize": 5}),
+        &tokens[starter],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = &game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["lastAction"];
+    assert_eq!(
+        *la,
+        json!({"type": "selectHandSize", "playerIndex": starter, "handSize": 5})
+    );
+
+    // play: {type, playerIndex, cardIds, timestamp}
+    let hands: [&[u8]; 3] = [
+        &[0, 1, 2, 3, 4],
+        &[13, 14, 15, 16, 17],
+        &[26, 27, 28, 29, 30],
+    ];
+    set_game_state(&state, &party_id, &hands, &[0, 0, 0], 0, GameAction::Play).await;
+    set_piles(&state, &party_id, &[40], false).await;
+    let (status, body) =
+        post_json_auth(&mut app, &url("play"), json!({"cardIds": [4]}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[1]).await["gameState"]["lastAction"].clone();
+    assert_eq!(
+        keys_of(&la),
+        ["cardIds", "playerIndex", "timestamp", "type"],
+        "{la}"
+    );
+    assert_eq!(la["type"], "play");
+    assert_eq!(la["playerIndex"], 0);
+    assert_eq!(la["cardIds"], json!([4]));
+    assert!(
+        la["timestamp"].as_u64().unwrap() > 1_600_000_000_000,
+        "{la}"
+    );
+
+    // draw from the deck: {type, playerIndex, source, deckReshuffled, timestamp} — the
+    // card drawn stays secret (Node's cardId leak is not copied)
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("draw"),
+        json!({"source": "deck"}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[1]).await["gameState"]["lastAction"].clone();
+    assert_eq!(
+        keys_of(&la),
+        [
+            "deckReshuffled",
+            "playerIndex",
+            "source",
+            "timestamp",
+            "type"
+        ],
+        "{la}"
+    );
+    assert_eq!(la["type"], "draw");
+    assert_eq!(la["playerIndex"], 0);
+    assert_eq!(la["source"], "deck");
+    assert_eq!(la["deckReshuffled"], false);
+    assert!(
+        la.get("cardId").is_none(),
+        "a deck draw names no card: {la}"
+    );
+
+    // draw from the played pile: the card taken is on the table for all, and named
+    let (status, body) =
+        post_json_auth(&mut app, &url("play"), json!({"cardIds": [17]}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = post_json_auth(
+        &mut app,
+        &url("draw"),
+        json!({"source": "played", "cardId": 4}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[2]).await["gameState"]["lastAction"].clone();
+    assert_eq!(la["type"], "draw");
+    assert_eq!(la["playerIndex"], 1);
+    assert_eq!(la["source"], "played");
+    assert_eq!(la["cardId"], 4);
+    assert_eq!(la["deckReshuffled"], false);
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_a_reshuffling_draw() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "rs").await;
+    let hands: [&[u8]; 3] = [&[0, 1, 2], &[13, 14, 15], &[26, 27, 28]];
+    set_game_state(&state, &party_id, &hands, &[0, 0, 0], 0, GameAction::Draw).await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.deck.clear();
+    gs.discard_pile = vec![40, 41, 42];
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/draw"),
+        json!({"source": "deck"}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let la = game_state(&mut app, &party_id, &tokens[0]).await["gameState"]["lastAction"].clone();
+    assert_eq!(la["source"], "deck");
+    assert_eq!(la["deckReshuffled"], true, "{la}");
+}
+
+#[tokio::test]
+async fn test_state_last_action_of_a_zapzap() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "lz").await;
+
+    // Player 1 calls with 3 points, player 0 ties: counteracted by seat 0, which Node's
+    // `counterActedByPlayerIndex || null` turns into null; Rust answers 0
+    let hands: [&[u8]; 3] = [&[0, 1], &[13, 14], &[26, 27, 28]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 20, 30],
+        1,
+        GameAction::Play,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let body = game_state(&mut app, &party_id, &tokens[0]).await;
+    let gs = &body["gameState"];
+    let la = &gs["lastAction"];
+    assert_eq!(
+        keys_of(la),
+        [
+            "callerHandPoints",
+            "counterActedByPlayerIndex",
+            "playerIndex",
+            "roundScores",
+            "timestamp",
+            "type",
+            "wasCounterActed"
+        ],
+        "{la}"
+    );
+    assert_eq!(la["type"], "zapzap");
+    assert_eq!(la["playerIndex"], 1);
+    assert_eq!(la["wasCounterActed"], true);
+    assert_eq!(la["counterActedByPlayerIndex"], 0);
+    assert_eq!(la["callerHandPoints"], 3);
+    assert_eq!(la["roundScores"], json!({"0": 0, "1": 13, "2": 6}));
+    assert_eq!(gs["wasCounterActed"], true);
+    assert_eq!(gs["counterActedByPlayerIndex"], 0);
+    assert_eq!(gs["roundScores"], la["roundScores"]);
+    assert_eq!(gs["gameFinished"], false);
+}
+
+#[tokio::test]
+async fn test_next_round_answers_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "nr").await;
+    let players = state.party_repo.get_party_players(&party_id).await.unwrap();
+    let user_of = |i: u8| {
+        players
+            .iter()
+            .find(|p| p.player_index == i)
+            .unwrap()
+            .user_id
+            .clone()
+    };
+
+    // A finished round, player 1 out past 100
+    let hands: [&[u8]; 3] = [&[0], &[13], &[26]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 120, 30],
+        0,
+        GameAction::Finished,
+    )
+    .await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.eliminate_player(1);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        keys_of(&body),
+        [
+            "eliminatedPlayers",
+            "gameFinished",
+            "round",
+            "scores",
+            "startingPlayer",
+            "success"
+        ],
+        "{body}"
+    );
+    assert_eq!(body["gameFinished"], false);
+    assert_eq!(keys_of(&body["round"]), ["id", "roundNumber", "status"]);
+    assert_eq!(body["round"]["status"], "active");
+    assert_eq!(body["scores"], json!({"0": 10, "1": 120, "2": 30}));
+    assert_eq!(
+        body["eliminatedPlayers"],
+        json!([{"userId": user_of(1), "playerIndex": 1, "score": 120}])
+    );
+}
+
+#[tokio::test]
+async fn test_next_round_at_the_end_of_the_game_answers_nodes_keys() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "ng").await;
+    let players = state.party_repo.get_party_players(&party_id).await.unwrap();
+    let user_of = |i: u8| {
+        players
+            .iter()
+            .find(|p| p.player_index == i)
+            .unwrap()
+            .user_id
+            .clone()
+    };
+
+    // Players 1 and 2 out: player 0 wins
+    let hands: [&[u8]; 3] = [&[0], &[13], &[26]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 120, 130],
+        0,
+        GameAction::Finished,
+    )
+    .await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.eliminate_player(1);
+    gs.eliminate_player(2);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        keys_of(&body),
+        [
+            "eliminatedPlayers",
+            "finalScores",
+            "gameFinished",
+            "success",
+            "winner"
+        ],
+        "{body}"
+    );
+    assert_eq!(body["gameFinished"], true);
+    assert_eq!(
+        body["winner"],
+        json!({"userId": user_of(0), "playerIndex": 0, "score": 10})
+    );
+    assert_eq!(body["finalScores"], json!({"0": 10, "1": 120, "2": 130}));
+    assert_eq!(
+        body["eliminatedPlayers"],
+        json!([
+            {"userId": user_of(1), "playerIndex": 1, "score": 120},
+            {"userId": user_of(2), "playerIndex": 2, "score": 130}
+        ])
+    );
+
+    // The branch finished the party: a second call is refused, the results saved once
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "INVALID_PARTY_STATE",
+    );
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
+}
+
+async fn game_results_rows(state: &AppState, party_id: &str) -> i64 {
+    let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_results WHERE party_id = ?")
+        .bind(party_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    rows
+}
+
+#[tokio::test]
+async fn test_next_round_after_the_game_ending_zapzap_is_refused() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (party_id, tokens) = started_party(&mut app, "ge").await;
+
+    // Player 0 calls with 3 points; players 1 and 2 go past 100: the zapzap ends the game
+    let hands: [&[u8]; 3] = [&[0, 1], &[13, 14, 15, 16, 17], &[26, 27, 28, 29, 30]];
+    set_game_state(
+        &state,
+        &party_id,
+        &hands,
+        &[10, 95, 95],
+        0,
+        GameAction::Play,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameFinished"], true);
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
+
+    // The party is over: nextRound's game-over branch is not reached
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "INVALID_PARTY_STATE",
+    );
+    assert_eq!(game_results_rows(&state, &party_id).await, 1);
+}
+
+// ============================================================================
+// The last parity items: Node's answers to a bad set-admin body, a join of a full
+// started party and a delete by a non-member (tests/parity/divergences.json)
+// ============================================================================
+
+#[tokio::test]
+async fn test_admin_set_admin_bad_body_answers_nodes_400() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "badbodyadmin").await;
+    let (_, user_id) = register(&mut app, "badbodytarget").await;
+    let path = format!("/api/admin/users/{user_id}/admin");
+    let want = json!({ "success": false, "error": "isAdmin must be a boolean" });
+
+    // A mistyped field, a missing one, and malformed JSON: Node's 400, not axum's 422
+    for body in [r#"{"isAdmin":"yes"}"#, "{}", "{not json"] {
+        let (status, got) = send_raw(
+            &mut app,
+            "POST",
+            &path,
+            body,
+            Some("application/json"),
+            Some(&admin),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {got}");
+        assert_eq!(got, want, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn test_join_full_started_party_answers_party_full() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "fullstart_a").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Full started", 3).await;
+    for name in ["fullstart_b", "fullstart_c"] {
+        let (token, _) = register(&mut app, name).await;
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/join"),
+            json!({}),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "join: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+
+    // Node checks a full party before anything else (JoinParty.js)
+    let (late, _) = register(&mut app, "fullstart_d").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &late,
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
+}
+
+#[tokio::test]
+async fn test_delete_party_by_a_non_member_answers_not_in_party() {
+    let mut app = create_test_app().await;
+    let (owner, _) = register(&mut app, "nonmember_owner").await;
+    let (outsider, _) = register(&mut app, "nonmember_out").await;
+    let waiting_id = create_party(&mut app, &owner, "Not yours").await;
+    let (playing_id, tokens) = started_party(&mut app, "nonmember_game").await;
+
+    // Node's order (DeleteParty.js): membership first, whatever the party's state
+    for party_id in [&waiting_id, &playing_id] {
+        let path = format!("/api/party/{party_id}");
+        let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&outsider)).await;
+        assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_IN_PARTY");
+    }
+
+    // Then the owner (or the only human): a member who is neither, even during a game
+    let path = format!("/api/party/{playing_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&tokens[1])).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
+}
+
+/// The user ids `GET /api/players/connected` lists
+async fn connected_ids(app: &mut Router, token: &str) -> Vec<String> {
+    let (status, body) = get_auth(app, "/api/players/connected", token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["userId"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The `userConnected` / `userDisconnected` events of `user_id` broadcast so far
+fn presence_events(
+    events: &mut async_broadcast::Receiver<zapzap_backend::infrastructure::app_state::GameEvent>,
+    user_id: &str,
+) -> Vec<String> {
+    let mut seen = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        let presence =
+            event.event_type == "userConnected" || event.event_type == "userDisconnected";
+        if presence && event.user_id.as_deref() == Some(user_id) {
+            seen.push(event.event_type);
+        }
+    }
+    seen
+}
+
+#[tokio::test]
+async fn test_sse_disconnect_unlists_the_user_after_the_last_stream() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (alice, alice_id) = register(&mut app, "presalice").await;
+    let (bob, _) = register(&mut app, "presbob").await;
+    let mut events = state.event_sender.new_receiver();
+
+    // One stream: alice is listed, and her arrival broadcast
+    let (_, first) = open_sse(&mut app, Some(&alice)).await;
+    assert!(connected_ids(&mut app, &bob).await.contains(&alice_id));
+    assert_eq!(presence_events(&mut events, &alice_id), ["userConnected"]);
+
+    // A second stream (another tab, a reconnection) is no new arrival, and keeps her status
+    state.session_manager.update_status(
+        &alice_id,
+        zapzap_backend::infrastructure::services::SessionStatus::Game,
+        Some("some-party".to_string()),
+    );
+    let (_, mut second) = open_sse(&mut app, Some(&alice)).await;
+    read_sse_until(&mut second, "Connected to SSE stream").await;
+    assert!(presence_events(&mut events, &alice_id).is_empty());
+
+    // The client drops its first stream: she stays listed, with her status
+    drop(first);
+    assert!(connected_ids(&mut app, &bob).await.contains(&alice_id));
+    let session = state.session_manager.get_session(&alice_id).unwrap();
+    assert_eq!(session.status.as_str(), "game");
+    assert!(presence_events(&mut events, &alice_id).is_empty());
+
+    // It drops the last one: she is gone, and her departure broadcast once
+    drop(second);
+    assert!(!connected_ids(&mut app, &bob).await.contains(&alice_id));
+    assert_eq!(
+        presence_events(&mut events, &alice_id),
+        ["userDisconnected"]
+    );
+
+    // An anonymous stream registers nobody
+    let before = state.session_manager.count();
+    let (_, anonymous) = open_sse(&mut app, None).await;
+    drop(anonymous);
+    assert_eq!(state.session_manager.count(), before);
+}
+
+#[tokio::test]
+async fn test_only_human_deletes_a_playing_party_against_bots() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (human, _) = register(&mut app, "solo_human").await;
+    let party_id = create_party_with_seats(&mut app, &human, "Solo vs bots", 3).await;
+    for name in ["solo_bot1", "solo_bot2"] {
+        let bot_id = create_bot(&state, name).await;
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/bots"),
+            json!({"botId": bot_id}),
+            &human,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "add bot: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &human,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+    // Let the bots' loop take the party, as a game in progress does
+    zapzap_backend::application::bot::trigger_bot_turns(&state, &party_id)
+        .await
+        .unwrap();
+
+    let path = format!("/api/party/{party_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&human)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["deletedPartyId"], party_id.as_str());
+
+    // The party, its game state and its bot loop are gone
+    assert!(state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .is_none());
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while state.bot_runner.party_count() > 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the deleted party's bots are still kept"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    // An owner with another human in a playing party still waits for its end
+    let (owner, _) = register(&mut app, "duo_owner").await;
+    let (other, _) = register(&mut app, "duo_other").await;
+    let duo_id = create_party_with_seats(&mut app, &owner, "Duo and a bot", 3).await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/join"),
+        json!({}),
+        &other,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    let bot_id = create_bot(&state, "duo_bot").await;
+    post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/bots"),
+        json!({"botId": bot_id}),
+        &owner,
+    )
+    .await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{duo_id}/start"),
+        json!({}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+    let path = format!("/api/party/{duo_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&owner)).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_PLAYING");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&other)).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_AUTHORIZED");
 }

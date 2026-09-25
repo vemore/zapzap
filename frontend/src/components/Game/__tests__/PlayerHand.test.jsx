@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { createRoot } from 'react-dom/client';
 import PlayerHand from '../PlayerHand';
 
 // The hand info line is split across spans ("5" + "cards", "5" | "30"): match an
@@ -79,6 +80,52 @@ describe('Phase 5: PlayerHand Component Tests', () => {
       fireEvent.click(clearButton);
 
       expect(onCardsSelected).toHaveBeenLastCalledWith([]);
+    });
+
+    it('should clear the selection when the hand changes size', () => {
+      const { rerender } = render(<PlayerHand hand={[0, 14, 28]} onCardsSelected={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      expect(screen.getByRole('button', { name: 'Card As' })).toHaveAttribute('aria-selected', 'true');
+
+      rerender(<PlayerHand hand={[0, 14, 28, 5]} onCardsSelected={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Card As' })).toHaveAttribute('aria-selected', 'false');
+    });
+
+    // A state load renders the hand outside any act(), as in the app: React
+    // commits the DOM first and runs passive effects in a later task. A click
+    // that lands in between must not be undone by the first render's work.
+    it('should keep a card clicked as soon as the hand appears', async () => {
+      const actEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+      globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+      const container = document.body.appendChild(document.createElement('div'));
+      const root = createRoot(container);
+      try {
+        const committed = new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            observer.disconnect();
+            resolve();
+          });
+          observer.observe(container, { childList: true });
+        });
+        const onCardsSelected = vi.fn();
+        root.render(<PlayerHand hand={[0, 13, 28]} onCardsSelected={onCardsSelected} />);
+        await committed;
+
+        container.querySelector('[aria-label="Card As"]').click();
+        container.querySelector('[aria-label="Card Ah"]').click();
+
+        await waitFor(() => {
+          expect(container.querySelector('[aria-label="Card As"]')).toHaveAttribute('aria-selected', 'true');
+          expect(container.querySelector('[aria-label="Card Ah"]')).toHaveAttribute('aria-selected', 'true');
+        });
+        expect(onCardsSelected).toHaveBeenLastCalledWith([0, 13]);
+      } finally {
+        root.unmount();
+        container.remove();
+        globalThis.IS_REACT_ACT_ENVIRONMENT = actEnvironment;
+      }
     });
   });
 

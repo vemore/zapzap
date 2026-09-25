@@ -104,6 +104,7 @@ async function playGame(rec, label, partyId, tokens) {
     let expectedStarter = 0;
     let requests = 0;
     let rounds = 0;
+    let winnerChecks = 0;
 
     const check = (name, ok, why) => rec.check(`${label}.${name}`, ok, why);
 
@@ -178,6 +179,9 @@ async function playGame(rec, label, partyId, tokens) {
                 round.callerHand = [...hand];
                 const r = await rec.call(`${label}.zapzap`, 'POST', url('zapzap'), { token: tokens[me] });
                 if (r.status !== 200) return { finished: false, rounds, why: `zapzap answered ${r.status}` };
+                // Rust's answer says whether this call ended the game, and who won; Node's does not.
+                round.zapzapFinished = r.body.gameFinished ?? undefined;
+                round.zapzapWinner = r.body.winner ? r.body.winner.playerIndex : undefined;
                 prev = { action: 'zapzap', player: me };
             } else {
                 const cards = choosePlay(hand);
@@ -209,9 +213,18 @@ async function playGame(rec, label, partyId, tokens) {
             }
             const before = active;
             active = before.filter((p) => (gs.scores[p] || 0) <= MAX_SCORE);
-            const r = await rec.call(`${label}.nextRound`, 'POST', url('nextRound'), { token: tokens[0] });
-            if (r.status !== 200) return { finished: false, rounds, why: `nextRound answered ${r.status}` };
-            if (round.golden || active.length <= 1) {
+            // GAME_RULES.md "Game Elimination": the game ends with the Golden Score round
+            // or when one player is left. Both backends end it in the zapzap that ends its
+            // last round: the state says so, and no next round starts.
+            const over = round.golden || active.length <= 1;
+            const partyStatus = s.body.party && s.body.party.status;
+            const stateOver = gs.gameFinished === true && partyStatus === 'finished';
+            const called = round.zapzapFinished;
+            check('rules.game-over', stateOver === over && (gs.gameFinished === true) === (partyStatus === 'finished')
+                && (called === undefined || called === over),
+                () => `active ${JSON.stringify(active)}, golden ${round.golden}: the game should ${over ? '' : 'not '}be over, `
+                    + `the state says gameFinished ${JSON.stringify(gs.gameFinished)}, party ${JSON.stringify(partyStatus)}, the zapzap answer ${JSON.stringify(called)}`);
+            if (over) {
                 let winner = active.length === 1 ? active[0] : null;
                 if (round.golden) {
                     const [a, b] = before;
@@ -219,16 +232,23 @@ async function playGame(rec, label, partyId, tokens) {
                     const vb = handValue(hands[b] || []);
                     winner = va !== vb ? (va < vb ? a : b) : before.find((p) => p !== round.caller);
                 }
-                check('rules.game-over', r.body.gameFinished === true,
-                    () => `the game should be over (active ${JSON.stringify(active)}, golden ${round.golden}), nextRound says ${JSON.stringify(r.body.gameFinished)}`);
-                const got = r.body.winner && r.body.winner.playerIndex;
-                check('rules.winner', winner === null || got === winner,
-                    () => `winner ${got}, GAME_RULES.md gives ${winner} (hands ${JSON.stringify(hands)}, caller ${round.caller}, scores ${JSON.stringify(gs.scores)})`);
-                return { finished: r.body.gameFinished === true, rounds };
+                const got = gs.winner && gs.winner.playerIndex;
+                // A zapzap answer that names the winner (Rust's) must name the same one.
+                const named = round.zapzapWinner;
+                check('rules.winner', winner !== null && got === winner && (named === undefined || named === winner),
+                    () => `winner ${got} (zapzap answer ${named}), GAME_RULES.md gives ${winner} (hands ${JSON.stringify(hands)}, caller ${round.caller}, scores ${JSON.stringify(gs.scores)})`);
+                winnerChecks += 1;
+                const r = await rec.call(`${label}.nextRound.after-game-over`, 'POST', url('nextRound'), { token: tokens[0] });
+                check('rules.no-round-after-game-over', r.status === 400,
+                    () => `nextRound after the game ended answered ${r.status}`);
+                return stateOver && r.status === 400
+                    ? { finished: true, rounds, winnerChecks }
+                    : { finished: false, rounds, winnerChecks, why: `game over: state ${stateOver}, nextRound answered ${r.status}` };
             }
+            const r = await rec.call(`${label}.nextRound`, 'POST', url('nextRound'), { token: tokens[0] });
+            if (r.status !== 200) return { finished: false, rounds, winnerChecks, why: `nextRound answered ${r.status}` };
             check('rules.game-over', r.body.gameFinished !== true,
                 () => `nextRound ended the game with ${active.length} active players`);
-            if (r.body.gameFinished === true) return { finished: true, rounds };
             expectedStarter = nextActive(round.starter, active, n);
             prev = { action: 'next' };
         } else {

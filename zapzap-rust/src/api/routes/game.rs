@@ -74,8 +74,12 @@ pub struct PartyInfo {
     pub id: String,
     pub name: String,
     pub status: String,
+    /// `null` before the first round
+    #[serde(rename = "currentRoundId")]
+    pub current_round_id: Option<String>,
 }
 
+/// Node's `{playerIndex, userId, username}` (`src/use-cases/game/GetGameState.js`)
 #[derive(Debug, Serialize)]
 pub struct PlayerInfo {
     #[serde(rename = "userId")]
@@ -83,11 +87,6 @@ pub struct PlayerInfo {
     pub username: String,
     #[serde(rename = "playerIndex")]
     pub player_index: u8,
-    #[serde(rename = "userType")]
-    pub user_type: String,
-    #[serde(rename = "botDifficulty")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bot_difficulty: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -137,9 +136,9 @@ pub struct GameStateInfo {
     #[serde(rename = "lowestHandPlayerIndex")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lowest_hand_player_index: Option<u8>,
+    /// Always sent, `false` until a counteracted zapzap
     #[serde(rename = "wasCounterActed")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub was_counter_acted: Option<bool>,
+    pub was_counter_acted: bool,
     #[serde(rename = "counterActedByPlayerIndex")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counter_acted_by_player_index: Option<u8>,
@@ -147,9 +146,9 @@ pub struct GameStateInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round_scores: Option<std::collections::HashMap<String, u16>>,
     // Game end data
+    /// Always sent, `true` once the game is over
     #[serde(rename = "gameFinished")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub game_finished: Option<bool>,
+    pub game_finished: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub winner: Option<WinnerInfo>,
 }
@@ -238,32 +237,48 @@ fn index_map(entries: &[(u8, u16)]) -> std::collections::BTreeMap<String, u16> {
     entries.iter().map(|(i, v)| (i.to_string(), *v)).collect()
 }
 
+/// Node's `{userId, playerIndex, score}` of a nextRound's `winner` and `eliminatedPlayers`
 #[derive(Debug, Clone, Serialize)]
-pub struct ScoreEntry {
+pub struct SeatScoreInfo {
+    #[serde(rename = "userId")]
+    pub user_id: String,
     #[serde(rename = "playerIndex")]
     pub player_index: u8,
     pub score: u16,
 }
 
+impl From<crate::application::game::SeatScore> for SeatScoreInfo {
+    fn from(s: crate::application::game::SeatScore) -> Self {
+        Self {
+            user_id: s.user_id,
+            player_index: s.player_index,
+            score: s.score,
+        }
+    }
+}
+
+/// Node's nextRound contract (`src/api/routes/gameRoutes.js`, `src/use-cases/game/NextRound.js`):
+/// a new round sends `round`, `startingPlayer` and `scores`; the end of the game sends
+/// `winner` and `finalScores` instead. Scores are running totals keyed by player index.
 #[derive(Debug, Serialize)]
 pub struct NextRoundResponse {
     pub success: bool,
     #[serde(rename = "gameFinished")]
     pub game_finished: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub winner: Option<u8>,
+    pub winner: Option<SeatScoreInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round: Option<NextRoundInfo>,
     #[serde(rename = "startingPlayer")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starting_player: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scores: Option<Vec<ScoreEntry>>,
+    pub scores: Option<std::collections::BTreeMap<String, u16>>,
     #[serde(rename = "eliminatedPlayers")]
-    pub eliminated_players: Vec<u8>,
+    pub eliminated_players: Vec<SeatScoreInfo>,
     #[serde(rename = "finalScores")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_scores: Option<Vec<ScoreEntry>>,
+    pub final_scores: Option<std::collections::BTreeMap<String, u16>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -271,6 +286,7 @@ pub struct NextRoundInfo {
     pub id: String,
     #[serde(rename = "roundNumber")]
     pub round_number: u32,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -372,16 +388,15 @@ pub async fn get_game_state(
             id: result.party.id,
             name: result.party.name,
             status: result.party.status.as_str().to_string(),
+            current_round_id: result.party.current_round_id,
         },
         players: result
             .players
             .into_iter()
             .map(|p| PlayerInfo {
-                user_id: p.user.id.clone(),
-                username: p.user.username.clone(),
+                user_id: p.user.id,
+                username: p.user.username,
                 player_index: p.player_index,
-                user_type: p.user.user_type.as_str().to_string(),
-                bot_difficulty: p.user.bot_difficulty.map(|d| d.as_str().to_string()),
             })
             .collect(),
         round: result.round.map(|r| RoundInfo {
@@ -686,35 +701,35 @@ pub async fn next_round(
         spawn_bot_turns(&state, party_id_for_bot, Duration::from_millis(300));
     }
 
-    // Convert scores to ScoreEntry format
-    let score_entries: Vec<ScoreEntry> = result
+    // Running totals keyed by player index: `scores` of a new round, `finalScores` at the end
+    let totals: std::collections::BTreeMap<String, u16> = result
         .scores
         .iter()
         .enumerate()
-        .map(|(i, &score)| ScoreEntry {
-            player_index: i as u8,
-            score,
-        })
+        .map(|(i, &score)| (i.to_string(), score))
         .collect();
-
-    // If game finished, final_scores are the same as scores
-    let final_scores = if result.game_finished {
-        Some(score_entries.clone())
+    let (scores, final_scores, starting_player) = if result.game_finished {
+        (None, Some(totals), None)
     } else {
-        None
+        (Some(totals), None, Some(starting_player))
     };
 
     Ok(Json(NextRoundResponse {
         success: true,
         game_finished: result.game_finished,
-        winner: result.winner,
+        winner: result.winner.map(SeatScoreInfo::from),
         round: result.round.map(|r| NextRoundInfo {
             id: r.id,
             round_number: r.round_number,
+            status: r.status.as_str().to_string(),
         }),
-        starting_player: Some(starting_player),
-        scores: Some(score_entries),
-        eliminated_players: result.eliminated_players,
+        starting_player,
+        scores,
+        eliminated_players: result
+            .eliminated_players
+            .into_iter()
+            .map(SeatScoreInfo::from)
+            .collect(),
         final_scores,
     }))
 }

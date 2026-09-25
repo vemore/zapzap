@@ -15,21 +15,32 @@ use serde_json::{json, Value};
 use tower::{Service, ServiceExt};
 
 use zapzap_backend::api;
-use zapzap_backend::application::bot::{run_bot_turns_now, trigger_bot_turns, BotBrain, Roster};
+use zapzap_backend::application::bot::{
+    run_bot_turns_now, trigger_bot_turns, BotBrain, BotRunner, Roster,
+};
 use zapzap_backend::domain::entities::{BotDifficulty, User};
 use zapzap_backend::domain::repositories::{PartyRepository, UserRepository};
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
 use zapzap_backend::infrastructure::app_state::AppState;
 
 async fn test_app() -> (Router, Arc<AppState>) {
+    test_app_with(|_| {}).await
+}
+
+/// The test application, its state first changed by `setup`
+async fn test_app_with(setup: impl FnOnce(&mut AppState)) -> (Router, Arc<AppState>) {
     std::env::set_var("DATABASE_URL", "sqlite::memory:");
     std::env::set_var("JWT_SECRET", "test-secret-key");
+    // Bots pause 200 ms between actions, not production's seconds
+    std::env::set_var("BOT_ACTION_DELAY_MS", "200");
     // LLM bot memories land in a scratch directory, not in the repository's data/
     std::env::set_var(
         "BOT_STRATEGIES_DIR",
         std::env::temp_dir().join("zapzap-test-bot-strategies"),
     );
-    let state = Arc::new(AppState::new().await.expect("app state"));
+    let mut state = AppState::new().await.expect("app state");
+    setup(&mut state);
+    let state = Arc::new(state);
     let app = Router::new()
         .nest("/api", api::routes::create_api_router(state.clone()))
         .with_state(state.clone());
@@ -103,7 +114,11 @@ async fn started_party(
         app,
         "POST",
         "/api/party",
-        json!({"name": format!("{prefix} party")}),
+        // As many seats as players (settings.playerCount, 3 at least)
+        json!({
+            "name": format!("{prefix} party"),
+            "settings": {"playerCount": (1 + humans + bots.len()).max(3)}
+        }),
         &owner,
     )
     .await;
@@ -485,4 +500,71 @@ async fn test_hand_size_fits_the_deck_with_eight_players() {
     let gs = game_state(&state, &party_id).await;
     assert!((0..8).all(|p| gs.hands[p].len() == 6));
     assert_eq!(gs.last_cards_played.len(), 1);
+}
+
+/// A party of the owner and two bots of `difficulty`, bot 1 to play, no hand low enough
+/// for a ZapZap: the bots' turns are four actions (a play and a draw each)
+async fn two_bot_turns_ahead(
+    app: &mut Router,
+    state: &AppState,
+    prefix: &str,
+    difficulty: BotDifficulty,
+) -> String {
+    let (party_id, _) = started_party(app, state, prefix, 0, &[difficulty, difficulty]).await;
+    let mut gs = game_state(state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[&[9, 10, 11, 12], &[22, 23, 24, 25], &[35, 36, 37, 38]],
+    );
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(state, &party_id, &gs).await;
+    party_id
+}
+
+#[tokio::test]
+async fn test_bot_actions_pause_for_bot_action_delay_ms() {
+    // The server's runner reads BOT_ACTION_DELAY_MS (200 in test_app)
+    let (_, state) = test_app().await;
+    assert_eq!(state.bot_runner.action_delay(), Duration::from_millis(200));
+
+    // A runner with a 300 ms pause takes at least 4 x 300 ms for four actions
+    let (mut app, state) = test_app_with(|s| {
+        s.bot_runner = Arc::new(BotRunner::with_action_delay(Duration::from_millis(300)));
+    })
+    .await;
+    let party_id = two_bot_turns_ahead(&mut app, &state, "delay", BotDifficulty::Easy).await;
+    let started = tokio::time::Instant::now();
+    assert_eq!(run_bot_turns_now(&state, &party_id).await.unwrap(), 4);
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed >= Duration::from_millis(1200),
+        "four actions took {elapsed:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_llm_bots_play_on_when_the_strategies_dir_is_not_writable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // A root-owned data/ seen from the uid-1000 container: read-only, so its
+    // bot-strategies subdirectory cannot be created nor written
+    let dir = std::env::temp_dir().join(format!("zapzap-ro-bots-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let strategies = dir.join("bot-strategies");
+
+    let (mut app, state) = test_app_with(|s| s.bot_strategies_dir = strategies.clone()).await;
+    let party_id = two_bot_turns_ahead(&mut app, &state, "rollm", BotDifficulty::Llm).await;
+
+    // The LLM bots load their (empty) memories, warn, and play their turns
+    let played = run_bot_turns_now(&state, &party_id).await;
+    let memory = state.get_llm_memory("some-llm-bot").await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(played.expect("the bots' turns"), 4);
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!((gs.current_turn, gs.current_action), (0, GameAction::Play));
+    assert!(!memory.read().await.has_strategies());
 }

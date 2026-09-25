@@ -31,6 +31,7 @@
 | `contexts/AuthContext.jsx` | `user`, `setUser`, `isAuthenticated`, `logout`; user restored from localStorage on mount (`AuthContext.jsx:10-17`) |
 | `services/api.js` | axios instance + token helpers |
 | `services/auth.js` | login/register/Google login, client-side validation |
+| `services/sse.js` | `sseUrl()`: the `/suscribeupdate?token=` URL every SSE stream opens |
 | `hooks/useSSE.js` | EventSource hook |
 | `components/Auth/` | Login, Register, ProtectedRoute, GoogleLoginButton |
 | `components/Party/` | PartyList, CreateParty, PartyLobby, ConnectedPlayers |
@@ -62,9 +63,9 @@
 
 ### Real-time (SSE)
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
-- GameBoard and PartyLobby connect to `${VITE_API_URL without /api || window.location.origin}/suscribeupdate` with no token (`GameBoard.jsx:146-150`, `PartyLobby.jsx:42-46`); ConnectedPlayers connects to `/suscribeupdate?token=...` so the backend can register the session (`ConnectedPlayers.jsx:80-82`; backend side `zapzap-rust/src/api/sse.rs:15-24`).
+- GameBoard, PartyLobby and ConnectedPlayers all open `sseUrl()` (`services/sse.js`): `${VITE_API_URL without /api || window.location.origin}/suscribeupdate?token=<URL-encoded localStorage token>`, or no stream (`null`) without a token. The token matters on Rust: `/suscribeupdate` delivers a game's moves and a private party's events only to streams whose token names a player of that party, and registers the session for `/api/players/connected` (`zapzap-rust/src/api/sse.rs`, `should_deliver`; [[Api]]). EventSource cannot send an `Authorization` header, hence the query string.
 - GameBoard reacts to `action` values `play`, `draw`, `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished`, `partyDeleted` by refetching state or navigating (`GameBoard.jsx:113-135`).
-- The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/main.rs:41`) and the proxy — do not "fix" the spelling on one side only.
+- The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/api/mod.rs:24`) and the proxy — do not "fix" the spelling on one side only.
 
 ### Google OAuth
 - Client id from `import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID` (build-time) — `App.jsx:22`, `components/Auth/Login.jsx:9`, `Register.jsx:9`. When empty, `GoogleOAuthProvider` is not mounted (`App.jsx:121-129`) and the button is hidden (`Login.jsx:56`).
@@ -75,7 +76,7 @@
 | Var | Where | Effect |
 |---|---|---|
 | `VITE_GOOGLE_OAUTH_CLIENT_ID` | `App.jsx:22`; Docker build arg `frontend/Dockerfile:11,13` | enables Google button |
-| `VITE_API_URL` | `GameBoard.jsx:146`, `PartyLobby.jsx:42`; build arg `frontend/Dockerfile:10,12`; `frontend/.env.example` | only the SSE base URL; the axios client ignores it (always `/api`) despite `.env.example` suggesting `http://localhost:9999/api` |
+| `VITE_API_URL` | `services/sse.js`; build arg `frontend/Dockerfile:10,12`; `frontend/.env.example` | only the SSE base URL; the axios client ignores it (always `/api`) despite `.env.example` suggesting `http://localhost:9999/api` |
 
 ### Dev server and build
 - Vite dev proxy forwards `/api` and `/suscribeupdate` to `http://localhost:9999` — `vite.config.js:7-18`. Run the Rust backend (or legacy Node) on 9999, then `npm run dev`.
@@ -99,3 +100,4 @@
 - `VITE_API_URL` is optional by design: "In production (no VITE_API_URL), the app will use window.location.origin" (`frontend/Dockerfile:8-9,25`).
 - Lint and vitest were left out of the CI gate when CI was introduced (commit 1e063d6) because both were already red. They joined the `frontend` job, and lint the commit hook, on 2026-09-23 once green ([[Testing]], Decisions).
 - `PlayingCard` called `useEffect` after its joker early return (`react-hooks/rules-of-hooks`): a card switching between joker and standard would have broken React's hook order. The effect now runs before the branch (2026-09-23).
+- The lobby and the game board opened `/suscribeupdate` without a token until 2026-09-24; Node broadcasts every event to every stream, so it did not matter. The Rust backend filters party events by the stream's token (#73), so both now pass it through `services/sse.js`, as ConnectedPlayers already did, before production switches to Rust.

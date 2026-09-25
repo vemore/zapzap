@@ -17,20 +17,25 @@ import 'history_helpers.dart';
 void main() {
   const vincentId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e';
 
-  /// A Rust `GET /history` entry: `roundsPlayed`, `userPlacement`,
-  /// `userScore`, no winner id or score.
-  Map<String, Object?> rustGame(
+  /// A `GET /history` entry as both backends send it: the winner, and my
+  /// own `userPlacement` and `userScore`.
+  Map<String, Object?> myGame(
     String id, {
     int? placement,
     int? score,
     String winner = 'HardBot1',
   }) => {
+    'id': 1,
     'partyId': id,
     'partyName': 'Partie $id',
-    'finishedAt': 1790094408,
-    'playerCount': 4,
-    'roundsPlayed': 7,
+    'winnerUserId': winner == 'Vincent' ? vincentId : 'id-$winner',
     'winnerUsername': winner,
+    'winnerFinalScore': 40,
+    'totalRounds': 7,
+    'wasGoldenScore': false,
+    'playerCount': 4,
+    'finishedAt': 1790094408,
+    'visibility': 'public',
     'userPlacement': ?placement,
     'userScore': ?score,
   };
@@ -51,8 +56,11 @@ void main() {
     'visibility': 'public',
   };
 
-  String page(List<Map<String, Object?>> games) =>
-      jsonEncode({'success': true, 'games': games, 'total': games.length});
+  String page(List<Map<String, Object?>> games) => jsonEncode({
+    'success': true,
+    'games': games,
+    'pagination': {'limit': 20, 'offset': 0, 'hasMore': false},
+  });
 
   String stats({
     int games = 1,
@@ -120,8 +128,8 @@ void main() {
     ) async {
       final semantics = tester.ensureSemantics();
       await pumpHistory(tester, [
-        rustGame('won', placement: 1, score: 12, winner: 'Vincent'),
-        rustGame('lost', placement: 4, score: 134),
+        myGame('won', placement: 1, score: 12, winner: 'Vincent'),
+        myGame('lost', placement: 4, score: 134),
       ], statsBody: stats(games: 2, wins: 1));
 
       expect(inTile('won', find.text('1er')), findsOneWidget);
@@ -144,10 +152,10 @@ void main() {
 
     testWidgets('my score shows beside the winner', (tester) async {
       await pumpHistory(tester, [
-        rustGame('lost', placement: 4, score: 134),
+        myGame('lost', placement: 4, score: 134),
       ], statsBody: stats());
 
-      expect(inTile('lost', find.text('HardBot1')), findsOneWidget);
+      expect(inTile('lost', find.text('HardBot1 (40 pts)')), findsOneWidget);
       expect(inTile('lost', find.text('toi : 134 pts')), findsOneWidget);
     });
 
@@ -169,7 +177,7 @@ void main() {
 
     testWidgets('the public tab shows no place of mine', (tester) async {
       await pumpHistory(tester, [
-        rustGame('lost', placement: 4, score: 134),
+        myGame('lost', placement: 4, score: 134),
       ], statsBody: stats());
 
       await tester.tap(find.text('Parties publiques'));
@@ -202,8 +210,8 @@ void main() {
   group('H2 summary and the way to the statistics', () {
     testWidgets('games, wins and best place open the list', (tester) async {
       await pumpHistory(tester, [
-        rustGame('a', placement: 4, score: 134),
-        rustGame('b', placement: 2, score: 40),
+        myGame('a', placement: 4, score: 134),
+        myGame('b', placement: 2, score: 40),
       ], statsBody: stats(games: 12, wins: 0));
 
       final summary = find.byKey(const Key('history-summary'));
@@ -243,7 +251,7 @@ void main() {
       tester,
     ) async {
       await pumpHistory(tester, [
-        rustGame('a', placement: 4, score: 134),
+        myGame('a', placement: 4, score: 134),
       ], statsBody: stats(games: 30, wins: 1));
 
       expect(
@@ -273,7 +281,7 @@ void main() {
 
     testWidgets('it pushes the statistics, and Back returns', (tester) async {
       await pumpHistory(tester, [
-        rustGame('a', placement: 4, score: 134),
+        myGame('a', placement: 4, score: 134),
       ], statsBody: stats());
 
       await tester.tap(find.byKey(const Key('history-summary-stats')));
@@ -316,7 +324,7 @@ void main() {
 
     testWidgets('a short list ends on the invitation', (tester) async {
       await pumpHistory(tester, [
-        rustGame('a', placement: 4, score: 134),
+        myGame('a', placement: 4, score: 134),
       ], statsBody: stats());
 
       final invite = find.byKey(const Key('history-invite'));
@@ -333,7 +341,7 @@ void main() {
       tester,
     ) async {
       await pumpHistory(tester, [
-        for (final id in ['a', 'b', 'c']) rustGame(id, placement: 2, score: 9),
+        for (final id in ['a', 'b', 'c']) myGame(id, placement: 2, score: 9),
       ], statsBody: stats(games: 3));
 
       expect(find.byType(HistoryGameTile), findsNWidgets(3));
@@ -440,8 +448,8 @@ void main() {
         await pumpHistory(
           tester,
           [
-            rustGame('a', placement: 1, score: 12, winner: 'Vincent'),
-            rustGame('b', placement: 4, score: 134),
+            myGame('a', placement: 1, score: 12, winner: 'Vincent'),
+            myGame('b', placement: 4, score: 134),
           ],
           statsBody: stats(games: 128, wins: 57),
           size: phoneSize,

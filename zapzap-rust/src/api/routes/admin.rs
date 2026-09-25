@@ -5,11 +5,12 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Response},
     Extension,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::error::{ApiBody, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
 use crate::domain::repositories::{PartyRepository, UserRepository};
@@ -43,6 +44,23 @@ fn default_limit() -> i32 {
 pub struct SetAdminRequest {
     #[serde(rename = "isAdmin")]
     pub is_admin: bool,
+}
+
+/// A missing or non-boolean `isAdmin`: Node's 400 `{success: false, error}`, no code
+impl ApiBody for SetAdminRequest {
+    const INVALID_CODE: &'static str = "VALIDATION_ERROR";
+    const INVALID_MESSAGE: &'static str = "isAdmin must be a boolean";
+
+    fn invalid_body() -> Response {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: Self::INVALID_MESSAGE.to_string(),
+            }),
+        )
+            .into_response()
+    }
 }
 
 // Users list response with pagination (matching JS format)
@@ -429,7 +447,7 @@ pub async fn set_user_admin(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
-    Json(body): Json<SetAdminRequest>,
+    ApiJson(body): ApiJson<SetAdminRequest>,
 ) -> Result<Json<SetAdminResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Cannot modify self
     if user_id == claims.user_id {
@@ -695,6 +713,7 @@ pub async fn admin_delete_party(
                 }),
             )
         })?;
+    state.bot_runner.drop_party(&party_id);
 
     Ok(Json(DeletePartyResponse {
         success: true,

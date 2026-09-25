@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::domain::value_objects::PartySettings;
+use crate::domain::value_objects::{PartySettings, MAX_PLAYER_COUNT, MIN_PLAYER_COUNT};
 
 /// Party visibility
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,14 +96,17 @@ impl Party {
         }
     }
 
-    /// Check if party is full (max 8 players)
+    /// Every seat of `settings.playerCount` is taken (Node: `JoinParty.js`)
     pub fn is_full(&self, current_player_count: usize) -> bool {
-        current_player_count >= 8
+        current_player_count >= self.settings.player_count as usize
     }
 
-    /// Check if party can be started
+    /// Check if party can be started: 3 to 8 players (README "Players: 3 to 8"; Node
+    /// starts from 2, a recorded node-bug). The party does not need to be full.
     pub fn can_start(&self, current_player_count: usize) -> bool {
-        self.status == PartyStatus::Waiting && (3..=8).contains(&current_player_count)
+        self.status == PartyStatus::Waiting
+            && (MIN_PLAYER_COUNT as usize..=MAX_PLAYER_COUNT as usize)
+                .contains(&current_player_count)
     }
 
     /// Start the party

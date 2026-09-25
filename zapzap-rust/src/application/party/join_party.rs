@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::domain::entities::{lowest_free_seat, Party, PartyStatus, PartyVisibility};
+use super::seat::{seat_player, Seating};
+use crate::domain::entities::{Party, PartyStatus, PartyVisibility};
 use crate::domain::repositories::{PartyRepository, RepositoryError, UserRepository};
 
 /// Join party input
@@ -60,8 +61,14 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             }
         }
 
-        // Check party status
+        // Check party status. Node checks a full party first (JoinParty.js), so a full
+        // started party answers PARTY_FULL; Node lets anyone join a started party with
+        // a free seat, which Rust refuses.
         if party.status != PartyStatus::Waiting {
+            let players = self.party_repo.get_party_players(&party.id).await?;
+            if party.is_full(players.len()) {
+                return Err(JoinPartyError::PartyFull);
+            }
             return Err(JoinPartyError::PartyNotWaiting);
         }
 
@@ -74,25 +81,11 @@ impl<U: UserRepository, P: PartyRepository> JoinParty<U, P> {
             return Err(JoinPartyError::AlreadyInParty);
         }
 
-        // Get current players
-        let players = self.party_repo.get_party_players(&input.party_id).await?;
-
-        // Check if party is full
-        if party.is_full(players.len()) {
-            return Err(JoinPartyError::PartyFull);
-        }
-
-        // The lowest free seat, not `players.len()`: a leave can leave a gap
-        let player_index = lowest_free_seat(&players);
-
-        // A concurrent join of the same user loses on UNIQUE(party_id, user_id)
-        self.party_repo
-            .add_party_player(&input.party_id, &input.user_id, player_index)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::AlreadyExists(_) => JoinPartyError::AlreadyInParty,
-                e => e.into(),
-            })?;
+        let player_index = match seat_player(&*self.party_repo, &party, &input.user_id).await? {
+            Seating::Seated(seat) => seat,
+            Seating::Full => return Err(JoinPartyError::PartyFull),
+            Seating::AlreadyIn => return Err(JoinPartyError::AlreadyInParty),
+        };
 
         Ok(JoinPartyOutput {
             party,

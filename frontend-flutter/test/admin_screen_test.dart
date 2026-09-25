@@ -4,138 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
-import 'package:zapzap/app.dart';
-import 'package:zapzap/models/json.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/screens/admin_screen.dart';
 import 'package:zapzap/screens/not_found_screen.dart';
-import 'package:zapzap/services/token_storage.dart';
+import 'package:zapzap/widgets/admin_parties.dart';
+import 'package:zapzap/widgets/admin_stats.dart';
 import 'package:zapzap/widgets/admin_users.dart';
 
-import 'auth_helpers.dart';
+import 'admin_helpers.dart';
 import 'fixtures.dart';
 import 'history_helpers.dart' show phoneSize;
-import 'sse_fakes.dart';
 
-const _vincentId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e';
 const _adminId = 'b40fa968-ebee-4af4-8117-342d47e3eff3';
 const _simonId = 'e88614f8-13ac-45ca-a4b2-2e6a26b797fd';
 const _json = {'content-type': 'application/json; charset=utf-8'};
 
-/// `GET /admin/users` over [users], paged by the request's `limit` and
-/// `offset` as the backend pages it; `POST .../admin` and `DELETE` change
-/// [users], or answer [refusal] when set.
-class _FakeAdminBackend {
-  _FakeAdminBackend(this.users);
-
-  /// The users of `test/fixtures/admin_users.json`, [extra] more after them
-  /// (`user000`, `user001`...).
-  factory _FakeAdminBackend.fixture({int extra = 0}) {
-    final users = Json.list(
-      fixture('admin_users'),
-      'users',
-      (json) => Map<String, dynamic>.of(json),
-    );
-    final template = users.first;
-    for (var i = 0; i < extra; i++) {
-      final n = i.toString().padLeft(3, '0');
-      users.add({...template, 'id': 'extra-$n', 'username': 'user$n'});
-    }
-    return _FakeAdminBackend(users);
-  }
-
-  final List<JsonMap> users;
-  final List<http.Request> requests = [];
-  ({int status, JsonMap body})? refusal;
-
-  Future<http.Response> handle(http.Request request) async {
-    requests.add(request);
-    final path = request.url.path;
-    if (path == '/api/admin/users' && request.method == 'GET') {
-      final limit = int.parse(request.url.queryParameters['limit'] ?? '50');
-      final offset = int.parse(request.url.queryParameters['offset'] ?? '0');
-      final page = users.skip(offset).take(limit).toList();
-      return _answer({
-        'success': true,
-        'users': page,
-        'pagination': {'total': users.length, 'limit': limit, 'offset': offset},
-      });
-    }
-    final toggle = RegExp(r'^/api/admin/users/([^/]+)/admin$').firstMatch(path);
-    final delete = RegExp(r'^/api/admin/users/([^/]+)$').firstMatch(path);
-    final refused = refusal;
-    if ((toggle != null || delete != null) && refused != null) {
-      return _answer(refused.body, refused.status);
-    }
-    if (toggle != null && request.method == 'POST') {
-      final user = users.firstWhere((u) => u['id'] == toggle[1]);
-      user['isAdmin'] = (jsonDecode(request.body) as Map)['isAdmin'];
-      return _answer({
-        'success': true,
-        'userId': user['id'],
-        'username': user['username'],
-        'isAdmin': user['isAdmin'],
-      });
-    }
-    if (delete != null && request.method == 'DELETE') {
-      users.removeWhere((u) => u['id'] == delete[1]);
-      return _answer({'success': true});
-    }
-    if (path == '/api/party') return _answer({'success': true, 'parties': []});
-    if (path == '/api/players/connected') return _answer({'players': []});
-    return _answer({'error': 'Route not found'}, 404);
-  }
-
-  static http.Response _answer(Object body, [int status = 200]) =>
-      http.Response(jsonEncode(body), status, headers: _json);
-}
-
-/// A stored session for Vincent, admin or not.
-MemoryTokenStorage _session({required bool isAdmin}) => MemoryTokenStorage({
-  TokenStorage.tokenKey: jwtExpiringIn(
-    const Duration(hours: 24),
-    userId: _vincentId,
-  ),
-  TokenStorage.userKey: jsonEncode({
-    'id': _vincentId,
-    'username': 'Vincent',
-    'isAdmin': isAdmin,
-  }),
-});
-
 void main() {
-  /// The app on [location], signed in as Vincent. The window is tall, so a
-  /// page of 50 rows is built whole.
-  Future<_FakeAdminBackend> pumpAdmin(
-    WidgetTester tester, {
-    _FakeAdminBackend? backend,
-    String location = AppRoutes.admin,
-    bool isAdmin = true,
-    Size size = const Size(1000, 9000),
-    double textScale = 1,
-  }) async {
-    final fake = backend ?? _FakeAdminBackend.fixture();
-    tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    if (textScale != 1) {
-      tester.platformDispatcher.textScaleFactorTestValue = textScale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    }
-    await tester.pumpWidget(
-      ZapZapApp(
-        apiConfig: testConfig,
-        locale: const Locale('fr'),
-        initialLocation: location,
-        apiClient: fakeApi(fake.handle),
-        tokenStorage: _session(isAdmin: isAdmin),
-        sseTransport: FakeSseTransport(),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return fake;
-  }
-
   String locationOf(WidgetTester tester) =>
       GoRouter.of(tester.element(find.byType(Scaffold).first)).state.uri.path;
 
@@ -174,15 +58,16 @@ void main() {
     });
 
     testWidgets('/admin/statistics opens that tab', (tester) async {
-      await pumpAdmin(
+      final backend = await pumpAdmin(
         tester,
         location: AppRoutes.adminTab(AdminTab.statistics),
       );
+      expect(find.byType(AdminStatisticsView), findsOneWidget);
+      // The users tab is not on show, so it has not loaded.
       expect(
-        find.byKey(const Key('admin-statistics-placeholder')),
-        findsOneWidget,
+        backend.requests.where((r) => r.url.path == '/api/admin/users'),
+        isEmpty,
       );
-      expect(find.text('Bientôt disponible.'), findsOneWidget);
     });
 
     testWidgets('an unknown admin tab is not found', (tester) async {
@@ -190,21 +75,30 @@ void main() {
       expect(find.byType(NotFoundScreen), findsOneWidget);
     });
 
-    testWidgets('the other tabs are placeholders for now', (tester) async {
-      await pumpAdmin(tester);
+    testWidgets('a tab loads the first time it is on show, then stays', (
+      tester,
+    ) async {
+      final backend = await pumpAdmin(tester);
+      int loads(String path) =>
+          backend.requests.where((r) => r.url.path == path).length;
+      expect(loads('/api/admin/parties'), 0);
+      expect(loads('/api/admin/statistics'), 0);
 
       await tester.tap(find.byKey(const Key('admin-tab-parties')));
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('admin-parties-placeholder')),
-        findsOneWidget,
-      );
+      expect(find.byType(AdminPartyTile), findsNWidgets(2));
+      expect(loads('/api/admin/parties'), 1);
       expect(rows(), findsNothing);
 
       // Back on Users, the list is still there: no second load.
       await tester.tap(find.byKey(const Key('admin-tab-users')));
       await tester.pumpAndSettle();
       expect(rows(), findsNWidgets(8));
+      expect(loads('/api/admin/users'), 1);
+
+      await tester.tap(find.byKey(const Key('admin-tab-parties')));
+      await tester.pumpAndSettle();
+      expect(loads('/api/admin/parties'), 1);
     });
   });
 
@@ -228,7 +122,7 @@ void main() {
     testWidgets('a page holds 50 rows, and Next and Previous page through', (
       tester,
     ) async {
-      await pumpAdmin(tester, backend: _FakeAdminBackend.fixture(extra: 112));
+      await pumpAdmin(tester, backend: FakeAdminBackend.fixture(extra: 112));
 
       expect(rows(), findsNWidgets(50));
       expect(find.text('120 utilisateurs'), findsOneWidget);
@@ -267,7 +161,7 @@ void main() {
     testWidgets('the search filters the page, whatever the case', (
       tester,
     ) async {
-      await pumpAdmin(tester, backend: _FakeAdminBackend.fixture(extra: 112));
+      await pumpAdmin(tester, backend: FakeAdminBackend.fixture(extra: 112));
 
       await tester.enterText(
         find.byKey(const Key('admin-users-search')),
@@ -295,13 +189,13 @@ void main() {
     testWidgets('my own row and admin\'s have no actions', (tester) async {
       await pumpAdmin(tester);
 
-      for (final id in [_vincentId, _adminId]) {
+      for (final id in [vincentId, _adminId]) {
         expect(find.byKey(Key('admin-toggle-$id')), findsNothing);
         expect(find.byKey(Key('admin-delete-$id')), findsNothing);
       }
       expect(
         find.descendant(
-          of: row(_vincentId),
+          of: row(vincentId),
           matching: find.byKey(const Key('admin-user-you')),
         ),
         findsOneWidget,
@@ -405,10 +299,10 @@ void main() {
     testWidgets('a failed load says so, and Retry reads again', (tester) async {
       final error = errorFixture('error_admin_required');
       var fail = true;
-      final fake = _FakeAdminBackend.fixture();
+      final fake = FakeAdminBackend.fixture();
       await pumpAdmin(
         tester,
-        backend: _FakeAdminBackendWith(fake, (request) {
+        backend: FakeAdminBackendWith(fake, (request) {
           if (fail && request.url.path == '/api/admin/users') {
             return http.Response(error.body, error.status, headers: _json);
           }
@@ -436,7 +330,7 @@ void main() {
       ) async {
         await pumpAdmin(
           tester,
-          backend: _FakeAdminBackend.fixture(extra: 112),
+          backend: FakeAdminBackend.fixture(extra: 112),
           size: phoneSize,
           textScale: scale,
         );
@@ -457,16 +351,4 @@ void main() {
       });
     }
   });
-}
-
-/// [_FakeAdminBackend] with [answerFirst] answering first, when it answers.
-class _FakeAdminBackendWith extends _FakeAdminBackend {
-  _FakeAdminBackendWith(_FakeAdminBackend inner, this.answerFirst)
-    : super(inner.users);
-
-  final http.Response? Function(http.Request request) answerFirst;
-
-  @override
-  Future<http.Response> handle(http.Request request) async =>
-      answerFirst(request) ?? await super.handle(request);
 }

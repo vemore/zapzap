@@ -103,6 +103,9 @@ class GameTableArea extends StatefulWidget {
 
   static Key discardKey(int cardId) => ValueKey('discardCard-$cardId');
 
+  /// The small card beside the message naming a card taken from the pile.
+  static const takenCardWidth = 24.0;
+
   @override
   State<GameTableArea> createState() => _GameTableAreaState();
 }
@@ -146,16 +149,30 @@ class _GameTableAreaState extends State<GameTableArea> {
     });
   }
 
+  /// The card the last action took from the discard pile — public, it lay
+  /// face up —, or `null`. A deck draw never names its card, even when the
+  /// server sends one (Node does: `2026-09-22-node-play-draw-leak-all-hands`).
+  int? _takenCard() {
+    final action = widget.lastAction;
+    if (action == null || action.type != 'draw') return null;
+    return action.source == 'played' ? action.cardId : null;
+  }
+
   String? _message(AppLocalizations l10n) {
     final action = widget.lastAction;
     if (action == null) return null;
     final name = widget.playerName(action.playerIndex);
+    final taken = _takenCard();
     return switch (action.type) {
       'play' => l10n.gameActionPlayed(
         name,
         action.cardIds.isEmpty
             ? widget.cardsPlayed.length
             : action.cardIds.length,
+      ),
+      'draw' when taken != null => l10n.gameActionTookDiscardCard(
+        name,
+        l10n.cardName(GameCard(taken)),
       ),
       'draw' when action.source == 'played' => l10n.gameActionTookDiscard(name),
       'draw' when action.deckReshuffled => l10n.gameActionDrewReshuffled(name),
@@ -176,6 +193,7 @@ class _GameTableAreaState extends State<GameTableArea> {
     // While this player draws, the last action is their own play, which
     // the "Posées" row shows already: the draw hint takes the line.
     final message = drawing ? null : _message(l10n);
+    final taken = message == null ? null : _takenCard();
     final take = widget.takeCard;
     final edge = drawing ? GameTableArea.drawEdgeColor : AppColors.rimInlay;
     final edgeWidth = drawing ? 2.0 : 1.0;
@@ -246,16 +264,36 @@ class _GameTableAreaState extends State<GameTableArea> {
                               if (message != null)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
-                                  child: Text(
-                                    message,
-                                    key: const Key('tableMessage'),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF86EFAC),
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          message,
+                                          key: const Key('tableMessage'),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF86EFAC),
+                                          ),
+                                        ),
+                                      ),
+                                      // The card taken from the pile, small:
+                                      // it has left the felt, the message
+                                      // keeps it in sight.
+                                      if (taken != null) ...[
+                                        const SizedBox(width: 6),
+                                        PlayingCard(
+                                          key: const Key('tableMessageCard'),
+                                          cardId: taken,
+                                          width: GameTableArea.takenCardWidth,
+                                          disabled: true,
+                                          dimmed: false,
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               if (drawing)
@@ -387,7 +425,7 @@ class _GameTableAreaState extends State<GameTableArea> {
     ],
   );
 
-  /// The deck: a target in the draw step, as the pile is, dimmed otherwise.
+  /// The deck: a target in the draw step, as the pile is, greyed otherwise.
   Widget _deck(AppLocalizations l10n) {
     final onTap = widget.onDeckTap;
     return TextButton(
@@ -399,19 +437,23 @@ class _GameTableAreaState extends State<GameTableArea> {
         foregroundColor: AppColors.slate100,
         disabledForegroundColor: AppColors.slate400,
       ),
-      child: Opacity(
-        opacity: onTap == null ? 0.6 : 1,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Greyed, not transparent: the felt would show through the back.
+          if (onTap == null)
+            const ColorFiltered(
+              colorFilter: PlayingCard.greyed,
+              child: CardBack(size: CardBackSize.md),
+            )
+          else
             const CardBack(size: CardBackSize.md),
-            const SizedBox(height: 3),
-            Text(
-              l10n.gameDeckLabel(widget.deckSize),
-              style: const TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
+          const SizedBox(height: 3),
+          Text(
+            l10n.gameDeckLabel(widget.deckSize),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ],
       ),
     );
   }

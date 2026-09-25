@@ -25,6 +25,8 @@ services:
       - OLLAMA_MODEL
       - ENABLE_LLM_BOTS
       - BOT_STRATEGIES_DIR=/app/data/bot-strategies
+      # Pause between two bot actions (ms), as the Node backend's
+      - BOT_ACTION_DELAY_MS=${BOT_ACTION_DELAY_MS:-1000}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
     volumes:
       - ../data:/app/data
@@ -62,6 +64,10 @@ services:
     build:
       context: ../frontend-flutter
       dockerfile: Dockerfile
+      args:
+        # The web OAuth client id, the React build's own (not a secret); empty → no
+        # Google button (frontend-flutter/Dockerfile, .llmwiki/FrontendFlutter.md).
+        - GOOGLE_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
     container_name: zapzap-frontend-flutter
     restart: unless-stopped
     networks:

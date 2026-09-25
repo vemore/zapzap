@@ -56,6 +56,14 @@
   "@loginRegisterLink": {
     "description": "Link from the login screen to the register screen"
   },
+  "loginWithGoogle": "Continuer avec Google",
+  "@loginWithGoogle": {
+    "description": "Google sign-in button of the login and register screens (Android; the web shows Google's own button)"
+  },
+  "loginOr": "ou",
+  "@loginOr": {
+    "description": "Word on the rule between the Google button and the username/password fields"
+  },
   "authPitch": "Vide ta main : à 5 points ou moins, crie ZapZap !",
   "@authPitch": {
     "description": "One line under the logo of the login and register screens that says what the game is about"
@@ -180,6 +188,10 @@
   "authErrorUsernameExists": "Ce pseudo est déjà pris",
   "@authErrorUsernameExists": {
     "description": "Register refused (USERNAME_EXISTS)"
+  },
+  "authErrorGoogle": "La connexion Google a échoué. Réessaie.",
+  "@authErrorGoogle": {
+    "description": "Google sign-in failed, on Google's side or refused by the backend (GOOGLE_AUTH_FAILED, GOOGLE_AUTH_ERROR)"
   },
   "partiesTitle": "Parties",
   "@partiesTitle": {
@@ -1255,10 +1267,6 @@
   "@adminTabStatistics": {
     "description": "Admin tab: the site's statistics"
   },
-  "adminComingSoon": "Bientôt disponible.",
-  "@adminComingSoon": {
-    "description": "An admin tab not built yet"
-  },
   "adminUsersCount": "{count, plural, one{{count} utilisateur} other{{count} utilisateurs}}",
   "@adminUsersCount": {
     "description": "The number of human accounts",
@@ -1401,6 +1409,146 @@
   "@adminErrorUserNotFound": {
     "description": "The account is gone"
   },
+  "adminPartiesCount": "{count, plural, one{{count} partie} other{{count} parties}}",
+  "@adminPartiesCount": {
+    "description": "The number of parties matching the admin filter",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminPartiesAllStatuses": "Tous les statuts",
+  "@adminPartiesAllStatuses": {
+    "description": "Admin parties filter: every status"
+  },
+  "adminPartiesLoadError": "Impossible de charger les parties.",
+  "@adminPartiesLoadError": {
+    "description": "The admin parties list failed to load"
+  },
+  "adminPartiesEmpty": "Aucune partie trouvée",
+  "@adminPartiesEmpty": {
+    "description": "The admin parties list is empty for this filter"
+  },
+  "adminPartyOwner": "Créée par {username}",
+  "@adminPartyOwner": {
+    "description": "The owner of a party in the admin list",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "adminPartyPlayers": "Joueurs : {seats}",
+  "@adminPartyPlayers": {
+    "description": "The seats taken out of the seats of a party, e.g. 3 / 5",
+    "placeholders": {
+      "seats": {
+        "type": "String"
+      }
+    }
+  },
+  "adminPartyCreated": "Créée le {date}",
+  "@adminPartyCreated": {
+    "description": "When the party was created",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "adminStopParty": "Arrêter la partie",
+  "@adminStopParty": {
+    "description": "Button stopping a party (marks it finished)"
+  },
+  "adminStopPartyConfirm": "Arrêter la partie « {name} » ? Elle sera marquée comme terminée.",
+  "@adminStopPartyConfirm": {
+    "description": "Confirmation before stopping a party",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "adminDeleteParty": "Supprimer la partie",
+  "@adminDeleteParty": {
+    "description": "Button deleting a party"
+  },
+  "adminDeletePartyConfirm": "Supprimer la partie « {name} » et toutes ses données ? Cette action est définitive.",
+  "@adminDeletePartyConfirm": {
+    "description": "Confirmation before deleting a party",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrorPartyRefused": "Action refusée pour cette partie.",
+  "@adminErrorPartyRefused": {
+    "description": "The backend refused an admin party action (400: stopping a finished party)"
+  },
+  "adminStatsUsers": "Utilisateurs",
+  "@adminStatsUsers": {
+    "description": "Admin statistics card: human accounts"
+  },
+  "adminStatsParties": "Parties totales",
+  "@adminStatsParties": {
+    "description": "Admin statistics card: every party"
+  },
+  "adminStatsRounds": "Manches jouées",
+  "@adminStatsRounds": {
+    "description": "Admin statistics card: every round"
+  },
+  "adminStatsCompletion": "Taux de complétion",
+  "@adminStatsCompletion": {
+    "description": "Admin statistics card: finished parties out of all parties"
+  },
+  "adminStatsBreakdown": "Répartition des parties",
+  "@adminStatsBreakdown": {
+    "description": "Admin statistics: the parties by status"
+  },
+  "adminStatsChartTitle": "Parties terminées ({days} derniers jours)",
+  "@adminStatsChartTitle": {
+    "description": "Admin statistics: title of the daily bar chart",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "adminStatsChartEmpty": "Pas assez de données",
+  "@adminStatsChartEmpty": {
+    "description": "Admin statistics: no game finished in the chart's days"
+  },
+  "adminStatsChartSemantics": "{total, plural, one{{total} partie terminée} other{{total} parties terminées}} sur les {days} derniers jours",
+  "@adminStatsChartSemantics": {
+    "description": "Screen-reader label of the daily bar chart",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "adminStatsMostActive": "Joueurs les plus actifs",
+  "@adminStatsMostActive": {
+    "description": "Admin statistics: the players with the most finished games"
+  },
+  "adminStatsNoActive": "Aucun joueur avec des parties terminées",
+  "@adminStatsNoActive": {
+    "description": "Admin statistics: no player finished a game yet"
+  },
+  "adminStatsWins": "{count, plural, one{{count} victoire} other{{count} victoires}}",
+  "@adminStatsWins": {
+    "description": "A number of games won",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "gameTitle": "Partie",
   "@gameTitle": {
     "description": "Fallback app-bar title of the game board, before the party name is known"
@@ -1442,6 +1590,14 @@
   "gamePlayersWaiting": "En attente des joueurs…",
   "@gamePlayersWaiting": {
     "description": "Shown when the table carries no seat"
+  },
+  "gamePlayersExpand": "Voir tous les joueurs",
+  "@gamePlayersExpand": {
+    "description": "Accessibility label of the chevron that unfolds the player table, folded on the player to move"
+  },
+  "gamePlayersCollapse": "Ne montrer que le joueur qui joue",
+  "@gamePlayersCollapse": {
+    "description": "Accessibility label of the chevron that folds the player table back to the player to move"
   },
   "gameYouBadge": "Toi",
   "@gameYouBadge": {
@@ -1498,6 +1654,18 @@
     "description": "Table message: a player took a card from the discard pile",
     "placeholders": {
       "player": {
+        "type": "String"
+      }
+    }
+  },
+  "gameActionTookDiscardCard": "{player} a pris dans la défausse : {card}",
+  "@gameActionTookDiscardCard": {
+    "description": "Table message: a player took a card from the discard pile, which lay face up for all, named by cardName (\"7 de Cœur\", \"Joker rouge\"). Never used for a deck draw: that card stays hidden",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "card": {
         "type": "String"
       }
     }
@@ -1640,6 +1808,70 @@
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "gameSuggestions": "Combinaisons jouables",
+  "@gameSuggestions": {
+    "description": "Screen-reader label of the suggestion chips above the hand"
+  },
+  "gameSuggestion": "{move} · −{points}",
+  "@gameSuggestion": {
+    "description": "A suggestion chip above the hand: the move, then the points it takes off the hand (jokers 0)",
+    "placeholders": {
+      "move": {
+        "type": "String"
+      },
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "gameSuggestSingle": "{card} seule",
+  "@gameSuggestSingle": {
+    "description": "Suggestion: play one card, e.g. 'Q♠ seule'",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestPair": "Paire de {rank}",
+  "@gameSuggestPair": {
+    "description": "Suggestion: play two cards of one rank",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestGroup": "{count} × {rank}",
+  "@gameSuggestGroup": {
+    "description": "Suggestion: play three or four cards of one rank",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "gameSuggestSequence": "{jokers, plural, =0{Suite {low}–{high}{suit}} =1{Suite {low}–{high}{suit} avec joker} other{Suite {low}–{high}{suit} avec {jokers} jokers}}",
+  "@gameSuggestSequence": {
+    "description": "Suggestion: play a run of one suit from rank low to rank high, jokers filling its gaps",
+    "placeholders": {
+      "jokers": {
+        "type": "int"
+      },
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      },
+      "suit": {
+        "type": "String"
       }
     }
   },

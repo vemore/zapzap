@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::domain::entities::{PartyStatus, Round};
+use crate::domain::entities::{PartyPlayer, PartyStatus, Round};
 use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError};
 use crate::domain::services::{initialize_round, is_game_over};
 use crate::domain::value_objects::{GameAction, GameState};
@@ -13,15 +13,39 @@ pub struct NextRoundInput {
     pub user_id: String,
 }
 
+/// A seat and its running total: Node's `{userId, playerIndex, score}`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatScore {
+    pub user_id: String,
+    pub player_index: u8,
+    pub score: u16,
+}
+
 /// Next round output
 pub struct NextRoundOutput {
     pub round: Option<Round>,
     pub game_finished: bool,
-    pub winner: Option<u8>,
-    pub eliminated_players: Vec<u8>,
+    pub winner: Option<SeatScore>,
+    /// Every player out of the game (score > 100), by seat
+    pub eliminated_players: Vec<SeatScore>,
     pub starting_player: u8,
-    /// Current scores for all players
+    /// Running totals, one per seat
     pub scores: Vec<u16>,
+}
+
+/// The eliminated seats of `game_state` among `players`, by seat
+fn eliminated_seats(game_state: &GameState, players: &[PartyPlayer]) -> Vec<SeatScore> {
+    let mut out: Vec<SeatScore> = players
+        .iter()
+        .filter(|p| game_state.is_eliminated(p.player_index))
+        .map(|p| SeatScore {
+            user_id: p.user_id.clone(),
+            player_index: p.player_index,
+            score: game_state.get_score(p.player_index),
+        })
+        .collect();
+    out.sort_by_key(|s| s.player_index);
+    out
 }
 
 /// Next round use case
@@ -59,16 +83,16 @@ impl<P: PartyRepository> NextRound<P> {
             return Err(NextRoundError::RoundNotFinished);
         }
 
-        // Check if game is over
+        // Check if game is over. Unreachable in normal play: the zapzap that ends the game
+        // finishes the party (`call_zapzap.rs`), and a finished party is refused above.
+        // It recovers a zapzap stopped between saving the round and finishing the party;
+        // that zapzap finishes the party before it saves the game results, so they are
+        // not saved yet, and this branch finishes the party first too: a second call is
+        // refused. (Both writes are upserts on `party_id` besides.)
         if let Some(winner) = is_game_over(&game_state) {
             // Mark party as finished
             party.finish();
             self.party_repo.save(&party).await?;
-
-            // Get eliminated players
-            let eliminated: Vec<u8> = (0..game_state.player_count)
-                .filter(|&i| game_state.is_eliminated(i))
-                .collect();
 
             // Get final scores
             let scores: Vec<u16> = (0..game_state.player_count as usize)
@@ -158,10 +182,27 @@ impl<P: PartyRepository> NextRound<P> {
                 )
                 .await?;
 
+            // Once the game is over every other seat is out, as on Node, where the golden
+            // score's loser joins the players past 100 (`src/use-cases/game/NextRound.js`)
+            let mut eliminated: Vec<SeatScore> = players
+                .iter()
+                .filter(|p| p.player_index != winner)
+                .map(|p| SeatScore {
+                    user_id: p.user_id.clone(),
+                    player_index: p.player_index,
+                    score: game_state.get_score(p.player_index),
+                })
+                .collect();
+            eliminated.sort_by_key(|s| s.player_index);
+
             return Ok(NextRoundOutput {
                 round: None,
                 game_finished: true,
-                winner: Some(winner),
+                winner: Some(SeatScore {
+                    user_id: winner_user_id,
+                    player_index: winner,
+                    score: winner_score,
+                }),
                 eliminated_players: eliminated,
                 starting_player: game_state.starting_player,
                 scores,
@@ -182,7 +223,7 @@ impl<P: PartyRepository> NextRound<P> {
         let new_round_number = game_state.round_number + 1;
         let new_game_state = initialize_round(
             players.len() as u8,
-            party.settings.hand_size,
+            crate::domain::value_objects::PROVISIONAL_HAND_SIZE,
             &scores,
             game_state.eliminated_mask,
             new_round_number,
@@ -212,9 +253,7 @@ impl<P: PartyRepository> NextRound<P> {
         self.party_repo.save(&party).await?;
 
         // Get eliminated players
-        let eliminated: Vec<u8> = (0..new_game_state.player_count)
-            .filter(|&i| new_game_state.is_eliminated(i))
-            .collect();
+        let eliminated = eliminated_seats(&new_game_state, &players);
 
         // Get current scores from new game state
         let scores: Vec<u16> = (0..new_game_state.player_count as usize)

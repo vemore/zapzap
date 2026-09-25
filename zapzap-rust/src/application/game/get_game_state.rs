@@ -57,11 +57,11 @@ pub struct GameStateView {
     pub hand_points: Option<std::collections::HashMap<String, u16>>,
     pub zapzap_caller: Option<u8>,
     pub lowest_hand_player_index: Option<u8>,
-    pub was_counter_acted: Option<bool>,
+    pub was_counter_acted: bool,
     pub counter_acted_by_player_index: Option<u8>,
     pub round_scores: Option<std::collections::HashMap<String, u16>>,
     // Game end data
-    pub game_finished: Option<bool>,
+    pub game_finished: bool,
     pub winner: Option<WinnerInfoView>,
 }
 
@@ -252,9 +252,9 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                         score: winner_score,
                     })
                 };
-                (Some(true), winner_info)
+                (true, winner_info)
             } else {
-                (None, None)
+                (false, None)
             };
 
             GameStateView {
@@ -275,7 +275,7 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 hand_points: hand_points_map,
                 zapzap_caller: gs.zapzap_caller,
                 lowest_hand_player_index: gs.lowest_hand_player_index,
-                was_counter_acted: gs.was_counter_acted,
+                was_counter_acted: gs.was_counter_acted.unwrap_or(false),
                 counter_acted_by_player_index: gs.counter_acted_by_player_index,
                 round_scores: round_scores_map,
                 game_finished,

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../router.dart';
 import '../utils/navigation.dart';
+import '../widgets/admin_parties.dart';
+import '../widgets/admin_stats.dart';
 import '../widgets/admin_users.dart';
 import '../widgets/zapzap_app_bar.dart';
 
@@ -29,8 +31,9 @@ enum AdminTab {
 /// it — [authRedirect] sends everyone else to the parties — but that guard
 /// is cosmetic: the backend refuses every `/api/admin` call to a non-admin.
 ///
-/// The tabs are kept alive side by side, so the users list keeps its page
-/// and search while another tab is on show. The URL stays the one the
+/// A tab is built — and loads — the first time it is on show, then kept
+/// alive, so the users list keeps its page and search, and the parties
+/// their filter, while another tab is on show. The URL stays the one the
 /// screen was opened with.
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key, this.initialTab = AdminTab.users});
@@ -47,7 +50,10 @@ class _AdminScreenState extends State<AdminScreen>
     length: AdminTab.values.length,
     initialIndex: widget.initialTab.index,
     vsync: this,
-  )..addListener(() => setState(() {}));
+  )..addListener(() => setState(() => _opened.add(_tabs.index)));
+
+  /// The tabs shown at least once: the others are not built yet.
+  late final Set<int> _opened = {widget.initialTab.index};
 
   @override
   void dispose() {
@@ -95,10 +101,16 @@ class _AdminScreenState extends State<AdminScreen>
           Expanded(
             child: IndexedStack(
               index: _tabs.index,
-              children: const [
-                AdminUsersView(),
-                _ComingSoon(key: Key('admin-parties-placeholder')),
-                _ComingSoon(key: Key('admin-statistics-placeholder')),
+              children: [
+                for (final tab in AdminTab.values)
+                  if (!_opened.contains(tab.index))
+                    const SizedBox.shrink()
+                  else
+                    switch (tab) {
+                      AdminTab.users => const AdminUsersView(),
+                      AdminTab.parties => const AdminPartiesView(),
+                      AdminTab.statistics => const AdminStatisticsView(),
+                    },
               ],
             ),
           ),
@@ -106,20 +118,4 @@ class _AdminScreenState extends State<AdminScreen>
       ),
     );
   }
-}
-
-/// A tab whose content has not been ported yet.
-class _ComingSoon extends StatelessWidget {
-  const _ComingSoon({super.key});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Text(
-        AppLocalizations.of(context).adminComingSoon,
-        textAlign: TextAlign.center,
-      ),
-    ),
-  );
 }

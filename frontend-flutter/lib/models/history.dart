@@ -2,21 +2,20 @@ import 'json.dart';
 
 /// A finished game in a history listing (`GET /history`, `/history/public`).
 ///
-/// The backends differ: Node sends `id`, `winnerUserId`, `winnerFinalScore`,
-/// `totalRounds`, `wasGoldenScore`, `visibility`; Rust sends `roundsPlayed`.
-/// Both send `userPlacement` and `userScore` on `GET /history` only (Node
-/// since 2026-09-24). Fields one side lacks are `null`.
+/// Both backends send the same entry. `userPlacement` and `userScore` come
+/// on `GET /history` only (Node's since 2026-09-24); `visibility` too on
+/// Rust, while Node also sends it on `/history/public`.
 class GameHistoryEntry {
   const GameHistoryEntry({
     required this.partyId,
     required this.partyName,
+    required this.winnerUserId,
     required this.winnerUsername,
+    required this.winnerFinalScore,
+    required this.totalRounds,
+    required this.wasGoldenScore,
     required this.playerCount,
     this.finishedAt,
-    this.totalRounds,
-    this.winnerUserId,
-    this.winnerFinalScore,
-    this.wasGoldenScore,
     this.visibility,
     this.userPlacement,
     this.userScore,
@@ -25,13 +24,13 @@ class GameHistoryEntry {
   factory GameHistoryEntry.fromJson(JsonMap json) => GameHistoryEntry(
     partyId: Json.string(json, 'partyId'),
     partyName: Json.string(json, 'partyName'),
+    winnerUserId: Json.string(json, 'winnerUserId'),
     winnerUsername: Json.string(json, 'winnerUsername'),
+    winnerFinalScore: Json.integer(json, 'winnerFinalScore'),
+    totalRounds: Json.integer(json, 'totalRounds'),
+    wasGoldenScore: Json.boolean(json, 'wasGoldenScore'),
     playerCount: Json.integer(json, 'playerCount'),
     finishedAt: Json.timestamp(json, 'finishedAt'),
-    totalRounds: Json.intOrNull(json['totalRounds'] ?? json['roundsPlayed']),
-    winnerUserId: Json.stringOrNull(json, 'winnerUserId'),
-    winnerFinalScore: Json.intOrNull(json['winnerFinalScore']),
-    wasGoldenScore: Json.boolOrNull(json, 'wasGoldenScore'),
     visibility: Json.stringOrNull(json, 'visibility'),
     userPlacement: Json.intOrNull(json['userPlacement']),
     userScore: Json.intOrNull(json['userScore']),
@@ -39,15 +38,13 @@ class GameHistoryEntry {
 
   final String partyId;
   final String partyName;
+  final String winnerUserId;
   final String winnerUsername;
+  final int winnerFinalScore;
+  final int totalRounds;
+  final bool wasGoldenScore;
   final int playerCount;
   final DateTime? finishedAt;
-
-  /// Node `totalRounds`, Rust `roundsPlayed`.
-  final int? totalRounds;
-  final String? winnerUserId;
-  final int? winnerFinalScore;
-  final bool? wasGoldenScore;
   final String? visibility;
   final int? userPlacement;
   final int? userScore;

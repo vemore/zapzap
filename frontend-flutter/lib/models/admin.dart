@@ -38,8 +38,8 @@ class AdminUser {
   final DateTime? updatedAt;
 }
 
-/// A party in `GET /admin/parties` (every visibility and status). Rust sends
-/// only `id`, `name`, `status`, `playerCount`, `createdAt`, `ownerUsername`.
+/// A party in `GET /admin/parties` (every visibility and status), as Node's
+/// `ListAllParties` lists it; Rust sends the same keys.
 class AdminParty {
   const AdminParty({
     required this.id,
@@ -65,7 +65,7 @@ class AdminParty {
     ownerUsername: Json.stringOrNull(json, 'ownerUsername'),
     inviteCode: Json.stringOrNull(json, 'inviteCode'),
     visibility: Json.stringOrNull(json, 'visibility'),
-    // Node sends the settings JSON-encoded, as stored.
+    // Both backends send the settings JSON-encoded, as stored.
     settings: PartySettings.fromJson(json['settings']),
     currentRoundId: Json.stringOrNull(json, 'currentRoundId'),
     createdAt: Json.timestamp(json, 'createdAt'),

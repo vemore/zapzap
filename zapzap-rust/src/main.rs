@@ -1,24 +1,19 @@
-// Allow dead code for features under development
-#![allow(dead_code)]
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod api;
-mod application;
-mod domain;
-mod infrastructure;
-
-use crate::infrastructure::app_state::AppState;
+// The binary links the library crate: `api::build_app` is the application the API
+// tests drive
+use zapzap_backend::api;
+use zapzap_backend::infrastructure::app_state::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // First, so that /api/health's uptime counts from process start, as Node's
+    api::routes::health::start_clock();
+
     // Load environment variables
     dotenvy::dotenv().ok();
 
@@ -35,17 +30,8 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new().await?;
     let state = Arc::new(state);
 
-    // Build router
-    let app = Router::new()
-        .nest("/api", api::routes::create_api_router(state.clone()))
-        .route("/suscribeupdate", axum::routing::get(api::sse::sse_handler))
-        .route(
-            "/health",
-            axum::routing::get(api::routes::health::health_handler),
-        )
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+    // The whole router, the same the API tests drive (`api::build_app`)
+    let app = api::build_app(state);
 
     // Get port from environment or use default
     let port: u16 = std::env::var("PORT")

@@ -5,7 +5,7 @@ use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
 };
 use crate::domain::repositories::{GameAction, PartyRepository, PlayerGameResult, RepositoryError};
-use crate::domain::value_objects::GameState;
+use crate::domain::value_objects::{GameState, PartySettings};
 
 /// SQLite implementation of PartyRepository
 pub struct SqlitePartyRepository {
@@ -37,7 +37,7 @@ impl SqlitePartyRepository {
             visibility: PartyVisibility::from_str(&visibility_str)
                 .unwrap_or(PartyVisibility::Public),
             status: PartyStatus::from_str(&status_str).unwrap_or(PartyStatus::Waiting),
-            settings: serde_json::from_str(&settings_json).unwrap_or_default(),
+            settings: PartySettings::from_stored_json(&settings_json),
             current_round_id: row.get("current_round_id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
