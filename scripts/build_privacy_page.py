@@ -10,6 +10,8 @@ deploy of the proxy image.
     python3 scripts/build_privacy_page.py            # write nginx/privacy.html
     python3 scripts/build_privacy_page.py --check    # write nothing; fail if it is stale
 
+CI's image job runs `--check` (.github/workflows/ci.yml), so a stale page fails the build.
+
 Requires `pandoc` on PATH, at PANDOC_VERSION below: another version can render the same
 Markdown differently, and `--check` would then report a stale page that is not. The output
 is standalone on purpose — no CDN, no font, no script.

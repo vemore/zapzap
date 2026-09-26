@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::error::{ApiBody, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
-use crate::domain::repositories::{PartyRepository, UserRepository};
+use crate::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
 
 // ============================================================================
 // Request/Response DTOs
@@ -422,20 +422,45 @@ pub async fn delete_user(
         ));
     }
 
-    // Delete user
-    sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(&user_id)
-        .execute(state.party_repo.get_db())
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    // As a player deleting their own account: finished games stay in the other players'
+    // history under an anonymous user, and a seat in a live game refuses the deletion
+    let refuse = |status: StatusCode, error: &str| {
+        (
+            status,
+            Json(ErrorResponse {
+                success: false,
+                error: error.to_string(),
+            }),
+        )
+    };
+    match state.user_repo.delete_account(&user_id).await {
+        Ok(AccountDeletion::Deleted { .. }) => {
+            tracing::info!(
+                "Admin {} deleted account {} ({})",
+                claims.username,
+                user.username,
+                user.id
+            );
+        }
+        Ok(AccountDeletion::NotFound) => {
+            return Err(refuse(StatusCode::NOT_FOUND, "User not found"));
+        }
+        Ok(AccountDeletion::ActiveParty) => {
+            return Err(refuse(
+                StatusCode::CONFLICT,
+                "User is in a waiting or playing party",
+            ));
+        }
+        Ok(AccountDeletion::LastAdmin) => {
+            return Err(refuse(
+                StatusCode::BAD_REQUEST,
+                "Cannot delete an admin user",
+            ));
+        }
+        Err(e) => {
+            return Err(refuse(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()));
+        }
+    }
 
     Ok(Json(DeleteUserResponse {
         success: true,

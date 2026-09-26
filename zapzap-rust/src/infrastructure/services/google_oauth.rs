@@ -33,6 +33,8 @@ pub struct GoogleProfile {
     pub google_id: String,
     pub email: String,
     pub name: String,
+    /// The token's `iat` (Unix seconds), when it carries one
+    pub issued_at: Option<i64>,
 }
 
 /// Verification failure. The messages are Node's, and all of them contain "Token" or
@@ -54,6 +56,7 @@ struct GoogleIdClaims {
     #[serde(default)]
     email_verified: EmailVerified,
     name: Option<String>,
+    iat: Option<i64>,
 }
 
 /// Google sends `email_verified` as a boolean; older tokens carried the string "true".
@@ -207,6 +210,7 @@ impl GoogleOAuthService {
             google_id: claims.sub,
             email,
             name,
+            issued_at: claims.iat,
         })
     }
 

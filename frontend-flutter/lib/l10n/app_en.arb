@@ -411,5 +411,6 @@
   "deleteAccountErrorPassword": "Wrong password.",
   "deleteAccountErrorGoogle": "The Google confirmation failed, or this is not the right Google account.",
   "deleteAccountErrorActiveParty": "Leave or finish your ongoing games first.",
-  "deleteAccountErrorLastAdmin": "You are the only administrator: your account cannot be deleted."
+  "deleteAccountErrorLastAdmin": "You are the only administrator: your account cannot be deleted.",
+  "deleteAccountGoogleUnavailable": "Google cannot be reached from here, so it cannot confirm the deletion. Try again later, or ask for it by e-mail (see the privacy policy)."
 }

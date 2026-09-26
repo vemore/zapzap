@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,8 +8,10 @@ import 'package:zapzap/l10n/app_localizations_en.dart';
 import 'package:zapzap/l10n/app_localizations_fr.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/screens/login_screen.dart';
+import 'package:zapzap/services/google_sign_in_service.dart';
 import 'package:zapzap/services/token_storage.dart';
 import 'package:zapzap/utils/player_name.dart';
+import 'package:zapzap/widgets/google_sign_in_section.dart';
 
 import 'auth_helpers.dart';
 import 'fixtures.dart';
@@ -166,6 +169,57 @@ void main() {
       });
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(storage.values, isEmpty);
+    });
+
+    testWidgets('Google not ready: after the login screen\'s timeout, a '
+        'notice instead of the button', (tester) async {
+      final backend = FakeLobbyBackend();
+      final google = FakeGoogleSignIn()
+        ..webButton = (() => const Text('Getting ready'))
+        ..onReady = () => Completer<void>().future;
+      await pumpApp(
+        tester,
+        backend: backend,
+        storage: session(google: true),
+        google: google,
+      );
+
+      await openDialog(tester);
+      expect(find.text('Getting ready'), findsOneWidget);
+      await tester.pump(GoogleSignInSection.readyTimeout);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Getting ready'), findsNothing);
+      expect(find.byKey(const Key('delete-account-google')), findsNothing);
+      expect(
+        find.byKey(const Key('delete-account-google-unavailable')),
+        findsOneWidget,
+      );
+      expect(deleteCalls(backend), isEmpty);
+    });
+
+    testWidgets('Google failed to initialise: the notice at once', (
+      tester,
+    ) async {
+      final google = FakeGoogleSignIn()
+        ..onReady = () async => throw const GoogleSignInFailure('init failed');
+      await pumpApp(
+        tester,
+        backend: FakeLobbyBackend(),
+        storage: session(google: true),
+        google: google,
+      );
+
+      await openDialog(tester);
+      expect(find.byKey(const Key('delete-account-google')), findsNothing);
+      expect(
+        find.text(
+          "Google est injoignable d'ici : il ne peut pas confirmer la "
+          'suppression. Réessaie plus tard, ou demande-la par e-mail (voir '
+          'la politique de confidentialité).',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a refused Google token stays in the dialog', (tester) async {

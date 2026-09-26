@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built, shipped through the registry and started,
 > where its data and secrets live, the Rust backend service, and the rollback.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -156,7 +156,8 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   `/usr/share/nginx/zapzap/privacy.html`, which `nginx/Dockerfile` copies into the image. Google
   Play links to it.
 - The page is generated from the root `privacy_policy.md` by `scripts/build_privacy_page.py`
-  (pandoc 3.6.4, pinned in the script; `--check` fails when the committed page is stale). Edit
+  (pandoc 3.6.4, pinned in the script; `--check` fails when the committed page is stale, and
+  CI's `image` job runs it, [[Testing]]). Edit
   the Markdown, run the script, commit both; the next deploy of the proxy image publishes it.
   Nothing else is needed: no environment variable, no file in the deploy directory.
 - The web page for deleting an account (also asked by Play, named in the policy) is the React

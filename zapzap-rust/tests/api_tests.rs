@@ -4350,3 +4350,81 @@ async fn test_the_only_admin_cannot_delete_their_account() {
     let (status, body) = delete_me(&mut app, &admin, json!({"password": "password123"})).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 }
+
+#[tokio::test]
+async fn test_admin_delete_user_keeps_their_finished_games_anonymised() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "eraseradmin").await;
+    let (leaver, leaver_id) = register(&mut app, "adminerased").await;
+    let (stayer, stayer_id) = register(&mut app, "adminstayer").await;
+    let party_id = create_party(&mut app, &leaver, "Admin table").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &stayer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    finish_party(&state, &party_id).await;
+    let results = [
+        (leaver_id.as_str(), 3, 1, true),
+        (stayer_id.as_str(), 40, 2, false),
+    ];
+    record_finished_game(&state, &party_id, &leaver_id, &results, false, 1700000400).await;
+
+    let path = format!("/api/admin/users/{leaver_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "deletedUserId": leaver_id, "deletedUsername": "adminerased" })
+    );
+
+    // The stayer's history still lists the game, the deleted player anonymised
+    let (status, body) = get_auth(&mut app, "/api/history", &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let games = body["games"].as_array().unwrap();
+    assert_eq!(games.len(), 1, "{body}");
+    assert_eq!(games[0]["partyId"], party_id.as_str());
+    assert!(
+        games[0]["winnerUserId"]
+            .as_str()
+            .unwrap()
+            .starts_with("deleted-"),
+        "{body}"
+    );
+    let (status, body) = get_auth(&mut app, &format!("/api/history/{party_id}"), &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body.to_string().contains("adminerased"), "{body}");
+    assert!(!body.to_string().contains(&leaver_id), "{body}");
+
+    // Deleted already: 404
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test]
+async fn test_admin_delete_user_seated_in_a_live_game_is_409() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "liveadmin").await;
+    started_party(&mut app, "adminlive").await;
+    let user_id = state
+        .user_repo
+        .find_by_username("adminlive_b")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+
+    let path = format!("/api/admin/users/{user_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["success"], false);
+    assert!(state
+        .user_repo
+        .find_by_id(&user_id)
+        .await
+        .unwrap()
+        .is_some());
+}

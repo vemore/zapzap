@@ -195,8 +195,15 @@ impl UserRepository for SqliteUserRepository {
 
     async fn delete_account(&self, id: &str) -> Result<AccountDeletion, RepositoryError> {
         // One transaction: the checks and the writes see the same database, and a write
-        // that lost a race with another one fails instead of leaving a half-done deletion
-        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        // that lost a race with another one fails instead of leaving a half-done deletion.
+        // IMMEDIATE takes the write lock up front: a deferred transaction that reads first
+        // and upgrades later fails at once with "database is locked" when a game or bot
+        // write holds the lock, where BEGIN IMMEDIATE waits out the busy timeout
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(db_err)?;
 
         let is_admin: Option<i64> = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = ?")
             .bind(id)

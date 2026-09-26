@@ -36,6 +36,38 @@ class GoogleSignInSection extends StatefulWidget {
   /// without the section instead of waiting again.
   static final _unavailable = Expando<bool>();
 
+  /// Whether Google may still be offered on [google]: not given up on yet.
+  static bool mayBeAvailable(GoogleSignInService google) =>
+      google.enabled && _unavailable[google] != true;
+
+  /// Follows [google] getting ready: [onAvailable] gets `false` when it has
+  /// not within [readyTimeout] or failed to initialise, and `true` when it is
+  /// ready, late included. Used by this section and by the account deletion
+  /// dialog, so both give up on Google the same way.
+  static void watchReady(
+    GoogleSignInService google,
+    ValueChanged<bool> onAvailable,
+  ) {
+    final ready = google.ready();
+    // Ready late after all (a slow network): Google comes back.
+    ready.then((_) {
+      _unavailable[google] = false;
+      onAvailable(true);
+    }, onError: (Object _) {});
+    // Already given up on by a previous screen: no second wait.
+    if (_unavailable[google] == true) return;
+    ready
+        .timeout(readyTimeout)
+        .then(
+          (_) {},
+          onError: (Object error) {
+            debugPrint('Google sign-in unavailable: $error');
+            _unavailable[google] = true;
+            onAvailable(false);
+          },
+        );
+  }
+
   /// `false` while the screen's own form is being sent.
   final bool enabled;
 
@@ -69,24 +101,7 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
     _google = context.read<GoogleSignInService>();
     _tokens = _google.idTokens.listen(_signIn, onError: _failed);
     _available = GoogleSignInSection._unavailable[_google] != true;
-    final ready = _google.ready();
-    // Ready late after all (a slow network): the section comes back.
-    ready.then((_) {
-      GoogleSignInSection._unavailable[_google] = false;
-      _setAvailable(true);
-    }, onError: (Object _) {});
-    // Already given up on by a previous screen: no second wait.
-    if (!_available) return;
-    ready
-        .timeout(GoogleSignInSection.readyTimeout)
-        .then(
-          (_) {},
-          onError: (Object error) {
-            debugPrint('Google sign-in unavailable: $error');
-            GoogleSignInSection._unavailable[_google] = true;
-            _setAvailable(false);
-          },
-        );
+    GoogleSignInSection.watchReady(_google, _setAvailable);
   }
 
   void _setAvailable(bool available) {

@@ -9,6 +9,10 @@ use crate::domain::repositories::{AccountDeletion, UserRepository};
 use crate::infrastructure::auth::PasswordService;
 use crate::infrastructure::services::{GoogleAuthError, GoogleOAuthService};
 
+/// How old a Google ID token may be to confirm a deletion: Google's tokens live an hour,
+/// and one left over from sign-in is not a fresh confirmation
+pub const GOOGLE_CONFIRMATION_MAX_AGE_SECS: i64 = 10 * 60;
+
 /// What confirms the deletion
 pub struct DeleteAccountInput {
     pub password: Option<String>,
@@ -63,6 +67,13 @@ impl DeleteAccount {
                 if &profile.google_id != google_id {
                     return Err(DeleteAccountError::OtherGoogleAccount);
                 }
+                let now = chrono::Utc::now().timestamp();
+                if profile
+                    .issued_at
+                    .is_none_or(|iat| now - iat > GOOGLE_CONFIRMATION_MAX_AGE_SECS)
+                {
+                    return Err(DeleteAccountError::StaleGoogleConfirmation);
+                }
             }
             // Neither a password nor Google: nothing can confirm it (a bot, never a player)
             (None, None) => return Err(DeleteAccountError::MissingConfirmation),
@@ -95,6 +106,8 @@ pub enum DeleteAccountError {
     Google(#[from] GoogleAuthError),
     #[error("This Google account is not the one of this user")]
     OtherGoogleAccount,
+    #[error("Google confirmation too old: sign in with Google again")]
+    StaleGoogleConfirmation,
     #[error("Leave or finish your waiting or playing parties first")]
     ActiveParty,
     #[error("The only admin cannot delete their account")]
@@ -176,6 +189,37 @@ mod tests {
             .unwrap();
         assert!(repo.find_by_id(&user.id).await.unwrap().is_none());
         assert!(repo.find_by_google_id("g-7").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_stale_google_token_does_not_confirm_the_deletion() {
+        let (use_case, repo) = setup().await;
+        let user = google_user(&repo, "g-5").await;
+        let now = chrono::Utc::now().timestamp();
+
+        for iat in [
+            serde_json::json!({ "iat": now - GOOGLE_CONFIRMATION_MAX_AGE_SECS - 60 }),
+            serde_json::json!({ "iat": null }),
+        ] {
+            let err = use_case
+                .execute(&user.id, with_credential(sign(&claims("g-5", iat), KID)))
+                .await
+                .unwrap_err();
+            assert!(matches!(err, DeleteAccountError::StaleGoogleConfirmation));
+            assert!(repo.find_by_id(&user.id).await.unwrap().is_some());
+        }
+
+        use_case
+            .execute(
+                &user.id,
+                with_credential(sign(
+                    &claims("g-5", serde_json::json!({ "iat": now - 60 })),
+                    KID,
+                )),
+            )
+            .await
+            .unwrap();
+        assert!(repo.find_by_id(&user.id).await.unwrap().is_none());
     }
 
     #[tokio::test]

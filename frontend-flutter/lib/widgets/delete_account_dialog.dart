@@ -8,11 +8,14 @@ import '../providers/auth_provider.dart';
 import '../services/api_exception.dart';
 import '../services/google_sign_in_service.dart';
 import '../utils/app_theme.dart';
+import 'google_sign_in_section.dart';
 
 /// Asks for the confirmation of `DELETE /auth/me` and sends it
 /// ([AuthProvider.deleteAccount]). An account with a password confirms with
 /// it; a Google account (`User.isGoogleUser`) with a fresh Google ID token,
-/// obtained the way the login screen obtains one.
+/// obtained the way the login screen obtains one. When Google does not get
+/// ready ([GoogleSignInSection.watchReady]: its script blocked, no route to
+/// Google, no client id), the button gives way to a notice.
 ///
 /// On success the session is erased and the router, which follows
 /// [AuthProvider], shows the login screen; the dialog goes with the screen
@@ -36,6 +39,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   GoogleSignInService? _google;
   StreamSubscription<String>? _tokens;
   Widget? _platformButton;
+  bool _googleAvailable = false;
   bool _busy = false;
   String? _error;
 
@@ -51,6 +55,14 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
         (token) => _delete(credential: token),
         onError: (Object error) => _refused(error),
       );
+      _googleAvailable = GoogleSignInSection.mayBeAvailable(google);
+      if (google.enabled) {
+        GoogleSignInSection.watchReady(google, (available) {
+          if (mounted && available != _googleAvailable) {
+            setState(() => _googleAvailable = available);
+          }
+        });
+      }
     }
   }
 
@@ -118,23 +130,27 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
             Text(l10n.deleteAccountBody),
             const SizedBox(height: 16),
             if (_isGoogle) ...[
-              Text(l10n.deleteAccountGoogleHint),
-              const SizedBox(height: 12),
-              _platformButton ??
-                  OutlinedButton.icon(
-                    key: const Key('delete-account-google'),
-                    onPressed: _busy || !(_google?.enabled ?? false)
-                        ? null
-                        : _startGoogle,
-                    icon: const Text(
-                      'G',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+              if (_googleAvailable) ...[
+                Text(l10n.deleteAccountGoogleHint),
+                const SizedBox(height: 12),
+                _platformButton ??
+                    OutlinedButton.icon(
+                      key: const Key('delete-account-google'),
+                      onPressed: _busy ? null : _startGoogle,
+                      icon: const Text(
+                        'G',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
+                      label: Text(l10n.deleteAccountGoogleButton),
                     ),
-                    label: Text(l10n.deleteAccountGoogleButton),
-                  ),
+              ] else
+                Text(
+                  l10n.deleteAccountGoogleUnavailable,
+                  key: const Key('delete-account-google-unavailable'),
+                ),
             ] else
               TextField(
                 key: const Key('delete-account-password'),

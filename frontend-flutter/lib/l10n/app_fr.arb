@@ -2300,5 +2300,9 @@
   "deleteAccountErrorLastAdmin": "Tu es le seul administrateur : ton compte ne peut pas être supprimé.",
   "@deleteAccountErrorLastAdmin": {
     "description": "The only admin cannot delete their account"
+  },
+  "deleteAccountGoogleUnavailable": "Google est injoignable d'ici : il ne peut pas confirmer la suppression. Réessaie plus tard, ou demande-la par e-mail (voir la politique de confidentialité).",
+  "@deleteAccountGoogleUnavailable": {
+    "description": "A Google account cannot confirm its deletion: Google did not get ready (script blocked, no route to Google)"
   }
 }

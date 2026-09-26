@@ -5,7 +5,7 @@
 > routing guard, Google sign-in, real-time channel (SSE), the parties, create-party and lobby screens, the
 > game board, the history and statistics screens, the admin screen, theme, localisation, build and tests.
 > Related: [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -468,7 +468,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   (`delete-account-password`, `delete-account-confirm` enabled once it is filled) — or, for a
   Google account (`User.isGoogleUser`, stored with the session), a "Confirmer avec Google"
   button (`delete-account-google`; Google's own button on the web) whose fresh ID token is
-  sent as `credential`, the login screen's way. Refusals stay in the dialog
+  sent as `credential`, the login screen's way. Google that does not get ready (script
+  blocked, no route to Google, no client id) is given up on as the login screen does it
+  (`GoogleSignInSection.watchReady`, `readyTimeout`, shared per service): the button gives
+  way to a notice (`delete-account-google-unavailable`: try later, or ask by e-mail).
+  Refusals stay in the dialog
   (`delete-account-error`, `deleteAccountErrorText`): 403 `INVALID_PASSWORD` (and 400
   `MISSING_CONFIRMATION`) → wrong password, 403 `GOOGLE_AUTH_FAILED`, 409 `ACTIVE_PARTY`
   (leave or finish your games first), 409 `LAST_ADMIN`. None is a 401, so none signs out.

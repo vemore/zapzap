@@ -389,7 +389,8 @@ async fn delete_me_handler(
                 DeleteAccountError::InvalidPassword => (StatusCode::FORBIDDEN, "INVALID_PASSWORD"),
                 DeleteAccountError::GoogleNotConfigured
                 | DeleteAccountError::Google(_)
-                | DeleteAccountError::OtherGoogleAccount => {
+                | DeleteAccountError::OtherGoogleAccount
+                | DeleteAccountError::StaleGoogleConfirmation => {
                     (StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED")
                 }
                 DeleteAccountError::ActiveParty => (StatusCode::CONFLICT, "ACTIVE_PARTY"),
