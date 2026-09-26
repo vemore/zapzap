@@ -70,6 +70,12 @@ while IFS= read -r path; do
         # The smoke tests the image job runs: the Flutter PWA image, the production backend.
         scripts/pwa_image_smoke.sh|scripts/backend_image_smoke.sh) image=true ;;
 
+        # The Play Store listing: frontend-flutter/test/store_listing_test.dart checks its
+        # texts and images against Play's limits, in the flutter job. Its generators run by
+        # hand, not in CI (store_listing/README.md).
+        store_listing/*|scripts/generate_store_graphics.py|scripts/capture_store_screenshots.*|scripts/compose_store_screenshots.py)
+            flutter=true ;;
+
         # The root package.json holds only Playwright, the headless browser fallback of
         # .llmwiki/ParallelDelivery.md: no job installs it.
         package.json|package-lock.json) ;;
