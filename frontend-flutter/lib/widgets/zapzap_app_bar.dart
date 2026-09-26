@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../router.dart';
+import '../utils/app_theme.dart';
 import 'connected_players.dart';
 import 'connection_indicator.dart';
+import 'delete_account_dialog.dart';
 
 /// The app bar of the signed-in screens: who is online, whether the event
 /// stream is up, where else to go, and the way out. Icons only, so it fits a
@@ -60,11 +62,16 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// bar at a large system font.
 ///
 /// Admins get an Admin entry too ([AppRoutes.admin]); for anyone else the
-/// router would send it back to the parties.
+/// router would send it back to the parties. Last, on every signed-in
+/// screen, "Delete my account" ([showDeleteAccountDialog]): Google Play wants
+/// it reachable from the app.
 class _NavigationMenu extends StatelessWidget {
   const _NavigationMenu({required this.actions});
 
   final List<AppBarMenuAction> actions;
+
+  /// The id of the "Delete my account" entry: not a route.
+  static const _deleteAccount = 'delete-account';
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +83,10 @@ class _NavigationMenu extends StatelessWidget {
       // `push`, not `go`: the destination goes on top of the screen the
       // player came from, so the Android system Back button returns to it.
       onSelected: (route) {
+        if (route == _deleteAccount) {
+          showDeleteAccountDialog(context);
+          return;
+        }
         final action = actions.where((action) => action.id == route);
         if (action.isNotEmpty) {
           action.first.onSelected();
@@ -113,6 +124,14 @@ class _NavigationMenu extends StatelessWidget {
             color: action.color,
             enabled: action.enabled,
           ),
+        const PopupMenuDivider(),
+        _item(
+          key: const Key('menu-delete-account'),
+          route: _deleteAccount,
+          icon: Icons.person_remove,
+          label: l10n.deleteAccountMenu,
+          color: AppColors.error,
+        ),
       ],
     );
   }

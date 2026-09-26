@@ -1,19 +1,31 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    middleware,
+    routing::{delete, post},
+    Extension, Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
+use crate::api::middleware::{auth_middleware, Claims};
 use crate::application::auth::{
-    LoginUser, LoginUserInput, LoginWithGoogle, RegisterUser, RegisterUserInput,
+    DeleteAccount, DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput,
+    LoginWithGoogle, RegisterUser, RegisterUserInput,
 };
-use crate::infrastructure::app_state::AppState;
+use crate::infrastructure::app_state::{AppState, GameEvent};
 
 /// Create auth router
-pub fn create_auth_router() -> Router<Arc<AppState>> {
+pub fn create_auth_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/register", post(register_handler))
         .route("/login", post(login_handler))
         .route("/google", post(google_handler))
+        .route(
+            "/me",
+            delete(delete_me_handler).layer(middleware::from_fn_with_state(state, auth_middleware)),
+        )
 }
 
 // ========== DTOs ==========
@@ -80,6 +92,13 @@ pub struct GoogleUserInfo {
     email: Option<String>,
     is_admin: bool,
     is_google_user: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteAccountResponse {
+    success: bool,
+    deleted_user_id: String,
 }
 
 #[derive(Serialize)]
@@ -321,6 +340,78 @@ async fn google_handler(
                         }
                         _ => "Internal error".to_string(),
                     }),
+                }),
+            ))
+        }
+    }
+}
+
+/// DELETE /api/auth/me - a player deletes their own account, confirmed by `password`, or
+/// for an account created with Google by `credential`, a fresh Google ID token of that
+/// account. A wrong confirmation is 403, not 401: the clients sign out on a 401.
+async fn delete_me_handler(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    body: Option<Json<serde_json::Value>>,
+) -> Result<Json<DeleteAccountResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let field = |name: &str| {
+        body.as_ref()
+            .and_then(|Json(b)| b.get(name))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    let input = DeleteAccountInput {
+        password: field("password"),
+        credential: field("credential"),
+    };
+
+    let use_case = DeleteAccount::new(state.user_repo.clone(), state.google_oauth.clone());
+    match use_case.execute(&claims.user_id, input).await {
+        Ok(_) => {
+            // The account's live session goes with it; its streams now name nobody
+            if state.session_manager.remove_user(&claims.user_id).is_some() {
+                state.broadcast_event(
+                    GameEvent::new("userDisconnected", None, Some(claims.user_id.clone()))
+                        .with_data(serde_json::json!({ "username": claims.username })),
+                );
+            }
+            Ok(Json(DeleteAccountResponse {
+                success: true,
+                deleted_user_id: claims.user_id,
+            }))
+        }
+        Err(e) => {
+            let (status, code) = match &e {
+                DeleteAccountError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
+                DeleteAccountError::MissingConfirmation => {
+                    (StatusCode::BAD_REQUEST, "MISSING_CONFIRMATION")
+                }
+                DeleteAccountError::InvalidPassword => (StatusCode::FORBIDDEN, "INVALID_PASSWORD"),
+                DeleteAccountError::GoogleNotConfigured
+                | DeleteAccountError::Google(_)
+                | DeleteAccountError::OtherGoogleAccount
+                | DeleteAccountError::StaleGoogleConfirmation => {
+                    (StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED")
+                }
+                DeleteAccountError::ActiveParty => (StatusCode::CONFLICT, "ACTIVE_PARTY"),
+                DeleteAccountError::LastAdmin => (StatusCode::CONFLICT, "LAST_ADMIN"),
+                DeleteAccountError::Repository(_) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "DELETE_ACCOUNT_ERROR")
+                }
+            };
+            let error = if status == StatusCode::INTERNAL_SERVER_ERROR {
+                // The database's message stays in the log
+                tracing::error!("Account deletion failed: {}", e);
+                "Account deletion failed".to_string()
+            } else {
+                e.to_string()
+            };
+            Err((
+                status,
+                Json(ErrorResponse {
+                    error,
+                    code: code.to_string(),
+                    details: None,
                 }),
             ))
         }

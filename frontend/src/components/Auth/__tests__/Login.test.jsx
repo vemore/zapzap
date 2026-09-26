@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 import Login from '../Login';
 import { AuthProvider } from '../../../contexts/AuthContext';
 import * as auth from '../../../services/auth';
@@ -95,7 +95,27 @@ describe('Phase 2: Login Component Tests', () => {
       fillAndSubmit({ username: 'testuser', password: 'password123' });
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/parties');
+        expect(mockNavigate).toHaveBeenCalledWith('/parties', { replace: true });
+      });
+    });
+
+    it('returns to the page ProtectedRoute sent the visitor from', async () => {
+      vi.mocked(auth.login).mockResolvedValue({
+        success: true,
+        user: { id: '1', username: 'testuser' },
+      });
+
+      render(
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '/account/delete' } }]}>
+          <AuthProvider>
+            <Login />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      fillAndSubmit({ username: 'testuser', password: 'password123' });
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/account/delete', { replace: true });
       });
     });
 

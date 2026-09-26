@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models/history.dart';
 import '../utils/app_theme.dart';
+import '../utils/player_name.dart';
 import '../utils/date_format.dart';
 import 'stats_common.dart';
 
@@ -79,7 +80,11 @@ class HistoryGameTile extends StatelessWidget {
                           icon: Icons.emoji_events,
                           iconColor: AppColors.amber400,
                           text: l10n.historyWinnerWithScore(
-                            game.winnerUsername,
+                            playerName(
+                              l10n,
+                              game.winnerUserId,
+                              game.winnerUsername,
+                            ),
                             game.winnerFinalScore,
                           ),
                         ),

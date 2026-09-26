@@ -2,7 +2,7 @@
 
 > Scope: every test suite in the repo, how to run it, its current state, and what CI (`.github/workflows/ci.yml`) runs, skips and why — including the `scope` job.
 > Related: [[Backend]] · [[NativeEngine]] · [[Frontend]] · [[Architecture]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -105,7 +105,7 @@
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
-| `image` | `image != 'false'` | the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
+| `image` | `image != 'false'` | `scripts/build_privacy_page.py --check` with pandoc at the version the script pins (the release `.deb` from GitHub): a committed `nginx/privacy.html` stale against `privacy_policy.md` fails the job ([[Deployment]] § The privacy policy); the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]); JDK 17 and `astral-sh/setup-uv`, then pytest on `scripts/test_play_publish.py` (a fake Google service) and `scripts/test_verify_aab.py` (fake bundles signed by throwaway keystores, `VERIFY_AAB_REQUIRE_TOOLS=1` so a missing JDK fails rather than skips) ([[Release]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK, `platforms;android-36` and `build-tools;36.0.0` installed by `sdkmanager`, Gradle heap capped at 4 GB), uploaded as the artifact `app-debug` (14 days); `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
@@ -133,6 +133,7 @@
 
 | Pattern | Flags |
 |---|---|
+| `privacy_policy.md`, `scripts/build_privacy_page.py` | image (the privacy page check; before the `*.md` rule) |
 | `*.md`, `.llmwiki/*`, `docs/*`, `LICENSE`, `image.png` | none |
 | `zapzap-rust/*` | rust, image, e2e (production's backend: its image, a round played through the Flutter client) |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
@@ -145,6 +146,7 @@
 | `docker-compose.prod.yml` | image, hooks |
 | `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
 | `scripts/flutter_e2e.sh` | e2e |
+| `store_listing/*` (the Play Store listing), `scripts/generate_store_graphics.py`, `scripts/capture_store_screenshots.{sh,js}`, `scripts/compose_store_screenshots.py` | flutter (`frontend-flutter/test/store_listing_test.dart` checks the listing against Play's limits; the generators run by hand, `store_listing/README.md`) |
 | root `package.json`, `package-lock.json` (Playwright only, [[ParallelDelivery]]) | none |
 | anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
 
@@ -158,6 +160,7 @@
 - `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- 2026-09-25 (chore/store-listing): the Play Store listing's limits are a Dart test in the `flutter` job (`frontend-flutter/test/store_listing_test.dart`), not a new CI job or step: `ci.yml` was another pull request's in parallel, and a new job's name would have had to join the branch protection. `scripts/ci_scope.sh` sends `store_listing/*` and its generators to `flutter` instead of the catch-all.
 - 2026-09-25 (fix/flutter-e2e-round-bounded): the Flutter end-to-end round no longer runs past its 5 min at random (#99, #102, #107, each green on rerun). Since the Rust backend honours `BOT_ACTION_DELAY_MS` (1000 ms by default) each bot turn took seconds, and the driver played the first card of its hand, whose points only drifted (47 after 58 turns on #102). The script starts the bots without a pause, and the driver deals four cards and plays the suggestion taking the most points off, so the round is held to a move budget rather than to a longer timeout.
 - **2026-09-25 (chore/remove-node-backend): the Node backend is removed, and its suites with it.** The jest suites (`tests/unit`, `tests/integration`), the Node vs Rust parity suite (`tests/parity`), the Playwright suite (`tests/e2e`), the `node` and `parity` CI jobs, their scope flags and the Node image build of the `image` job are gone; a path under the former Node directories now runs everything. They can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/parity/parity.test.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds the Node backend, the former rollback target).
 - 2026-09-25 (feat/rust-seed-accounts): the `flutter-e2e` job runs no Node. `scripts/flutter_e2e.sh` seeds its bots with the backend binary it already built (`zapzap-backend seed`), so the job lost `setup-node` and the root `npm ci`, and `src/`, `app.js`, `logger.js` and the root `package*.json` no longer set the `e2e` flag. It removes the last Node dependency of the job ahead of the Node backend's removal.

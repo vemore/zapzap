@@ -1,8 +1,23 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 
-use crate::domain::entities::{BotDifficulty, User, UserType};
-use crate::domain::repositories::{RepositoryError, UserRepository};
+use crate::domain::entities::{BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX};
+use crate::domain::repositories::{AccountDeletion, RepositoryError, UserRepository};
+
+/// The columns that name a user in a game, each handed to the anonymous user when an
+/// account is deleted (`delete_account`)
+const USER_REFERENCES: [(&str, &str); 6] = [
+    ("parties", "owner_id"),
+    ("party_players", "user_id"),
+    ("round_scores", "user_id"),
+    ("game_results", "winner_user_id"),
+    ("player_game_results", "user_id"),
+    ("game_actions", "user_id"),
+];
+
+fn db_err(e: sqlx::Error) -> RepositoryError {
+    RepositoryError::Database(e.to_string())
+}
 
 /// SQLite implementation of UserRepository
 pub struct SqliteUserRepository {
@@ -178,6 +193,106 @@ impl UserRepository for SqliteUserRepository {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn delete_account(&self, id: &str) -> Result<AccountDeletion, RepositoryError> {
+        // One transaction: the checks and the writes see the same database, and a write
+        // that lost a race with another one fails instead of leaving a half-done deletion.
+        // IMMEDIATE takes the write lock up front: a deferred transaction that reads first
+        // and upgrades later fails at once with "database is locked" when a game or bot
+        // write holds the lock, where BEGIN IMMEDIATE waits out the busy timeout
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(db_err)?;
+
+        let is_admin: Option<i64> = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        let Some(is_admin) = is_admin else {
+            return Ok(AccountDeletion::NotFound);
+        };
+        if is_admin != 0 {
+            let admins: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(db_err)?;
+            if admins <= 1 {
+                return Ok(AccountDeletion::LastAdmin);
+            }
+        }
+
+        // The foreign keys cascade: deleting the user outright would take their seat out
+        // of a game in progress, and every party they own with it
+        let active: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM parties p WHERE p.status IN ('waiting', 'playing') \
+             AND (p.owner_id = ? OR EXISTS (SELECT 1 FROM party_players pp \
+                  WHERE pp.party_id = p.id AND pp.user_id = ?)) LIMIT 1",
+        )
+        .bind(id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        if active.is_some() {
+            return Ok(AccountDeletion::ActiveParty);
+        }
+
+        let mut referenced = false;
+        for (table, column) in USER_REFERENCES {
+            let found: Option<i64> =
+                sqlx::query_scalar(&format!("SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1"))
+                    .bind(id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(db_err)?;
+            if found.is_some() {
+                referenced = true;
+                break;
+            }
+        }
+
+        let anonymised_as = if referenced {
+            // A new anonymous user per deleted account: the UNIQUE(party_id, user_id)
+            // indexes refuse two players of one game under a single id
+            let anon_id = format!("{DELETED_USER_ID_PREFIX}{}", uuid::Uuid::new_v4());
+            let now = chrono::Utc::now().timestamp();
+            sqlx::query(
+                "INSERT INTO users (id, username, password_hash, user_type, is_admin, created_at, updated_at) \
+                 VALUES (?, ?, NULL, 'human', 0, ?, ?)",
+            )
+            .bind(&anon_id)
+            .bind(&anon_id)
+            .bind(now)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+            for (table, column) in USER_REFERENCES {
+                sqlx::query(&format!(
+                    "UPDATE {table} SET {column} = ? WHERE {column} = ?"
+                ))
+                .bind(&anon_id)
+                .bind(id)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+            }
+            Some(anon_id)
+        } else {
+            None
+        };
+
+        sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        tx.commit().await.map_err(db_err)?;
+        Ok(AccountDeletion::Deleted { anonymised_as })
+    }
+
     async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError> {
         let row = sqlx::query(
             "SELECT 1 FROM party_players pp JOIN parties p ON p.id = pp.party_id \
@@ -207,7 +322,7 @@ impl UserRepository for SqliteUserRepository {
 
     async fn find_all_humans(&self, limit: u32, offset: u32) -> Result<Vec<User>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT * FROM users WHERE user_type = 'human' ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM users WHERE user_type = 'human' AND id NOT LIKE 'deleted-%' ORDER BY created_at DESC LIMIT ? OFFSET ?",
         )
         .bind(limit as i32)
         .bind(offset as i32)

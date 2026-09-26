@@ -95,6 +95,14 @@ impl SessionManager {
         inner.sessions.remove(user_id)
     }
 
+    /// Forget a user whatever their open streams (a deleted account). Returns the removed
+    /// session; their streams, when they close, find nothing left to unregister.
+    pub fn remove_user(&self, user_id: &str) -> Option<UserSession> {
+        let mut inner = self.write();
+        inner.streams.remove(user_id);
+        inner.sessions.remove(user_id)
+    }
+
     /// Update user status
     pub fn update_status(&self, user_id: &str, status: SessionStatus, party_id: Option<String>) {
         if let Some(session) = self.write().sessions.get_mut(user_id) {
@@ -169,5 +177,21 @@ mod tests {
         assert!(sessions.disconnect("u1").is_none());
         assert!(sessions.connect("u1", "alice").is_some());
         assert_eq!(sessions.count(), 1);
+    }
+
+    #[test]
+    fn a_removed_user_is_gone_and_their_streams_close_quietly() {
+        let manager = SessionManager::new();
+        assert!(manager.connect("u1", "Ada").is_some());
+        assert!(manager.connect("u1", "Ada").is_none());
+        assert_eq!(
+            manager.remove_user("u1").map(|s| s.username),
+            Some("Ada".into())
+        );
+        assert!(!manager.is_connected("u1"));
+        // Both streams then close: nothing to remove, no second userDisconnected
+        assert!(manager.disconnect("u1").is_none());
+        assert!(manager.disconnect("u1").is_none());
+        assert_eq!(manager.count(), 0);
     }
 }

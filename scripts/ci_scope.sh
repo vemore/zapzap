@@ -28,6 +28,10 @@ everything() { rust=true; native=true; frontend=true; image=true; hooks=true; fl
 while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in
+        # The privacy policy, rendered to nginx/privacy.html: the image job checks the
+        # committed page is not stale. Before the documentation rule, which `*.md` is.
+        privacy_policy.md|scripts/build_privacy_page.py) image=true ;;
+
         # Documentation. A case glob's `*` crosses `/`, so `*.md` is `**/*.md`.
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 
@@ -74,6 +78,12 @@ while IFS= read -r path; do
 
         # The smoke tests the image job runs: the Flutter PWA image, the production backend.
         scripts/pwa_image_smoke.sh|scripts/backend_image_smoke.sh) image=true ;;
+
+        # The Play Store listing: frontend-flutter/test/store_listing_test.dart checks its
+        # texts and images against Play's limits, in the flutter job. Its generators run by
+        # hand, not in CI (store_listing/README.md).
+        store_listing/*|scripts/generate_store_graphics.py|scripts/capture_store_screenshots.*|scripts/compose_store_screenshots.py)
+            flutter=true ;;
 
         # The root package.json holds only Playwright, the headless browser fallback of
         # .llmwiki/ParallelDelivery.md: no job installs it.

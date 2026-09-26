@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { login, logout, register, getCurrentUser, isAuthenticated } from '../auth';
+import { login, logout, register, getCurrentUser, isAuthenticated, deleteAccount } from '../auth';
 import * as api from '../api';
 
 // Mock the API module
 vi.mock('../api', () => ({
   apiClient: {
     post: vi.fn(),
+    delete: vi.fn(),
   },
   setAuthToken: vi.fn((token) => {
     if (token) {
@@ -99,6 +100,45 @@ describe('Phase 1: Authentication Service Tests', () => {
 
     it('should validate password is provided', async () => {
       await expect(login('username', '')).rejects.toThrow();
+    });
+  });
+
+  describe('Delete own account', () => {
+    it('sends DELETE /auth/me with the password, then clears the session', async () => {
+      localStorage.setItem('token', 'test-token');
+      localStorage.setItem('user', JSON.stringify({ id: '1' }));
+      api.apiClient.delete = vi
+        .fn()
+        .mockResolvedValue({ data: { success: true, deletedUserId: '1' } });
+
+      const result = await deleteAccount({ password: 'secret' });
+
+      expect(api.apiClient.delete).toHaveBeenCalledWith('/auth/me', {
+        data: { password: 'secret' },
+      });
+      expect(result.deletedUserId).toBe('1');
+      expect(localStorage.getItem('token')).toBeNull();
+      expect(localStorage.getItem('user')).toBeNull();
+    });
+
+    it('sends a Google credential instead of a password', async () => {
+      api.apiClient.delete = vi.fn().mockResolvedValue({ data: { success: true } });
+      await deleteAccount({ credential: 'google-id-token' });
+      expect(api.apiClient.delete).toHaveBeenCalledWith('/auth/me', {
+        data: { credential: 'google-id-token' },
+      });
+    });
+
+    it('a refusal keeps the session and carries the backend code', async () => {
+      localStorage.setItem('token', 'test-token');
+      api.apiClient.delete = vi.fn().mockRejectedValue({
+        response: { status: 403, data: { error: 'Invalid password', code: 'INVALID_PASSWORD' } },
+      });
+
+      await expect(deleteAccount({ password: 'wrong' })).rejects.toMatchObject({
+        code: 'INVALID_PASSWORD',
+      });
+      expect(localStorage.getItem('token')).toBe('test-token');
     });
   });
 

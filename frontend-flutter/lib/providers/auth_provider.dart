@@ -84,6 +84,16 @@ class AuthProvider extends ChangeNotifier {
   Future<void> loginWithGoogle(String credential) async =>
       _signIn(await _repository.loginWithGoogle(credential));
 
+  /// Deletes the signed-in account, confirmed by its [password] or, for a
+  /// Google account, a fresh Google ID token ([credential]); then signs out,
+  /// which erases the stored session and lets the router show the login
+  /// screen. Throws the [ApiException] of a refusal (`INVALID_PASSWORD`,
+  /// `ACTIVE_PARTY`...), still signed in.
+  Future<void> deleteAccount({String? password, String? credential}) async {
+    await _repository.deleteAccount(password: password, credential: credential);
+    await logout();
+  }
+
   /// Signs out, of Google too: on a shared device the next person is not
   /// offered this Google account. Idempotent: several 401s in flight each
   /// call it, and only the first does anything.

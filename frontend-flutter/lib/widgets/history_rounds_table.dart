@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models/history.dart';
 import '../utils/app_theme.dart';
+import '../utils/player_name.dart';
 import '../utils/date_format.dart';
 import 'stats_common.dart';
 
@@ -46,7 +47,12 @@ class HistoryRoundsTable extends StatelessWidget {
             columns: [
               DataColumn(label: Text(l10n.roundColumn, style: headerStyle)),
               for (final player in players)
-                DataColumn(label: Text(player.username, style: headerStyle)),
+                DataColumn(
+                  label: Text(
+                    playerName(l10n, player.userId, player.username),
+                    style: headerStyle,
+                  ),
+                ),
             ],
             rows: [
               for (final round in rounds)

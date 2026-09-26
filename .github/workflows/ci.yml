@@ -169,6 +169,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # The proxy image serves nginx/privacy.html at /privacy, the policy Google Play links
+      # to: it is rendered from privacy_policy.md, and a page that says something else than
+      # the policy fails here. pandoc at the version the script pins (PANDOC_VERSION):
+      # another one renders the same Markdown differently.
+      - name: Privacy page matches privacy_policy.md
+        run: |
+          v=$(sed -n 's/^PANDOC_VERSION = "\(.*\)"$/\1/p' scripts/build_privacy_page.py)
+          curl -fsSL -o /tmp/pandoc.deb \
+            "https://github.com/jgm/pandoc/releases/download/$v/pandoc-$v-1-amd64.deb"
+          sudo dpkg -i /tmp/pandoc.deb
+          python3 scripts/build_privacy_page.py --check
       # The production proxy is nginx:alpine with nginx/nginx.conf baked in (nginx/Dockerfile,
       # pushed as zapzap-proxy by scripts/deploy_nas.sh). A typo in the conf is a
       # crash-looping proxy after the deploy has stopped the old containers, so nginx -t runs

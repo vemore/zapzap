@@ -35,6 +35,9 @@ check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "
 # The production compose file: parsed by the image job, read by the deploy self-test.
 check "0 0 0 1 1 0 0" "docker-compose.prod.yml"
 check "0 0 0 1 0 0 0" "nginx/Dockerfile"
+# The privacy policy and its page: the image job checks the page against the policy.
+check "0 0 0 1 0 0 0" "privacy_policy.md"
+check "0 0 0 1 0 0 0" "nginx/privacy.html" "scripts/build_privacy_page.py"
 check "1 1 1 1 1 1 1" "docker-compose.yml"
 check "1 1 1 1 1 1 1" "some-root-script.sh"
 check "1 1 1 1 1 1 1" ".github/workflows/ci.yml"
@@ -54,6 +57,10 @@ check "0 0 0 1 0 1 1" "frontend-flutter/pubspec.yaml" "frontend-flutter/pubspec.
 check "0 0 0 1 0 1 1" "frontend-flutter/android/app/build.gradle.kts" "frontend-flutter/lib/l10n/app_fr.arb"
 check "0 0 0 1 0 1 1" "frontend-flutter/Dockerfile" "frontend-flutter/nginx.conf"
 check "0 0 0 0 0 0 0" "frontend-flutter/README.md"
+# The Play Store listing: its test is in the flutter job; its README is documentation.
+check "0 0 0 0 0 1 0" "store_listing/fr-FR/title.txt" "store_listing/assets/feature_graphic.png"
+check "0 0 0 0 0 1 0" "scripts/generate_store_graphics.py" "scripts/capture_store_screenshots.sh" "scripts/capture_store_screenshots.js" "scripts/compose_store_screenshots.py"
+check "0 0 0 0 0 0 0" "store_listing/README.md"
 check "0 0 1 1 0 1 1" "frontend/src/App.jsx" "frontend-flutter/lib/app.dart"
 check "1 0 0 1 0 1 1" "zapzap-rust/src/main.rs" "frontend-flutter/test/app_test.dart"
 # The production backend's image (zapzap-rust/Dockerfile) and the production compose file.

@@ -23,7 +23,7 @@ use crate::api::AppState;
 /// Create the main API router
 pub fn create_api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
-        .nest("/auth", auth::create_auth_router())
+        .nest("/auth", auth::create_auth_router(state.clone()))
         .nest("/party", create_party_router(state.clone()))
         .nest("/game", create_game_router(state.clone()))
         .nest("/stats", create_stats_router(state.clone()))
