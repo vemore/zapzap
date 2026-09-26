@@ -1,0 +1,8 @@
+# <capture stem>: <caption> — scripts/compose_store_screenshots.py; `|` forces the line break.
+01_login: سجّل الدخول،|واجلس إلى الطاولة
+02_parties: انضم إلى لعبة|أو أنشئ لعبتك
+03_lobby: ادعُ أصدقاءك،|واملأ الطاولة بـ Bots
+04_game: أفرغ يدك:|العب ثم اسحب
+05_round_end: بـ 5 نقاط أو أقل،|ناد ZapZap!
+06_history: راجع كل لعبة،|جولة تلو الأخرى
+07_stats: تتبع إحصائياتك|وترتيبك

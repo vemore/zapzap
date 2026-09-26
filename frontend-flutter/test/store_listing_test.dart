@@ -9,7 +9,20 @@ import 'l10n_test.dart' show vousMarkers;
 /// (store_listing/README.md): what Play refuses on upload, checked here so a
 /// text or an image that breaks a limit fails CI rather than the publication.
 const _listing = '../store_listing';
-const _locales = ['fr-FR', 'en-US'];
+
+/// The Play locales, one per language the app speaks (lib/l10n/app_*.arb).
+const _locales = [
+  'fr-FR',
+  'en-US',
+  'es-ES',
+  'pt-BR',
+  'de-DE',
+  'ru-RU',
+  'ja-JP',
+  'hi-IN',
+  'id',
+  'ar',
+];
 
 /// Play's limits, in characters (Unicode code points, not UTF-16 units).
 const _textLimits = {
@@ -92,8 +105,44 @@ void main() {
           expect(png.colorType, _rgb, reason: '${shot.path}: no alpha');
         }
       });
+
+      test('one caption per screenshot, on two lines at most', () {
+        final stems = Directory('$_listing/$locale/screenshots/phone')
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.png'))
+            .map((f) => f.uri.pathSegments.last.replaceAll('.png', ''))
+            .toSet();
+        final captions = <String, String>{};
+        for (final line in File(
+          '$_listing/$locale/screenshot_captions.txt',
+        ).readAsLinesSync()) {
+          if (line.trim().isEmpty || line.startsWith('#')) continue;
+          final colon = line.indexOf(':');
+          captions[line.substring(0, colon).trim()] = line
+              .substring(colon + 1)
+              .trim();
+        }
+        expect(captions.keys.toSet(), stems, reason: locale);
+        for (final caption in captions.values) {
+          expect(
+            '|'.allMatches(caption).length,
+            lessThanOrEqualTo(1),
+            reason: '$locale: $caption',
+          );
+        }
+      });
     });
   }
+
+  test('every language of the app has a listing', () {
+    final languages = Directory('lib/l10n')
+        .listSync()
+        .map((f) => RegExp(r'app_(\w+)\.arb$').firstMatch(f.path)?.group(1))
+        .whereType<String>()
+        .toSet();
+    expect(_locales.map((l) => l.split('-').first).toSet(), languages);
+  });
 
   test('the French listing says "tu", as the app does', () {
     for (final name in _textLimits.keys) {

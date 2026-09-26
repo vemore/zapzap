@@ -55,6 +55,54 @@ const NAMES = {
     lobby: 'Friday night game',
     game: 'Family game',
   },
+  es: {
+    finished: ['Torneo del domingo', 'Revancha'],
+    open: ['Noche de cartas', 'Pausa de comida'],
+    lobby: 'Partida del viernes',
+    game: 'Partida en familia',
+  },
+  pt: {
+    finished: ['Torneio do Domingo', 'Revanche'],
+    open: ['Noite de Cartas', 'Pausa do Almoço'],
+    lobby: 'Jogo da Sexta',
+    game: 'Jogo em Família',
+  },
+  de: {
+    finished: ['Sonntags-Turnier', 'Revanche'],
+    open: ['Kartenabend', 'Mittagspause'],
+    lobby: 'Freitag-Spielabend',
+    game: 'Familienspiel',
+  },
+  ru: {
+    finished: ['Воскресный турнир', 'Реванш'],
+    open: ['Карточный вечер', 'Обеденный перерыв'],
+    lobby: 'Пятничная игра',
+    game: 'Семейная игра',
+  },
+  ja: {
+    finished: ['日曜大会', 'リマッチ'],
+    open: ['カードナイト', '昼休み'],
+    lobby: '金曜ゲーム会',
+    game: '家族ゲーム',
+  },
+  hi: {
+    finished: ['रविवार टूर्नामेंट', 'बदला मैच'],
+    open: ['कार्ड की शाम', 'लंच ब्रेक'],
+    lobby: 'शुक्रवार का खेल',
+    game: 'पारिवारिक खेल',
+  },
+  id: {
+    finished: ['Turnamen Minggu', 'Tanding Ulang'],
+    open: ['Malam Kartu', 'Jam Makan Siang'],
+    lobby: 'Malam Jumat',
+    game: 'Permainan Keluarga',
+  },
+  ar: {
+    finished: ['دوري يوم الأحد', 'إعادة المواجهة'],
+    open: ['ليلة الورق', 'فترة الغداء'],
+    lobby: 'لعبة الجمعة',
+    game: 'لعبة العائلة',
+  },
 }[LANG];
 if (!NAMES) {
   console.error(`no party names for the language ${LANG}`);

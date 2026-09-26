@@ -4,7 +4,7 @@
 > a release reaches Play (the scripts, the service account), what is live on which track.
 > The procedure is the `release-android` skill; testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -56,7 +56,8 @@ Both recorded 2026-09-25.
   `userFraction` 0.2 by default, never 1.0. Release notes: `fr-FR` and `en-US`
   (`NOTES_LOCALES`), `store_listing/<locale>/release_notes_v<x.y.z>.txt`, ≤ 500 characters,
   fr-FR falling back to en-US. Listing locales are the `store_listing/*/` directories holding
-  a `title.txt`. Tests: `scripts/test_play_publish.py`, a fake Google service.
+  a `title.txt`: ten since 2026-09-26, one per language of the app (fr-FR, en-US, es-ES,
+  pt-BR, de-DE, ru-RU, ja-JP, hi-IN, id, ar; `store_listing/README.md`). Tests: `scripts/test_play_publish.py`, a fake Google service.
 - Credentials: the service account
   `zapzap-play-publisher@partant-pour-un-restau.iam.gserviceaccount.com` (GCP project
   `partant-pour-un-restau`, countscore's; no GCP role), invited in the Console on ZapZap
