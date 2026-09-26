@@ -1,4 +1,4 @@
-ZapZap is a multiplayer rummy-style card game, played online by 3 to 8 players, with friends or against bots.
+ZapZap is a multiplayer rummy-style card game, a variant of Yaniv, played online by 3 to 8 players, with friends or against bots.
 
 The goal: empty your hand faster than everyone else. When your hand is worth 5 points or less, call ZapZap! If nobody holds a hand as low as yours, you win the round. But if someone does as well or better, your ZapZap is counteracted and you take a heavy penalty.
 
