@@ -99,7 +99,9 @@ class _ZapZapAppState extends State<ZapZapApp> {
   }
 }
 
-/// The supported locale matching the device's language, else French.
+/// The supported locale matching the device's language, whatever its region
+/// (`pt_BR` and `pt_PT` both get `pt`, written in Brazilian Portuguese), else
+/// French.
 Locale resolveLocale(Locale? device, Iterable<Locale> supported) {
   for (final locale in supported) {
     if (locale.languageCode == device?.languageCode) return locale;
