@@ -1,4 +1,4 @@
-ZapZap adalah permainan kartu multipemain gaya rummy, dimainkan online oleh 3 hingga 8 pemain, dengan teman atau melawan bot.
+ZapZap adalah permainan kartu multipemain gaya rummy, varian dari Yaniv, dimainkan online oleh 3 hingga 8 pemain, dengan teman atau melawan bot.
 
 Tujuannya: kosongkan tangan kamu lebih cepat dari pemain lain. Ketika tangan kamu bernilai 5 poin atau kurang, panggil ZapZap! Jika tidak ada pemain yang memiliki tangan sama rendahnya dengan milikmu, kamu menang putaran. Tetapi jika ada pemain dengan tangan sama rendah atau lebih rendah, ZapZap kamu dibantah dan kamu kena penalti berat.
 

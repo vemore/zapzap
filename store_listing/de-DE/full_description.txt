@@ -1,4 +1,4 @@
-ZapZap ist ein Multiplayer-Kartenspiel im Rommé-Stil, gespielt online von 3 bis 8 Spielern, mit Freunden oder gegen Bots.
+ZapZap ist ein Multiplayer-Kartenspiel im Rommé-Stil, eine Variante von Yaniv, gespielt online von 3 bis 8 Spielern, mit Freunden oder gegen Bots.
 
 Das Ziel: Leere deine Hand schneller als alle anderen. Wenn deine Hand 5 Punkte oder weniger wert ist, ruf ZapZap! Wenn niemand eine so niedrige Hand hat wie du, gewinnst du die Runde. Aber wenn jemand gleich viel oder weniger hat, wird dein ZapZap gekontert und du bekommst eine hohe Strafe.
 

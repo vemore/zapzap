@@ -1,4 +1,4 @@
-ZapZap est un jeu de cartes multijoueur de la famille du rami, qui se joue en ligne de 3 à 8 joueurs, entre amis ou contre des bots.
+ZapZap est une variante du Yaniv, un jeu de cartes multijoueur de la famille du rami, qui se joue en ligne de 3 à 8 joueurs, entre amis ou contre des bots.
 
 Le but : vider ta main plus vite que les autres. Quand ta main vaut 5 points ou moins, crie ZapZap ! Si personne n'a une main aussi basse que la tienne, tu gagnes la manche. Mais si quelqu'un fait aussi bien ou mieux, ton ZapZap est contré et tu prends une grosse pénalité.
 
