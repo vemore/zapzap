@@ -944,8 +944,10 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   (`isMinifyEnabled`, `isShrinkResources`, keep rules in `android/app/proguard-rules.pro`:
   the Flutter embedding and plugins, Credential Manager's Play services provider and
   `googleid` for google_sign_in, flutter_secure_storage). A class R8 strips shows up at run
-  time as `ClassNotFoundException` in logcat — add a `-keep` rule; the R8 build has not
-  been started on a device yet (no emulator, below).
+  time as `ClassNotFoundException` in logcat — add a `-keep` rule. Checked on the Pixel 9 Pro XL on
+  2026-09-26 (release 1.0.0+1, upload-key signed, `GOOGLE_CLIENT_ID` set): Google sign-in,
+  the SSE indicator up, still signed in after a force-stop, a turn played against two bots,
+  and no `ClassNotFoundException` / `NoSuchMethodException` / `FATAL EXCEPTION` in logcat.
 - **The keys**:
   - **Upload key** — alias `zapzap-upload`, JKS, RSA 2048, ~27 years — made **once** by
     `scripts/generate_keystore.sh`, which writes `~/zapzap-upload-keystore.jks` (`keytool` under `umask 077`, then mode 600;

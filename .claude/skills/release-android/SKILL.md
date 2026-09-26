@@ -88,6 +88,15 @@ let them decide whether it blocks.
 
 ## 5. Pre-flight
 
+**Every release build takes the Google web client id** — without it the app has no Google
+sign-in at all (`lib/services/google_sign_in_service.dart`: no `GOOGLE_CLIENT_ID`, no button).
+It is the repository `.env`'s `VITE_GOOGLE_OAUTH_CLIENT_ID` (not a secret), read without
+printing the file:
+
+```bash
+GCID=$(grep '^VITE_GOOGLE_OAUTH_CLIENT_ID=' /home/vemore/workspace/zapzap/.env | cut -d= -f2-)
+```
+
 ```bash
 cd frontend-flutter
 flutter clean && flutter pub get && flutter gen-l10n
@@ -99,7 +108,7 @@ backend on a debug build, then the **release APK** (R8-shrunk: a missing keep ru
 at run time, as `ClassNotFoundException` in logcat) against production:
 
 ```bash
-flutter build apk --release
+flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GCID
 adb -s $DEV uninstall com.zapzap.app      # a debug or Play install is signed by another key:
 adb -s $DEV install build/app/outputs/flutter-apk/app-release.apk   # -r over it fails
 ```
@@ -111,7 +120,7 @@ app restarted still signed in, a turn played, and `adb logcat` free of
 ## 6. Build and verify
 
 ```bash
-cd frontend-flutter && flutter build appbundle --release && cd ..
+cd frontend-flutter && flutter build appbundle --release --dart-define=GOOGLE_CLIENT_ID=$GCID && cd ..
 # -> frontend-flutter/build/app/outputs/bundle/release/app-release.aab
 scripts/verify_aab.sh
 ```
