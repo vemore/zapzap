@@ -913,7 +913,11 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
 ### Android (`frontend-flutter/android/`)
 
 - **No store yet**: the release build signs with the upload key when there is one (below),
-  but no bundle has been sent to Play.
+  but no bundle has been sent to Play. The procedure that builds, verifies
+  (`scripts/verify_aab.sh`) and publishes (`scripts/play_publish.py`) a bundle is the
+  **`release-android`** skill; the Play state is [[Release]]. Driving the app on the user's
+  phone (Wi-Fi adb, the screenshot loop, the integration round against a LAN backend) is the
+  **`flutter-device-test`** skill.
 - **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
   push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
   the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
@@ -963,8 +967,8 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
     `zapzap-481109` (Google sign-in on Android, below): the local debug key (done
     2026-09-24), the **upload key** (`keytool -list -v -keystore ~/zapzap-upload-keystore.jks
     -alias zapzap-upload`, the `SHA1:` line) for a release APK installed by hand, and
-    **Play App Signing's** for what users install from Play. None of the last two is
-    registered yet (2026-09-25: the upload key is not generated).
+    **Play App Signing's** for what users install from Play. Both registered 2026-09-25:
+    "ZapZap Android upload" and "ZapZap Android Play" (SHA-1s in [[Release]] § Keys).
   - Check which key signed a build: `jarsigner -verify -verbose -certs -keystore
     ~/zapzap-upload-keystore.jks build/app/outputs/bundle/release/app-release.aab` prints
     `(zapzap-upload)` after each signer; without `-keystore` the alias shows as the
@@ -996,14 +1000,19 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   `test/system_ui_test.dart` pins the style the app sends and the window themes.
 - `test/android_config_test.dart` pins the id, the main-manifest `INTERNET`, the
   debug-only cleartext, the release signing with its debug-key fallback and R8, the
-  Flutter and google_sign_in keep rules, and the ignored `key.properties` and keystores.
+  Flutter and google_sign_in keep rules, the ignored `key.properties`, keystores and Gradle
+  root `build/` (`android/.gitignore`: a failed Gradle build writes
+  `android/build/reports/problems/`), and the template's commented-out `playServiceAccount=`
+  line (the Play API key, [[Release]]).
 - **Google sign-in on Android** needs, in the Google Cloud project that owns the web client
   id (`zapzap-481109`), an OAuth client of type **Android**
   for the package `com.zapzap.app` and the SHA-1 of the key that signs the APK. Nothing of
   it is in the repository: no `google-services.json`, no client secret — the app sends the
   web client id as `serverClientId`, and Google matches the running app by package and
   signature. Registered 2026-09-24: "ZapZap Android debug", the SHA-1 of the local debug
-  keystore `~/.android/debug.keystore` (`98:33:9F:AE:5E:05:7E:18:34:DE:01:C2:7E:51:DF:B1:AE:15:C4:E1`).
+  keystore `~/.android/debug.keystore` (`98:33:9F:AE:5E:05:7E:18:34:DE:01:C2:7E:51:DF:B1:AE:15:C4:E1`);
+  2026-09-25: "ZapZap Android upload" (the upload key's SHA-1) and "ZapZap Android Play"
+  (Play App Signing's), both in [[Release]] § Keys.
   Every other signing key (another machine's debug keystore, a release key, Play app
   signing) needs its own Android client — or its SHA-1 added — or `authenticate()` fails
   with a configuration error. To register one:
@@ -1016,13 +1025,14 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   3. build with the web client id: `flutter build apk --debug
      --dart-define=GOOGLE_CLIENT_ID=<web client id>` (the NAS `.env`'s
      `VITE_GOOGLE_OAUTH_CLIENT_ID`).
-  The Android flow has not been run on a device yet (2026-09-24: no AVD, and `/dev/kvm`
-  is not usable by the user — below).
+  Google sign-in passed on the user's Pixel 9 Pro XL on 2026-09-25 (debug build, local
+  debug key); the `flutter-device-test` skill repeats the check.
 - Emulator: `~/sdk/android` has an `android-31` `google_apis` x86_64 image but no AVD, and
   the emulator needs KVM (`/dev/kvm`, group `kvm`); without it, check the APK instead:
   `~/sdk/android/build-tools/36.0.0/aapt2 dump badging <apk>` (package, label,
   permissions) and `aapt2 dump xmltree --file AndroidManifest.xml <apk>`
-  (`networkSecurityConfig` present in the debug APK only).
+  (`networkSecurityConfig` present in the debug APK only). A real phone is the
+  `flutter-device-test` skill.
 
 ### Theme (`frontend-flutter/lib/utils/app_theme.dart`)
 

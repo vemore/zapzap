@@ -68,6 +68,11 @@ while IFS= read -r path; do
         .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh)
             hooks=true ;;
 
+        # The Play release scripts and their tests, which the hooks job runs: they are
+        # never run in CI against Google, only on a fake service and throwaway keystores.
+        scripts/verify_aab.sh|scripts/play_publish.py|scripts/test_verify_aab.py|scripts/test_play_publish.py)
+            hooks=true ;;
+
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.
         scripts/flutter_e2e.sh) e2e=true ;;
 

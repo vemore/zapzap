@@ -237,6 +237,18 @@ jobs:
       # stubbed: its refusals, the order pull/down/up, the health wait, --rollback.
       - name: Deploy script self-test
         run: scripts/deploy_nas_selftest.sh
+      # The Play release scripts (release-android skill): play_publish.py against a fake
+      # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
+      # No Google key and no upload key are ever in CI; these only prove the refusals.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: astral-sh/setup-uv@v6
+      - name: Play release scripts — play_publish.py and verify_aab.sh tests
+        env:
+          VERIFY_AAB_REQUIRE_TOOLS: "1"
+        run: uv run --no-project --with pytest pytest -q scripts/test_play_publish.py scripts/test_verify_aab.py
 
   flutter:
     name: Flutter client — analyze, test, build web and apk

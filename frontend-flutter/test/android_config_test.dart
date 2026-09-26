@@ -86,11 +86,20 @@ void main() {
       expect(ignore, contains('key.properties'));
       expect(ignore, contains('**/*.jks'));
       expect(ignore, contains('**/*.keystore'));
+      // Gradle's root build directory: a failed build writes a report there.
+      expect(ignore.split('\n'), contains('/build/'));
       final template = _read('android/key.properties.template');
       expect(template, contains('keyAlias=zapzap-upload'));
       for (final key in ['storeFile=', 'storePassword=', 'keyPassword=']) {
         expect(template, contains(key));
       }
+      // The Play API key, optional and commented out (scripts/play_publish.py).
+      expect(
+        template,
+        contains(
+          '#playServiceAccount=/home/USER/.config/zapzap/play-service-account.json',
+        ),
+      );
     },
   );
 }
