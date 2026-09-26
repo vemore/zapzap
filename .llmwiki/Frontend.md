@@ -30,15 +30,15 @@
 | `App.jsx` | router, `AuthProvider`, optional `GoogleOAuthProvider` |
 | `contexts/AuthContext.jsx` | `user`, `setUser`, `isAuthenticated`, `logout`; user restored from localStorage on mount (`AuthContext.jsx:10-17`) |
 | `services/api.js` | axios instance + token helpers |
-| `services/auth.js` | login/register/Google login, client-side validation |
+| `services/auth.js` | login/register/Google login, `deleteAccount` (DELETE `/auth/me`, then the session is cleared; a refusal throws an Error carrying the backend's `code`), client-side validation |
 | `services/sse.js` | `sseUrl()`: the `/suscribeupdate?token=` URL every SSE stream opens |
 | `hooks/useSSE.js` | EventSource hook |
-| `components/Auth/` | Login, Register, ProtectedRoute, GoogleLoginButton |
+| `components/Auth/` | Login, Register, ProtectedRoute, GoogleLoginButton, DeleteAccount |
 | `components/Party/` | PartyList, CreateParty, PartyLobby, ConnectedPlayers |
 | `components/Game/` | GameBoard (535 lines) and card/table widgets, HandSizeSelector, RoundEnd |
 | `components/History/`, `components/Stats/` | game history, statistics/leaderboard |
 | `components/Admin/` | AdminRoute, AdminLayout (renders `<Outlet />`, `AdminLayout.jsx:69`), users/parties/statistics |
-| `utils/` | `cards.js`, `scoring.js`, `validation.js` (client-side copies of the rules), `cardAdapter.js` |
+| `utils/` | `cards.js`, `scoring.js`, `validation.js` (client-side copies of the rules), `cardAdapter.js`, `playerName.js` (« Joueur supprimé » for a `deleted-` user id, used by GameHistory and GameDetails) |
 | `test/setup.js`, `**/__tests__/` | vitest setup and tests |
 
 ### Routing (`frontend/src/App.jsx:33-115`)
@@ -50,16 +50,17 @@
 | `/game/:partyId` | GameBoard | ProtectedRoute |
 | `/history`, `/history/:partyId` | GameHistory, GameDetails | ProtectedRoute |
 | `/stats` | Statistics | ProtectedRoute |
+| `/account/delete` | DeleteAccount: the warning, a password field (or Google's button for a Google account, `user.isGoogleUser`), then back to `/login` with "Ton compte a été supprimé." Linked from the PartyList header ("Delete account"); also the web deletion URL Google Play asks for, `https://zapzap.ombivince.synology.me/account/delete` | ProtectedRoute |
 | `/admin` → `users`, `parties`, `statistics` (index redirects to `/admin/users`) | AdminLayout + children | AdminRoute |
 | `/`, `*` | redirect to `/login` | — |
-- `ProtectedRoute` only checks that a non-empty `token` exists in localStorage (`components/Auth/ProtectedRoute.jsx:5`, `services/auth.js:156-159`); no expiry check.
+- `ProtectedRoute` only checks that a non-empty `token` exists in localStorage (`components/Auth/ProtectedRoute.jsx`, `services/auth.js` `isAuthenticated`); no expiry check. Signed out, it redirects to `/login` with `state.from` (the path asked for), and Login and GoogleLoginButton go back there after signing in (else `/parties`), so a link to a protected page works from outside the app.
 - `AdminRoute` additionally requires `user.isAdmin` from the stored user object, else redirects to `/parties` (`components/Admin/AdminRoute.jsx:26`). This is cosmetic: the backend must enforce admin rights (see [[Api]]).
 
 ### API client (`frontend/src/services/api.js`)
 - axios `baseURL: '/api'`, `timeout: 10000` — `api.js:4-10`. Always relative: works behind the proxy (`nginx/nginx.conf` `/api/`) and in dev via the Vite proxy.
 - Request interceptor adds `Authorization: Bearer <localStorage.token>` — `api.js:13-24`.
 - On 401 it clears `token` and `user`, but the redirect to `/login` is commented out (`api.js:34-38`): the user stays on a page whose calls keep failing until a navigation hits `ProtectedRoute`.
-- Endpoints called (all exist in the Rust router): auth `login`/`register`/`google` (`services/auth.js:19,110,180`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx:55-92`); `/bots` (`CreateParty.jsx:20`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
+- Endpoints called (all exist in the Rust router): auth `login`/`register`/`google`, DELETE `/auth/me` with `{password}` or `{credential}` (`services/auth.js`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx:55-92`); `/bots` (`CreateParty.jsx:20`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
 
 ### Real-time (SSE)
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
@@ -102,3 +103,4 @@
 - `PlayingCard` called `useEffect` after its joker early return (`react-hooks/rules-of-hooks`): a card switching between joker and standard would have broken React's hook order. The effect now runs before the branch (2026-09-23).
 - The lobby and the game board opened `/suscribeupdate` without a token until 2026-09-24; Node broadcasts every event to every stream, so it did not matter. The Rust backend filters party events by the stream's token (#73), so both now pass it through `services/sse.js`, as ConnectedPlayers already did, before production switches to Rust.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost the "or legacy Node" dev backend; the root Playwright suite (`tests/e2e`, `playwright.config.js`) that drove this client against Node went with it. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/e2e`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- 2026-09-25 (feat/delete-own-account): the account deletion page is a route, `/account/delete`, rather than a modal, so that it is also the stable web URL Google Play requires for deleting an account without the app; ProtectedRoute's redirect-back (`state.from`) makes that URL work for a signed-out visitor.

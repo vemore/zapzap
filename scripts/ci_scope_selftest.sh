@@ -35,10 +35,15 @@ check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "
 # The production compose file: parsed by the image job, read by the deploy self-test.
 check "0 0 0 1 1 0 0" "docker-compose.prod.yml"
 check "0 0 0 1 0 0 0" "nginx/Dockerfile"
+# The privacy policy and its page: the image job checks the page against the policy.
+check "0 0 0 1 0 0 0" "privacy_policy.md"
+check "0 0 0 1 0 0 0" "nginx/privacy.html" "scripts/build_privacy_page.py"
 check "1 1 1 1 1 1 1" "docker-compose.yml"
 check "1 1 1 1 1 1 1" "some-root-script.sh"
 check "1 1 1 1 1 1 1" ".github/workflows/ci.yml"
 check "0 0 0 0 1 0 0" ".claude/hooks/guard-bash.sh"
+# The Play release scripts: their tests run in the hooks job.
+check "0 0 0 0 1 0 0" "scripts/verify_aab.sh" "scripts/play_publish.py" "scripts/test_verify_aab.py" "scripts/test_play_publish.py"
 check "1 1 1 1 1 1 1" "scripts/ci_scope.sh"
 check "0 0 0 0 0 0 1" "scripts/flutter_e2e.sh"
 check "1 1 1 1 1 1 1" "some-new-dir/file"

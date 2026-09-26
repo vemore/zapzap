@@ -1,8 +1,8 @@
 import '../models/user.dart';
 import '../services/api_client.dart';
 
-/// `/api/auth`. Every call is unauthenticated: a 401 here is a wrong
-/// password, not an expired session.
+/// `/api/auth`. Every call but [deleteAccount] is unauthenticated: a 401
+/// there is a wrong password, not an expired session.
 class AuthRepository {
   const AuthRepository(this._api);
 
@@ -39,5 +39,16 @@ class AuthRepository {
           body: {'credential': credential},
           authenticated: false,
         ),
+      );
+
+  /// `DELETE /auth/me`, signed in, confirmed by the account's [password] or,
+  /// for a Google account, a fresh Google ID token ([credential]). A refusal
+  /// is never a 401, so it does not sign out: 403 `INVALID_PASSWORD` or
+  /// `GOOGLE_AUTH_FAILED`, 400 `MISSING_CONFIRMATION`, 409 `ACTIVE_PARTY`
+  /// (seated in or owning a game not finished) or `LAST_ADMIN`.
+  Future<void> deleteAccount({String? password, String? credential}) =>
+      _api.delete(
+        '/auth/me',
+        body: {'password': ?password, 'credential': ?credential},
       );
 }

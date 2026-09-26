@@ -2,7 +2,7 @@
 
 > Scope: every test suite in the repo, how to run it, its current state, and what CI (`.github/workflows/ci.yml`) runs, skips and why — including the `scope` job.
 > Related: [[Backend]] · [[NativeEngine]] · [[Frontend]] · [[Architecture]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -105,8 +105,8 @@
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings, unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
 | `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
-| `image` | `image != 'false'` | the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
-| `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]) | 10 min |
+| `image` | `image != 'false'` | `scripts/build_privacy_page.py --check` with pandoc at the version the script pins (the release `.deb` from GitHub): a committed `nginx/privacy.html` stale against `privacy_policy.md` fails the job ([[Deployment]] § The privacy policy); the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (`docker compose build backend` — the production image, `CARGO_FEATURES=bedrock` —, then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
+| `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]); JDK 17 and `astral-sh/setup-uv`, then pytest on `scripts/test_play_publish.py` (a fake Google service) and `scripts/test_verify_aab.py` (fake bundles signed by throwaway keystores, `VERIFY_AAB_REQUIRE_TOOLS=1` so a missing JDK fails rather than skips) ([[Release]]) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK, `platforms;android-36` and `build-tools;36.0.0` installed by `sdkmanager`, Gradle heap capped at 4 GB), uploaded as the artifact `app-debug` (14 days); `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 
@@ -133,6 +133,7 @@
 
 | Pattern | Flags |
 |---|---|
+| `privacy_policy.md`, `scripts/build_privacy_page.py` | image (the privacy page check; before the `*.md` rule) |
 | `*.md`, `.llmwiki/*`, `docs/*`, `LICENSE`, `image.png` | none |
 | `zapzap-rust/*` | rust, image, e2e (production's backend: its image, a round played through the Flutter client) |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
@@ -141,6 +142,7 @@
 | `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]), e2e |
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `scripts/deploy_nas.sh`, its self-test and `deploy.env.example`, `rebuild.sh` | hooks |
+| `scripts/verify_aab.sh`, `scripts/play_publish.py` and their `test_*.py` | hooks |
 | `docker-compose.prod.yml` | image, hooks |
 | `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
 | `scripts/flutter_e2e.sh` | e2e |

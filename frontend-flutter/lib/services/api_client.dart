@@ -51,8 +51,13 @@ class ApiClient {
     bool authenticated = true,
   }) => _send('POST', path, body: body, authenticated: authenticated);
 
-  Future<JsonMap> delete(String path, {bool authenticated = true}) =>
-      _send('DELETE', path, authenticated: authenticated);
+  /// [body] is sent as JSON when given (`DELETE /auth/me` carries its
+  /// confirmation there).
+  Future<JsonMap> delete(
+    String path, {
+    Object? body,
+    bool authenticated = true,
+  }) => _send('DELETE', path, body: body, authenticated: authenticated);
 
   /// Releases the underlying connection pool.
   void close() => _http.close();

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZapZap — Confidentialité / Privacy</title>
+<meta name="description" content="Politique de confidentialité de ZapZap / ZapZap's privacy policy.">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1d21;
+  --muted: #5a5f69;
+  --rule: #dfe2e7;
+  --accent: #b7791f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --rule: #334155;
+    --accent: #fbbf24;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2rem 1rem 4rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  overflow-wrap: anywhere;
+}
+h1, h2, h3 { line-height: 1.25; }
+h1 { font-size: 1.7rem; margin: 0 0 1rem; }
+h2 { font-size: 1.35rem; margin: 2rem 0 0.75rem; }
+h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; color: var(--muted); }
+a { color: var(--accent); }
+ul { padding-left: 1.3rem; }
+li { margin: 0.35rem 0; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<main>
+<h1 id="zapzap--politique-de-confidentialité--privacy-policy">ZapZap —
+Politique de confidentialité / Privacy Policy</h1>
+<p><strong>Last Updated / Dernière mise à jour :</strong> 2026-09-25</p>
+<p>This page is served at <a
+href="https://zapzap.ombivince.synology.me/privacy">https://zapzap.ombivince.synology.me/privacy</a>.
+It is written in French first, then in English; both say the same
+thing.</p>
+<hr />
+<h2 id="français">Français</h2>
+<p>ZapZap est un jeu de cartes multijoueur : l'application Android,
+l'application web (<a
+href="https://zapzap.ombivince.synology.me/app/">https://zapzap.ombivince.synology.me/app/</a>)
+et le site <a
+href="https://zapzap.ombivince.synology.me/">https://zapzap.ombivince.synology.me/</a>.
+Elles parlent toutes au même serveur, exploité par le développeur de
+ZapZap.</p>
+<h3 id="ce-que-zapzap-enregistre">Ce que ZapZap enregistre</h3>
+<ul>
+<li><strong>Ton compte</strong> : ton pseudo, l'empreinte de ton mot de
+passe (bcrypt — le mot de passe lui-même n'est jamais enregistré), la
+date de création du compte, la date de ta dernière connexion et ton
+temps de jeu cumulé.</li>
+<li><strong>Si tu te connectes avec Google</strong> : ton identifiant
+Google et ton adresse e-mail, que Google nous transmet à la connexion.
+Ton nom Google sert seulement à te proposer un pseudo ; il n'est pas
+enregistré tel quel.</li>
+<li><strong>Tes parties</strong> : les parties que tu crées ou rejoins,
+les coups joués (cartes jouées et piochées, mains, scores), les
+résultats de chaque manche et de chaque partie. Ils forment ton
+historique et tes statistiques, et les parties terminées apparaissent
+aussi dans l'historique des autres joueurs de la partie. Les coups
+servent aussi à améliorer les bots du jeu.</li>
+<li><strong>Sur ton appareil</strong> : le jeton de session qui te garde
+connecté, et ton profil (pseudo, compte Google ou non) pour l'affichage.
+Ils restent sur ton appareil et sont effacés à la déconnexion.</li>
+<li><strong>Les journaux du serveur web</strong> : l'adresse IP, la
+date, la page demandée et le navigateur de chaque requête, comme tout
+serveur web.</li>
+</ul>
+<h3 id="pourquoi">Pourquoi</h3>
+<p>Uniquement pour faire fonctionner le jeu : te connecter, jouer avec
+les autres, afficher ton historique, tes statistiques et le classement,
+et garder le service en état de marche.</p>
+<h3 id="ce-que-zapzap-ne-fait-pas">Ce que ZapZap ne fait pas</h3>
+<ul>
+<li>Aucune vente, aucun partage de tes données avec qui que ce
+soit.</li>
+<li>Aucune publicité, aucun outil de mesure d'audience ou de suivi,
+aucun rapport de plantage envoyé à un tiers.</li>
+<li>Les seuls tiers impliqués : <strong>Google</strong>, quand tu
+choisis de te connecter avec Google (sa propre politique de
+confidentialité s'applique alors) ; et, quand les bots « LLM » sont
+activés sur le serveur, la situation de jeu d'une partie contre un tel
+bot (cartes, scores — ni pseudo ni compte) peut être envoyée à un modèle
+d'IA hébergé (AWS Bedrock) pour choisir le coup du bot.</li>
+</ul>
+<p>Ce que les autres joueurs voient de toi : ton pseudo, ta présence en
+ligne, tes parties et tes résultats (historique, classement).</p>
+<h3 id="durée-de-conservation">Durée de conservation</h3>
+<p>Ton compte et ses données sont conservés tant que ton compte existe.
+Quand tu le supprimes, ton pseudo, ton mot de passe, ton identifiant
+Google et ton e-mail sont effacés immédiatement. Tes parties terminées
+restent dans l'historique des autres joueurs, sous le nom « Joueur
+supprimé », sans lien avec toi.</p>
+<h3 id="supprimer-ton-compte">Supprimer ton compte</h3>
+<ul>
+<li><strong>Dans l'application</strong> (Android ou web) : menu ⋮ en
+haut à droite → <strong>Supprimer mon compte</strong>, puis confirme
+avec ton mot de passe (ou avec Google pour un compte Google).</li>
+<li><strong>Depuis le web, sans l'application</strong> : <a
+href="https://zapzap.ombivince.synology.me/account/delete">https://zapzap.ombivince.synology.me/account/delete</a>
+— connecte-toi, puis confirme.</li>
+<li><strong>Par e-mail</strong> : écris à <a
+href="mailto:scribio.ai@gmail.com">scribio.ai@gmail.com</a> depuis
+l'adresse de ton compte Google, ou en donnant ton pseudo, et ton compte
+sera supprimé de la même façon.</li>
+<li>Une partie en attente ou en cours doit d'abord être quittée ou
+terminée.</li>
+</ul>
+<h3 id="contact">Contact</h3>
+<p>Pour toute question ou demande sur tes données : <a
+href="mailto:scribio.ai@gmail.com">scribio.ai@gmail.com</a>.</p>
+<hr />
+<h2 id="english">English</h2>
+<p>ZapZap is a multiplayer card game: the Android app, the web app (<a
+href="https://zapzap.ombivince.synology.me/app/">https://zapzap.ombivince.synology.me/app/</a>)
+and the site <a
+href="https://zapzap.ombivince.synology.me/">https://zapzap.ombivince.synology.me/</a>.
+They all talk to the same server, run by ZapZap's developer.</p>
+<h3 id="what-zapzap-stores">What ZapZap stores</h3>
+<ul>
+<li><strong>Your account</strong>: your username, a hash of your
+password (bcrypt — the password itself is never stored), when the
+account was created, when you last signed in, and your total play
+time.</li>
+<li><strong>If you sign in with Google</strong>: your Google account id
+and your email address, which Google sends at sign-in. Your Google name
+is only used to suggest a username; it is not stored as such.</li>
+<li><strong>Your games</strong>: the games you create or join, the moves
+played (cards played and drawn, hands, scores), and the results of each
+round and each game. They make up your history and your statistics, and
+finished games also appear in the history of the other players of that
+game. The moves are also used to improve the game's bots.</li>
+<li><strong>On your device</strong>: the session token that keeps you
+signed in, and your profile (username, whether it is a Google account)
+for display. They stay on your device and are erased when you sign
+out.</li>
+<li><strong>Web server logs</strong>: the IP address, time, requested
+page and browser of each request, as any web server keeps.</li>
+</ul>
+<h3 id="why">Why</h3>
+<p>Only to run the game: sign you in, let you play with others, show
+your history, your statistics and the leaderboard, and keep the service
+working.</p>
+<h3 id="what-zapzap-does-not-do">What ZapZap does not do</h3>
+<ul>
+<li>No sale and no sharing of your data with anyone.</li>
+<li>No advertising, no analytics or tracking tool, no crash reports sent
+to a third party.</li>
+<li>The only third parties involved: <strong>Google</strong>, when you
+choose to sign in with Google (its own privacy policy then applies);
+and, when "LLM" bots are enabled on the server, the game situation of a
+game against such a bot (cards, scores — no username, no account) may be
+sent to a hosted AI model (AWS Bedrock) to choose the bot's move.</li>
+</ul>
+<p>What other players see of you: your username, whether you are online,
+your games and your results (history, leaderboard).</p>
+<h3 id="retention">Retention</h3>
+<p>Your account and its data are kept as long as your account exists.
+When you delete it, your username, password, Google id and email are
+erased at once. Your finished games stay in the other players' history
+under the name "Deleted player", with no link to you.</p>
+<h3 id="deleting-your-account">Deleting your account</h3>
+<ul>
+<li><strong>In the app</strong> (Android or web): the ⋮ menu at the top
+right → <strong>Delete my account</strong>, then confirm with your
+password (or with Google for a Google account).</li>
+<li><strong>From the web, without the app</strong>: <a
+href="https://zapzap.ombivince.synology.me/account/delete">https://zapzap.ombivince.synology.me/account/delete</a>
+— sign in, then confirm.</li>
+<li><strong>By e-mail</strong>: write to <a
+href="mailto:scribio.ai@gmail.com">scribio.ai@gmail.com</a> from your
+Google account's address, or giving your username, and your account will
+be deleted the same way.</li>
+<li>A game that is waiting or in progress must be left or finished
+first.</li>
+</ul>
+<h3 id="contact-1">Contact</h3>
+<p>For any question or request about your data: <a
+href="mailto:scribio.ai@gmail.com">scribio.ai@gmail.com</a>.</p>
+</main>
+</body>
+</html>

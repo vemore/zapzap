@@ -28,6 +28,10 @@ everything() { rust=true; native=true; frontend=true; image=true; hooks=true; fl
 while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in
+        # The privacy policy, rendered to nginx/privacy.html: the image job checks the
+        # committed page is not stale. Before the documentation rule, which `*.md` is.
+        privacy_policy.md|scripts/build_privacy_page.py) image=true ;;
+
         # Documentation. A case glob's `*` crosses `/`, so `*.md` is `**/*.md`.
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 
@@ -62,6 +66,11 @@ while IFS= read -r path; do
         # deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
         # sibling). No image holds them.
         .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh)
+            hooks=true ;;
+
+        # The Play release scripts and their tests, which the hooks job runs: they are
+        # never run in CI against Google, only on a fake service and throwaway keystores.
+        scripts/verify_aab.sh|scripts/play_publish.py|scripts/test_verify_aab.py|scripts/test_play_publish.py)
             hooks=true ;;
 
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.

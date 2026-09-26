@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Zap, Loader } from 'lucide-react';
 import { login as loginUser } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,7 +14,10 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { setUser } = useAuth();
+  // Where ProtectedRoute sent the visitor from, else the party list
+  const next = location.state?.from || '/parties';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,7 +33,7 @@ function Login() {
     try {
       const result = await loginUser(username, password);
       setUser(result.user);  // Update auth context with user data
-      navigate('/parties');
+      navigate(next, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -55,13 +58,19 @@ function Login() {
           {/* Google Login Button */}
           {GOOGLE_CLIENT_ID && (
             <>
-              <GoogleLoginButton onError={setError} />
+              <GoogleLoginButton onError={setError} next={next} />
               <div className="flex items-center my-4">
                 <div className="flex-1 border-t border-slate-600"></div>
                 <span className="px-4 text-sm text-gray-400">ou</span>
                 <div className="flex-1 border-t border-slate-600"></div>
               </div>
             </>
+          )}
+
+          {location.state?.accountDeleted && !error && (
+            <div className="bg-slate-700 border border-slate-600 text-gray-200 px-4 py-3 rounded-lg mb-4" role="status">
+              Ton compte a été supprimé.
+            </div>
           )}
 
           {error && (

@@ -3,6 +3,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
+import DeleteAccount from './components/Auth/DeleteAccount';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import PartyList from './components/Party/PartyList';
 import CreateParty from './components/Party/CreateParty';
@@ -80,6 +81,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <GameDetails />
+              </ProtectedRoute>
+            }
+          />
+          {/* Also the web page Google Play links to for deleting an account */}
+          <Route
+            path="/account/delete"
+            element={
+              <ProtectedRoute>
+                <DeleteAccount />
               </ProtectedRoute>
             }
           />
