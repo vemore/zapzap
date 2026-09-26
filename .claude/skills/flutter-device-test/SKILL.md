@@ -48,7 +48,7 @@ connect one. Then `adb pair <ip>:<pairing port> <code>`, and `adb connect` as ab
 | Build | Talks to | Signed with | Use for |
 |---|---|---|---|
 | `flutter run -d $DEV --debug` | production by default; `--dart-define=API_BASE_URL=http://<LAN IP>:9999` for a local backend (debug allows cleartext) | local debug key (its SHA-1 is a registered Google client) | the loop below, Google sign-in, the integration round |
-| `flutter build apk --release` | production only (HTTPS: release has no cleartext) | the upload key with `key.properties`, else the debug key | the R8 smoke of a release (`release-android` § 5) |
+| `flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GCID` (`release-android` § 5) | production only (HTTPS: release has no cleartext) | the upload key with `key.properties`, else the debug key | the R8 smoke of a release (`release-android` § 5) |
 
 Add `--dart-define=GOOGLE_CLIENT_ID=<web client id>` (the NAS `.env`'s
 `VITE_GOOGLE_OAUTH_CLIENT_ID`) to any build that should offer Google sign-in.
