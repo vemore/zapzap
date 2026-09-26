@@ -33,6 +33,11 @@ abstract final class ApiErrorCode {
   static const partyFull = 'PARTY_FULL';
   static const notYourTurn = 'NOT_YOUR_TURN';
   static const handTooHigh = 'HAND_TOO_HIGH';
+  static const invalidPassword = 'INVALID_PASSWORD';
+  static const googleAuthFailed = 'GOOGLE_AUTH_FAILED';
+  static const missingConfirmation = 'MISSING_CONFIRMATION';
+  static const activeParty = 'ACTIVE_PARTY';
+  static const lastAdmin = 'LAST_ADMIN';
 
   /// The code for a status when the body did not carry one.
   static String fromStatus(int status) => switch (status) {

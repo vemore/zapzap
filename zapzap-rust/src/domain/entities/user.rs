@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// Id prefix of the anonymous user a deleted account's finished games are handed to
+/// ("Joueur supprimé" / "Deleted player" in the clients). Ids are server-generated UUIDs,
+/// so no account can take it; the leaderboard and the admin user lists leave these out.
+pub const DELETED_USER_ID_PREFIX: &str = "deleted-";
+
 /// User type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

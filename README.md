@@ -19,7 +19,10 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 
 ### Technical Features
 - 🏗️ **Layered backend**: domain, application (use cases), infrastructure and API layers in `zapzap-rust/`
-- 🔐 **JWT Authentication**: Secure token-based user management
+- 🔐 **JWT Authentication**: Secure token-based user management; a player deletes their own
+  account from either client, or from the web at `/account/delete`
+- 🔏 **Privacy policy**: [`privacy_policy.md`](privacy_policy.md), served at `/privacy`
+  (rendered by `scripts/build_privacy_page.py` into `nginx/privacy.html`)
 - 💾 **Database Persistence**: SQLite for game state and user data
 - 🎪 **Multi-Party Support**: Multiple concurrent games
 - 📡 **RESTful API**: Well-designed API with proper HTTP methods
@@ -114,7 +117,7 @@ The application will be available at **http://localhost** (port 80).
 The Docker setup includes four services:
 
 - **nginx** (Reverse Proxy) - Routes requests to appropriate services
-  - Port 80 → Frontend, Flutter PWA and API
+  - Port 80 → Frontend, Flutter PWA and API; serves the privacy policy at `/privacy` itself
 - **backend** (Rust API, `zapzap-rust/`) - axum API server, built with the AWS Bedrock client
   of the LLM bots (`CARGO_FEATURES=bedrock`)
   - Internal port 9999, database `./data/zapzap.db` mounted at `/app/data`
@@ -391,6 +394,7 @@ npm run dev && npm run lint && npx vitest run && npm run build
 **Authentication:**
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login and get JWT token
+- `DELETE /api/auth/me` - Delete your own account (confirmed by the password, or a Google token)
 
 **Party Management:**
 - `POST /api/party` - Create new party

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield } from 'lucide-react';
+import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield, UserX } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectedPlayers from './ConnectedPlayers';
@@ -109,6 +109,14 @@ function PartyList() {
               <span className="text-gray-300">
                 <span className="font-semibold text-white">{user?.username}</span>
               </span>
+              <Link
+                to="/account/delete"
+                title="Delete my account"
+                className="flex items-center px-3 py-2 text-gray-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors"
+              >
+                <UserX className="w-4 h-4 mr-1" />
+                Delete account
+              </Link>
               <button
                 onClick={handleLogout}
                 className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"

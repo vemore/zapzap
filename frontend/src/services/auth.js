@@ -194,7 +194,30 @@ export const loginWithGoogle = async (credential) => {
   }
 };
 
+/**
+ * Delete the signed-in user's account, confirmed by their password or, for an account
+ * created with Google, by a fresh Google ID token. On success the stored session is
+ * cleared. A refusal throws an Error whose `code` is the backend's (INVALID_PASSWORD,
+ * MISSING_CONFIRMATION, GOOGLE_AUTH_FAILED, ACTIVE_PARTY, LAST_ADMIN).
+ * @param {{password?: string, credential?: string}} confirmation
+ * @returns {Promise<{success: boolean, deletedUserId: string}>}
+ */
+export const deleteAccount = async ({ password, credential } = {}) => {
+  try {
+    const response = await apiClient.delete('/auth/me', {
+      data: credential ? { credential } : { password },
+    });
+    logout();
+    return response.data;
+  } catch (error) {
+    const err = new Error(error.response?.data?.error || 'Suppression du compte échouée');
+    err.code = error.response?.data?.code;
+    throw err;
+  }
+};
+
 export default {
+  deleteAccount,
   login,
   register,
   logout,

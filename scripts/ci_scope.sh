@@ -28,6 +28,10 @@ everything() { rust=true; native=true; frontend=true; image=true; hooks=true; fl
 while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in
+        # The privacy policy, rendered to nginx/privacy.html: the image job checks the
+        # committed page is not stale. Before the documentation rule, which `*.md` is.
+        privacy_policy.md|scripts/build_privacy_page.py) image=true ;;
+
         # Documentation. A case glob's `*` crosses `/`, so `*.md` is `**/*.md`.
         *.md|.llmwiki/*|docs/*|LICENSE|image.png) ;;
 

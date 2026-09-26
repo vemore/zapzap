@@ -316,7 +316,7 @@ pub async fn get_leaderboard(
             CAST(AVG(pgr.final_score) AS REAL) as avg_score
         FROM player_game_results pgr
         JOIN users u ON u.id = pgr.user_id
-        WHERE u.user_type = 'human'
+        WHERE u.user_type = 'human' AND u.id NOT LIKE 'deleted-%'
         GROUP BY u.id
         HAVING games_played >= ?
         ORDER BY (CAST(games_won AS REAL) / games_played) DESC, games_won DESC

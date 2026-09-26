@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginWithGoogle } from '../../services/auth';
 import { useAuth } from '../../contexts/AuthContext';
 
-function GoogleLoginButton({ onError }) {
+function GoogleLoginButton({ onError, next = '/parties' }) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { setUser } = useAuth();
@@ -14,7 +14,7 @@ function GoogleLoginButton({ onError }) {
     try {
       const result = await loginWithGoogle(credentialResponse.credential);
       setUser(result.user);
-      navigate('/parties');
+      navigate(next, { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
       if (onError) {
