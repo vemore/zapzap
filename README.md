@@ -322,7 +322,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | **runs in production** (since 2026-09-24) |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n fr/en | login, register (password or Google), the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n in ten languages (fr, en, es, pt, de, ru, ja, hi, id, ar) | login, register (password or Google), the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 
 The Flutter client, from `frontend-flutter/`:
