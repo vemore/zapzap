@@ -123,31 +123,73 @@ void main() {
       expect(PlayingCard.radiusFor(80), 4);
     });
 
-    testWidgets('a selected card takes an amber edge and glows', (
+    /// The edge drawn in front of the card under [card], if any.
+    Border? edge(WidgetTester tester, Finder card) {
+      final box = tester.widget<AnimatedContainer>(
+        find.descendant(of: card, matching: find.byType(AnimatedContainer)),
+      );
+      return (box.foregroundDecoration as BoxDecoration?)?.border as Border?;
+    }
+
+    testWidgets('three looks: plain, playable, selected — each stronger', (
+      tester,
+    ) async {
+      // Plain: cannot be played — no edge, a plain drop shadow.
+      await tester.pumpWidget(_app(const PlayingCard(cardId: 0)));
+      expect(
+        tester.widget<PlayingCard>(find.byType(PlayingCard)).look,
+        CardLook.plain,
+      );
+      expect(edge(tester, find.byType(PlayingCard)), isNull);
+      final plainShadow = _decoration(
+        tester,
+        find.byType(PlayingCard),
+      ).boxShadow!.single;
+      expect(plainShadow.color, Colors.black.withValues(alpha: 0.2));
+
+      // Playable: a light amber edge and a soft glow.
+      await tester.pumpWidget(_app(PlayingCard(cardId: 0, onTap: () {})));
+      final playable = edge(tester, find.byType(PlayingCard))!;
+      expect(playable.top.color, AppColors.amber200);
+      expect(playable.top.width, CardSizes.playableBorder);
+      final playableShadow = _decoration(
+        tester,
+        find.byType(PlayingCard),
+      ).boxShadow!.single;
+      expect(playableShadow.color.r, AppColors.amber200.r);
+
+      // Selected: a thicker, stronger amber edge and a stronger glow.
+      await tester.pumpWidget(
+        _app(PlayingCard(cardId: 0, selected: true, onTap: () {})),
+      );
+      final selected = edge(tester, find.byType(PlayingCard))!;
+      expect(selected.top.color, AppColors.amber400);
+      expect(selected.top.width, CardSizes.selectedBorder);
+      expect(selected.top.width, greaterThan(playable.top.width));
+      final selectedShadow = _decoration(
+        tester,
+        find.byType(PlayingCard),
+      ).boxShadow!.single;
+      expect(selectedShadow.color, AppColors.amber400.withValues(alpha: 0.85));
+      expect(selectedShadow.blurRadius, greaterThan(playableShadow.blurRadius));
+      expect(
+        selectedShadow.spreadRadius,
+        greaterThan(playableShadow.spreadRadius),
+      );
+      expect(selectedShadow.color.a, greaterThan(playableShadow.color.a));
+    });
+
+    testWidgets('a disabled card, even with an onTap, is plain', (
       tester,
     ) async {
       await tester.pumpWidget(
-        _app(const PlayingCard(cardId: 0, selected: true)),
+        _app(PlayingCard(cardId: 0, disabled: true, onTap: () {})),
       );
-      final box = tester.widget<AnimatedContainer>(
-        find.descendant(
-          of: find.byType(PlayingCard),
-          matching: find.byType(AnimatedContainer),
-        ),
-      );
-      final edge = (box.foregroundDecoration! as BoxDecoration).border!;
-      expect(edge.top.color, AppColors.amber400);
-      expect(edge.top.width, CardSizes.selectedBorder);
-      final shadow = _decoration(tester, find.byType(PlayingCard)).boxShadow!;
-      expect(shadow.single.color, AppColors.amber400.withValues(alpha: 0.7));
-
-      await tester.pumpWidget(_app(const PlayingCard(cardId: 0)));
       expect(
-        tester
-            .widget<AnimatedContainer>(find.byType(AnimatedContainer))
-            .foregroundDecoration,
-        isNull,
+        tester.widget<PlayingCard>(find.byType(PlayingCard)).look,
+        CardLook.plain,
       );
+      expect(edge(tester, find.byType(PlayingCard)), isNull);
     });
 
     testWidgets('a screen reader selects the card as a tap does', (
@@ -198,9 +240,8 @@ void main() {
       expect(taps, 1);
     });
 
-    testWidgets('a disabled card is greyed, opaque, and ignores taps', (
-      tester,
-    ) async {
+    testWidgets('a disabled card keeps its colours, opaque, and ignores '
+        'taps', (tester) async {
       var taps = 0;
       await tester.pumpWidget(
         _app(PlayingCard(cardId: 0, disabled: true, onTap: () => taps++)),
@@ -213,49 +254,35 @@ void main() {
         tester.widgetList<Opacity>(inCard).where((o) => o.opacity < 1),
         isEmpty,
       );
-      final filter = tester.widget<ColorFiltered>(
+      expect(
         find.descendant(
           of: find.byType(PlayingCard),
           matching: find.byType(ColorFiltered),
         ),
+        findsNothing,
       );
-      expect(filter.colorFilter, PlayingCard.greyed);
-      // The white face stays behind the grey: nothing shows through.
-      final box = tester.widget<AnimatedContainer>(
-        find.descendant(
-          of: find.byType(PlayingCard),
-          matching: find.byType(AnimatedContainer),
-        ),
-      );
-      expect((box.decoration! as BoxDecoration).color, Colors.white);
+      // The white face stays behind the card: nothing shows through.
+      expect(_decoration(tester, find.byType(PlayingCard)).color, Colors.white);
       await tester.tap(find.byType(PlayingCard), warnIfMissed: false);
       expect(taps, 0);
     });
 
-    testWidgets('an active card is not greyed', (tester) async {
-      await tester.pumpWidget(_app(PlayingCard(cardId: 0, onTap: () {})));
-      expect(
-        find.descendant(
-          of: find.byType(PlayingCard),
-          matching: find.byType(ColorFiltered),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('a disabled card with dimmed: false keeps its colours', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _app(const PlayingCard(cardId: 0, disabled: true, dimmed: false)),
-      );
-      expect(
-        find.descendant(
-          of: find.byType(PlayingCard),
-          matching: find.byType(ColorFiltered),
-        ),
-        findsNothing,
-      );
+    testWidgets('no look colour-filters the face', (tester) async {
+      for (final card in [
+        const PlayingCard(cardId: 0),
+        const PlayingCard(cardId: 0, disabled: true),
+        PlayingCard(cardId: 0, onTap: () {}),
+        PlayingCard(cardId: 0, selected: true, onTap: () {}),
+      ]) {
+        await tester.pumpWidget(_app(card));
+        expect(
+          find.descendant(
+            of: find.byType(PlayingCard),
+            matching: find.byType(ColorFiltered),
+          ),
+          findsNothing,
+        );
+      }
     });
 
     testWidgets('screen readers get the localised card name', (tester) async {
@@ -289,6 +316,14 @@ void main() {
       expect(CardBackSize.md.width, 60);
       expect(find.bySemanticsLabel('Carte face cachée'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a width, when given, overrides the size', (tester) async {
+      await tester.pumpWidget(_app(const CardBack(width: 70)));
+      expect(
+        tester.getSize(find.byType(CardBack)),
+        Size(70, PlayingCard.heightFor(70)),
+      );
     });
   });
 

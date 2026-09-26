@@ -20,6 +20,7 @@ import 'package:zapzap/widgets/game_hand_size_selector.dart';
 import 'package:zapzap/widgets/game_player_table.dart';
 import 'package:zapzap/widgets/game_table_area.dart';
 import 'package:zapzap/widgets/game_zapzap_sheet.dart';
+import 'package:zapzap/widgets/playing_card.dart';
 
 import 'auth_helpers.dart';
 import 'game_helpers.dart';
@@ -112,17 +113,42 @@ void main() {
     return (box.decoration! as BoxDecoration).color;
   }
 
-  /// Whether [key] is drawn greyed — opaquely, through a `ColorFiltered`,
-  /// never half transparent.
-  bool greyed(WidgetTester tester, Key key) {
+  /// The look of the card under [key] — a face ([PlayingCard.look]) or the
+  /// deck's top card, by its edge. Either way drawn in its own colours:
+  /// opaque, never through a `ColorFiltered`.
+  CardLook look(WidgetTester tester, Key key) {
     final opacities = tester.widgetList<Opacity>(
       find.descendant(of: find.byKey(key), matching: find.byType(Opacity)),
     );
     expect(opacities.where((o) => o.opacity < 1), isEmpty);
-    return find
-        .descendant(of: find.byKey(key), matching: find.byType(ColorFiltered))
-        .evaluate()
-        .isNotEmpty;
+    expect(
+      find.descendant(
+        of: find.byKey(key),
+        matching: find.byType(ColorFiltered),
+      ),
+      findsNothing,
+    );
+    final face = find.descendant(
+      of: find.byKey(key),
+      matching: find.byType(PlayingCard),
+      matchRoot: true,
+    );
+    if (face.evaluate().isNotEmpty) {
+      return tester.widget<PlayingCard>(face.first).look;
+    }
+    final top = tester.widget<Container>(
+      find.descendant(
+        of: find.byKey(key),
+        matching: find.byKey(const Key('deckTop')),
+      ),
+    );
+    final edge =
+        (top.foregroundDecoration as BoxDecoration?)?.border as Border?;
+    return switch (edge?.top.color) {
+      null => CardLook.plain,
+      AppColors.amber200 => CardLook.playable,
+      _ => CardLook.selected,
+    };
   }
 
   Border feltBorder(WidgetTester tester) =>
@@ -428,17 +454,26 @@ void main() {
   });
 
   group('J5 — the discard pile: what can be taken, and when', () {
-    testWidgets('during Jouer the pile is "À prendre ensuite", greyed', (
+    testWidgets('during Jouer the pile is "À prendre ensuite", plain', (
       tester,
     ) async {
       await pumpGame(tester, table(lastCardsPlayed: [17, 18, 19]));
 
       expect(find.text('À prendre ensuite'), findsOneWidget);
-      expect(greyed(tester, GameTableArea.discardKey(19)), isTrue);
+      expect(look(tester, GameTableArea.discardKey(19)), CardLook.plain);
       expect(find.byKey(const Key('drawInstruction')), findsNothing);
       expect(feltBorder(tester).top.color, isNot(GameTableArea.drawEdgeColor));
       expect(enabled(tester, const Key('draw-deck')), isFalse);
-      expect(greyed(tester, const Key('draw-deck')), isTrue);
+      expect(look(tester, const Key('draw-deck')), CardLook.plain);
+      // The hand is what can be played now: each card takes the edge.
+      for (final card in tester.widgetList<PlayingCard>(
+        find.descendant(
+          of: find.byType(CardFan),
+          matching: find.byType(PlayingCard),
+        ),
+      )) {
+        expect(card.look, CardLook.playable);
+      }
     });
 
     testWidgets('during Piocher: amber edge, the instruction, full colour, '
@@ -456,8 +491,17 @@ void main() {
         find.text('Touche une carte pour la prendre, ou la pioche'),
         findsOneWidget,
       );
-      expect(greyed(tester, GameTableArea.discardKey(19)), isFalse);
-      expect(greyed(tester, const Key('draw-deck')), isFalse);
+      expect(look(tester, GameTableArea.discardKey(19)), CardLook.playable);
+      expect(look(tester, const Key('draw-deck')), CardLook.playable);
+      // The hand is only read in the draw step: plain, in its colours.
+      for (final card in tester.widgetList<PlayingCard>(
+        find.descendant(
+          of: find.byType(CardFan),
+          matching: find.byType(PlayingCard),
+        ),
+      )) {
+        expect(card.look, CardLook.plain);
+      }
       expect(find.text('À prendre ensuite'), findsOneWidget);
 
       // Picking a card says what it costs.
@@ -467,6 +511,8 @@ void main() {
         find.text('Prendre 7♥ ajoute 7 points à ta main.'),
         findsOneWidget,
       );
+      expect(look(tester, GameTableArea.discardKey(19)), CardLook.selected);
+      expect(look(tester, GameTableArea.discardKey(18)), CardLook.playable);
 
       // The deck is a target of its own: it draws from the deck even with
       // a discard card picked.

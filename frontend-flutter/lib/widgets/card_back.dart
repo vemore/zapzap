@@ -17,15 +17,18 @@ enum CardBackSize {
 }
 
 /// A face-down card: a red lattice in a white border, painted rather than
-/// drawn from an asset (the React client takes the cardmeister back).
+/// drawn from an asset (the React client takes the cardmeister back). Its
+/// width is [size]'s, or [width] when given — the deck matches the felt's
+/// face-up cards so.
 class CardBack extends StatelessWidget {
-  const CardBack({super.key, this.size = CardBackSize.md});
+  const CardBack({super.key, this.size = CardBackSize.md, this.width});
 
   final CardBackSize size;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
-    final width = size.width;
+    final width = this.width ?? size.width;
     return Semantics(
       label: AppLocalizations.of(context).cardBack,
       child: SizedBox(

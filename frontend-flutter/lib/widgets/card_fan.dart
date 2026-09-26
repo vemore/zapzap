@@ -146,7 +146,6 @@ class _CardFanState extends State<CardFan> {
         cardId: id,
         selected: selected,
         disabled: widget.disabled,
-        dimmed: widget.compact ? false : null,
         width: fan.cardWidth,
         onTap: widget.onCardTap == null ? null : () => widget.onCardTap!(id),
       ),
