@@ -22,7 +22,7 @@
     "jsdom": "^27.1.0",
     "lucide-react": "^0.553.0",
     "react-router-dom": "^7.9.5",
-    "vitest": "^4.0.7"
+    "vitest": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
