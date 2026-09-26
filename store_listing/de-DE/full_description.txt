@@ -1,0 +1,46 @@
+ZapZap ist ein Multiplayer-Kartenspiel im Rommé-Stil, gespielt online von 3 bis 8 Spielern, mit Freunden oder gegen Bots.
+
+Das Ziel: Leere deine Hand schneller als alle anderen. Wenn deine Hand 5 Punkte oder weniger wert ist, ruf ZapZap! Wenn niemand eine so niedrige Hand hat wie du, gewinnst du die Runde. Aber wenn jemand gleich viel oder weniger hat, wird dein ZapZap gekontert und du bekommst eine hohe Strafe.
+
+WIE MAN SPIELT
+
+Wenn du am Zug bist, legst du Karten ab:
+• eine einzelne Karte, oder ein Paar, drei oder vier Karten der gleichen Wertigkeit;
+• eine Reihe von mindestens drei aufeinanderfolgenden Karten der gleichen Farbe;
+• Joker ersetzen jede Karte in einem Paar oder einer Reihe.
+
+Dann ziehst du eine Karte: die verdeckte Karte vom Kartenstapel oder eine der Karten, die der vorherige Spieler gerade gespielt hat.
+
+Ein Ass ist 1 Punkt wert, Karten 2 bis 10 haben ihren Zahlenwert, der Bube 11, die Dame 12 und der König 13. Ein Joker zählt 0, wenn du ZapZap rufst … aber 25 Punkte, wenn er am Ende der Runde noch in deiner Hand ist.
+
+Über 100 Punkten bist du raus. Wenn nur noch zwei Spieler bleiben, geht die Partie in den Golden Score: eine letzte entscheidende Runde. Der letzte verbleibende Spieler gewinnt.
+
+SPIELE MIT DEINEN FREUNDEN
+
+• Erstelle eine öffentliche Partie oder eine private mit einem Einladungscode, den du an deine Freunde senden kannst.
+• Wähle die Anzahl der Spieler und fülle die freien Plätze mit Bots.
+• Die Züge der anderen Spieler erscheinen live, ohne Neuladung.
+
+ODER GEGEN BOTS
+
+Nicht genug Spieler? Fülle den Tisch mit Bots, von Einfach bis Schwer, und starte eine Partie, wann du möchtest.
+
+EIN TISCH, DER SICH VON SELBST ERKLÄRT
+
+• Die Spielzüge, die deine Hand erlaubt, werden dir vorgeschlagen.
+• Der Wert deiner Hand bleibt auf dem Bildschirm: Du weißt, wann du ZapZap rufen kannst.
+• Am Ende jeder Runde siehst du die Hand und die Punkte aller Spieler.
+
+VERLAUF UND STATISTIKEN
+
+• Finde jede Partie, die du beendet hast, mit den Endständen und den Details jeder Runde.
+• Verfolge deine Statistiken: gespielte Partien, Siege, Durchschnittsscore, deine ZapZap-Erfolgsquote.
+• Sieh, wie du dich gegen die anderen Spieler auf der globalen Bestenliste platzierst.
+
+DEIN KONTO
+
+Melde dich mit deinem Google-Konto an oder erstelle ein Konto mit Benutzername und Passwort. Deine Partien, dein Verlauf und deine Statistiken folgen dir von der Android-App zum Browser.
+
+ZapZap ist kostenlos, ohne Werbung und ohne In-App-Käufe. Eine Internetverbindung ist erforderlich, um zu spielen.
+
+Die App ist in Englisch, Französisch, Spanisch, Portugiesisch (Brasilien), Deutsch, Russisch, Japanisch, Hindi, Indonesisch und Arabisch verfügbar.

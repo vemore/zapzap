@@ -1,0 +1,46 @@
+ZapZap adalah permainan kartu multipemain gaya rummy, dimainkan online oleh 3 hingga 8 pemain, dengan teman atau melawan bot.
+
+Tujuannya: kosongkan tangan kamu lebih cepat dari pemain lain. Ketika tangan kamu bernilai 5 poin atau kurang, panggil ZapZap! Jika tidak ada pemain yang memiliki tangan sama rendahnya dengan milikmu, kamu menang putaran. Tetapi jika ada pemain dengan tangan sama rendah atau lebih rendah, ZapZap kamu dibantah dan kamu kena penalti berat.
+
+CARA BERMAIN
+
+Pada giliranmu, kamu memainkan kartu:
+• satu kartu, atau sepasang, tiga atau empat kartu sejenis;
+• rangkaian minimal tiga kartu berurutan dengan jenis kartu yang sama;
+• joker bisa menggantikan kartu apa pun dalam sepasang atau rangkaian.
+
+Kemudian kamu mengambil kartu: kartu tertutup dari tumpukan, atau salah satu kartu yang baru saja dimainkan pemain sebelumnya.
+
+As bernilai 1 poin, kartu 2 hingga 10 bernilai sesuai angkanya, Jack 11, Queen 12 dan King 13. Joker bernilai 0 saat kamu panggil ZapZap… tetapi 25 poin jika masih di tangan kamu saat putaran berakhir.
+
+Di atas 100 poin, kamu keluar. Ketika hanya dua pemain tersisa, permainan memasuki Golden Score: putaran terakhir yang menentukan. Pemain terakhir yang bertahan menang.
+
+BERMAIN DENGAN TEMAN
+
+• Buat permainan publik, atau pribadi dengan kode undangan yang bisa dikirim ke teman kamu.
+• Pilih jumlah pemain dan isi tempat kosong dengan bot.
+• Gerakan pemain lain ditampilkan secara real-time, tanpa perlu menyegarkan.
+
+ATAU MELAWAN BOT
+
+Tidak cukup pemain? Isi meja dengan bot, dari Mudah hingga Sulit, dan mulai permainan kapan pun kamu mau.
+
+MEJA YANG MUDAH DIBACA
+
+• Kombinasi yang bisa dimainkan dari tangan kamu akan disarankan.
+• Nilai tangan kamu tetap terlihat di layar: kamu tahu kapan bisa memanggil ZapZap.
+• Setelah setiap putaran, kamu melihat tangan dan poin setiap pemain.
+
+RIWAYAT DAN STATISTIK
+
+• Temukan setiap permainan yang kamu selesaikan, dengan peringkat akhir dan detail setiap putaran.
+• Ikuti statistik kamu: permainan dimainkan, kemenangan, skor rata-rata, tingkat keberhasilan ZapZap kamu.
+• Lihat peringkat kamu terhadap pemain lain di papan peringkat global.
+
+AKUN KAMU
+
+Masuk dengan akun Google kamu, atau buat akun dengan nama pengguna dan kata sandi. Permainan, riwayat, dan statistik kamu ikut bersamamu dari aplikasi Android ke browser.
+
+ZapZap gratis, tanpa iklan dan tanpa pembelian dalam aplikasi. Koneksi internet diperlukan untuk bermain.
+
+Aplikasi tersedia dalam bahasa Inggris, Prancis, Spanyol, Portugis Brasil, Jerman, Rusia, Jepang, Hindi, Indonesia dan Arab.

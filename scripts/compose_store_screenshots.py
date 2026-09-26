@@ -3,6 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "pillow>=10.0",
+#   "fonttools>=4.40",
 # ]
 # ///
 """Compose the Play Store phone screenshots from the raw captures, one set per store locale.
@@ -24,8 +25,13 @@ in a band above the screen, on a gradient of the app's slate (frontend-flutter/l
 app_theme.dart), the caption in its amber. The directory holds exactly the composed set: a PNG
 there with no raw capture of that name is removed on compose.
 
-Font: Roboto Bold from the Flutter SDK's material_fonts cache (the font the app renders in);
---font overrides it.
+Fonts: Roboto Bold from the Flutter SDK's material_fonts cache (the font the app renders in)
+for the Latin and Cyrillic locales. Japanese, Hindi and Arabic are drawn in the system's Noto
+Sans CJK JP, Noto Sans Devanagari and Noto Sans Arabic Bold (`fonts-noto-cjk`,
+`fonts-noto-core`), with Roboto as the fallback for what they lack (the Latin of "ZapZap"):
+each caption line is cut into runs, one font per run. A character no font of the chain holds
+is refused, not drawn as a box. Arabic is set right to left (Pillow with libraqm). --font
+replaces the first font of the chain.
 """
 
 from __future__ import annotations
@@ -36,7 +42,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from fontTools.ttLib import TTCollection, TTFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 WIDTH, HEIGHT = 1080, 1920
 LISTING_ROOT = "store_listing"
@@ -58,9 +65,17 @@ MAX_FONT_SIZE = 84
 MIN_FONT_SIZE = 48
 MAX_LINES = 2
 LINE_SPACING = 1.18
-CLAUSE_END = (",", "?", ":", "!", ";", "—")
+CLAUSE_END = (",", "?", ":", "!", ";", "—", "،", "؟", "、", "。", "：", "！", "।")
 BREAK = "|"
 FONT_NAME = "Roboto-Bold.ttf"
+# A language's script font, drawn before Roboto: (file, family of the face in a collection).
+SCRIPT_FONTS = {
+    "ja": ("NotoSansCJK-Bold.ttc", "Noto Sans CJK JP"),
+    "hi": ("NotoSansDevanagari-Bold.ttf", None),
+    "ar": ("NotoSansArabic-Bold.ttf", None),
+}
+RTL_LANGUAGES = {"ar"}
+FONT_DIRS = ("/usr/share/fonts", "~/.local/share/fonts")
 
 
 class ComposeError(Exception):
@@ -102,7 +117,138 @@ def read_captions(path: Path, stems: list[str]) -> dict[str, str]:
     return captions
 
 
+class Face:
+    """One font file (one face of a collection) and the characters it holds."""
+
+    def __init__(self, path: Path, family: str | None = None):
+        self.path, self.index = path, 0
+        if path.suffix.lower() in (".ttc", ".otc"):
+            fonts = TTCollection(str(path)).fonts
+            names = [f["name"].getDebugName(1) or "" for f in fonts]
+            hits = [i for i, n in enumerate(names) if n == family] if family else [0]
+            if not hits:
+                raise ComposeError(f"{path}: no face {family!r} (it has {', '.join(names)})")
+            self.index = hits[0]
+            ttf = fonts[self.index]
+        else:
+            ttf = TTFont(str(path), lazy=True)
+        self.cmap = set(ttf.getBestCmap())
+        self.name = f"{path.name} ({family})" if family else path.name
+
+    def holds(self, ch: str) -> bool:
+        return ord(ch) in self.cmap
+
+    def at(self, size: int) -> ImageFont.FreeTypeFont:
+        return ImageFont.truetype(str(self.path), size, index=self.index)
+
+
+def system_font(name: str) -> Path | None:
+    for d in FONT_DIRS:
+        base = Path(d).expanduser()
+        hit = next(base.rglob(name), None) if base.is_dir() else None
+        if hit:
+            return hit
+    return None
+
+
+def font_chain(locale: str, override: str | None = None) -> list[Face]:
+    """The fonts a locale's captions are drawn in, first choice first, Roboto Bold last."""
+    lang = locale.split("-")[0]
+    chain: list[Face] = []
+    if override:
+        chain.append(Face(find_font(override)))
+    elif lang in SCRIPT_FONTS:
+        name, family = SCRIPT_FONTS[lang]
+        path = system_font(name)
+        if not path:
+            raise ComposeError(
+                f"{locale}: {name} not found under {' or '.join(FONT_DIRS)} "
+                "(apt install fonts-noto-cjk fonts-noto-core), or pass --font"
+            )
+        chain.append(Face(path, family))
+    roboto = find_font()
+    if not chain or chain[0].path != roboto:
+        chain.append(Face(roboto))
+    if lang in RTL_LANGUAGES and not features.check("raqm"):
+        raise ComposeError(f"{locale}: right-to-left text needs Pillow built with libraqm")
+    return chain
+
+
+def runs(text: str, chain: list[Face], rtl: bool = False) -> list[tuple[str, int]]:
+    """`text` cut into runs of one font each, in logical order: (text, index in the chain).
+
+    A character takes the first font of the chain that holds it; a space or a punctuation
+    mark the current run's font holds stays in that run. A character no font holds raises:
+    it would be drawn as a box. In a right-to-left line, the punctuation that ends a
+    left-to-right run (the "!" of "ZapZap!") is set right to left with the text around it.
+    """
+    out: list[list] = []
+    for ch in text:
+        if not ch.isalnum() and out and chain[out[-1][1]].holds(ch):
+            out[-1][0] += ch
+            continue
+        hits = [i for i, face in enumerate(chain) if face.holds(ch)]
+        if not hits and not ch.isspace():
+            raise ComposeError(
+                f"no font holds {ch!r} (U+{ord(ch):04X}) in {text!r}: "
+                f"{', '.join(face.name for face in chain)}"
+            )
+        font = hits[0] if hits else (out[-1][1] if out else 0)
+        if out and out[-1][1] == font:
+            out[-1][0] += ch
+        else:
+            out.append([ch, font])
+    if rtl and len(chain) > 1:
+        split: list[list] = []
+        for part, font in out:
+            stripped = part.rstrip(" !?.,:;")
+            tail = part[len(stripped):]
+            homes = [i for i, face in enumerate(chain[:-1]) if all(face.holds(c) for c in tail)]
+            if font == len(chain) - 1 and stripped and tail and homes:
+                split += [[stripped, font], [tail, homes[0]]]
+            else:
+                split.append([part, font])
+        out = split
+    return [(part, font) for part, font in out]
+
+
+class LineFont:
+    """The chain at one size: measures a line and draws it, one font per run."""
+
+    def __init__(self, chain: list[Face], size: int, rtl: bool = False):
+        self.chain, self.size, self.rtl = chain, size, rtl
+        self.fonts = [face.at(size) for face in chain]
+
+    def _direction(self, font: int) -> dict:
+        """Right to left for the script font of an RTL locale; Roboto's Latin stays LTR."""
+        if not self.rtl:
+            return {}
+        return {"direction": "ltr" if font == len(self.chain) - 1 else "rtl"}
+
+    def _length(self, text: str, font: int) -> float:
+        return self.fonts[font].getlength(text, **self._direction(font))
+
+    def getlength(self, text: str) -> float:
+        return sum(self._length(part, font) for part, font in runs(text, self.chain, self.rtl))
+
+    def draw(self, draw: ImageDraw.ImageDraw, center: tuple[int, int], text: str, fill) -> None:
+        """`text` centred on `center`, every run on the first font's baseline."""
+        parts = runs(text, self.chain, self.rtl)
+        if self.rtl:
+            parts = parts[::-1]  # the first run is the rightmost
+        ascent, descent = self.fonts[0].getmetrics()
+        baseline = center[1] + (ascent - descent) / 2
+        x = center[0] - self.getlength(text) / 2
+        for part, font in parts:
+            draw.text(
+                (x, baseline), part, font=self.fonts[font], fill=fill, anchor="ls",
+                **self._direction(font),
+            )
+            x += self._length(part, font)
+
+
 def find_font(override: str | None = None) -> Path:
+    """Roboto Bold, or the --font file."""
     if override:
         path = Path(override).expanduser()
         if not path.is_file():
@@ -113,15 +259,13 @@ def find_font(override: str | None = None) -> Path:
         fonts = Path(os.path.realpath(flutter)).parent / "cache" / "artifacts" / "material_fonts"
         if (fonts / FONT_NAME).is_file():
             return fonts / FONT_NAME
-    for d in ("/usr/share/fonts", "~/.local/share/fonts"):
-        base = Path(d).expanduser()
-        hit = next(base.rglob(FONT_NAME), None) if base.is_dir() else None
-        if hit:
-            return hit
+    hit = system_font(FONT_NAME)
+    if hit:
+        return hit
     raise ComposeError(f"{FONT_NAME} not found in the Flutter SDK's material_fonts; pass --font")
 
 
-def wrap(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+def wrap(text: str, font: LineFont, max_width: int) -> list[str]:
     lines: list[str] = []
     current = ""
     for token in text.split(" "):
@@ -136,7 +280,7 @@ def wrap(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
     return lines
 
 
-def balance(lines: list[str], text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+def balance(lines: list[str], text: str, font: LineFont, max_width: int) -> list[str]:
     """Where to break two lines: after a clause if one fits, else at the most even split."""
     if len(lines) != 2:
         return lines
@@ -153,11 +297,11 @@ def balance(lines: list[str], text: str, font: ImageFont.FreeTypeFont, max_width
     return best
 
 
-def fit_caption(text: str, font_path: Path) -> tuple[ImageFont.FreeTypeFont, list[str]]:
+def fit_caption(text: str, chain: list[Face], rtl: bool = False) -> tuple[LineFont, list[str]]:
     max_width = WIDTH - 2 * SIDE_MARGIN
     forced = [part.strip() for part in text.split(BREAK)] if BREAK in text else None
     for size in range(MAX_FONT_SIZE, MIN_FONT_SIZE - 1, -2):
-        font = ImageFont.truetype(str(font_path), size)
+        font = LineFont(chain, size, rtl)
         if forced:
             if len(forced) <= MAX_LINES and all(font.getlength(p) <= max_width for p in forced):
                 return font, forced
@@ -178,16 +322,16 @@ def gradient() -> Image.Image:
     return column.resize((WIDTH, HEIGHT))
 
 
-def compose(raw: Image.Image, caption: str, font_path: Path) -> Image.Image:
+def compose(raw: Image.Image, caption: str, chain: list[Face], rtl: bool = False) -> Image.Image:
     """One 1080x1920 opaque RGB store screenshot."""
     canvas = gradient()
     draw = ImageDraw.Draw(canvas)
 
-    font, lines = fit_caption(caption, font_path)
+    font, lines = fit_caption(caption, chain, rtl)
     line_height = round(font.size * LINE_SPACING)
     y = (BAND_HEIGHT - line_height * len(lines)) // 2 + round(font.size * 0.1)
     for line in lines:
-        draw.text((WIDTH // 2, y + line_height // 2), line, font=font, fill=AMBER_400, anchor="mm")
+        font.draw(draw, (WIDTH // 2, y + line_height // 2), line, AMBER_400)
         y += line_height
 
     screen = raw.convert("RGB")
@@ -228,20 +372,22 @@ def compose_locale(root: Path, raw_root: Path, locale: str, font: str | None) ->
     if not shots:
         raise ComposeError(f"{locale}: no raw capture in {raw_root / locale}")
     captions = read_captions(root / LISTING_ROOT / locale / CAPTIONS_FILE, [s.stem for s in shots])
-    font_path = find_font(font)
+    chain = font_chain(locale, font)
+    rtl = locale.split("-")[0] in RTL_LANGUAGES
     out_dir = root / LISTING_ROOT / locale / OUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for shot in shots:
         with Image.open(shot) as raw:
-            image = compose(raw, captions[shot.stem], font_path)
+            image = compose(raw, captions[shot.stem], chain, rtl)
         target = out_dir / shot.name
         image.save(target, "PNG", optimize=True)
         written.append(target)
     for stale in sorted(set(out_dir.glob("*.png")) - set(written)):
         stale.unlink()
         print(f"{locale}: removed {stale.relative_to(root)} (no raw capture)")
-    print(f"{locale}: {len(written)} screenshots -> {out_dir.relative_to(root)} ({font_path.name})")
+    fonts = ", ".join(face.name for face in chain)
+    print(f"{locale}: {len(written)} screenshots -> {out_dir.relative_to(root)} ({fonts})")
     return written
 
 
@@ -251,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--raw", type=Path, help="the raw captures, <raw>/<locale>/<stem>.png")
     parser.add_argument("--locale", action="append", help="a store locale (repeatable)")
-    parser.add_argument("--font", help="a font file instead of Roboto Bold")
+    parser.add_argument("--font", help="a font file first in the chain, before Roboto Bold")
     parser.add_argument("--check", action="store_true", help="verify the composed sets only")
     args = parser.parse_args(argv)
     root = repo_root()

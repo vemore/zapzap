@@ -1,0 +1,46 @@
+ZapZap é um jogo de cartas estilo Rummy multiplayer, jogado online por 3 a 8 jogadores, com amigos ou contra bots.
+
+O objetivo: esvazie sua mão mais rápido que todos os outros. Quando sua mão valer 5 pontos ou menos, grite ZapZap! Se ninguém tiver uma mão tão baixa quanto a sua, você vence a rodada. Mas se alguém tiver a mesma ou melhor, seu ZapZap é contestado e você recebe uma pesada penalidade.
+
+COMO JOGAR
+
+Na sua vez, você joga cartas:
+• uma carta isolada, um par, três ou quatro iguais;
+• uma sequência de pelo menos três cartas consecutivas do mesmo naipe;
+• coringas substituem qualquer carta em um par ou sequência.
+
+Depois você compra uma carta: a carta virada para baixo do baralho, ou uma das cartas que o jogador anterior acabou de jogar.
+
+Um ás vale 1 ponto, cartas 2 a 10 seu valor de face, o valete 11, a rainha 12 e o rei 13. Um coringa conta 0 quando você grita ZapZap… mas 25 pontos se ainda estiver em sua mão no final da rodada.
+
+Acima de 100 pontos, você está eliminado. Quando apenas dois jogadores permanecem, a partida vai para Golden Score: uma última rodada decisiva. O último jogador que restar vence.
+
+JOGUE COM SEUS AMIGOS
+
+• Crie uma partida pública ou uma privada com código de convite para enviar aos seus amigos.
+• Escolha o número de jogadores e preencha as vagas livres com bots.
+• Os movimentos dos outros jogadores aparecem ao vivo, sem recarregar.
+
+OU CONTRA BOTS
+
+Não tem jogadores suficientes? Preencha a mesa com bots, de Fácil a Difícil, e comece uma partida quando quiser.
+
+UMA MESA LEGÍVEL
+
+• As jogadas que sua mão permite são sugeridas para você.
+• O valor da sua mão fica na tela: você sabe quando pode gritar ZapZap.
+• No final de cada rodada, você vê a mão e os pontos de cada jogador.
+
+HISTÓRICO E ESTATÍSTICAS
+
+• Encontre cada partida que você finalizou, com a classificação final e o detalhe de cada rodada.
+• Acompanhe suas estatísticas: partidas jogadas, vitórias, pontuação média, sua taxa de sucesso em ZapZap.
+• Veja como você se classifica contra os outros jogadores no ranking global.
+
+SUA CONTA
+
+Entre com sua conta Google ou crie uma conta com nome de usuário e senha. Suas partidas, histórico e estatísticas o acompanham do app Android para o navegador.
+
+ZapZap é gratuito, sem anúncios e sem compras no app. Uma conexão com a Internet é necessária para jogar.
+
+O app está disponível em inglês, francês, espanhol, português brasileiro, alemão, russo, japonês, hindi, indonésio e árabe.
