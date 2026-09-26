@@ -1,0 +1,8 @@
+# <capture stem>: <caption> — scripts/compose_store_screenshots.py; `|` forces the line break.
+01_login: Sign in,|take a seat at the table
+02_parties: Join a game|or create your own
+03_lobby: Invite your friends,|fill the table with bots
+04_game: Empty your hand:|play, draw, your turn
+05_round_end: At 5 points or less,|call ZapZap!
+06_history: Replay every game,|round by round
+07_stats: Follow your statistics|and your rank
