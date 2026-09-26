@@ -1,0 +1,46 @@
+ZapZap est un jeu de cartes multijoueur de la famille du rami, qui se joue en ligne de 3 à 8 joueurs, entre amis ou contre des bots.
+
+Le but : vider ta main plus vite que les autres. Quand ta main vaut 5 points ou moins, crie ZapZap ! Si personne n'a une main aussi basse que la tienne, tu gagnes la manche. Mais si quelqu'un fait aussi bien ou mieux, ton ZapZap est contré et tu prends une grosse pénalité.
+
+COMMENT ON JOUE
+
+À ton tour, tu poses des cartes :
+• une carte seule, une paire, un brelan ou un carré de même valeur ;
+• une suite d'au moins trois cartes qui se suivent dans la même couleur ;
+• les jokers remplacent n'importe quelle carte dans une paire ou une suite.
+
+Puis tu pioches une carte : la carte cachée du paquet, ou l'une des cartes que le joueur précédent vient de poser.
+
+L'as vaut 1 point, les cartes de 2 à 10 leur valeur, le valet 11, la dame 12 et le roi 13. Le joker vaut 0 pour annoncer ZapZap… mais 25 points s'il te reste en main à la fin de la manche.
+
+Au-delà de 100 points, tu es éliminé. Quand il ne reste que deux joueurs, la partie se joue en Golden Score : une dernière manche décisive. Le dernier joueur en lice gagne.
+
+JOUE AVEC TES AMIS
+
+• Crée une partie publique, ou une partie privée avec un code d'invitation à envoyer à tes amis.
+• Choisis le nombre de joueurs et complète les places libres avec des bots.
+• Les coups des autres joueurs s'affichent en direct, sans recharger.
+
+OU CONTRE DES BOTS
+
+Pas assez de joueurs ? Remplis la table avec des bots, du niveau Facile au niveau Difficile, et lance une partie quand tu veux.
+
+UNE TABLE LISIBLE
+
+• Les combinaisons jouables de ta main te sont proposées.
+• La valeur de ta main reste affichée : tu sais quand tu peux crier ZapZap.
+• À la fin de chaque manche, tu vois les mains de tous les joueurs et les points de chacun.
+
+HISTORIQUE ET STATISTIQUES
+
+• Retrouve toutes tes parties terminées, avec le classement final et le détail de chaque manche.
+• Suis tes statistiques : parties jouées, victoires, score moyen, taux de réussite de tes ZapZap.
+• Compare-toi aux autres joueurs dans le classement général.
+
+TON COMPTE
+
+Connecte-toi avec ton compte Google, ou crée un compte avec un pseudo et un mot de passe. Tes parties, ton historique et tes statistiques te suivent de l'application Android au navigateur.
+
+ZapZap est gratuit, sans publicité et sans achat intégré. Une connexion Internet est nécessaire pour jouer.
+
+L'application est disponible en français et en anglais.
