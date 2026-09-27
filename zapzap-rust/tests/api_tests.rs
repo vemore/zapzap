@@ -3381,6 +3381,18 @@ mod cors {
         .await
     }
 
+    /// The preflight's `Access-Control-Request-Headers` granted by name, never as `*`
+    fn assert_allows_the_requested_headers(headers: &HeaderMap) {
+        let allowed = headers[header::ACCESS_CONTROL_ALLOW_HEADERS]
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase();
+        let allowed: Vec<&str> = allowed.split(',').map(str::trim).collect();
+        assert!(allowed.contains(&"authorization"), "{allowed:?}");
+        assert!(allowed.contains(&"content-type"), "{allowed:?}");
+        assert!(!allowed.contains(&"*"), "{allowed:?}");
+    }
+
     fn allow_origin(headers: &HeaderMap) -> Option<&str> {
         headers
             .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
@@ -3394,10 +3406,9 @@ mod cors {
         let (status, headers) = preflight(&mut app, "https://a.example").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(allow_origin(&headers), Some("https://a.example"));
-        // Any method and request header, as the permissive layer granted: `*`, which a
-        // browser honours for a request without credentials (the token is a header)
         assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_METHODS], "*");
-        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_HEADERS], "*");
+        // The headers asked for, by name: `*` never covers `Authorization` (Fetch standard)
+        assert_allows_the_requested_headers(&headers);
 
         let (_, headers) = preflight(&mut app, "https://b.example").await;
         assert_eq!(allow_origin(&headers), None, "{headers:?}");
@@ -3449,7 +3460,14 @@ mod cors {
         let (status, headers) = preflight(&mut app, "https://b.example").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(allow_origin(&headers), Some("*"));
+        assert_allows_the_requested_headers(&headers);
 
+        // A `*` among listed origins answers every origin too
+        let mut app = app_with_origins(Some("https://a.example,*")).await;
+        let (_, headers) = preflight(&mut app, "https://b.example").await;
+        assert_eq!(allow_origin(&headers), Some("*"));
+
+        let mut app = app_with_origins(None).await;
         let (status, headers) = send(
             &mut app,
             "GET",

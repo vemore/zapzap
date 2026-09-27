@@ -7,13 +7,15 @@
 //! a development server needs (the Flutter web client on its own port).
 
 use axum::http::HeaderValue;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowOrigin, Any, CorsLayer};
 
 /// The origins CORS grants, from `ALLOWED_ORIGINS`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllowedOrigins {
-    /// `ALLOWED_ORIGINS` unset, blank or `*`: every origin (development)
-    Any,
+    /// `ALLOWED_ORIGINS` unset or blank: every origin (development)
+    Unset,
+    /// `ALLOWED_ORIGINS` holds a `*`, alone or among origins: every origin
+    Wildcard,
     /// Only these origins, as a browser sends them (`https://host[:port]`, lowercase)
     List(Vec<HeaderValue>),
 }
@@ -35,8 +37,11 @@ impl AllowedOrigins {
             .map(str::trim)
             .filter(|entry| !entry.is_empty())
             .collect();
-        if entries.is_empty() || entries.contains(&"*") {
-            return Ok(Self::Any);
+        if entries.is_empty() {
+            return Ok(Self::Unset);
+        }
+        if entries.contains(&"*") {
+            return Ok(Self::Wildcard);
         }
         let mut origins = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -67,9 +72,13 @@ impl AllowedOrigins {
     /// Says at startup which of the two behaviours applies
     pub fn log(&self) {
         match self {
-            Self::Any => tracing::warn!(
+            Self::Unset => tracing::warn!(
                 "ALLOWED_ORIGINS not set: CORS answers every origin (development only; \
                  production sets it in docker-compose.prod.yml)"
+            ),
+            Self::Wildcard => tracing::warn!(
+                "ALLOWED_ORIGINS holds a wildcard (*): CORS answers every origin, whatever \
+                 else it lists"
             ),
             Self::List(origins) => tracing::info!(
                 "CORS answers only the origins of ALLOWED_ORIGINS: {}",
@@ -82,18 +91,20 @@ impl AllowedOrigins {
         }
     }
 
-    /// The layer: any method and request header, as `CorsLayer::permissive()`, for the
-    /// origins granted. A request from another origin, or with none, is still served: the
-    /// browser alone withholds the answer from a page it did not grant.
+    /// The layer: any method, and the request headers a preflight asks for, for the origins
+    /// granted. The headers are mirrored rather than `*`, which by the Fetch standard never
+    /// covers `Authorization`: a strict browser would refuse every authenticated call. A
+    /// request from another origin, or with none, is still served: the browser alone
+    /// withholds the answer from a page it did not grant.
     pub fn layer(&self) -> CorsLayer {
         let origin = match self {
-            Self::Any => AllowOrigin::any(),
+            Self::Unset | Self::Wildcard => AllowOrigin::any(),
             Self::List(origins) => AllowOrigin::list(origins.iter().cloned()),
         };
         CorsLayer::new()
             .allow_origin(origin)
             .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_headers(AllowHeaders::mirror_request())
             .expose_headers(Any)
     }
 }
@@ -112,20 +123,25 @@ mod tests {
     }
 
     #[test]
-    fn unset_blank_or_star_answers_every_origin() {
-        assert_eq!(AllowedOrigins::parse(None).unwrap(), AllowedOrigins::Any);
-        assert_eq!(
-            AllowedOrigins::parse(Some("")).unwrap(),
-            AllowedOrigins::Any
-        );
-        assert_eq!(
-            AllowedOrigins::parse(Some(" , ")).unwrap(),
-            AllowedOrigins::Any
-        );
-        assert_eq!(
-            AllowedOrigins::parse(Some("https://a.example,*")).unwrap(),
-            AllowedOrigins::Any
-        );
+    fn unset_or_blank_answers_every_origin() {
+        for value in [None, Some(""), Some(" , ")] {
+            assert_eq!(
+                AllowedOrigins::parse(value).unwrap(),
+                AllowedOrigins::Unset,
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_star_anywhere_is_a_wildcard_not_unset() {
+        for value in ["*", "https://a.example,*", " * , https://a.example"] {
+            assert_eq!(
+                AllowedOrigins::parse(Some(value)).unwrap(),
+                AllowedOrigins::Wildcard,
+                "{value}"
+            );
+        }
     }
 
     #[test]

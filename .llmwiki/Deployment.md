@@ -349,7 +349,10 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   directory. Unset stays permissive for development (the Flutter web client and the e2e run
   call the API from another port), logged as a warning so a production start without it
   shows. A malformed entry stops the backend, as a bad `JWT_SECRET` does, rather than grant
-  something other than what was written.
+  something other than what was written. After review (same PR): the preflight's request
+  headers are mirrored instead of answered `*`, since by the Fetch standard `*` never covers
+  `Authorization` and a strict browser would refuse every authenticated call from a listed
+  origin; and a `*` among the entries logs that it is a wildcard, not "not set".
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** The rollback to
   Node, its rehearsal, what it kept readable and the Node-only `.env` keys left this page: a
   rollback is now the previous commit of the Rust deployment, and CI no longer builds the
