@@ -83,10 +83,21 @@ class _LoginScreenState extends State<LoginScreen> {
               onError: (error) => setState(() => _error = error),
             )
           : null,
-      footer: AuthSwitchLink(
-        text: l10n.loginNoAccount,
-        link: l10n.loginRegisterLink,
-        onPressed: _busy ? null : () => context.go(AppRoutes.register),
+      footer: Column(
+        children: [
+          AuthSwitchLink(
+            text: l10n.loginNoAccount,
+            link: l10n.loginRegisterLink,
+            onPressed: _busy ? null : () => context.go(AppRoutes.register),
+          ),
+          // The example game needs no account: pushed, so Back returns here.
+          TextButton.icon(
+            key: const Key('login-tutorial'),
+            onPressed: _busy ? null : () => context.push(AppRoutes.tutorial),
+            icon: const Icon(Icons.school),
+            label: Text(l10n.loginTutorialLink, textAlign: TextAlign.center),
+          ),
+        ],
       ),
       fields: [
         TextField(

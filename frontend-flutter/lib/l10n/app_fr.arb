@@ -2392,5 +2392,203 @@
   "logoutConfirmBody": "Tu devras te reconnecter pour jouer.",
   "@logoutConfirmBody": {
     "description": "Body of the dialog confirming a sign-out"
+  },
+  "menuTutorial": "Tutoriel",
+  "@menuTutorial": {
+    "description": "Entry of the app-bar menu opening the example game"
+  },
+  "loginTutorialLink": "Découvrir le jeu avec une partie d'exemple",
+  "@loginTutorialLink": {
+    "description": "Login screen: link to the example game, no account needed"
+  },
+  "tutorialOfferTitle": "Apprendre avec une partie d'exemple ?",
+  "@tutorialOfferTitle": {
+    "description": "First opening of the app: offer of the example game"
+  },
+  "tutorialOfferBody": "Quelques coups guidés, hors ligne, sur une vraie table.",
+  "@tutorialOfferBody": {
+    "description": "First opening of the app: what the example game is"
+  },
+  "tutorialOfferStart": "Commencer",
+  "@tutorialOfferStart": {
+    "description": "First opening: start the example game"
+  },
+  "tutorialOfferLater": "Plus tard",
+  "@tutorialOfferLater": {
+    "description": "First opening: not now (never offered again; the menu keeps it)"
+  },
+  "tutorialTitle": "Tutoriel",
+  "@tutorialTitle": {
+    "description": "Title of the example game screen"
+  },
+  "tutorialSkip": "Passer",
+  "@tutorialSkip": {
+    "description": "Example game: leave it, at any step"
+  },
+  "tutorialNext": "Suivant",
+  "@tutorialNext": {
+    "description": "Example game: next step"
+  },
+  "tutorialFinish": "Terminer",
+  "@tutorialFinish": {
+    "description": "Example game: leave it, last step"
+  },
+  "tutorialGuestName": "Invité",
+  "@tutorialGuestName": {
+    "description": "Example game: the player's name when not signed in (table messages: \"{name} played 1 card\")"
+  },
+  "tutorialIntro": "Ta main vaut {points} points. Le but : la faire descendre à {threshold} points ou moins, puis appeler ZapZap.",
+  "@tutorialIntro": {
+    "description": "Example game, coach over the hand: the hand value and the ZapZap threshold (GAME_RULES.md, ZapZap Eligibility)",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "tutorialPlaySingle": "Joue une carte seule : touche {card}, puis Jouer.",
+  "@tutorialPlaySingle": {
+    "description": "Example game: play one card alone; button name as gameMovePlay",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialPlaySingleHint": "Touche seulement {card}, ta carte la plus forte, puis Jouer.",
+  "@tutorialPlaySingleHint": {
+    "description": "Example game: refusal hint of the single-card step",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialDrawDeck": "Puis pioche une carte pour finir ton tour : touche la pioche.",
+  "@tutorialDrawDeck": {
+    "description": "Example game, coach over the felt: draw from the deck"
+  },
+  "tutorialDrawDeckHint": "Touche la pioche, la carte face cachée.",
+  "@tutorialDrawDeckHint": {
+    "description": "Example game: refusal hint of the deck-draw steps"
+  },
+  "tutorialOpponentTurn": "Au tour de {player} : il pose une carte, puis pioche.",
+  "@tutorialOpponentTurn": {
+    "description": "Example game: the opponent's turn playing out on the felt, after the player's draw",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialPlayPair": "Deux cartes de même valeur se jouent ensemble : touche {first} et {second}, puis Jouer.",
+  "@tutorialPlayPair": {
+    "description": "Example game: play two cards of the same rank",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialPlayPairHint": "Sélectionne {first} et {second} ensemble, puis Jouer.",
+  "@tutorialPlayPairHint": {
+    "description": "Example game: refusal hint of the pair step",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialTakePile": "Au lieu de piocher, prends une carte que {player} vient de jouer : touche {card} sous « À prendre ensuite », puis Prendre.",
+  "@tutorialTakePile": {
+    "description": "Example game: take a card the opponent just played; label as gameTableNextLabel, button as gameMoveTake",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialTakePileHint": "Touche {card} sous « À prendre ensuite », puis Prendre.",
+  "@tutorialTakePileHint": {
+    "description": "Example game: refusal hint of the take step",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialPlayRun": "Une suite : 3 cartes ou plus qui se suivent, de la même couleur. Le joker remplace n'importe quelle carte : joue {first}, {second} et le joker.",
+  "@tutorialPlayRun": {
+    "description": "Example game: a run of 3+ of one suit with a joker (GAME_RULES.md, Valid Card Combinations)",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialPlayRunHint": "Sélectionne {first}, {second} et le joker, puis Jouer.",
+  "@tutorialPlayRunHint": {
+    "description": "Example game: refusal hint of the run step",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialDrawAgain": "Pioche encore dans la pioche.",
+  "@tutorialDrawAgain": {
+    "description": "Example game: draw from the deck again"
+  },
+  "tutorialZapZap": "Ta main vaut {points} points : {threshold} ou moins ! Au lieu de jouer, appelle ZapZap.",
+  "@tutorialZapZap": {
+    "description": "Example game, coach over the moves: call ZapZap at 5 or less",
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "tutorialZapZapHint": "Ne joue pas : touche ZapZap, puis confirme.",
+  "@tutorialZapZapHint": {
+    "description": "Example game: refusal hint of the ZapZap step"
+  },
+  "tutorialHeld": "ZapZap réussi : ta main est la plus faible, tu marques 0. {player} marque les points de sa main.",
+  "@tutorialHeld": {
+    "description": "Example game: the ZapZap held, the lowest hand scores 0",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "tutorialEnd": "Si un autre joueur a une main inférieure ou égale à la tienne, ton ZapZap est contré : tu marques ta main plus 5 par autre joueur. Au-delà de {limit} points, un joueur est éliminé.",
+  "@tutorialEnd": {
+    "description": "Example game, last step: the counteract penalty and elimination above the limit (GAME_RULES.md, Final Scoring, Game Elimination)",
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
   }
 }

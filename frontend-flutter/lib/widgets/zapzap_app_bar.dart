@@ -54,8 +54,9 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// bar at a large system font.
 ///
 /// Admins get an Admin entry too ([AppRoutes.admin]); for anyone else the
-/// router would send it back to the parties. Then the help, over the current
-/// screen: the rules ([showRulesSheet]). Last, on every signed-in screen,
+/// router would send it back to the parties. Then the help: the rules, over
+/// the current screen ([showRulesSheet]), and the example game
+/// ([AppRoutes.tutorial]). Last, on every signed-in screen,
 /// "Sign out", confirmed first ([confirmLogout]) — the game screen's players
 /// took a one-tap icon for "leave the table" —, and "Delete my account"
 /// ([showDeleteAccountDialog]): Google Play wants it reachable from the app.
@@ -123,6 +124,12 @@ class _NavigationMenu extends StatelessWidget {
           route: _rules,
           icon: Icons.menu_book,
           label: l10n.menuRules,
+        ),
+        _item(
+          key: const Key('menu-tutorial'),
+          route: AppRoutes.tutorial,
+          icon: Icons.school,
+          label: l10n.menuTutorial,
         ),
         if (actions.isNotEmpty) const PopupMenuDivider(),
         for (final action in actions)
