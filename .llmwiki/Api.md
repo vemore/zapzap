@@ -14,7 +14,7 @@
 - Error body for auth/party/game: `{error, code, details?}` (`ErrorBody`, `zapzap-rust/src/api/error.rs`); admin/bots/stats/history use `{success:false, error}` or `{error}` without `code`.
 - Party and game errors are typed: each use-case error variant maps to a status and `code` in one `From` impl per use case (`zapzap-rust/src/api/error.rs`). A 500 carries a generic `error` (`Failed to …`), a `<ROUTE>_ERROR` code and the cause in `details`.
 - A JSON body that does not parse — malformed, a field missing or mistyped — answers **400** with the route's missing-field code (`ApiJson`, `zapzap-rust/src/api/error.rs`), not axum's 422 plain text; a route with another error shape overrides `ApiBody::invalid_body` (the admin set-admin route: `{success: false, error}`). A request without a JSON content type reads as `{}`; a body over axum's 2 MB default limit answers 413 `PAYLOAD_TOO_LARGE`.
-- CORS fully permissive (`build_app`, `zapzap-rust/src/api/mod.rs:32`). No rate limiting.
+- CORS grants the origins of `ALLOWED_ORIGINS`, every origin when it is unset (`build_app`, `zapzap-rust/src/api/mod.rs`; the variable: [[Backend]], production's value: [[Deployment]]). No route is refused for its `Origin`. No rate limiting.
 
 ### Root
 | Method | Path | Auth | Handler | Notes |

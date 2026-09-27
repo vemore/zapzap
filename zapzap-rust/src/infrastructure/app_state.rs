@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use crate::application::bot::BotRunner;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
+use crate::infrastructure::cors::AllowedOrigins;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
 use crate::infrastructure::services::{
     probe_within, GoogleOAuthService, LlmService, OllamaConfig, OllamaService, SessionManager,
@@ -79,12 +80,17 @@ pub struct AppState {
     pub bot_runner: Arc<BotRunner>,
     /// Google ID token verifier; `None` when `GOOGLE_OAUTH_CLIENT_ID` is unset
     pub google_oauth: Option<Arc<GoogleOAuthService>>,
+    /// The origins CORS answers (`ALLOWED_ORIGINS`), read by `api::build_app`
+    pub allowed_origins: AllowedOrigins,
 }
 
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
         // The signing secret first: without one the server must not start at all
         let jwt_secret = jwt_secret_from(std::env::var("JWT_SECRET").ok())?;
+        // Then the CORS origins, which refuse to start on a malformed entry too
+        let allowed_origins = AllowedOrigins::from_env()?;
+        allowed_origins.log();
 
         let db_url = database_url();
 
@@ -198,6 +204,7 @@ impl AppState {
             bot_strategies_dir: bot_strategies_dir(),
             bot_runner: Arc::new(BotRunner::from_env()),
             google_oauth,
+            allowed_origins,
         })
     }
 
