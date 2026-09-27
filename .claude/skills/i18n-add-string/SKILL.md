@@ -53,8 +53,9 @@ Many keys at once, or long-form text (the rules sheet's `rules*` strings, the tu
    and `app_en.arb`: they are the reference every locale is checked against, never
    delegated.
 2. **It launches one agent per remaining locale — `es`, `pt`, `de`, `ru`, `ja`, `hi`, `id`,
-   `ar` — all eight in one message**, no `isolation`: each edits **only its own file**, by
-   absolute path in the worktree, and does not commit.
+   `ar` — all eight in one message**, `general-purpose` with `model: "haiku"` (the bulk
+   rating, `ParallelDelivery.md` § Model routing), no `isolation`: each edits **only its own
+   file**, by absolute path in the worktree, and does not commit.
 3. Every agent gets **the same brief**: the new keys with their French and English values;
    keys, placeholder names and ICU syntax copied byte for byte; that locale's plural
    categories (§3); its `GLOSSARY.md` column and its form of address (the glossary's last
