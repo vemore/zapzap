@@ -38,9 +38,9 @@ Both recorded 2026-09-25.
 - Read the upload key's with `keytool -list -v -keystore ~/zapzap-upload-keystore.jks -alias
   zapzap-upload`; the app signing key's is in the Console, Test and release → App integrity
   → App signing. Both SHA-1s are registered as Google sign-in Android clients
-  ([[FrontendFlutter]] § Android).
+  ([[FlutterAndroidPwa]] § Android).
 - Play App Signing stays on: a lost upload key can then be reset through Play support (days).
-- Signing in the build, the keystore's backup and `key.properties`: [[FrontendFlutter]]
+- Signing in the build, the keystore's backup and `key.properties`: [[FlutterAndroidPwa]]
   § Android.
 
 ### Publishing

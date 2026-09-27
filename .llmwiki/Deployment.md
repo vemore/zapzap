@@ -122,7 +122,7 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   `/usr/share/nginx/html/app` behind `frontend-flutter/nginx.conf`. Its build argument
   `GOOGLE_CLIENT_ID` is `VITE_GOOGLE_OAUTH_CLIENT_ID`, the key the React image already reads
   (`docker-compose.yml`, service `frontend-flutter`; in production `scripts/deploy_nas.sh`
-  passes it from `scripts/deploy.env` or the dev machine's `.env`): no new key; empty, the PWA shows no Google button ([[FrontendFlutter]]).
+  passes it from `scripts/deploy.env` or the dev machine's `.env`): no new key; empty, the PWA shows no Google button ([[FlutterAndroidPwa]]).
 - That conf: the SPA fallback `try_files $uri $uri/ /app/index.html` (a deep link such as
   `/app/parties` is served the app, never a 404); `index.html`, `flutter_bootstrap.js` and
   `flutter_service_worker.js` answer with `Cache-Control: no-cache, no-store,

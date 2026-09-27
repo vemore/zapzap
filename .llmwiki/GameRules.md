@@ -24,8 +24,8 @@
 - Same rank: ≥2 cards, all non-jokers share a rank, jokers wild; all-joker sets are valid (`card_analyzer.rs:81-100`). So "5 + Joker" is a valid pair (the doc only shows a joker as third card).
 - Sequence: ≥3 cards, one suit, jokers fill gaps (`gaps_needed <= joker_count`); no Ace-high wrap (`card_analyzer.rs:103-144`).
 - A card named twice is refused: `PlayCards` answers 400 `INVALID_CARDS` ("Card c played more than once", `PlayCardsError::RepeatedCard`, `zapzap-rust/src/application/game/play_cards.rs`) before any other card check, and `is_valid_play` refuses it too, so `execute_play` never sees one. Before 2026-09-24 `[c, c, c]` passed as a sequence and put three copies of one card on the table. Tests `test_repeated_card_is_no_valid_play` (`card_analyzer.rs`), `test_play_naming_a_card_twice_is_refused_and_plays_nothing` (`zapzap-rust/tests/rules_and_bots_tests.rs`).
-- Clients re-check a selection before posting it: React `frontend/src/utils/validation.js`, Flutter `frontend-flutter/lib/utils/rules.dart` (which also refuses a repeated id). [[FrontendFlutter]]
-- The Flutter app restates the rules for players in its rules sheet (`frontend-flutter/lib/widgets/rules_sheet.dart`): the `rules*` strings of the ten `lib/l10n/app_*.arb` files. A rule change updates them too; `test/app_bar_test.dart` checks the 5-point ZapZap, the 100-point elimination, the +5 penalty and the joker's 0/25. [[FrontendFlutter]]
+- Clients re-check a selection before posting it: React `frontend/src/utils/validation.js`, Flutter `frontend-flutter/lib/utils/rules.dart` (which also refuses a repeated id). [[FlutterGameUi]]
+- The Flutter app restates the rules for players in its rules sheet (`frontend-flutter/lib/widgets/rules_sheet.dart`): the `rules*` strings of the ten `lib/l10n/app_*.arb` files. A rule change updates them too; `test/app_bar_test.dart` checks the 5-point ZapZap, the 100-point elimination, the +5 penalty and the joker's 0/25. [[FlutterParties]]
 - Play enumeration for bots: `find_same_rank_plays` (`card_analyzer.rs:156`, jokers added up to 4-card sets), `find_sequence_plays` (`:203`), `find_all_valid_plays` (`:266`).
 
 ### Round start
