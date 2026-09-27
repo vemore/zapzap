@@ -12,10 +12,11 @@ import '../utils/motion.dart';
 /// A card face, from the SVGs under `assets/cards/` — the port of
 /// `frontend/src/components/Game/PlayingCard.jsx`.
 ///
-/// Height is `width × 1.4`; a selected card takes an amber edge and glows
-/// amber, a disabled one is greyed — opaque, so neither the felt nor the
-/// card under it shows through — and ignores taps. A screen reader activates
-/// it as a tap does.
+/// Height is `width × 1.4`. A face always keeps its colours; what can be
+/// done with it shows on its edge, in three looks ([CardLook]): a card that
+/// cannot be played is plain, one that can takes a light amber edge and a
+/// soft glow, and a selected one a thicker amber edge and a stronger glow.
+/// A disabled card ignores taps. A screen reader activates it as a tap does.
 class PlayingCard extends StatelessWidget {
   const PlayingCard({
     super.key,
@@ -24,7 +25,6 @@ class PlayingCard extends StatelessWidget {
     this.disabled = false,
     this.onTap,
     this.width = 80,
-    this.dimmed,
   });
 
   final int cardId;
@@ -33,21 +33,10 @@ class PlayingCard extends StatelessWidget {
   final VoidCallback? onTap;
   final double width;
 
-  /// Greyed with [greyed]; by default when [disabled]. A hand only read (the
-  /// hand in the draw step) keeps its colours: it is not unplayable, only
-  /// not played yet.
-  final bool? dimmed;
-
-  /// The grey of a card that cannot be played: its face desaturated and
-  /// washed toward a light grey, opaque. White becomes ~#E5E5E5 and black
-  /// ~#595959, so the card still reads but plainly stands back. Also greys
-  /// the deck out of the draw step (`GameTableArea`).
-  static const greyed = ColorFilter.matrix(<double>[
-    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
-    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
-    0.2126 * 0.55, 0.7152 * 0.55, 0.0722 * 0.55, 0, 89.25, //
-    0, 0, 0, 1, 0, //
-  ]);
+  /// The look of this card: selected, else playable when it takes a tap.
+  CardLook get look => selected
+      ? CardLook.selected
+      : (!disabled && onTap != null ? CardLook.playable : CardLook.plain);
 
   /// The standard playing-card ratio of the React client.
   static const aspectRatio = 1.4;
@@ -59,19 +48,61 @@ class PlayingCard extends StatelessWidget {
   static double radiusFor(double width) =>
       math.max(2, (width * 0.05).round()).toDouble();
 
+  /// The edge of a card in [look], drawn in front of the face so it does
+  /// not shrink it; none on a plain card. Also the deck's (`GameTableArea`).
+  static BoxDecoration? edgeFor(CardLook look, BorderRadius radius) =>
+      switch (look) {
+        CardLook.plain => null,
+        CardLook.playable => BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(
+            color: AppColors.amber200,
+            width: CardSizes.playableBorder,
+          ),
+        ),
+        CardLook.selected => BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(
+            color: AppColors.amber400,
+            width: CardSizes.selectedBorder,
+          ),
+        ),
+      };
+
+  /// The shadow of a card in [look]: a plain drop shadow, a soft amber glow
+  /// when playable, a strong one when selected.
+  static List<BoxShadow> shadowFor(CardLook look) => switch (look) {
+    CardLook.plain => [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.2),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+    ],
+    CardLook.playable => [
+      BoxShadow(
+        color: AppColors.amber200.withValues(alpha: 0.45),
+        blurRadius: 6,
+        spreadRadius: 1,
+      ),
+    ],
+    CardLook.selected => [
+      BoxShadow(
+        color: AppColors.amber400.withValues(alpha: 0.85),
+        blurRadius: 14,
+        spreadRadius: 3,
+      ),
+    ],
+  };
+
   @override
   Widget build(BuildContext context) {
     final card = GameCard(cardId);
     final height = heightFor(width);
     final radius = BorderRadius.circular(radiusFor(width));
+    final look = this.look;
 
     final tap = disabled ? null : onTap;
-    final face = SvgPicture.asset(
-      card.assetPath,
-      width: width,
-      height: height,
-      fit: BoxFit.fill,
-    );
     return Semantics(
       button: true,
       enabled: !disabled,
@@ -85,42 +116,35 @@ class PlayingCard extends StatelessWidget {
           duration: Motion.of(context, Motion.select),
           width: width,
           height: height,
-          // In front of the face, so the edge does not shrink it.
-          foregroundDecoration: selected
-              ? BoxDecoration(
-                  borderRadius: radius,
-                  border: Border.all(
-                    color: AppColors.amber400,
-                    width: CardSizes.selectedBorder,
-                  ),
-                )
-              : null,
+          foregroundDecoration: edgeFor(look, radius),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: radius,
-            boxShadow: [
-              if (selected)
-                BoxShadow(
-                  color: AppColors.amber400.withValues(alpha: 0.7),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                )
-              else
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-            ],
+            boxShadow: shadowFor(look),
           ),
           child: ClipRRect(
             borderRadius: radius,
-            child: (dimmed ?? disabled)
-                ? ColorFiltered(colorFilter: greyed, child: face)
-                : face,
+            child: SvgPicture.asset(
+              card.assetPath,
+              width: width,
+              height: height,
+              fit: BoxFit.fill,
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// How a card shows what can be done with it ([PlayingCard]).
+enum CardLook {
+  /// Cannot be played now: the plain card.
+  plain,
+
+  /// Can be played, taken or drawn: a light amber edge and a soft glow.
+  playable,
+
+  /// Picked for the move: a thick amber edge and a strong glow.
+  selected,
 }

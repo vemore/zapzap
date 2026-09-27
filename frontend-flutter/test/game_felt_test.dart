@@ -1,21 +1,28 @@
 // The casino felt of the game board: a radial green under a painted
 // texture and the ZapZap watermark, in a dark wood rim — and the amber edge
-// of the draw step still reads over that rim.
+// of the draw step still reads over that rim. The deck beside the pile:
+// a card of the same size, labelled above as the pile is, over a stack.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/l10n/app_localizations.dart';
 import 'package:zapzap/utils/app_theme.dart';
+import 'package:zapzap/widgets/card_back.dart';
 import 'package:zapzap/widgets/felt_painter.dart';
 import 'package:zapzap/widgets/game_table_area.dart';
+import 'package:zapzap/widgets/playing_card.dart';
 
 void main() {
   Future<void> pumpFelt(
     WidgetTester tester, {
     required TableStep step,
     double textScale = 1,
+    double cardWidth = CardSizes.tablePhone,
+    int deckSize = 38,
+    Size size = const Size(360, 740),
   }) async {
-    tester.view.physicalSize = const Size(360, 740);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
@@ -34,7 +41,8 @@ void main() {
                 lastCardsPlayed: const [17, 18, 19],
                 playerName: (i) => 'Joueur $i',
                 step: step,
-                deckSize: 38,
+                deckSize: deckSize,
+                cardWidth: cardWidth,
                 onDiscardTap: step == TableStep.draw ? (_) {} : null,
                 onDeckTap: step == TableStep.draw ? () {} : null,
               ),
@@ -141,4 +149,86 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('the deck', () {
+    for (final width in [CardSizes.tablePhone, CardSizes.tableWide]) {
+      testWidgets('at $width px: as big as a pile card, labelled above it, '
+          'tops in line', (tester) async {
+        await pumpFelt(
+          tester,
+          step: TableStep.draw,
+          cardWidth: width,
+          size: const Size(1280, 800),
+        );
+        final pileCard = tester.getRect(
+          find.byKey(GameTableArea.discardKey(19)),
+        );
+        final deckCard = tester.getRect(find.byType(CardBack));
+        expect(deckCard.size, pileCard.size);
+        expect(deckCard.size, Size(width, PlayingCard.heightFor(width)));
+        expect(deckCard.top, pileCard.top);
+
+        final deckLabel = find.byKey(const Key('deckLabel'));
+        final pileLabel = find.byKey(const Key('discardLabel'));
+        expect(tester.getRect(deckLabel).bottom, lessThan(deckCard.top));
+        expect(tester.getRect(deckLabel).top, tester.getRect(pileLabel).top);
+        // The same style, as rendered: the button's text style is not
+        // merged into the deck's label.
+        TextStyle rendered(Finder text) =>
+            tester.renderObject<RenderParagraph>(text).text.style!;
+        expect(rendered(deckLabel), rendered(pileLabel));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a stack under the top card, thinner as the deck runs low', (
+      tester,
+    ) async {
+      Future<int> layers(int deckSize) async {
+        await pumpFelt(tester, step: TableStep.draw, deckSize: deckSize);
+        return find
+            .byWidgetPredicate(
+              (w) =>
+                  w.key is ValueKey<String> &&
+                  (w.key! as ValueKey<String>).value.startsWith('deckLayer'),
+            )
+            .evaluate()
+            .length;
+      }
+
+      expect(await layers(38), 2);
+      final top = tester.getRect(find.byType(CardBack));
+      final under = tester.getRect(find.byKey(const Key('deckLayer2')));
+      expect(under.topLeft - top.topLeft, const Offset(4, 4));
+      // Inside the deck's own box, so inside the felt.
+      final stack = tester.getRect(find.byKey(const Key('deckStack')));
+      expect(
+        stack.contains(under.bottomRight - const Offset(0.1, 0.1)),
+        isTrue,
+      );
+      expect(await layers(5), 1);
+      expect(await layers(1), 0);
+    });
+
+    testWidgets('its colours in either step; the edge of a target when '
+        'drawable', (tester) async {
+      Border? edge() =>
+          (tester
+                          .widget<Container>(find.byKey(const Key('deckTop')))
+                          .foregroundDecoration
+                      as BoxDecoration?)
+                  ?.border
+              as Border?;
+      for (final step in [TableStep.play, TableStep.draw]) {
+        await pumpFelt(tester, step: step);
+        expect(find.byType(ColorFiltered), findsNothing);
+        if (step == TableStep.draw) {
+          expect(edge()!.top.color, AppColors.amber200);
+          expect(edge()!.top.width, CardSizes.playableBorder);
+        } else {
+          expect(edge(), isNull);
+        }
+      }
+    });
+  });
 }

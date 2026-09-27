@@ -1,0 +1,8 @@
+# <capture stem>: <caption> — scripts/compose_store_screenshots.py; `|` forces the line break.
+01_login: Masuk dan|ambil tempat di meja
+02_parties: Gabung permainan|atau buat sendiri
+03_lobby: Undang teman,|isi meja dengan bot
+04_game: Kosongkan tangan:|mainkan, ambil kartu
+05_round_end: 5 poin atau kurang?|Panggil ZapZap!
+06_history: Tinjau setiap permainan,|putaran per putaran
+07_stats: Ikuti statistik|dan peringkat kamu

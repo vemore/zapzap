@@ -88,6 +88,15 @@ let them decide whether it blocks.
 
 ## 5. Pre-flight
 
+**Every release build takes the Google web client id** — without it the app has no Google
+sign-in at all (`lib/services/google_sign_in_service.dart`: no `GOOGLE_CLIENT_ID`, no button).
+It is the repository `.env`'s `VITE_GOOGLE_OAUTH_CLIENT_ID` (not a secret), read without
+printing the file:
+
+```bash
+GCID=$(grep '^VITE_GOOGLE_OAUTH_CLIENT_ID=' /home/vemore/workspace/zapzap/.env | cut -d= -f2-)
+```
+
 ```bash
 cd frontend-flutter
 flutter clean && flutter pub get && flutter gen-l10n
@@ -99,7 +108,7 @@ backend on a debug build, then the **release APK** (R8-shrunk: a missing keep ru
 at run time, as `ClassNotFoundException` in logcat) against production:
 
 ```bash
-flutter build apk --release
+flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GCID
 adb -s $DEV uninstall com.zapzap.app      # a debug or Play install is signed by another key:
 adb -s $DEV install build/app/outputs/flutter-apk/app-release.apk   # -r over it fails
 ```
@@ -111,7 +120,7 @@ app restarted still signed in, a turn played, and `adb logcat` free of
 ## 6. Build and verify
 
 ```bash
-cd frontend-flutter && flutter build appbundle --release && cd ..
+cd frontend-flutter && flutter build appbundle --release --dart-define=GOOGLE_CLIENT_ID=$GCID && cd ..
 # -> frontend-flutter/build/app/outputs/bundle/release/app-release.aab
 scripts/verify_aab.sh
 ```
@@ -156,17 +165,28 @@ uv run --script $P publish --track production --promote --rollout 0.2 --commit  
    (default `0.2`, strictly between 0 and 1 — widening to 100 % is a later decision, in the
    Console). If Google answers that `changesNotSentForReview` must be set, the script says
    so and stops: nothing was published; send the changes for review from the Console.
+   **A draft app** (one Google has never reviewed) takes an internal release `completed`,
+   but refuses any other track: `Only releases with status draft may be created on draft
+   app`. Commit that first closed release with `--draft`, then, in the Console, *Preview
+   and confirm* the release and *Send changes for review* from the publishing overview. The
+   first review took a few hours for 1.0.0 (2026-09-26).
 4. **`--promote`** — the internal → production step. Play refuses a version code it has
    seen, so promotion references the held build instead of re-uploading it: no build, no
    `verify_aab.sh`. It refuses a code on no track yet, and one already on the target track.
 
 Order: **internal → closed → production at a staged percentage**; watch Crashes & ANRs for
 48 h before widening. A personal developer account created after 2023-11-13 needs a closed
-test with 12 testers opted in for 14 days before production opens.
+test with 12 testers opted in for 14 days before production opens. The testers come from a
+Testers Community Pack (Google Group `testers-community@googlegroups.com` on the closed
+track): join a Pack only once the closed test is live — its Play link opens for an outside
+account — or members report the app "Not Found" and it is removed from the Pack.
 
 ### The store listing on its own
 
 Title, descriptions or screenshots change with **no** version bump and no rebuild:
+(on a draft app, any real listing change fails `edits.validate` with a misleading `403 The
+caller does not have permission`, whatever the service account's permissions: it works once
+Google's first review has passed)
 
 ```bash
 uv run --script $P listing              # every locale's text, validated, nothing published

@@ -15,9 +15,11 @@
 #
 # Needs: the backend built (`cd zapzap-rust && cargo build --locked`), `flutter` on the
 # PATH, Node, Playwright (the root package.json's, or the main checkout's node_modules)
-# with its Chromium, and uv (the composer).
+# with its Chromium, uv (the composer), and for the ja, hi and ar captions the Noto fonts
+# (`fonts-noto-cjk`, `fonts-noto-core`).
 #
-# Usage: scripts/capture_store_screenshots.sh [locale...]   (default: fr-FR en-US)
+# Usage: scripts/capture_store_screenshots.sh [locale...]   (default: every store locale,
+#        the store_listing/*/ directories holding a title.txt)
 #   STORE_BACKEND_BIN  the backend binary (default: the debug build under
 #                      $CARGO_TARGET_DIR, else zapzap-rust/target)
 #   STORE_API_PORT     the backend's port (default 9971)
@@ -34,7 +36,11 @@ API_PORT="${STORE_API_PORT:-9971}"
 WEB_PORT="${STORE_WEB_PORT:-8871}"
 BACKEND_BIN="${STORE_BACKEND_BIN:-${CARGO_TARGET_DIR:-$ROOT/zapzap-rust/target}/debug/zapzap-backend}"
 LOCALES=("$@")
-[ ${#LOCALES[@]} -gt 0 ] || LOCALES=(fr-FR en-US)
+if [ ${#LOCALES[@]} -eq 0 ]; then
+    for dir in "$ROOT"/store_listing/*/; do
+        if [ -f "$dir/title.txt" ]; then LOCALES+=("$(basename "$dir")"); fi
+    done
+fi
 
 die() { echo "error: $*" >&2; exit 2; }
 

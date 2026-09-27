@@ -11,6 +11,7 @@ abstract final class AppColors {
   static const slate400 = Color(0xFF94A3B8);
   static const slate100 = Color(0xFFF1F5F9);
 
+  static const amber200 = Color(0xFFFDE68A);
   static const amber400 = Color(0xFFFBBF24);
   static const amber500 = Color(0xFFF59E0B);
   static const amber600 = Color(0xFFD97706);
@@ -65,7 +66,13 @@ abstract final class CardSizes {
 
   /// How far a selected card rises, and its amber edge.
   static const selectedLift = 20.0;
-  static const selectedBorder = 2.0;
+  static const selectedBorder = 3.0;
+
+  /// The light edge of a card that can be played (or taken, or drawn).
+  static const playableBorder = 1.5;
+
+  /// How far each card under the deck's top one shows, right and down.
+  static const deckLayerStep = 2.0;
 }
 
 /// The one theme of the app: dark, like the React client.

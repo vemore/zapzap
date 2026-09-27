@@ -4,7 +4,7 @@
 > a release reaches Play (the scripts, the service account), what is live on which track.
 > The procedure is the `release-android` skill; testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-25
+> Updated: 2026-09-26
 
 ## Facts
 
@@ -17,8 +17,14 @@
   below 36 since 2026-08-31. `scripts/verify_aab.sh` checks it on every bundle.
 - **Play Console** (created 2026-09-25): developer account `8477248554887921993`, app id
   `4976271203350646679`; default language fr-FR, game, free, category Cards; IARC content
-  rating done (PEGI 3 / Everyone). The listing, Data Safety and the closed test are still to
-  do (`wip/todo/2026-09-25-play-console-app-setup.md`).
+  rating done (PEGI 3 / Everyone); target audience 13+; Data Safety submitted; store contact
+  `scribio.ai@gmail.com` and the site. Google's first review passed on 2026-09-26, a few
+  hours after the send for review.
+- Reviewer login (App content → Login details): the production account `playreview`, created
+  for Google's reviewers; its password is in `~/.config/zapzap/playreview-password`, never in
+  the repository.
+- Closed track (`alpha`): testers are the Google Group `testers-community@googlegroups.com`
+  (Testers Community Packs), feedback to `scribio.ai@gmail.com`, 177 countries.
 
 ### Keys
 
@@ -56,7 +62,8 @@ Both recorded 2026-09-25.
   `userFraction` 0.2 by default, never 1.0. Release notes: `fr-FR` and `en-US`
   (`NOTES_LOCALES`), `store_listing/<locale>/release_notes_v<x.y.z>.txt`, ≤ 500 characters,
   fr-FR falling back to en-US. Listing locales are the `store_listing/*/` directories holding
-  a `title.txt`. Tests: `scripts/test_play_publish.py`, a fake Google service.
+  a `title.txt`: ten since 2026-09-26, one per language of the app (fr-FR, en-US, es-ES,
+  pt-BR, de-DE, ru-RU, ja-JP, hi-IN, id, ar; `store_listing/README.md`). Tests: `scripts/test_play_publish.py`, a fake Google service.
 - Credentials: the service account
   `zapzap-play-publisher@partant-pour-un-restau.iam.gserviceaccount.com` (GCP project
   `partant-pour-un-restau`, countscore's; no GCP role), invited in the Console on ZapZap
@@ -64,17 +71,16 @@ Both recorded 2026-09-25.
   manage store presence (the Console also forced manage policy declarations and manage
   deep links on). Its JSON key goes to `~/.config/zapzap/play-service-account.json`
   (`chmod 600`), named by `playServiceAccount=` in `frontend-flutter/android/key.properties`
-  (commented out in `key.properties.template`); the key is not created yet (2026-09-25,
-  the user's step). The root `.gitignore` has
+  (commented out in `key.properties.template`); the key exists since 2026-09-26. The root
+  `.gitignore` has
   `*service-account*.json`, and the commit hook refuses any JSON holding
   `"type": "service_account"` ([[Hooks]]).
 
 ### Versions shipped
 
-None yet.
-
 | Version | Tracks | Date | Tag |
 |---|---|---|---|
+| 1.0.0 (1) | internal, closed (`alpha`) | 2026-09-26 | not yet |
 
 ## Decisions & History
 
@@ -89,3 +95,11 @@ None yet.
 - The tests run in the `hooks` job, not a new one: that job is already the home of the
   tooling self-tests, runs on a tooling change only, and adding a step never renames a
   required check.
+- **2026-09-26: first release, and what a draft app refuses.** 1.0.0 (1) went `completed` on
+  internal, but Google refused a `completed` closed release on the never-reviewed app; it went
+  out as a draft (`--draft`) and the 16 pending changes were sent for review from the Console.
+  Until that first review passed, every API listing change failed `edits.validate` with 403,
+  which first looked like a missing service-account permission. The first Testers Community
+  Pack was joined before the review passed: four members reported ZapZap "Not Found" and it
+  was removed (50 of 100 moons refunded). Hence the rule in the skill: join a Pack once the
+  closed test is live.

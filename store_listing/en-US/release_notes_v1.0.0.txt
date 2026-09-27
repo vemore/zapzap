@@ -1,0 +1,6 @@
+The first release of ZapZap on Android!
+• Play online with 3 to 8 players, with friends or against bots.
+• Public games, or private ones with an invite code.
+• The plays your hand allows are suggested to you.
+• Your game history and statistics.
+• Sign in with Google, or with a username and a password.

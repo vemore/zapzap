@@ -1,0 +1,6 @@
+Première version de ZapZap sur Android !
+• Joue en ligne de 3 à 8 joueurs, entre amis ou contre des bots.
+• Parties publiques ou privées avec un code d'invitation.
+• Les combinaisons jouables de ta main te sont proposées.
+• Historique de tes parties et statistiques.
+• Connexion avec Google ou avec un pseudo et un mot de passe.

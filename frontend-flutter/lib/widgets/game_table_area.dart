@@ -17,7 +17,7 @@ enum TableStep {
   /// Another player is to move.
   waiting,
 
-  /// This player plays: the pile is what can be taken *next*, dimmed.
+  /// This player plays: the pile is what can be taken *next*, not a target yet.
   play,
 
   /// This player draws: the felt is the target, pile and deck alike.
@@ -27,9 +27,9 @@ enum TableStep {
 /// The felt: what just happened, the cards laid down this turn, the discard
 /// pile — "À prendre ensuite" — and the deck. The port of
 /// `frontend/src/components/Game/TableArea.jsx`, reworked by J5 of the UX
-/// study: while this player plays, the pile is dimmed; once a draw is owed
-/// the felt takes an amber edge and says what to tap, the pile goes to full
-/// opacity and the deck becomes a target too.
+/// study: while this player plays, the pile is only shown; once a draw is
+/// owed the felt takes an amber edge and says what to tap, and the pile's
+/// cards and the deck take the light edge of a target ([PlayingCard]).
 ///
 /// A card that comes onto the felt — played this turn, or straight onto
 /// the pile by a player who played and drew in one go — glides in (J9 of
@@ -345,7 +345,6 @@ class _GameTableAreaState extends State<GameTableArea> {
                                           cardId: taken,
                                           width: GameTableArea.takenCardWidth,
                                           disabled: true,
-                                          dimmed: false,
                                         ),
                                       ],
                                     ],
@@ -384,9 +383,10 @@ class _GameTableAreaState extends State<GameTableArea> {
                               ],
                               // The pile and the deck side by side, the deck folding under
                               // the pile when the pile is long.
+                              // Their labels and their top cards line up.
                               Wrap(
                                 alignment: WrapAlignment.center,
-                                crossAxisAlignment: WrapCrossAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.start,
                                 spacing: 18,
                                 runSpacing: 6,
                                 children: [_pile(l10n), _deck(l10n)],
@@ -486,35 +486,87 @@ class _GameTableAreaState extends State<GameTableArea> {
     ],
   );
 
-  /// The deck: a target in the draw step, as the pile is, greyed otherwise.
+  /// The deck: a card back as wide as the pile's cards, labelled above as
+  /// the pile is, over the edges of the cards under it — fewer as the deck
+  /// runs low. A target in the draw step, with a playable card's edge
+  /// ([PlayingCard.edgeFor]); plain, in its colours, otherwise.
   Widget _deck(AppLocalizations l10n) {
     final onTap = widget.onDeckTap;
+    final width = widget.cardWidth;
+    final height = PlayingCard.heightFor(width);
+    final radius = BorderRadius.circular(PlayingCard.radiusFor(width));
+    final look = onTap == null ? CardLook.plain : CardLook.playable;
+    const step = CardSizes.deckLayerStep;
+    final layers = widget.deckSize > 10
+        ? 2
+        : widget.deckSize > 1
+        ? 1
+        : 0;
     return TextButton(
       key: const Key('draw-deck'),
       onPressed: onTap,
       style: TextButton.styleFrom(
         minimumSize: Size.zero,
-        padding: const EdgeInsets.all(4),
-        foregroundColor: AppColors.slate100,
-        disabledForegroundColor: AppColors.slate400,
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Greyed, not transparent: the felt would show through the back.
-          if (onTap == null)
-            const ColorFiltered(
-              colorFilter: PlayingCard.greyed,
-              child: CardBack(size: CardBackSize.md),
-            )
-          else
-            const CardBack(size: CardBackSize.md),
-          const SizedBox(height: 3),
-          Text(
-            l10n.gameDeckLabel(widget.deckSize),
-            style: const TextStyle(fontSize: 11),
-          ),
-        ],
+      // The felt's text style, not the button's: the label reads as the
+      // pile's does.
+      child: DefaultTextStyle(
+        style: DefaultTextStyle.of(context).style,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _label(
+              l10n.gameDeckLabel(widget.deckSize),
+              key: const Key('deckLabel'),
+            ),
+            SizedBox(
+              key: const Key('deckStack'),
+              width: width + 2 * step,
+              height: height + 2 * step,
+              child: Stack(
+                children: [
+                  // The cards under the top one: their edges, deepest first.
+                  for (var i = layers; i >= 1; i--)
+                    Positioned(
+                      left: i * step,
+                      top: i * step,
+                      child: Container(
+                        key: Key('deckLayer$i'),
+                        width: width,
+                        height: height,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5E7EB),
+                          borderRadius: radius,
+                          border: Border.all(
+                            color: const Color(0xFF9CA3AF),
+                            width: 0.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Container(
+                    key: const Key('deckTop'),
+                    foregroundDecoration: PlayingCard.edgeFor(look, radius),
+                    decoration: BoxDecoration(
+                      borderRadius: radius,
+                      boxShadow: PlayingCard.shadowFor(look),
+                    ),
+                    child: CardBack(width: width),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

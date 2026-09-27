@@ -140,11 +140,13 @@ history. So merges are serial. For each pull request, in the planned order:
 
 1. `gh pr view <n> --json state,mergeable,mergeStateStatus,headRefName`, and read the diff
    (`gh pr diff <n>`) — you are the only reviewer. Then its size, the added or modified lines
-   of code (docs, lock, generated and test files not counted):
+   of code (docs, lock, generated and test files not counted, nor the translated ARB files
+   — every `frontend-flutter/lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`):
    ```bash
    gh pr diff <n> | awk '
      /^diff --git / { p = $4; sub(/^b\//, "", p)
-                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\//) }
+                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\//) \
+                          && (p !~ /^frontend-flutter\/lib\/l10n\/app_.*\.arb$/ || p ~ /\/app_(fr|en)\.arb$/) }
      keep && /^\+/ && !/^\+\+\+/ { n++ }
      END { print n + 0 }'
    ```

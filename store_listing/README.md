@@ -1,15 +1,17 @@
 # ZapZap — Google Play store listing
 
-The committed source of truth for what the Play Store page of `com.zapzap.app` shows, in
-French (`fr-FR`, the default language) and English (`en-US`). Ported from countscore's
-`store_listing/`. A field edited in the Play Console and not here is lost the next time these
-files are uploaded.
+The committed source of truth for what the Play Store page of `com.zapzap.app` shows, in the
+ten languages the app speaks (`frontend-flutter/lib/l10n/app_*.arb`): French (`fr-FR`, the
+default language), English (`en-US`), Spanish (`es-ES`), Brazilian Portuguese (`pt-BR`),
+German (`de-DE`), Russian (`ru-RU`), Japanese (`ja-JP`), Hindi (`hi-IN`), Indonesian (`id`)
+and Arabic (`ar`). Ported from countscore's `store_listing/`. A field edited in the Play
+Console and not here is lost the next time these files are uploaded.
 
 ## Layout
 
 ```
 store_listing/
-├── <play-locale>/                  # fr-FR, en-US
+├── <play-locale>/                  # fr-FR en-US es-ES pt-BR de-DE ru-RU ja-JP hi-IN id ar
 │   ├── title.txt                   # the app name on the store, 30 characters max
 │   ├── short_description.txt       # 80 characters max
 │   ├── full_description.txt        # 4000 characters max, plain text
@@ -26,6 +28,13 @@ The texts carry no final newline. The French speaks to the player with "tu", as 
 ([`.llmwiki/FrontendFlutter.md`](../.llmwiki/FrontendFlutter.md) § Localisation), and says
 nothing the app does not do: rules from [`GAME_RULES.md`](../GAME_RULES.md), features from the
 Flutter client.
+
+The eight languages after French and English were translated from `en-US` and `fr-FR` (one
+agent per language), with the game terms and the form of address of the app's own ARB file
+of that language — "contrarrestado", "Gekontert", "反撃", "Bots" in Arabic — so the listing
+and the app agree. A text changed in `en-US` or `fr-FR` is changed in the other eight in the
+same pull request. `frontend-flutter/test/store_listing_test.dart` fails when a language of
+the app has no listing.
 
 ## Play's limits, and what checks them
 
@@ -62,8 +71,8 @@ a ZapZap) from `frontend-flutter/assets/cards/` on the board's felt, in the colo
 checkout's `node_modules`), and `uv`:
 
 ```bash
-scripts/capture_store_screenshots.sh              # fr-FR and en-US
-scripts/capture_store_screenshots.sh en-US        # one locale
+scripts/capture_store_screenshots.sh              # every locale (about a minute each)
+scripts/capture_store_screenshots.sh en-US ar     # some locales
 ```
 
 For each locale it seeds a throwaway database (`zapzap-backend seed --demo`: the bots and the
@@ -73,7 +82,13 @@ games and part of a third through the API, and screenshots seven screens in head
 Chromium at a 390×844 phone viewport, 3 device pixels, with the browser in the locale's
 language. `scripts/compose_store_screenshots.py` then sets each capture under its caption,
 on the app's slate, into `<locale>/screenshots/phone/`. The deal is random: each run shows
-other cards and scores. `STORE_API_PORT`, `STORE_WEB_PORT`, `STORE_WEB_BUILD` (reuse a web
+other cards and scores. The party names on screen are the capture script's, per language.
+
+The captions are drawn in Roboto Bold, as the app; Japanese, Hindi and Arabic in the system's
+Noto Sans CJK JP, Noto Sans Devanagari and Noto Sans Arabic Bold (`apt install fonts-noto-cjk
+fonts-noto-core`), with Roboto for the Latin they lack ("ZapZap", "Bots"). The composer
+refuses a character no font holds, rather than drawing a box, and a caption that does not fit
+two lines; Arabic is set right to left. `STORE_API_PORT`, `STORE_WEB_PORT`, `STORE_WEB_BUILD` (reuse a web
 build) and `STORE_RAW_DIR` (keep the raw captures) are in the script's header.
 
 The web build has no Google client id, so the login screen shows no Google button (the
