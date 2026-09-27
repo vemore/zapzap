@@ -631,8 +631,23 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   the hand when the last move was this player's (`playedByMe`, `lastAction.playerIndex ==
   myPlayerIndex`), down from the players otherwise, so a bot that played and drew between
   two refreshes still shows its cards arriving on the pile. "Comes onto" is the set
-  `cardsPlayed ∪ lastCardsPlayed` against the previous build: this player's cards going
-  from "Posées" to the pile do not move again, and the first table drawn does not glide.
+  `cardsPlayed ∪ lastCardsPlayed` against the previous build, and the first table drawn
+  does not glide. **Cards moving on the felt** (2026-09-27): at the next play the cards
+  under "Posées" become the pile ("À prendre ensuite", the backend moves `cards_played` to
+  `last_cards_played`, `zapzap-rust/src/domain/services/game_service.rs`), and they slide
+  from the one row to the other in 300 ms (`Motion.shift`, `easeInOutCubic`), taking the
+  pile's card size (`GameTableArea.slideKey`); the rest of the old pile, gone to the
+  discard, fades out where it lay (`Motion.leave` 350 ms, `GameTableArea.leavingKey`). A
+  card a draw took from the pile (`lastAction.source == 'played'`, `cardId`) moves on
+  1.5 card heights toward its taker — down to the hand for this player, up to the players
+  otherwise, as the glide — fading out over its last 60 %; a deck draw sends a card back
+  off the deck the same way (`GameTableArea.deckLeavingKey`), once per action (type,
+  player, timestamp). Only a `play` or a `draw` moves cards so: a new round lays a new
+  table. Each card and the deck's top card sit in a `_FeltSlot`, a render box that keeps
+  itself in a map by card id; `didUpdateWidget` reads where each lay before the new felt
+  is laid out, the slide is worked out at paint time from where the card lies now (its
+  `applyPaintTransform` follows it, so `getRect` sees the card mid-way), and the cards
+  leaving are images in the felt's `Stack` (`Clip.none`: they go past the rim).
   The card a draw brings into the hand — exactly one card more, none gone; a deal, a play or
   a reorder is not a draw — carries a "Nouveau" badge (`gameCardNew`,
   `CardFan.freshBadgeKey`) for 2 s (`Motion.freshCard`), painted above every card of the
@@ -640,16 +655,25 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   keyed in `GameHand` (`Key('handFan')`): the lines around it come and go at the draw. A
   selected card rises in 150 ms (`Motion.lift`, `AnimatedPositioned`) and takes its edge in
   200 ms (`Motion.select`). **Under `MediaQuery.disableAnimations` every one of these is
-  off**: durations are zero, nothing glides, and the badge is drawn still — it is
+  off**: durations are zero, nothing glides, slides or leaves, and the badge is drawn still — it is
   information, so it stays its 2 s. The end of a round's climbing totals (F5, below) did
   so already. Material's own transitions (ink, route) are not the board's and are left as
   the framework draws them. `test/game_motion_test.dart` checks the badge and its 2 s, the
-  glide from below and from above, and, under reduced motion, that the board settles in one
-  pump after a play and a draw (`pumpAndSettle()` returns 1), with no glide and a still
+  glide from below and from above, the slide from "Posées" to the pile (at the start, mid-way
+  and landed), the rest of the pile fading in place, the card taken from the pile leaving
+  down (this player) or up (another), the card back off the deck once per draw, and, under
+  reduced motion, that none of these runs (no frame scheduled) and that the board settles in
+  one pump after a play and a draw (`pumpAndSettle()` returns 1), with no glide and a still
   badge. Checked in the PWA (2026-09-25, headless Chromium at 390x844 against the local Rust
   backend, a CDP screencast): a Q♣ played rises semi-transparent from the hand's side onto
   the "Played" row ~350 ms after the move, and the drawn 10♦ carries "New" (the page was
-  in English) until 2 s later.
+  in English) until 2 s later. The felt's moves checked the same way (2026-09-27, 390x844,
+  the PWA as Vincent against the local Rust backend with Thibaut driven through the API and
+  MediumBot1, a CDP screencast): at the next player's play the 9♥ under "Posées" slides
+  down-left onto "À prendre ensuite" over ~300 ms, the new card gliding in from above; the
+  K♠ Vincent took from the pile moves down toward the hand and fades; the 9♥ the bot took
+  rises toward the players and fades; a card back leaves the deck upward when Thibaut
+  draws.
 - **ZapZap with its risk** (J4): always shown; disabled, it says why — "main 29, il faut 5
   ou moins", or "au début de ton tour" outside the player's play step. A tap opens a
   bottom sheet (`widgets/game_zapzap_sheet.dart`, `confirmZapZap`) that states the
@@ -1508,6 +1532,17 @@ project `.gitignore`.
   deck draw's `cardDrawn` is not otherwise used. The badge stays under reduced motion,
   drawn still — it says which card is new, which a player who turned animations off needs
   as much.
+- **Cards that stay on the felt slide; cards that leave it go toward their taker
+  (2026-09-27, feat/flutter-card-animations).** The Posées → À prendre ensuite move had
+  been left still, and a card taken vanished, so a player did not see which cards became
+  takeable nor who took what. The slide goes further than the glide's reasoning above only
+  where it costs nothing new: both rows are in the one felt widget, so the card's rect
+  before the refresh is kept by the felt itself (a render box per card, read in
+  `didUpdateWidget` before relayout) and the slide is worked out at paint time — no state
+  kept across sections, no `Overlay`. A card leaving for a hand still does not fly to that
+  hand or seat: that would need the rects of another section; it moves toward it, down for
+  this player and up for the others, as the glide comes from there, and fades. The deal at
+  a round start is left for a later entry.
 - **Release signing ported from countscore (2026-09-25, feat/flutter-android-release-signing).**
   Play refuses a bundle signed with a debug key, so the `release` build type gained
   countscore's `key.properties` signing config, R8 and the keystore script. Unlike
