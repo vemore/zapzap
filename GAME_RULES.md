@@ -179,6 +179,20 @@ Player 4: 10 points
 - Last 2 players alive: "Golden Score" final round
 - Winner: Last player alive (≤100 points)
 
+### Final Ranking
+
+When the game ends, every player gets a finish position (the placement their game
+history shows):
+
+1. The winner.
+2. The players still in the game, lowest total score first.
+3. The eliminated players, the one eliminated in the latest round first. A player who
+   deletes their account counts as eliminated in the round they leave in. Leaving between
+   two rounds, they count as eliminated in the round just played if their leaving ends
+   the game, otherwise in the next round played.
+4. Players still level — the same total score, or eliminated in the same round, a player
+   who left and a player past 100 alike — rank in seat order, the first seat first.
+
 ### Golden Score Rules
 
 When only 2 players remain, the game enters **Golden Score mode**:

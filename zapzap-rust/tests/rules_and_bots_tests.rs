@@ -328,6 +328,204 @@ async fn test_tied_lowest_hands_all_score_zero() {
     );
 }
 
+/// The seats of a finished party by finish position, from its saved results
+async fn finish_order(state: &AppState, party_id: &str) -> Vec<i64> {
+    sqlx::query_scalar(
+        "SELECT pp.player_index FROM player_game_results r \
+         JOIN party_players pp ON pp.party_id = r.party_id AND pp.user_id = r.user_id \
+         WHERE r.party_id = ? ORDER BY r.finish_position",
+    )
+    .bind(party_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap()
+}
+
+/// Three seats in round 1: seat 1 calls ZapZap with 3 points, seat `2 - leaver` goes past
+/// 100 (95 + 15) and seat `leaver` deletes their account, before the ZapZap when
+/// `forfeit_first` (the ZapZap ends the game), after it otherwise (the forfeit, between
+/// the rounds, ends it). Returns the seats by finish position.
+async fn forfeit_and_knockout_in_one_round(leaver: u8, forfeit_first: bool) -> Vec<i64> {
+    let (mut app, state) = test_app().await;
+    let prefix = format!("rank{leaver}{}", if forfeit_first { "f" } else { "z" });
+    let (party_id, tokens) = started_party(&mut app, &state, &prefix, 2, &[]).await;
+    let out = 2 - leaver;
+    let mut gs = game_state(&state, &party_id).await;
+    gs.hands[1] = smallvec::SmallVec::from_slice(&[0, 1]);
+    gs.hands[out as usize] = smallvec::SmallVec::from_slice(&[13, 14, 15, 16, 17]);
+    gs.hands[leaver as usize] = smallvec::SmallVec::from_slice(&[39, 40, 41]);
+    gs.scores[1] = 10;
+    gs.scores[out as usize] = 95;
+    gs.scores[leaver as usize] = 20;
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+
+    let leaver_id = user_at(&state, &party_id, leaver).await;
+    let forfeit = || async {
+        let deletion = state.user_repo.delete_account(&leaver_id).await.unwrap();
+        assert!(
+            matches!(deletion, AccountDeletion::Deleted { ref forfeits, .. } if forfeits.len() == 1),
+            "{deletion:?}"
+        );
+    };
+    if forfeit_first {
+        forfeit().await;
+    }
+    let (status, body) = send(
+        &mut app,
+        "POST",
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // `gameFinished` is only sent when the game is over
+    assert_eq!(
+        body["gameFinished"].as_bool().unwrap_or(false),
+        forfeit_first,
+        "{body}"
+    );
+    if !forfeit_first {
+        forfeit().await;
+    }
+
+    let gs = game_state(&state, &party_id).await;
+    assert!(gs.is_eliminated(0) && gs.is_eliminated(2));
+    assert_eq!(gs.round_number, 1, "both are out in round 1");
+    finish_order(&state, &party_id).await
+}
+
+#[tokio::test]
+async fn test_a_forfeit_and_a_knockout_in_one_round_rank_by_seat() {
+    // GAME_RULES.md "Final Ranking": out in the same round, they rank by seat, whichever
+    // left the game first and whether the forfeit or the ZapZap ended it
+    for leaver in [0, 2] {
+        for forfeit_first in [true, false] {
+            assert_eq!(
+                forfeit_and_knockout_in_one_round(leaver, forfeit_first).await,
+                [1, 0, 2],
+                "leaver at seat {leaver}, forfeit first: {forfeit_first}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_a_forfeit_between_rounds_counts_in_the_next_round_played() {
+    let (mut app, state) = test_app().await;
+    let (party_id, tokens) = started_party(&mut app, &state, "betweenrounds", 3, &[]).await;
+
+    // Round 1: seat 1 calls with 3 points and seat 0 goes past 100 (95 + 15)
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[
+            &[13, 14, 15, 16, 17],
+            &[0, 1],
+            &[26, 27, 28],
+            &[39, 40, 41, 42],
+        ],
+    );
+    gs.scores[..4].copy_from_slice(&[95, 10, 20, 30]);
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+    let zapzap = format!("/api/game/{party_id}/zapzap");
+    let (status, body) = send(&mut app, "POST", &zapzap, json!({}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["gameFinished"].is_null(), "{body}");
+
+    // Between rounds 1 and 2, seat 2 leaves: seats 1 and 3 play on
+    let leaver = user_at(&state, &party_id, 2).await;
+    let deletion = state.user_repo.delete_account(&leaver).await.unwrap();
+    assert!(
+        matches!(deletion, AccountDeletion::Deleted { ref forfeits, .. } if forfeits.len() == 1),
+        "{deletion:?}"
+    );
+    let (status, body) = send(
+        &mut app,
+        "POST",
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Round 2, a Golden Score: seat 1's lower hand wins the game
+    let mut gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.round_number, 2);
+    set_hands(&mut gs, &[&[], &[0, 1], &[], &[39, 40, 41]]);
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+    let (status, body) = send(&mut app, "POST", &zapzap, json!({}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameFinished"], true, "{body}");
+
+    // GAME_RULES.md "Final Ranking": the game went on, so the leaver is out in round 2,
+    // after seat 0 (round 1), and ranks above it despite the higher seat
+    assert_eq!(finish_order(&state, &party_id).await, [1, 3, 2, 0]);
+}
+
+#[tokio::test]
+async fn test_a_zapzap_ending_the_game_saves_its_results() {
+    let (mut app, state) = test_app().await;
+    let (party_id, tokens) = started_party(&mut app, &state, "results", 2, &[]).await;
+    // Seat 0 calls with 3 points; seats 1 (99 + 15) and 2 (95 + 10) both go past 100
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[&[0, 1], &[13, 14, 15, 16, 17], &[26, 27, 28, 29]],
+    );
+    gs.scores[..3].copy_from_slice(&[10, 99, 95]);
+    gs.current_turn = 0;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+    let (status, body) = send(
+        &mut app,
+        "POST",
+        &format!("/api/game/{party_id}/zapzap"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameFinished"], true, "{body}");
+
+    let (winner, winner_score, rounds, golden): (String, i64, i64, bool) = sqlx::query_as(
+        "SELECT winner_user_id, winner_final_score, total_rounds, was_golden_score \
+         FROM game_results WHERE party_id = ?",
+    )
+    .bind(&party_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(winner, user_at(&state, &party_id, 0).await);
+    assert_eq!((winner_score, rounds, golden), (10, 1, false));
+    // Out in the same round, seat 1 ranks above seat 2 by seat, its higher score aside
+    let rows: Vec<(i64, i64, i64, i64, bool)> = sqlx::query_as(
+        "SELECT pp.player_index, r.finish_position, r.final_score, r.rounds_played, \
+         r.is_winner FROM player_game_results r \
+         JOIN party_players pp ON pp.party_id = r.party_id AND pp.user_id = r.user_id \
+         WHERE r.party_id = ? ORDER BY r.finish_position",
+    )
+    .bind(&party_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows,
+        [
+            (0, 1, 10, 1, true),
+            (1, 2, 114, 1, false),
+            (2, 3, 105, 1, false)
+        ]
+    );
+}
+
 // ============================================================================
 // Bots
 // ============================================================================
