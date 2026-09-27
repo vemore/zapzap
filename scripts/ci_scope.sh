@@ -78,6 +78,8 @@ while IFS= read -r path; do
         # (.llmwiki/ParallelDelivery.md § Measuring delivery).
         scripts/delivery_metrics.sh|scripts/delivery_metrics_selftest.sh|scripts/agent_metrics.py|scripts/test_agent_metrics.py)
             hooks=true ;;
+        # The ARB checker of the i18n-add-string skill and its tests, which the hooks job runs.
+        scripts/arb_keys.py|scripts/test_arb_keys.py) hooks=true ;;
 
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.
         scripts/flutter_e2e.sh) e2e=true ;;

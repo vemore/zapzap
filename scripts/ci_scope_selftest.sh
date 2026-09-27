@@ -44,6 +44,7 @@ check "1 1 1 1 1 1 1" ".github/workflows/ci.yml"
 check "0 0 0 0 1 0 0" ".claude/hooks/guard-bash.sh"
 # The Play release scripts: their tests run in the hooks job.
 check "0 0 0 0 1 0 0" "scripts/verify_aab.sh" "scripts/play_publish.py" "scripts/test_verify_aab.py" "scripts/test_play_publish.py"
+check "0 0 0 0 1 0 0" "scripts/arb_keys.py" "scripts/test_arb_keys.py"
 check "1 1 1 1 1 1 1" "scripts/ci_scope.sh"
 # The delivery and agent metrics: their self-test and tests run in the hooks job.
 check "0 0 0 0 1 0 0" "scripts/delivery_metrics.sh" "scripts/delivery_metrics_selftest.sh" "scripts/agent_metrics.py" "scripts/test_agent_metrics.py"

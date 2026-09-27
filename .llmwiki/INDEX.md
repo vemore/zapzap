@@ -60,4 +60,5 @@ Load this file first. Then read only the pages your task touches.
 
 `.claude/skills/`: `ship-parallel` (implement, merge, deploy), `wip-refine` (sort the
 backlog), `deploy` (production on the NAS), `release-android` (a bundle to Google Play),
-`flutter-device-test` (the Android app on the user's phone).
+`flutter-device-test` (the Android app on the user's phone), `i18n-add-string` (a Flutter
+string across the ten ARB files).
