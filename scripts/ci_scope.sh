@@ -74,6 +74,9 @@ while IFS= read -r path; do
         scripts/verify_aab.sh|scripts/play_publish.py|scripts/test_verify_aab.py|scripts/test_play_publish.py)
             hooks=true ;;
 
+        # The ARB checker of the i18n-add-string skill and its tests, which the hooks job runs.
+        scripts/arb_keys.py|scripts/test_arb_keys.py) hooks=true ;;
+
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.
         scripts/flutter_e2e.sh) e2e=true ;;
 

@@ -278,6 +278,10 @@ jobs:
         env:
           VERIFY_AAB_REQUIRE_TOOLS: "1"
         run: uv run --no-project --with pytest pytest -q scripts/test_play_publish.py scripts/test_verify_aab.py
+      # scripts/arb_keys.py (the i18n-add-string skill's check) on fixture ARB files, and the
+      # committed ARB files' key sets. Its value report is not a gate.
+      - name: ARB checker tests — arb_keys.py
+        run: uv run --no-project --with pytest pytest -q scripts/test_arb_keys.py
 
   flutter:
     name: Flutter client — analyze, test, build web and apk
