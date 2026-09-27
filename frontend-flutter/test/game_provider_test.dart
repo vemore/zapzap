@@ -565,13 +565,34 @@ void main() {
         'roundStarted',
         'gameFinished',
         'partyStarted',
+        'playerForfeited',
       ]) {
         events.add(event(action));
         await pumpEventQueue();
       }
       expect(
         backend.paths.where((p) => p.endsWith('/state')).length,
-        before + 7,
+        before + 8,
+      );
+    });
+
+    test('a forfeited seat reloads the table', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      final before = backend.paths.where((p) => p.endsWith('/state')).length;
+
+      events.add(event('playerForfeited'));
+      await pumpEventQueue();
+
+      expect(
+        backend.paths.where((p) => p.endsWith('/state')).length,
+        before + 1,
+        reason: 'the seat a deleted account gave up is handed over live, not only on the next event',
       );
     });
 

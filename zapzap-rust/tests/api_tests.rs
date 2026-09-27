@@ -512,7 +512,7 @@ async fn test_list_parties() {
 // Shared setup for the error-contract tests
 // ============================================================================
 
-use zapzap_backend::domain::entities::{BotDifficulty, User};
+use zapzap_backend::domain::entities::{BotDifficulty, User, DELETED_USER_ID_PREFIX};
 use zapzap_backend::domain::repositories::{PartyRepository, UserRepository};
 use zapzap_backend::domain::value_objects::GameAction;
 
@@ -4863,6 +4863,69 @@ async fn test_admin_delete_user_seated_in_a_live_game_forfeits_the_seat() {
     let body = game_state(&mut app, &party_id, &tokens[0]).await;
     assert_eq!(body["party"]["status"], "playing", "{body}");
     assert_eq!(body["gameState"]["eliminatedPlayers"], json!([1]), "{body}");
+}
+
+#[tokio::test]
+async fn test_admin_delete_user_refuses_a_bot() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "botrefuseadmin").await;
+    let (human, _) = register(&mut app, "botrefusehuman").await;
+    let party_id = create_party_with_seats(&mut app, &human, "Bot refusal", 3).await;
+    let bot_id = create_bot(&state, "botrefusebot").await;
+    let other_bot_id = create_bot(&state, "botrefuseother").await;
+    for id in [&bot_id, &other_bot_id] {
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/bots"),
+            json!({"botId": id}),
+            &human,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "add bot: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &human,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+
+    let path = format!("/api/admin/users/{bot_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["success"], false, "{body}");
+
+    // The bot and its seat in the live game are untouched
+    assert!(state.user_repo.find_by_id(&bot_id).await.unwrap().is_some());
+    let body = game_state(&mut app, &party_id, &human).await;
+    assert_eq!(body["party"]["status"], "playing", "{body}");
+    assert_eq!(body["gameState"]["eliminatedPlayers"], json!([]), "{body}");
+}
+
+#[tokio::test]
+async fn test_admin_delete_user_refuses_a_deleted_stand_in() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "standinadmin").await;
+    let stand_in_id = format!("{DELETED_USER_ID_PREFIX}{}", uuid::Uuid::new_v4());
+    let stand_in = User::new_human(
+        stand_in_id.clone(),
+        "standinname".to_string(),
+        "unused-hash".to_string(),
+    );
+    state.user_repo.save(&stand_in).await.unwrap();
+
+    let path = format!("/api/admin/users/{stand_in_id}");
+    let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["success"], false, "{body}");
+    assert!(state
+        .user_repo
+        .find_by_id(&stand_in_id)
+        .await
+        .unwrap()
+        .is_some());
 }
 
 #[tokio::test]
