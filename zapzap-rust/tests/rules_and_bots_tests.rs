@@ -1,7 +1,8 @@
 //! GAME_RULES.md where the Rust code used to disagree (eliminated starter, tied lowest
 //! hands, a card named twice in a play), the bot loop: one at a time per party, one
-//! strategy per bot for the whole game, and concurrent writes of a game state: a write
-//! based on a stale read is refused (409 for a human, a retry for the bot loop).
+//! strategy per bot for the whole game, the next round dealt by the bots once no human is
+//! left in the game, and concurrent writes of a game state: a write based on a stale read
+//! is refused (409 for a human, a retry for the bot loop).
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use zapzap_backend::api;
 use zapzap_backend::application::bot::{
     run_bot_turns_now, trigger_bot_turns, BotBrain, BotRunner, Roster,
 };
-use zapzap_backend::domain::entities::{BotDifficulty, User};
+use zapzap_backend::domain::entities::{BotDifficulty, PartyStatus, User};
 use zapzap_backend::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
 use zapzap_backend::domain::services::{execute_play, forfeit_seat};
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
@@ -551,6 +552,107 @@ async fn test_bot_actions_pause_for_bot_action_delay_ms() {
     );
 }
 
+/// The runner of a test that plays whole rounds: no pause between bot actions
+fn no_pause(state: &mut AppState) {
+    state.bot_runner = Arc::new(BotRunner::with_action_delay(Duration::ZERO));
+}
+
+/// Round 1 of `party_id` is over, and the seats of `eliminated` are out of the game with
+/// 101 points; the others hold `scores` in seat order
+async fn round_one_over(state: &AppState, party_id: &str, eliminated: &[u8], scores: &[u16]) {
+    let mut gs = game_state(state, party_id).await;
+    let mut others = scores.iter();
+    for seat in 0..gs.player_count {
+        gs.scores[seat as usize] = if eliminated.contains(&seat) {
+            gs.eliminate_player(seat);
+            101
+        } else {
+            *others.next().expect("a score per seat in the game")
+        };
+    }
+    gs.current_action = GameAction::Finished;
+    save_game_state(state, party_id, &gs).await;
+}
+
+async fn round_numbers(state: &AppState, party_id: &str) -> Vec<i64> {
+    sqlx::query_scalar("SELECT round_number FROM rounds WHERE party_id = ? ORDER BY 1")
+        .bind(party_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap()
+}
+
+async fn party_status(state: &AppState, party_id: &str) -> PartyStatus {
+    state
+        .party_repo
+        .find_by_id(party_id)
+        .await
+        .unwrap()
+        .expect("party")
+        .status
+}
+
+#[tokio::test]
+async fn test_bots_play_the_game_out_once_every_human_is_out() {
+    let (mut app, state) = test_app_with(no_pause).await;
+    // The owner, out of the game, and three bots close to 100
+    let (party_id, _) = started_party(
+        &mut app,
+        &state,
+        "playout",
+        0,
+        &[
+            BotDifficulty::Medium,
+            BotDifficulty::Medium,
+            BotDifficulty::Medium,
+        ],
+    )
+    .await;
+    round_one_over(&state, &party_id, &[0], &[80, 85, 90]).await;
+    let mut events = state.event_sender.new_receiver();
+
+    // One loop, and no nextRound call: the bots deal each round and play it
+    run_bot_turns_now(&state, &party_id)
+        .await
+        .expect("the bots play the game out");
+
+    assert_eq!(party_status(&state, &party_id).await, PartyStatus::Finished);
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.current_action, GameAction::Finished);
+    assert!(gs.round_number >= 2, "the bots dealt no round");
+    let rounds = round_numbers(&state, &party_id).await;
+    assert_eq!(rounds, (1..=i64::from(gs.round_number)).collect::<Vec<_>>());
+    // Each round the bots dealt was told to the clients, as the nextRound route does
+    let mut dealt = 0;
+    while let Ok(event) = events.try_recv() {
+        if event.action.as_deref() == Some("roundStarted") {
+            assert_eq!(event.data["isBot"], json!(true));
+            dealt += 1;
+        }
+    }
+    assert_eq!(dealt, gs.round_number - 1);
+}
+
+#[tokio::test]
+async fn test_a_finished_round_waits_for_a_human_still_in_the_game() {
+    let (mut app, state) = test_app_with(no_pause).await;
+    // The owner is out, but the human at seat 1 is still in the game with the bot
+    let (party_id, _) =
+        started_party(&mut app, &state, "waitnext", 1, &[BotDifficulty::Easy]).await;
+    round_one_over(&state, &party_id, &[0], &[20, 30]).await;
+
+    assert_eq!(run_bot_turns_now(&state, &party_id).await.unwrap(), 0);
+
+    // The round waits for the human's nextRound call
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(
+        (gs.round_number, gs.current_action),
+        (1, GameAction::Finished)
+    );
+    assert_eq!(round_numbers(&state, &party_id).await, [1]);
+    assert_eq!(party_status(&state, &party_id).await, PartyStatus::Playing);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn test_llm_bots_play_on_when_the_strategies_dir_is_not_writable() {
@@ -694,6 +796,14 @@ async fn test_two_writes_from_one_read_keep_the_first_and_refuse_the_second() {
 /// locks as production's does, so a request reads the last committed state while
 /// another connection holds the write lock.
 async fn test_app_on_file(name: &str) -> (Router, Arc<AppState>, std::path::PathBuf) {
+    test_app_on_file_with(name, |_| {}).await
+}
+
+/// The test application on a database file, its state then changed by `setup`
+async fn test_app_on_file_with(
+    name: &str,
+    setup: impl FnOnce(&mut AppState),
+) -> (Router, Arc<AppState>, std::path::PathBuf) {
     let path = std::env::temp_dir().join(format!(
         "zapzap-race-{name}-{}-{}.db",
         std::process::id(),
@@ -712,6 +822,7 @@ async fn test_app_on_file(name: &str) -> (Router, Arc<AppState>, std::path::Path
         state.user_repo = Arc::new(SqliteUserRepository::new(db.clone()));
         state.party_repo = Arc::new(SqlitePartyRepository::new(db.clone()));
         state.db = db;
+        setup(state);
     })
     .await;
     (app, state, path)
@@ -926,6 +1037,53 @@ async fn test_next_round_asked_twice_at_once_starts_one_round() {
     let gs = game_state(&state, &party_id).await;
     assert_eq!(gs.round_number, 2);
     assert_eq!(gs.current_action, GameAction::SelectHandSize);
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_bots_and_an_eliminated_human_dealing_at_once_start_one_round() {
+    let (mut app, state, path) = test_app_on_file_with("botsdeal", no_pause).await;
+    // The owner is out; the two bots left play the Golden Score round, the last one
+    let (party_id, tokens) = started_party(
+        &mut app,
+        &state,
+        "botsdeal",
+        0,
+        &[BotDifficulty::Medium, BotDifficulty::Medium],
+    )
+    .await;
+    round_one_over(&state, &party_id, &[0], &[40, 50]).await;
+
+    // The bots and the owner's client both read the finished round, then race to deal
+    let lock = state.db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let bots = {
+        let (state, party_id) = (state.clone(), party_id.clone());
+        tokio::spawn(async move { run_bot_turns_now(&state, &party_id).await })
+    };
+    let ask = {
+        let (mut app, token) = (app.clone(), tokens[0].clone());
+        let path = format!("/api/game/{party_id}/nextRound");
+        tokio::spawn(async move { send(&mut app, "POST", &path, json!({}), &token).await })
+    };
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    lock.commit().await.unwrap();
+
+    // Whoever lost wrote nothing: the client is told to reload, the bots read again
+    let (status, body) = ask.await.unwrap();
+    assert!(
+        status == StatusCode::OK
+            || (status == StatusCode::CONFLICT && body["code"] == "GAME_STATE_CONFLICT"),
+        "{status} {body}"
+    );
+    bots.await
+        .unwrap()
+        .expect("the bot loop goes on after the lost race");
+
+    // One round 2, which the bots played to the end of the game
+    assert_eq!(round_numbers(&state, &party_id).await, [1, 2]);
+    assert_eq!(party_status(&state, &party_id).await, PartyStatus::Finished);
 
     state.db.close().await;
     let _ = std::fs::remove_file(&path);
