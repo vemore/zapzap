@@ -83,7 +83,7 @@
   sets `android:networkSecurityConfig` to `android/app/src/debug/res/xml/network_security_config.xml`
   (`cleartextTrafficPermitted="true"`, system CAs). Profile and release keep Android's
   default, HTTPS only — so they only talk to the production default URL or an `https://` one.
-- The app sends no `Origin` header; the backend's CORS layer is permissive anyway (`zapzap-rust/src/api/mod.rs`).
+- The app sends no `Origin` header, so the backend's CORS allow-list (`ALLOWED_ORIGINS`, [[Deployment]]) does not concern it: CORS is a browser check, and the backend serves a request without `Origin` whatever the list.
 - Launcher icon: the lucide `zap` bolt (the React client's icon set) in amber `#fbbf24` on
   slate `#0f172a`. Sources `frontend-flutter/assets/icon/icon.svg` and `icon_foreground.svg`
   (adaptive-icon foreground, inside the safe zone); the PNGs next to them are rendered with

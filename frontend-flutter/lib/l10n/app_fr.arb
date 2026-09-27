@@ -2265,7 +2265,7 @@
   "@deleteAccountTitle": {
     "description": "Title of the account deletion dialog"
   },
-  "deleteAccountBody": "C'est définitif : ton compte et ta connexion sont effacés. Les parties terminées restent dans l'historique des autres joueurs, sous le nom « Joueur supprimé ».",
+  "deleteAccountBody": "C'est définitif : ton compte et ta connexion sont effacés. Les parties terminées restent dans l'historique des autres joueurs, sous le nom « Joueur supprimé ». Une partie en cours est abandonnée : tu en es éliminé et les autres joueurs continuent sans toi.",
   "@deleteAccountBody": {
     "description": "What deleting the account does"
   },
@@ -2293,9 +2293,9 @@
   "@deleteAccountErrorGoogle": {
     "description": "The Google confirmation of the deletion was refused"
   },
-  "deleteAccountErrorActiveParty": "Quitte ou termine d'abord tes parties en cours.",
+  "deleteAccountErrorActiveParty": "Tu es encore dans une partie en attente : quitte-la d'abord.",
   "@deleteAccountErrorActiveParty": {
-    "description": "The account is seated in or owns a game that is not finished"
+    "description": "The account is seated in or owns a party that has not started yet (a game already in progress is forfeited instead)"
   },
   "deleteAccountErrorLastAdmin": "Tu es le seul administrateur : ton compte ne peut pas être supprimé.",
   "@deleteAccountErrorLastAdmin": {

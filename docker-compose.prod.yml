@@ -25,6 +25,11 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env (openssl rand -hex 32)}
       - RUST_LOG=${RUST_LOG:-info}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      # The browser origins CORS answers (zapzap-rust/src/infrastructure/cors.rs): the
+      # production domain alone, which serves both clients same-origin; the Android app sends
+      # no Origin. A default here, not in .env, so that no deploy runs permissive. .env can
+      # override it (comma-separated origins).
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://zapzap.ombivince.synology.me}
       # The pause between two bot actions (zapzap-rust/src/application/bot/runner.rs)
       - BOT_ACTION_DELAY_MS=${BOT_ACTION_DELAY_MS:-1000}
       # LLM bots (.llmwiki/Bots.md): passed only when set in .env, because a variable that

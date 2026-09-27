@@ -82,7 +82,8 @@
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
      (`DB_PATH`, [[Architecture]]), from `zapzap-rust/`: `DB_PATH=/tmp/e2e.db cargo run --
      seed && JWT_SECRET=$(openssl rand -hex 32) DB_PATH=/tmp/e2e.db PORT=9921 cargo run`
-     (its CORS layer is permissive; the test page is served from another port). Each run
+     (leave `ALLOWED_ORIGINS` unset, so that CORS answers every origin: the test page is
+     served from another port). Each run
      adds a user and a party, so reusing a development database works too.
   2. A chromedriver of Chrome's major version, on a free port:
      `npx @puppeteer/browsers install chromedriver@<google-chrome --version>`, then

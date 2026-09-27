@@ -14,7 +14,9 @@ use crate::api::error::{ApiBody, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::routes::auth::after_account_deletion;
 use crate::api::AppState;
-use crate::domain::entities::{deleted_user_id_pattern, DELETED_PLAYER_NAME};
+use crate::domain::entities::{
+    deleted_user_id_pattern, UserType, DELETED_PLAYER_NAME, DELETED_USER_ID_PREFIX,
+};
 use crate::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
 
 // ============================================================================
@@ -415,6 +417,30 @@ pub async fn delete_user(
                 }),
             )
         })?;
+
+    // Cannot delete a bot: it has no account to delete, only forfeiting its seats in every
+    // live game it sits in for nothing; use DELETE /api/bots/:botId instead
+    if user.user_type == UserType::Bot {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Cannot delete a bot through this endpoint".to_string(),
+            }),
+        ));
+    }
+
+    // Cannot delete a deleted-account stand-in: it holds other players' finished-game
+    // history, and deleting it could remove a party where no real human sits
+    if user_id.starts_with(DELETED_USER_ID_PREFIX) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                error: "Cannot delete a deleted-account stand-in".to_string(),
+            }),
+        ));
+    }
 
     // Cannot delete admin
     if user.is_admin {

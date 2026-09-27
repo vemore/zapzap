@@ -389,6 +389,7 @@ class GameProvider extends ChangeNotifier {
       case 'gameFinished':
       case 'roundStarted':
       case 'partyStarted':
+      case 'playerForfeited':
         load(showSpinner: false);
       case 'partyDeleted':
         _outcome = GameOutcome.closed;
