@@ -9,6 +9,10 @@
 
 ### Localisation
 
+- **Adding, renaming or removing a string is the `i18n-add-string` skill**
+  (`.claude/skills/i18n-add-string/SKILL.md`): French first, English, the eight from the
+  glossary, ICU plurals per language, and bulk translation (one agent per locale, launched
+  by the orchestrator in one message).
 - `frontend-flutter/l10n.yaml`: `arb-dir: lib/l10n`, template `app_fr.arb`,
   `nullable-getter: false`. French is the default: `resolveLocale` (`app.dart`) picks the
   device's language, whatever its region, when it is one of the ten, else `fr`.
@@ -34,6 +38,13 @@
   locales; the home screen in each language (`ar` right to left); the game board's play,
   draw and hand-size phases at 360×740, text scales 1.0 and 1.5, in each language, without
   overflow.
+- **`scripts/arb_keys.py`** (2026-09-27, ported from countscore): `--keys` compares every
+  file's keys with `app_fr.arb`, `--values` lists the values of a non-English file still
+  identical to `app_en.arb` (a value with no letter outside its placeholders excepted, and
+  the keys of `SAME_AS_ENGLISH_OK`: brand, bot names, loanwords), `--unused` the template
+  keys no `.dart` file reads. A report the skill runs, not a gate; `scripts/test_arb_keys.py`
+  runs in the CI `hooks` job. On 2026-09-27 `--values` reported 20 values in de, es, hi,
+  id, pt, ru ("Lobby", "online", "pts", "DRL (Deep RL)", "Hard Vince"…).
 - **Translated ARB files are not counted in a pull request's size** (`ship-parallel` §3.1:
   every `lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`).
 - **No user-facing string literal outside `lib/l10n/`**: every text goes through
@@ -53,6 +64,10 @@
 
 ## Decisions & History
 
+- **The i18n-add-string skill and `arb_keys.py` (2026-09-27, `chore/i18n-add-string-skill`).**
+  Every Flutter entry adds strings and each agent rediscovered the procedure; nothing caught
+  a value left in English. Ported from countscore without its hook pair (a PostToolUse
+  progress report and a commit-time refusal): a later step, once `--values` is clean.
 - **Eight more languages (2026-09-26, `feat/flutter-l10n-top-languages`).** Ahead of the Play
   Store release: es, pt (Brazilian), de, ru, ja, hi, id, ar, translated by Haiku agents from
   the English and French files, then checked by `test/l10n_locales_test.dart`.

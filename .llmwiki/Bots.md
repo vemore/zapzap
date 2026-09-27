@@ -2,7 +2,7 @@
 
 > Scope: bot players in the Rust backend (`zapzap-rust/src/infrastructure/bot/`): difficulties, strategies, parameter provenance, LLM bot (Ollama / Bedrock) and its memory, how bot turns are triggered. Short pointer to the training-only strategies in `native/`.
 > Related: [[Backend]] · [[Api]] · [[GameRules]] · [[NativeEngine]] · [[Architecture]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -91,4 +91,4 @@ Mapping done once, in `BotBrain::for_difficulty` (`zapzap-rust/src/application/b
 - Bedrock integration dates from 5838e7d (2025-12-10); LLM memory/reflection from 13e1514 and d43e199 (2025-12-20).
 - Background triggering with 50/500 iteration caps replaced client-driven triggering in 8a3509b (2025-12-23: "adjust iteration limits based on player types"); the Node backend also had restart recovery of pending bot turns (c116041) that was not ported — polling of `GET state` now plays that role.
 - Thibot coordination (cbdc7ac/00fb843, 2025-12-21) was designed for a long-lived strategy instance (JS factory); the Rust per-action instantiation silently disables it.
-- 2026-09-25 (chore/remove-node-backend): the Node backend is removed, with its JS strategies (`DRLBotStrategy`, `MLBotStrategy`, `HardVinceBotStrategy`…), its ML models (`data/ml_model_*.json`, `data/models/default/`), the Vince optimisers and their unused grid-search output `data/hard_vince_optimized_params.json`; the Rust strategies above are the only ones a game plays. The `*_genetic_params.json` files stay, for Rust to read one day. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/bot/strategies/HardVinceBotStrategy.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- 2026-09-25 (chore/remove-node-backend): the Node backend is removed, with its JS strategies (`DRLBotStrategy`, `MLBotStrategy`, `HardVinceBotStrategy`…), its ML models (`data/ml_model_*.json`, the data/models/default/ directory), the Vince optimisers and their unused grid-search output data/hard_vince_optimized_params.json; the Rust strategies above are the only ones a game plays. The `*_genetic_params.json` files stay, for Rust to read one day. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/bot/strategies/HardVinceBotStrategy.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

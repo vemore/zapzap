@@ -370,7 +370,7 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
 unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
 compose's Rust backend with the Bedrock feature, started until its health check passes; both
-frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web, debug and
+frontends), hooks (the Claude Code hooks self-test, and the self-tests of the deploy script, the wiki lint and the agent evals' checks), Flutter client (analyze, tests, web, debug and
 release apk builds; the debug APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).

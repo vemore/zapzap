@@ -15,7 +15,7 @@ guess at architecture, routes, rules or deployment — a page already has it. `[
 wiki page resolves to `.llmwiki/Name.md`. The game rules are `GAME_RULES.md`.
 
 Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip-refine`,
-`deploy`, `release-android`, `flutter-device-test`.
+`deploy`, `release-android`, `flutter-device-test`, `i18n-add-string`.
 
 ## Non-negotiables
 
@@ -82,6 +82,7 @@ node scripts/train-native.js                     # .llmwiki/NativeEngine.md
 # Tooling
 scripts/wip.sh list all                          # the local backlog
 scripts/hooks_selftest.sh                        # the hooks
+evals/selftest.sh                                # agent-eval checks; real runs (paid): .llmwiki/AgentEvals.md
 ```
 
 Kill a local server by port, never by name: `lsof -ti:9999 | xargs kill`.
