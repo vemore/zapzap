@@ -74,6 +74,10 @@ while IFS= read -r path; do
         scripts/verify_aab.sh|scripts/play_publish.py|scripts/test_verify_aab.py|scripts/test_play_publish.py)
             hooks=true ;;
 
+        # The delivery and agent metrics scripts and their tests, which the hooks job runs
+        # (.llmwiki/ParallelDelivery.md § Measuring delivery).
+        scripts/delivery_metrics.sh|scripts/delivery_metrics_selftest.sh|scripts/agent_metrics.py|scripts/test_agent_metrics.py)
+            hooks=true ;;
         # The ARB checker of the i18n-add-string skill and its tests, which the hooks job runs.
         scripts/arb_keys.py|scripts/test_arb_keys.py) hooks=true ;;
 
