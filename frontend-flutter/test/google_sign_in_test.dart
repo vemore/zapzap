@@ -326,7 +326,7 @@ void main() {
     expect(find.text('Parties disponibles'), findsOneWidget);
   });
 
-  testWidgets('the logout button signs out of Google', (tester) async {
+  testWidgets('signing out signs out of Google', (tester) async {
     final google = FakeGoogleSignIn();
     await pumpApp(
       tester,
@@ -340,8 +340,11 @@ void main() {
     expect(find.text('Parties disponibles'), findsOneWidget);
     expect(google.signOuts, 0);
 
-    await tester.tap(find.byKey(const Key('logout')));
-    await tester.pumpAndSettle();
+    // Sign out, from the ⋮ menu, confirmed.
+    for (final key in ['app-bar-menu', 'menu-logout', 'logout-confirm']) {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
     expect(find.text('Connexion'), findsOneWidget);
     expect(google.signOuts, 1);
   });

@@ -13,8 +13,7 @@ const ERRORS = {
   INVALID_PASSWORD: 'Mot de passe incorrect.',
   MISSING_CONFIRMATION: 'Entre ton mot de passe pour confirmer.',
   GOOGLE_AUTH_FAILED: 'Google n’a pas confirmé ce compte. Réessaie avec le même compte Google.',
-  ACTIVE_PARTY:
-    'Tu es encore dans une partie en attente ou en cours : quitte-la ou termine-la d’abord.',
+  ACTIVE_PARTY: 'Tu es encore dans une partie en attente : quitte-la d’abord.',
   LAST_ADMIN: 'Tu es le seul administrateur : ton compte ne peut pas être supprimé.',
 };
 
@@ -73,7 +72,9 @@ function DeleteAccount() {
             </p>
             <p>
               Les parties terminées restent dans l’historique des autres joueurs, où tu
-              apparais comme « Joueur supprimé ». Cette action est irréversible.
+              apparais comme « Joueur supprimé ». Une partie en cours est abandonnée : tu
+              en es éliminé et les autres joueurs continuent sans toi. Cette action est
+              irréversible.
             </p>
           </div>
 

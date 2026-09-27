@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
@@ -689,31 +689,8 @@ impl PartyRepository for SqlitePartyRepository {
         &self,
         party_id: &str,
     ) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
-        // Get the first round where each player was eliminated
-        // Returns (user_id, MIN(round_number) where is_eliminated=1)
-        let rows = sqlx::query_as::<_, (String, Option<i32>)>(
-            r#"
-            SELECT
-                pp.user_id,
-                (SELECT MIN(rs.round_number)
-                 FROM round_scores rs
-                 WHERE rs.party_id = pp.party_id
-                 AND rs.user_id = pp.user_id
-                 AND rs.is_eliminated = 1) as elimination_round
-            FROM party_players pp
-            WHERE pp.party_id = ?
-            ORDER BY pp.player_index ASC
-            "#,
-        )
-        .bind(party_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
-
-        Ok(rows
-            .into_iter()
-            .map(|(user_id, round)| (user_id, round.map(|r| r as u32)))
-            .collect())
+        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        elimination_order(&mut conn, party_id).await
     }
 
     async fn save_game_results(
@@ -725,54 +702,112 @@ impl PartyRepository for SqlitePartyRepository {
         was_golden_score: bool,
         player_results: Vec<PlayerGameResult>,
     ) -> Result<(), RepositoryError> {
-        let now = chrono::Utc::now().timestamp();
+        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        write_game_results(
+            &mut conn,
+            party_id,
+            winner_user_id,
+            winner_score,
+            total_rounds,
+            was_golden_score,
+            player_results,
+        )
+        .await
+    }
+}
 
-        // Insert into game_results
+fn db_err(e: sqlx::Error) -> RepositoryError {
+    RepositoryError::Database(e.to_string())
+}
+
+/// Each player of the party with the first round they were eliminated in, by seat: the
+/// `MIN(round_number)` of their `round_scores` rows marked `is_eliminated`, `None` if none.
+/// On a connection, so that a transaction can read it (`delete_account`).
+pub(crate) async fn elimination_order(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
+    let rows = sqlx::query_as::<_, (String, Option<i32>)>(
+        r#"
+        SELECT
+            pp.user_id,
+            (SELECT MIN(rs.round_number)
+             FROM round_scores rs
+             WHERE rs.party_id = pp.party_id
+             AND rs.user_id = pp.user_id
+             AND rs.is_eliminated = 1) as elimination_round
+        FROM party_players pp
+        WHERE pp.party_id = ?
+        ORDER BY pp.player_index ASC
+        "#,
+    )
+    .bind(party_id)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, round)| (user_id, round.map(|r| r as u32)))
+        .collect())
+}
+
+/// Write a finished game's results (`game_results`, `player_game_results`), upserted on
+/// the party. On a connection, so that a transaction can write them (`delete_account`).
+pub(crate) async fn write_game_results(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+    winner_user_id: &str,
+    winner_score: u16,
+    total_rounds: u32,
+    was_golden_score: bool,
+    player_results: Vec<PlayerGameResult>,
+) -> Result<(), RepositoryError> {
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds, was_golden_score, player_count, finished_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(party_id) DO UPDATE SET
+            winner_user_id = excluded.winner_user_id,
+            winner_final_score = excluded.winner_final_score,
+            total_rounds = excluded.total_rounds,
+            was_golden_score = excluded.was_golden_score,
+            finished_at = excluded.finished_at",
+    )
+    .bind(party_id)
+    .bind(winner_user_id)
+    .bind(winner_score as i32)
+    .bind(total_rounds as i32)
+    .bind(if was_golden_score { 1 } else { 0 })
+    .bind(player_results.len() as i32)
+    .bind(now)
+    .bind(now)
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    for result in player_results {
         sqlx::query(
-            "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds, was_golden_score, player_count, finished_at, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(party_id) DO UPDATE SET
-                winner_user_id = excluded.winner_user_id,
-                winner_final_score = excluded.winner_final_score,
-                total_rounds = excluded.total_rounds,
-                was_golden_score = excluded.was_golden_score,
-                finished_at = excluded.finished_at",
+            "INSERT INTO player_game_results (party_id, user_id, final_score, finish_position, rounds_played, is_winner, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(party_id, user_id) DO UPDATE SET
+                final_score = excluded.final_score,
+                finish_position = excluded.finish_position,
+                rounds_played = excluded.rounds_played,
+                is_winner = excluded.is_winner",
         )
         .bind(party_id)
-        .bind(winner_user_id)
-        .bind(winner_score as i32)
-        .bind(total_rounds as i32)
-        .bind(if was_golden_score { 1 } else { 0 })
-        .bind(player_results.len() as i32)
+        .bind(&result.user_id)
+        .bind(result.final_score as i32)
+        .bind(result.finish_position as i32)
+        .bind(result.rounds_played as i32)
+        .bind(if result.is_winner { 1 } else { 0 })
         .bind(now)
-        .bind(now)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
-
-        // Insert player results
-        for result in player_results {
-            sqlx::query(
-                "INSERT INTO player_game_results (party_id, user_id, final_score, finish_position, rounds_played, is_winner, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(party_id, user_id) DO UPDATE SET
-                    final_score = excluded.final_score,
-                    finish_position = excluded.finish_position,
-                    rounds_played = excluded.rounds_played,
-                    is_winner = excluded.is_winner",
-            )
-            .bind(party_id)
-            .bind(&result.user_id)
-            .bind(result.final_score as i32)
-            .bind(result.finish_position as i32)
-            .bind(result.rounds_played as i32)
-            .bind(if result.is_winner { 1 } else { 0 })
-            .bind(now)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
-        }
-
-        Ok(())
+        .map_err(db_err)?;
     }
+
+    Ok(())
 }

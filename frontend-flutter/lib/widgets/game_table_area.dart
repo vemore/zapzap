@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/card.dart';
@@ -35,8 +36,13 @@ enum TableStep {
 /// the pile by a player who played and drew in one go — glides in (J9 of
 /// the UX study): up from the hand when this player played it, down from
 /// the players otherwise. A card already on the felt, going from the
-/// played row to the pile, does not move again. Nothing glides under
-/// reduced motion ([Motion]).
+/// played row to the pile, slides from the one to the other and is not
+/// taken for a new card. A card that leaves the felt does not vanish: the
+/// one a draw took from the pile — or a card back off the deck — moves on
+/// toward the player who took it, down to the hand for this player, up
+/// to the players otherwise, fading out; the rest of the pile, gone to the
+/// discard, fades out where it lay. Nothing moves under reduced motion
+/// ([Motion]).
 ///
 /// Given a height it must fill (tight constraints), it fills it, its
 /// content centred; given a loose one, it takes the height its content
@@ -96,7 +102,8 @@ class GameTableArea extends StatefulWidget {
   final double? drawPlayedWidth;
 
   /// The last move was this player's: the cards it brought glide up from
-  /// the hand, under the felt, instead of down from the players.
+  /// the hand, under the felt, instead of down from the players, and a
+  /// card it took leaves down toward the hand.
   final bool playedByMe;
 
   /// How far, in card heights, a card starts from where it lands.
@@ -104,6 +111,16 @@ class GameTableArea extends StatefulWidget {
 
   /// The key of the glide around card [cardId], while it glides in.
   static Key glideKey(int cardId) => ValueKey('feltGlide-$cardId');
+
+  /// The key of card [cardId] while it slides from the played row to the
+  /// pile.
+  static Key slideKey(int cardId) => ValueKey('feltSlide-$cardId');
+
+  /// The key of card [cardId]'s image while it leaves the felt.
+  static Key leavingKey(int cardId) => ValueKey('feltLeaving-$cardId');
+
+  /// The key of the card back leaving the deck after a deck draw.
+  static const deckLeavingKey = ValueKey('feltLeaving-deck');
 
   /// How long the "Reshuffled!" banner stays, as React
   /// (`TableArea.jsx:222`).
@@ -129,13 +146,42 @@ class GameTableArea extends StatefulWidget {
   State<GameTableArea> createState() => _GameTableAreaState();
 }
 
-class _GameTableAreaState extends State<GameTableArea> {
+class _GameTableAreaState extends State<GameTableArea>
+    with TickerProviderStateMixin {
   Timer? _reshuffleTimer;
   bool _showReshuffle = false;
   Object? _shownAction;
 
   /// The cards gliding in, and where from: below (the hand) or above.
   final Map<int, bool> _gliding = {};
+
+  /// Every card on the felt, and the deck's top card ([_deckSlot]), as laid
+  /// out: where each was is read before the felt changes.
+  final Map<int, RenderBox> _slots = {};
+
+  /// The slot of the deck's top card in [_slots]: no card has this id.
+  static const _deckSlot = -1;
+
+  /// The cards sliding from the played row to the pile, and where each
+  /// was, in the felt's coordinates.
+  final Map<int, Rect> _sliding = {};
+
+  /// The images of the cards leaving the felt.
+  final List<_Leaving> _leaving = [];
+
+  late final AnimationController _shift = AnimationController(vsync: this)
+    ..addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(_sliding.clear);
+      }
+    });
+
+  late final AnimationController _leave = AnimationController(vsync: this)
+    ..addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(_leaving.clear);
+      }
+    });
 
   @override
   void initState() {
@@ -147,8 +193,107 @@ class _GameTableAreaState extends State<GameTableArea> {
   void didUpdateWidget(GameTableArea oldWidget) {
     super.didUpdateWidget(oldWidget);
     _followReshuffle();
+    _followMoves(oldWidget);
     _followArrivals(oldWidget);
   }
+
+  /// The felt's own box: the coordinates the moves are measured in.
+  RenderBox? get _felt {
+    final box = context.findRenderObject();
+    return box is RenderBox && box.hasSize ? box : null;
+  }
+
+  /// Where [box] lies on the felt, or `null` when it is not laid out.
+  Rect? _rectOf(RenderBox box, RenderBox felt) {
+    if (!box.attached || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero, ancestor: felt) & box.size;
+  }
+
+  /// Read before the new felt is built, while the boxes still lie where
+  /// the last one put them: the cards going from the played row to the
+  /// pile slide there, a card taken from the pile moves on toward its
+  /// taker, the rest of the pile fades out, and a deck draw sends a card
+  /// back off the deck. Only a play or a draw moves cards so: a new round
+  /// lays a new table.
+  void _followMoves(GameTableArea oldWidget) {
+    final action = widget.lastAction;
+    final felt = _felt;
+    if (felt == null ||
+        action == null ||
+        (action.type != 'play' && action.type != 'draw')) {
+      return;
+    }
+    final shift = Motion.of(context, Motion.shift);
+    final leave = Motion.of(context, Motion.leave);
+    if (shift == Duration.zero || leave == Duration.zero) return;
+
+    Rect? was(int id) {
+      final box = _slots[id];
+      return box == null ? null : _rectOf(box, felt);
+    }
+
+    final sliding = <int, Rect>{};
+    final pile = widget.lastCardsPlayed.toSet();
+    for (final id in oldWidget.cardsPlayed) {
+      final rect = pile.contains(id) ? was(id) : null;
+      if (rect != null) sliding[id] = rect;
+    }
+
+    final taken = action.type == 'draw' && action.source == 'played'
+        ? action.cardId
+        : null;
+    final now = {...widget.cardsPlayed, ...pile};
+    final leaving = <_Leaving>[
+      for (final id in {...oldWidget.cardsPlayed, ...oldWidget.lastCardsPlayed})
+        if (!now.contains(id))
+          if (was(id) case final rect?)
+            _Leaving(
+              key: GameTableArea.leavingKey(id),
+              rect: rect,
+              cardId: id,
+              towardTaker: id == taken,
+              down: widget.playedByMe,
+            ),
+    ];
+    final newDraw =
+        action.type == 'draw' &&
+        action.source != 'played' &&
+        _stamp(action) != _stamp(oldWidget.lastAction);
+    if (newDraw) {
+      if (was(_deckSlot) case final rect?) {
+        leaving.add(
+          _Leaving(
+            key: GameTableArea.deckLeavingKey,
+            rect: rect,
+            towardTaker: true,
+            down: widget.playedByMe,
+          ),
+        );
+      }
+    }
+
+    if (sliding.isNotEmpty) {
+      _sliding
+        ..clear()
+        ..addAll(sliding);
+      _shift
+        ..duration = shift
+        ..forward(from: 0);
+    }
+    if (leaving.isNotEmpty) {
+      _leaving
+        ..clear()
+        ..addAll(leaving);
+      _leave
+        ..duration = leave
+        ..forward(from: 0);
+    }
+  }
+
+  /// What tells one action from the next.
+  static String? _stamp(LastAction? action) => action == null
+      ? null
+      : '${action.type}/${action.playerIndex}/${action.timestamp}';
 
   /// The cards on the felt now that were not on it before glide in; a card
   /// gone from the felt stops. The first table drawn does not glide: it was
@@ -166,8 +311,23 @@ class _GameTableAreaState extends State<GameTableArea> {
     }
   }
 
-  /// [card], gliding in if it just came onto the felt.
+  /// [card] in its slot on the felt: gliding in if it just came onto it,
+  /// sliding over from the played row if it just went to the pile.
   Widget _landing(int id, Widget card) {
+    final from = _sliding[id];
+    return _FeltSlot(
+      key: from == null ? null : GameTableArea.slideKey(id),
+      id: id,
+      slots: _slots,
+      felt: () => _felt,
+      from: from,
+      progress: from == null ? null : _shift,
+      child: _glidingIn(id, card),
+    );
+  }
+
+  /// [card], gliding in if it just came onto the felt.
+  Widget _glidingIn(int id, Widget card) {
     final fromBelow = _gliding[id];
     if (fromBelow == null) return card;
     return _Glide(
@@ -185,6 +345,8 @@ class _GameTableAreaState extends State<GameTableArea> {
   @override
   void dispose() {
     _reshuffleTimer?.cancel();
+    _shift.dispose();
+    _leave.dispose();
     super.dispose();
   }
 
@@ -255,6 +417,8 @@ class _GameTableAreaState extends State<GameTableArea> {
     return Stack(
       // Passes a tight height down to the felt, which then fills it.
       fit: StackFit.passthrough,
+      // A card leaving toward its taker goes past the rim.
+      clipBehavior: Clip.none,
       children: [
         Container(
           key: const Key('feltRim'),
@@ -415,6 +579,13 @@ class _GameTableAreaState extends State<GameTableArea> {
             ),
           ),
         ),
+        for (final card in _leaving)
+          Positioned.fromRect(
+            rect: card.rect,
+            child: IgnorePointer(
+              child: _LeavingCard(key: card.key, card: card, progress: _leave),
+            ),
+          ),
         if (_showReshuffle)
           Positioned.fill(
             child: IgnorePointer(
@@ -553,14 +724,19 @@ class _GameTableAreaState extends State<GameTableArea> {
                         ),
                       ),
                     ),
-                  Container(
-                    key: const Key('deckTop'),
-                    foregroundDecoration: PlayingCard.edgeFor(look, radius),
-                    decoration: BoxDecoration(
-                      borderRadius: radius,
-                      boxShadow: PlayingCard.shadowFor(look),
+                  _FeltSlot(
+                    id: _deckSlot,
+                    slots: _slots,
+                    felt: () => _felt,
+                    child: Container(
+                      key: const Key('deckTop'),
+                      foregroundDecoration: PlayingCard.edgeFor(look, radius),
+                      decoration: BoxDecoration(
+                        borderRadius: radius,
+                        boxShadow: PlayingCard.shadowFor(look),
+                      ),
+                      child: CardBack(width: width),
                     ),
-                    child: CardBack(width: width),
                   ),
                 ],
               ),
@@ -641,4 +817,207 @@ class _GlideState extends State<_Glide> with SingleTickerProviderStateMixin {
     position: _offset,
     child: FadeTransition(opacity: _opacity, child: widget.child),
   );
+}
+
+/// A card on the felt, or the deck's top card: it keeps its box in
+/// [slots] under [id] while it is laid out, so the felt can tell where it
+/// was once it has moved. Given [from] and [progress], it slides from
+/// [from] — a rect in the felt's coordinates — to where it lies now,
+/// taking the size it has there, as [progress] runs from 0 to 1.
+class _FeltSlot extends SingleChildRenderObjectWidget {
+  const _FeltSlot({
+    super.key,
+    required this.id,
+    required this.slots,
+    required this.felt,
+    this.from,
+    this.progress,
+    super.child,
+  });
+
+  final int id;
+  final Map<int, RenderBox> slots;
+  final RenderBox? Function() felt;
+  final Rect? from;
+  final Animation<double>? progress;
+
+  @override
+  _RenderFeltSlot createRenderObject(BuildContext context) => _RenderFeltSlot(
+    id: id,
+    slots: slots,
+    felt: felt,
+    from: from,
+    progress: progress,
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderFeltSlot renderObject) {
+    renderObject
+      ..id = id
+      ..felt = felt
+      ..from = from
+      ..progress = progress;
+  }
+}
+
+/// Paints its child where [from] and the child's place meet at
+/// [progress]: the new place is known only once laid out, so the slide is
+/// worked out at paint time, not at build time.
+class _RenderFeltSlot extends RenderProxyBox {
+  _RenderFeltSlot({
+    required this._id,
+    required this.slots,
+    required this.felt,
+    this._from,
+    this._progress,
+  });
+
+  final Map<int, RenderBox> slots;
+  RenderBox? Function() felt;
+
+  int _id;
+  set id(int value) {
+    if (value == _id) return;
+    if (slots[_id] == this) slots.remove(_id);
+    _id = value;
+    if (attached) slots[_id] = this;
+  }
+
+  Rect? _from;
+  set from(Rect? value) {
+    if (value == _from) return;
+    _from = value;
+    markNeedsPaint();
+  }
+
+  Animation<double>? _progress;
+  set progress(Animation<double>? value) {
+    if (value == _progress) return;
+    if (attached) _progress?.removeListener(markNeedsPaint);
+    _progress = value;
+    if (attached) _progress?.addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    slots[_id] = this;
+    _progress?.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    if (slots[_id] == this) slots.remove(_id);
+    _progress?.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  /// Where the child is drawn relative to where it lies, or `null` when
+  /// it lies where it is drawn.
+  Matrix4? get _shift {
+    final from = _from;
+    final progress = _progress;
+    final felt = this.felt();
+    if (from == null ||
+        progress == null ||
+        progress.isCompleted ||
+        felt == null ||
+        !hasSize ||
+        size.width == 0) {
+      return null;
+    }
+    final t = Curves.easeInOutCubic.transform(progress.value);
+    final lies = localToGlobal(Offset.zero, ancestor: felt);
+    final offset = (from.topLeft - lies) * (1 - t);
+    final scale = from.width / size.width * (1 - t) + t;
+    return Matrix4.diagonal3Values(scale, scale, 1)
+      ..setTranslationRaw(offset.dx, offset.dy, 0);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final shift = _shift;
+    if (shift == null) return super.paint(context, offset);
+    context.pushTransform(needsCompositing, offset, shift, super.paint);
+  }
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) {
+    final shift = _shift;
+    if (shift != null) transform.multiply(shift);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final shift = _shift;
+    if (shift == null) {
+      return super.hitTestChildren(result, position: position);
+    }
+    return result.addWithPaintTransform(
+      transform: shift,
+      position: position,
+      hitTest: (result, position) =>
+          super.hitTestChildren(result, position: position),
+    );
+  }
+}
+
+/// A card leaving the felt: where it lay, and whether it goes on toward
+/// the player who took it — [down] to the hand when that is this player —
+/// or, gone to the discard, fades out where it lay. No [cardId]: a card
+/// back off the deck.
+class _Leaving {
+  const _Leaving({
+    required this.key,
+    required this.rect,
+    required this.towardTaker,
+    required this.down,
+    this.cardId,
+  });
+
+  final Key key;
+  final Rect rect;
+  final bool towardTaker;
+  final bool down;
+  final int? cardId;
+}
+
+/// The image of a card leaving the felt, as [progress] runs from 0 to 1.
+class _LeavingCard extends StatelessWidget {
+  const _LeavingCard({super.key, required this.card, required this.progress});
+
+  final _Leaving card;
+  final Animation<double> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = card.cardId;
+    final face = id == null
+        ? CardBack(width: card.rect.width)
+        : PlayingCard(cardId: id, width: card.rect.width, disabled: true);
+    final fade = FadeTransition(
+      opacity: ReverseAnimation(
+        CurvedAnimation(
+          parent: progress,
+          // The card taken fades on its way out; the rest, at once.
+          curve: card.towardTaker
+              ? const Interval(0.4, 1, curve: Curves.easeIn)
+              : Curves.easeOut,
+        ),
+      ),
+      child: face,
+    );
+    if (!card.towardTaker) return fade;
+    final away = card.down
+        ? GameTableArea.glideDistance
+        : -GameTableArea.glideDistance;
+    return SlideTransition(
+      position: Tween(
+        begin: Offset.zero,
+        end: Offset(0, away),
+      ).animate(CurvedAnimation(parent: progress, curve: Curves.easeInCubic)),
+      child: fade,
+    );
+  }
 }

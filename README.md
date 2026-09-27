@@ -322,7 +322,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | **runs in production** (since 2026-09-24) |
 | Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n in ten languages (fr, en, es, pt, de, ru, ja, hi, id, ar) | login, register (password or Google), the party list, create-party, the lobby, the game board, history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n in ten languages (fr, en, es, pt, de, ru, ja, hi, id, ar) | login, register (password or Google), the party list, create-party, the lobby, the game board, a rules sheet, an offline example game (tutorial), history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 
 The Flutter client, from `frontend-flutter/`:
@@ -626,6 +626,12 @@ Player 4: 10 points
 ### Game Elimination
 
 - Players above **100 points** are eliminated (dead)
+- A player who **deletes their account** during a game gives up their seat: they are
+  eliminated at once and their hand leaves play, face down onto the discard pile (it
+  comes back only when the deck is rebuilt from that pile, or at the next deal). If it
+  was their turn, the next player plays (or picks the hand size, when the round had not
+  started). The others play on; with one player left, that player wins, and a round in
+  progress ends there without scoring.
 - Last 2 players alive: "Golden Score" final round
 - Winner: Last player alive (≤100 points)
 

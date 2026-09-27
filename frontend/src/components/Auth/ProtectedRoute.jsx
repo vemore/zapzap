@@ -2,11 +2,13 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { isAuthenticated } from '../../services/auth';
 
 // A signed-out visitor goes to the login, which brings them back here (`from`): a link
-// to a protected page, such as /account/delete, works from outside the app.
+// to a protected page, such as /account/delete, works from outside the app. The query
+// string and the hash come back too.
 function ProtectedRoute({ children }) {
   const location = useLocation();
   if (!isAuthenticated()) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from }} />;
   }
 
   return children;

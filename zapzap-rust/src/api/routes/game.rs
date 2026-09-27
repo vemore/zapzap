@@ -339,15 +339,6 @@ pub async fn get_game_state(
             }
         }
 
-        // Build eliminated players list from scores > 100
-        let eliminated_players: Vec<u8> = gs
-            .scores
-            .iter()
-            .enumerate()
-            .filter(|(_, &score)| score > 100)
-            .map(|(i, _)| i as u8)
-            .collect();
-
         GameStateInfo {
             current_turn: gs.current_turn,
             current_action: gs.current_action,
@@ -359,7 +350,7 @@ pub async fn get_game_state(
             other_players_hand_sizes: other_hand_sizes,
             last_action: gs.last_action,
             is_golden_score: gs.is_golden_score,
-            eliminated_players,
+            eliminated_players: gs.eliminated_players,
             starting_player: gs.starting_player,
             // Round end data - populated when currentAction == "finished"
             all_hands: gs.all_hands,

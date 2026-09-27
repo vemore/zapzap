@@ -3,7 +3,7 @@
 > Scope: which documents a change implicates, the wiki conventions, and the `CLAUDE.md`
 > budget. No hook enforces these: they need judgement ([[Hooks]]).
 > Related: [[ParallelDelivery]] · [[Hooks]]
-> Updated: 2026-09-22
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -34,7 +34,8 @@ there, leave it alone.
 
 The rules reference. A change to scoring, combinations, ZapZap eligibility or the golden
 score updates it in the same pull request, and [[GameRules]] points at where the code
-implements each rule.
+implements each rule. The Flutter app's rules sheet summarises it for players (the `rules*`
+strings of the ten ARB files): the same change updates them.
 
 ### The `CLAUDE.md` budget
 

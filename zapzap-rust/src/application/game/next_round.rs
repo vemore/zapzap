@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::domain::entities::{PartyPlayer, PartyStatus, Round};
 use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError};
-use crate::domain::services::{initialize_round, is_game_over};
+use crate::domain::services::{initialize_round, is_game_over, sort_final_ranking};
 use crate::domain::value_objects::{GameAction, GameState};
 
 /// Next round input
@@ -124,28 +124,7 @@ impl<P: PartyRepository> NextRound<P> {
                 })
                 .collect();
 
-            // Sort by: winner first, then by elimination order (later = better), never eliminated by score
-            let winner_copy = winner;
-            player_results.sort_by(|a, b| {
-                let (idx_a, score_a, _, elim_a) = a;
-                let (idx_b, score_b, _, elim_b) = b;
-
-                // Winner always first
-                if *idx_a == winner_copy {
-                    return std::cmp::Ordering::Less;
-                }
-                if *idx_b == winner_copy {
-                    return std::cmp::Ordering::Greater;
-                }
-
-                // Non-eliminated before eliminated
-                match (elim_a, elim_b) {
-                    (None, Some(_)) => std::cmp::Ordering::Less,
-                    (Some(_), None) => std::cmp::Ordering::Greater,
-                    (None, None) => score_a.cmp(score_b), // Both not eliminated: lower score = better
-                    (Some(r_a), Some(r_b)) => r_b.cmp(r_a), // Both eliminated: later round = better position
-                }
-            });
+            sort_final_ranking(&mut player_results, winner);
 
             let winner_user_id = players
                 .iter()

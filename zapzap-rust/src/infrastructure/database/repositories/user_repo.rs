@@ -1,8 +1,15 @@
 use async_trait::async_trait;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
-use crate::domain::entities::{BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX};
-use crate::domain::repositories::{AccountDeletion, RepositoryError, UserRepository};
+use super::party_repo::{elimination_order, write_game_results};
+use crate::domain::entities::{
+    deleted_user_id_pattern, BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX,
+};
+use crate::domain::repositories::{
+    AccountDeletion, ForfeitOutcome, PlayerGameResult, RepositoryError, SeatForfeit, UserRepository,
+};
+use crate::domain::services::{forfeit_seat, sort_final_ranking};
+use crate::domain::value_objects::GameState;
 
 /// The columns that name a user in a game, each handed to the anonymous user when an
 /// account is deleted (`delete_account`)
@@ -17,6 +24,189 @@ const USER_REFERENCES: [(&str, &str); 6] = [
 
 fn db_err(e: sqlx::Error) -> RepositoryError {
     RepositoryError::Database(e.to_string())
+}
+
+/// Forfeit every seat `user_id` holds in a game in progress, within the deletion's
+/// transaction. Each seat is eliminated (`forfeit_seat`) and the game plays on without it;
+/// with fewer than two seats left it is over, and finished as a zapzap would finish it;
+/// with no other human at the table (the anonymous users of accounts deleted before do
+/// not count) the party is deleted, as when the last human leaves a waiting party. A
+/// party the user owns goes to the first other human by seat.
+async fn forfeit_playing_seats(
+    conn: &mut SqliteConnection,
+    user_id: &str,
+) -> Result<Vec<SeatForfeit>, RepositoryError> {
+    let seats: Vec<(String, i64, String, String, String)> = sqlx::query_as(
+        "SELECT p.id, pp.player_index, p.owner_id, p.name, p.visibility FROM party_players pp \
+         JOIN parties p ON p.id = pp.party_id WHERE pp.user_id = ? AND p.status = 'playing'",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    let now = chrono::Utc::now().timestamp();
+    let mut forfeits = Vec::with_capacity(seats.len());
+    for (party_id, player_index, owner_id, name, visibility) in seats {
+        let player_index = player_index as u8;
+        let humans: Vec<String> = sqlx::query_scalar(
+            "SELECT pp.user_id FROM party_players pp JOIN users u ON u.id = pp.user_id \
+             WHERE pp.party_id = ? AND pp.user_id <> ? AND u.user_type = 'human' \
+             AND u.id NOT LIKE ? ORDER BY pp.player_index",
+        )
+        .bind(&party_id)
+        .bind(user_id)
+        .bind(deleted_user_id_pattern())
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(db_err)?;
+
+        let Some(new_owner) = humans.first() else {
+            sqlx::query("DELETE FROM parties WHERE id = ?")
+                .bind(&party_id)
+                .execute(&mut *conn)
+                .await
+                .map_err(db_err)?;
+            forfeits.push(SeatForfeit {
+                party_id,
+                player_index,
+                outcome: ForfeitOutcome::Deleted { name, visibility },
+            });
+            continue;
+        };
+        if owner_id == user_id {
+            sqlx::query("UPDATE parties SET owner_id = ?, updated_at = ? WHERE id = ?")
+                .bind(new_owner)
+                .bind(now)
+                .bind(&party_id)
+                .execute(&mut *conn)
+                .await
+                .map_err(db_err)?;
+        }
+
+        let json: Option<String> =
+            sqlx::query_scalar("SELECT state_json FROM game_state WHERE party_id = ?")
+                .bind(&party_id)
+                .fetch_optional(&mut *conn)
+                .await
+                .map_err(db_err)?;
+        let state = json.and_then(|json| match GameState::from_json(&json) {
+            Ok(state) => Some(state),
+            Err(e) => {
+                // The deletion goes through: the account matters more than a broken game
+                tracing::error!(
+                    "Forfeit in party {}: unreadable game state: {}",
+                    party_id,
+                    e
+                );
+                None
+            }
+        });
+        let mut outcome = ForfeitOutcome::Continues;
+        if let Some(mut state) = state {
+            let winner = forfeit_seat(&mut state, player_index);
+            sqlx::query("UPDATE game_state SET state_json = ?, updated_at = ? WHERE party_id = ?")
+                .bind(state.to_json())
+                .bind(now)
+                .bind(&party_id)
+                .execute(&mut *conn)
+                .await
+                .map_err(db_err)?;
+            if let Some(winner_index) = winner {
+                let winner_user_id =
+                    finish_forfeited_game(conn, &party_id, &state, winner_index, now).await?;
+                outcome = ForfeitOutcome::Finished {
+                    winner_user_id,
+                    winner_index,
+                };
+            }
+        }
+        forfeits.push(SeatForfeit {
+            party_id,
+            player_index,
+            outcome,
+        });
+    }
+    Ok(forfeits)
+}
+
+/// Finish a game a forfeit left with one seat: the party and its round are finished and
+/// the results written, ranked as `sort_final_ranking` ranks a zapzap's. A seat eliminated
+/// without a `round_scores` row to say when (a forfeit, this one included) counts as
+/// eliminated in the current round. Returns the winner's user id.
+async fn finish_forfeited_game(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+    state: &GameState,
+    winner_index: u8,
+    now: i64,
+) -> Result<String, RepositoryError> {
+    sqlx::query("UPDATE parties SET status = 'finished', updated_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(party_id)
+        .execute(&mut *conn)
+        .await
+        .map_err(db_err)?;
+    sqlx::query(
+        "UPDATE rounds SET status = 'finished', finished_at = ? \
+         WHERE party_id = ? AND status = 'active'",
+    )
+    .bind(now)
+    .bind(party_id)
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    let rounds = state.round_number as u32;
+    let seats: Vec<(String, i64)> =
+        sqlx::query_as("SELECT user_id, player_index FROM party_players WHERE party_id = ?")
+            .bind(party_id)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(db_err)?;
+    let eliminated_in: std::collections::HashMap<String, Option<u32>> =
+        elimination_order(conn, party_id)
+            .await?
+            .into_iter()
+            .collect();
+    let mut ranking: Vec<(u8, u16, String, Option<u32>)> = seats
+        .into_iter()
+        .map(|(user_id, index)| {
+            let index = index as u8;
+            let round = eliminated_in.get(&user_id).copied().flatten();
+            let round = round.or(state.is_eliminated(index).then_some(rounds));
+            (index, state.get_score(index), user_id, round)
+        })
+        .collect();
+    sort_final_ranking(&mut ranking, winner_index);
+
+    let winner_user_id = ranking
+        .iter()
+        .find(|(index, ..)| *index == winner_index)
+        .map(|(_, _, user_id, _)| user_id.clone())
+        .unwrap_or_default();
+    let results = ranking
+        .iter()
+        .enumerate()
+        .map(|(position, (index, score, user_id, _))| PlayerGameResult {
+            user_id: user_id.clone(),
+            final_score: *score,
+            finish_position: (position + 1) as u8,
+            rounds_played: rounds,
+            is_winner: *index == winner_index,
+        })
+        .collect();
+    write_game_results(
+        conn,
+        party_id,
+        &winner_user_id,
+        state.get_score(winner_index),
+        rounds,
+        state.is_golden_score,
+        results,
+    )
+    .await?;
+    Ok(winner_user_id)
 }
 
 /// SQLite implementation of UserRepository
@@ -223,10 +413,10 @@ impl UserRepository for SqliteUserRepository {
             }
         }
 
-        // The foreign keys cascade: deleting the user outright would take their seat out
-        // of a game in progress, and every party they own with it
-        let active: Option<i64> = sqlx::query_scalar(
-            "SELECT 1 FROM parties p WHERE p.status IN ('waiting', 'playing') \
+        // A waiting party is the player's to leave: the foreign keys cascade, and
+        // deleting the user outright would take the party they own with it
+        let waiting: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM parties p WHERE p.status = 'waiting' \
              AND (p.owner_id = ? OR EXISTS (SELECT 1 FROM party_players pp \
                   WHERE pp.party_id = p.id AND pp.user_id = ?)) LIMIT 1",
         )
@@ -235,9 +425,12 @@ impl UserRepository for SqliteUserRepository {
         .fetch_optional(&mut *tx)
         .await
         .map_err(db_err)?;
-        if active.is_some() {
+        if waiting.is_some() {
             return Ok(AccountDeletion::ActiveParty);
         }
+
+        // A game in progress cannot be left, and may never finish: the seat is forfeited
+        let forfeits = forfeit_playing_seats(&mut tx, id).await?;
 
         let mut referenced = false;
         for (table, column) in USER_REFERENCES {
@@ -290,7 +483,10 @@ impl UserRepository for SqliteUserRepository {
             .await
             .map_err(db_err)?;
         tx.commit().await.map_err(db_err)?;
-        Ok(AccountDeletion::Deleted { anonymised_as })
+        Ok(AccountDeletion::Deleted {
+            anonymised_as,
+            forfeits,
+        })
     }
 
     async fn is_in_active_party(&self, id: &str) -> Result<bool, RepositoryError> {
@@ -322,8 +518,9 @@ impl UserRepository for SqliteUserRepository {
 
     async fn find_all_humans(&self, limit: u32, offset: u32) -> Result<Vec<User>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT * FROM users WHERE user_type = 'human' AND id NOT LIKE 'deleted-%' ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM users WHERE user_type = 'human' AND id NOT LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
         )
+        .bind(deleted_user_id_pattern())
         .bind(limit as i32)
         .bind(offset as i32)
         .fetch_all(&self.pool)

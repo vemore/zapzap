@@ -14,6 +14,7 @@ import 'screens/party_lobby_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/stats_screen.dart';
+import 'screens/tutorial_screen.dart';
 
 /// The route paths, so screens navigate by name rather than by string.
 abstract final class AppRoutes {
@@ -57,7 +58,11 @@ abstract final class AppRoutes {
   /// Shown while the stored session is being read at start-up.
   static const splash = '/splash';
 
-  /// Reachable signed out. Everything else needs a session.
+  /// The example game: [TutorialScreen], offline.
+  static const tutorial = '/tutorial';
+
+  /// Reachable signed out. Everything else needs a session, but [tutorial],
+  /// reachable either way.
   static const public = {home, login, register};
 
   /// The query parameter carrying where to go once signed in (or restored).
@@ -140,6 +145,10 @@ GoRouter _router({
       builder: (context, state) => const AdminScreen(),
     ),
     GoRoute(
+      path: AppRoutes.tutorial,
+      builder: (context, state) => const TutorialScreen(),
+    ),
+    GoRoute(
       path: '${AppRoutes.admin}/:${AppRoutes.adminTabParam}',
       builder: (context, state) {
         final tab = AdminTab.fromSegment(
@@ -159,7 +168,8 @@ GoRouter _router({
 /// - signed out (no token, or an expired one), the login screen, remembering
 ///   [uri]; home, login and register stay reachable;
 /// - signed in, login, register and home lead on to the parties (or the
-///   remembered path); `/admin/**` needs `isAdmin`, else the parties.
+///   remembered path); `/admin/**` needs `isAdmin`, else the parties;
+/// - the tutorial stays, signed in or not.
 String? authRedirect(AuthProvider auth, Uri uri) {
   final path = uri.path;
   if (!auth.isRestored) {
@@ -168,6 +178,7 @@ String? authRedirect(AuthProvider auth, Uri uri) {
   if (path == AppRoutes.splash) {
     return _from(uri) ?? AppRoutes.home;
   }
+  if (path == AppRoutes.tutorial) return null;
   if (!auth.isAuthenticated) {
     return AppRoutes.public.contains(path) ? null : _with(AppRoutes.login, uri);
   }
