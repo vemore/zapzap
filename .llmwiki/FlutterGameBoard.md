@@ -13,8 +13,9 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 
 - **`GameProvider`**, built and disposed by the screen as the lobby's providers are:
   `GET /game/:id/state`, then the event stream filtered on `partyId` — `play`, `draw`,
-  `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished` and `partyStarted` refetch
-  without a spinner, `partyDeleted` sets `outcome` and the screen goes back to the list.
+  `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished`, `partyStarted` and
+  `playerForfeited` (a deleted account's seat, since #132) refetch without a spinner,
+  `partyDeleted` sets `outcome` and the screen goes back to the list.
   `partyStarted` is what takes a client that opened `/game/:id` before the owner started
   off the "not started yet" page and onto the table with no reload; that page also has a
   Retry (`Key('retry-game')`) for an event missed while the channel was down. No move's answer
@@ -262,3 +263,9 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   login) without each screen knowing about it — signed out only, since a signed-in user may
   be on a game and already knows ZapZap; its store is injected and absent by
   default so the existing tests keep pumping the app without `shared_preferences`.
+- **`playerForfeited` joined the reload list (2026-09-27, `fix/flutter-player-forfeited`).**
+  #132 made a deleted account forfeit its seat in a game in progress and broadcast
+  `gameUpdate`/`playerForfeited`; `_onEvent` did not reload on it, so a Flutter player whose
+  turn the forfeit handed over saw nothing until the next event or a manual refresh
+  (`GameBoard.jsx` already handled it). #132 stayed out of `frontend-flutter/` because
+  another agent was working there at the time.
