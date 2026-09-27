@@ -119,7 +119,7 @@ any worktree (`wip.sh path`). Format and lifecycle: `docs/wip-README.md` (copied
 but never writes them: it lists each new entry, complete, under a `## New wip entries`
 heading of its final report, and the orchestrator writes them to `todo_nr/` after the
 hand-back (`ship-parallel` §2). The orchestrator closes entries after the merge (§5). `wip-refine` decides what
-moves from `todo_nr/` to `todo/` (at most 12).
+moves from `todo_nr/` to `todo/` (12 per session, sessions on disjoint `Area`s: its §5).
 
 ## Decisions & History
 

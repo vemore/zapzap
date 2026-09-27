@@ -9,8 +9,8 @@
 # Usage: scripts/wip.sh [list] [todo|todo_nr|done|all]   entries, grouped by theme
 #        scripts/wip.sh themes [todo|todo_nr|all]         themes with their entry count
 #        scripts/wip.sh check [todo|todo_nr|done|all]     entries missing a header field
-#        scripts/wip.sh refine [todo|todo_nr|all]         signals for a refinement pass
-#                                                         (wip-refine skill)
+#        scripts/wip.sh refine [todo|todo_nr|all]         signals for a refinement pass, then
+#                                                         the todo/ count per Area (wip-refine)
 #        scripts/wip.sh init                              create wip/ and its README
 #        scripts/wip.sh path                              print the wip/ directory
 #
@@ -64,6 +64,17 @@ rows() {  # prints: folder<TAB>theme<TAB>blocks<TAB>area<TAB>file<TAB>title
     done
 }
 
+section() {  # file, section names (ERE alternation) -> 0 when the entry has that section
+    # The section, not its punctuation: a `## Name` heading or a `**Name:**` run-in, the
+    # colon inside the bold, after it or absent, any case, and qualifiers after the name:
+    # `(part a)`, `, minimal`, or both (`**Fix (decided), Flutter and React:**`). English
+    # and French names, since entries are written in both. An accented letter goes in an
+    # alternation, (e|é), never a bracket: [eé] fails in a C locale. Ported from
+    # countscore's scripts/wip.sh, with the comma qualifier added.
+    local q='([[:space:]]*(\([^)]*\)|,[^*:]*))*[[:space:]]*'
+    grep -qiE "^(#{2,}[[:space:]]*($2)$q(:.*)?\$|\*\*($2)$q:?[[:space:]]*\*\*)" "$1"
+}
+
 fields() {  # rows with "-" for an empty field: `read` with a tab IFS merges empty ones
     rows | sed -e 's/\t\t/\t-\t/g' -e 's/\t\t/\t-\t/g' -e 's/\t$/\t-/'
 }
@@ -108,9 +119,9 @@ case "$cmd" in
             age=$([ -n "$noted" ] && days_since "$noted" || echo "?")
             idle=$([ -n "$touched" ] && days_since "$touched" || echo "new")
             flags=""
-            grep -q '^\*\*Acceptance:\*\*' "$path" || flags="$flags no-acceptance"
-            grep -q '^\*\*Fix:\*\*' "$path" || flags="$flags no-fix"
-            grep -q '^\*\*Open question:\*\*' "$path" && flags="$flags open-question"
+            section "$path" 'acceptance( criteria)?|acceptation|crit(e|è)res? d.acceptation' || flags="$flags no-acceptance"
+            section "$path" 'fix|proposed fix|fix propos(e|é)|correctif( propos(e|é))?' || flags="$flags no-fix"
+            section "$path" 'open questions?|questions? ouvertes?' && flags="$flags open-question"
             [ "$idle" != new ] && [ "$idle" -gt 60 ] && flags="$flags stale"
             # Repository paths quoted in backticks that no longer exist.
             dead=$(dead_repo_paths "$ROOT" "$path" | tr '\n' ' ')
@@ -129,6 +140,13 @@ case "$cmd" in
         rows | grep -v '^done'$'\t' | awk -F'\t' '{ n[$2]++; t++ } END {
             for (k in n) if (n[k] > 4) printf "crowded theme: %s (%d entries) — look for merges\n", k, n[k]
             printf "%d open entries\n", t }'
-        [ -d "$WIP/todo" ] && printf "wip/todo/: %d of a WIP limit of 12\n" "$(find "$WIP/todo" -name '*.md' | wc -l)"
+        # The WIP limit is 12 per session, while sessions work disjoint Areas (wip-refine
+        # §5): the count that rule reads is per Area, not the folder's total.
+        [ -d "$WIP/todo" ] && (dirs=(todo); fields) | awk -F'\t' -v limit=12 '
+            { a = $4; sub(/[ ,(].*/, "", a); n[a]++; t++ }
+            END {
+                printf "wip/todo/: %d entries; WIP limit %d per session, sessions on disjoint Areas\n", t, limit
+                for (k in n) printf "  %-9s %2d%s\n", (k == "-" ? "(no Area)" : k), n[k], (n[k] > limit ? "  over the limit" : "")
+            }' | { IFS= read -r head; echo "$head"; sort; }
         ;;
 esac
