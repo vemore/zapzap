@@ -49,6 +49,8 @@ check "0 0 0 0 0 0 1" "scripts/flutter_e2e.sh"
 check "1 1 1 1 1 1 1" "some-new-dir/file"
 check "1 0 1 1 0 0 1" "zapzap-rust/src/lib.rs" "frontend/package.json"
 check "0 0 0 0 1 0 0" ".claude/settings.json" "scripts/wip.sh"
+# The wiki lint and the finder it shares with wip.sh: its self-test runs in the hooks job.
+check "0 0 0 0 1 0 0" "scripts/wiki_lint.sh" "scripts/wiki_lint_selftest.sh" "scripts/lib/dead_paths.sh"
 check "0 0 0 0 0 0 0" "docs/wip-README.md"
 check "0 0 0 1 0 0 0" "scripts/pwa_image_smoke.sh"
 check "0 0 0 1 0 0 0" "scripts/backend_image_smoke.sh"

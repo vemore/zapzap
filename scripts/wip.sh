@@ -31,6 +31,9 @@ case "${1:-}" in
         echo "$WIP ready"; exit 0 ;;
 esac
 
+# dead_repo_paths, shared with scripts/wiki_lint.sh.
+source "$HERE/scripts/lib/dead_paths.sh"
+
 cmd="${1:-list}"
 case "$cmd" in list|themes|check|refine) shift || true ;; *) cmd=list ;; esac
 default=todo; [ "$cmd" = check ] && default=all
@@ -110,11 +113,7 @@ case "$cmd" in
             grep -q '^\*\*Open question:\*\*' "$path" && flags="$flags open-question"
             [ "$idle" != new ] && [ "$idle" -gt 60 ] && flags="$flags stale"
             # Repository paths quoted in backticks that no longer exist.
-            dead=$(grep -oE '`(zapzap-rust|native|frontend|src|scripts|tests|data|nginx|\.claude|\.llmwiki|\.github)/[^` :]*`' "$path" \
-                | tr -d '`' | sed 's/[.,;)]*$//' | sort -u | while read -r p; do
-                    case "$p" in *'*'*|*'<'*|*'{'*) continue ;; esac
-                    [ -e "$ROOT/$p" ] || echo "$p"
-                done | tr '\n' ' ')
+            dead=$(dead_repo_paths "$ROOT" "$path" | tr '\n' ' ')
             [ -n "$dead" ] && flags="$flags dead-path:[${dead% }]"
             # Links to entries that are already closed.
             closed=$(grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+' "$path" | sort -u | while read -r slug; do
