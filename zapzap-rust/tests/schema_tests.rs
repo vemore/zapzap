@@ -13,7 +13,10 @@ use std::str::FromStr;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
+use zapzap_backend::domain::entities::User;
+use zapzap_backend::domain::repositories::UserRepository;
 use zapzap_backend::infrastructure::app_state::AppState;
+use zapzap_backend::infrastructure::database::repositories::SqliteUserRepository;
 use zapzap_backend::infrastructure::database::schema::{ensure_schema, MIGRATIONS};
 
 /// The `sqlite_master` of a Node-built database, in creation order.
@@ -76,11 +79,16 @@ async fn schema_objects(db: &SqlitePool) -> Vec<(String, String, String, String)
     .collect()
 }
 
-/// `objects` as the migrations leave them: `game_state` gains its `version` column.
+/// The index migration 2 adds, as `sqlite_master` holds it (SQLite drops `IF NOT EXISTS`)
+const GOOGLE_ID_UNIQUE_INDEX: &str = "CREATE UNIQUE INDEX idx_users_google_id_unique \
+                                      ON users(google_id) WHERE google_id IS NOT NULL";
+
+/// `objects` as the migrations leave them: `game_state` gains its `version` column, and
+/// `users` its partial unique index on `google_id`.
 fn migrated(
     objects: Vec<(String, String, String, String)>,
 ) -> Vec<(String, String, String, String)> {
-    objects
+    let mut objects: Vec<_> = objects
         .into_iter()
         .map(|(kind, name, table, sql)| {
             if kind == "table" && name == "game_state" {
@@ -91,7 +99,20 @@ fn migrated(
                 (kind, name, table, sql)
             }
         })
-        .collect()
+        .collect();
+    assert!(!objects.iter().any(|o| o.1 == "idx_users_google_id_unique"));
+    objects.push((
+        "index".into(),
+        "idx_users_google_id_unique".into(),
+        "users".into(),
+        GOOGLE_ID_UNIQUE_INDEX
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    ));
+    // `schema_objects` order
+    objects.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    objects
 }
 
 async fn user_version(db: &SqlitePool) -> i64 {
@@ -283,6 +304,20 @@ async fn schema_step_upgrades_a_node_built_database_and_keeps_every_row() {
         "no sqlx migration bookkeeping on a Node DB"
     );
 
+    // The upgraded database refuses a second user of alice's Google account
+    let err = sqlx::raw_sql(
+        "INSERT INTO users (id, username, google_id, created_at, updated_at)
+           VALUES ('u2', 'alice_1', 'g-123', 1700000000, 1700000000)",
+    )
+    .execute(&state.db)
+    .await
+    .expect_err("a second user of one google_id");
+    assert!(
+        err.to_string()
+            .contains("UNIQUE constraint failed: users.google_id"),
+        "{err}"
+    );
+
     state.db.close().await;
     let _ = std::fs::remove_file(&path);
 }
@@ -338,4 +373,81 @@ async fn schema_step_failure_leaves_the_database_unchanged() {
             .await
             .unwrap();
     assert_eq!(rows_after, rows_before);
+}
+
+#[tokio::test]
+async fn users_google_id_is_unique_when_set_and_null_repeats() {
+    let db = memory_pool().await;
+    ensure_schema(&db).await.unwrap();
+    let repo = SqliteUserRepository::new(db.clone());
+
+    // Password users and bots have no Google id: any number of NULLs
+    repo.save(&User::new_human("h1".into(), "alice".into(), "hash".into()))
+        .await
+        .unwrap();
+    repo.save(&User::new_human("h2".into(), "bob".into(), "hash".into()))
+        .await
+        .unwrap();
+
+    repo.save(&User::new_google(
+        "g1".into(),
+        "jean_dupont".into(),
+        "g-1".into(),
+        "jean@example.com".into(),
+    ))
+    .await
+    .unwrap();
+    // Another user of the same Google account, under another username, is refused
+    let err = repo
+        .save(&User::new_google(
+            "g2".into(),
+            "jean_dupont_1".into(),
+            "g-1".into(),
+            "jean@example.com".into(),
+        ))
+        .await
+        .expect_err("two users of one google_id");
+    assert!(err.is_unique_violation(), "{err}");
+    assert!(err.to_string().contains("users.google_id"), "{err}");
+    // The account's own user still saves over itself (the upsert on its id)
+    let mut jean = repo.find_by_google_id("g-1").await.unwrap().unwrap();
+    jean.email = Some("jean.dupont@example.com".into());
+    repo.save(&jean).await.unwrap();
+
+    let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM users ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(ids, ["g1", "h1", "h2"]);
+}
+
+/// A database already holding two users of one Google account cannot take migration 2: the
+/// startup step fails as a whole and leaves it as it was, migration 1 included.
+#[tokio::test]
+async fn google_id_migration_refuses_duplicates_and_leaves_the_database_unchanged() {
+    let db = memory_pool().await;
+    build_node_schema(&db).await;
+    sqlx::raw_sql(
+        "INSERT INTO users (id, username, google_id, created_at, updated_at)
+           VALUES ('u1', 'jean_dupont', 'g-1', 1700000000, 1700000000),
+                  ('u2', 'jean_dupont_1', 'g-1', 1700000000, 1700000000);",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let objects_before = schema_objects(&db).await;
+    let rows_before = dump_rows(&db).await;
+
+    let err = ensure_schema(&db)
+        .await
+        .expect_err("the unique index cannot be built over duplicates");
+    assert!(
+        err.to_string().contains("UNIQUE constraint failed"),
+        "{err}"
+    );
+
+    // Not even migration 1 (`game_state.version`) survived
+    assert_eq!(schema_objects(&db).await, objects_before);
+    assert_eq!(dump_rows(&db).await, rows_before);
+    assert_eq!(user_version(&db).await, 0);
 }

@@ -20,6 +20,13 @@ pub const MIGRATIONS: &[&str] = &[
     // a write based on a stale read is refused (`update_game_state`); existing rows start
     // at 0
     "ALTER TABLE game_state ADD COLUMN version INTEGER NOT NULL DEFAULT 0",
+    // 2: one user per Google account. Node's `idx_users_google_id` is a plain index, so two
+    // first logins of one account racing on different usernames could both insert; the
+    // loser's save now fails here and it answers the winner's user (`LoginWithGoogle`).
+    // Partial, so every password or bot user (NULL) still inserts. A database holding two
+    // users of one `google_id` fails this step and the server refuses to start, unchanged
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id_unique ON users(google_id) \
+     WHERE google_id IS NOT NULL",
 ];
 
 /// Create every table and index that does not exist yet, then run the migrations the
