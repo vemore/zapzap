@@ -41,8 +41,9 @@ Both recorded 2026-09-25; the app signing key's SHA-1 corrected 2026-09-27.
   → App signing. Both SHA-1s are registered as Google sign-in Android clients
   ([[FlutterAndroidPwa]] § Android).
 - The app signing key's SHA-1 recorded on 2026-09-25 (`68:9B:C2:…:6F:FB`) was wrong, and the
-  "ZapZap Android Play" client registered with it: Google sign-in in 1.0.1 (2) from the alpha
-  track reopened the login screen, silently, after the account was picked. Check the
+  "ZapZap Android Play" client registered with it (corrected in the console 2026-09-27):
+  Google sign-in in 1.0.1 (2) from the alpha track reopened the login screen, silently,
+  after the account was picked. Check the
   fingerprint against what Play actually serves: `adb shell pm path com.zapzap.app`, `adb pull`
   the `base.apk`, then `apksigner verify --print-certs base.apk` — its SHA-256 must be the one
   above, and its SHA-1 is the one to register.
