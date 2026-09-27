@@ -3,7 +3,7 @@
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
 > risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -102,7 +102,7 @@ any worktree (`wip.sh path`). Format and lifecycle: `docs/wip-README.md` (copied
 but never writes them: it lists each new entry, complete, under a `## New wip entries`
 heading of its final report, and the orchestrator writes them to `todo_nr/` after the
 hand-back (`ship-parallel` §2). The orchestrator closes entries after the merge (§5). `wip-refine` decides what
-moves from `todo_nr/` to `todo/` (at most 12).
+moves from `todo_nr/` to `todo/` (12 per session, sessions on disjoint `Area`s: its §5).
 
 ## Decisions & History
 
