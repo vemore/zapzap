@@ -55,6 +55,7 @@ root `docker-compose.yml`):
 | `JWT_SECRET` | `${JWT_SECRET:?...}` | no default: `docker-compose` refuses the file without it, and the binary refuses a blank or published placeholder ([[Backend]]). Production's `.env` has a private 44-character one (checked 2026-09-24) |
 | `RUST_LOG` | `${RUST_LOG:-info}` | stdout only: the Rust backend writes no log file, so there is no `logs/` mount |
 | `GOOGLE_OAUTH_CLIENT_ID` | from `.env` | Google login |
+| `ALLOWED_ORIGINS` | `${ALLOWED_ORIGINS:-https://zapzap.ombivince.synology.me}` | the only origin CORS grants (below); a default in the compose file, so no deploy runs permissive for want of a `.env` line. Production's `.env` has no such line (checked 2026-09-27): the default applies. The root and `zapzap-rust/` compose files pass it bare, only when set |
 | `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | the pause between two bot actions, read by `action_delay_from` (`zapzap-rust/src/application/bot/runner.rs`, default 1000 ms, `0` means no pause); production's `.env` sets `2000` |
 | `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
 | `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
@@ -62,14 +63,19 @@ root `docker-compose.yml`):
 Production's `.env` holds none of the keys only the removed Node backend read — `NODE_ENV`,
 `ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR` — nor `DB_PATH`, which the backend reads only when
 `DATABASE_URL` is unset (compose sets it): dropped 2026-09-25, a backup `.env.bak-*-node-keys`
-kept next to it.
+kept next to it. `ALLOWED_ORIGINS` is read again since 2026-09-27, by Rust, with its
+production value in the compose file.
 
-**CORS answers every origin.** The Rust router uses `CorsLayer::permissive()`
-(`zapzap-rust/src/api/mod.rs:32`); there is no allow-list (`ALLOWED_ORIGINS` is read by
-nothing). Both clients are
-same-origin under the production domain, and authentication is a bearer token, never a
-cookie, so another site cannot ride a player's session; restricting it is tracked in
-`wip/`.
+**CORS answers the production origin only.** The backend grants the origins of
+`ALLOWED_ORIGINS` (`AllowedOrigins`, `zapzap-rust/src/infrastructure/cors.rs`; parsing and
+the development default: [[Backend]]), which production sets to
+`https://zapzap.ombivince.synology.me`: a preflight or request from that origin gets
+`access-control-allow-origin`, one from any other site does not, so a foreign page cannot read
+the API's answers. Nothing is refused server-side: requests without an `Origin` — the Android
+app, a same-origin `GET` — or with another one are served as before, and both web clients are
+same-origin under that domain (the React client on `/`, the PWA under `/app/`), so CORS never
+applies to them. The startup log says which behaviour runs: `CORS answers only the origins of
+ALLOWED_ORIGINS: …` (info), or `ALLOWED_ORIGINS not set: CORS answers every origin` (warn).
 
 **Ownership of `data/`.** The image runs as uid 1000 (`zapzap-rust/Dockerfile`, user
 `zapzap`): `data/`, `data/zapzap.db` (and its `-wal`/`-journal` files) and
@@ -81,8 +87,11 @@ before it builds, and refuses with the command.
 
 **The schema step on the production database.** At start-up the backend runs its DDL, all
 `IF NOT EXISTS`, in one transaction ([[Backend]]); on the production database, created by
-the Node backend and opened by it for months, it is a no-op (checked on a copy before the
-switch: `sqlite_master` and the row counts unchanged).
+the Node backend and opened by it for months, the DDL is a no-op (checked on a copy before the
+switch: `sqlite_master` and the row counts unchanged). The migrations it has not had run
+after it, in the same transaction, once each (`PRAGMA user_version`): the first start of
+fix/game-state-version adds `game_state.version` (existing rows 0). They are additive, so an
+older image rolled back to reads and writes the migrated file as before.
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
 bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`
@@ -334,6 +343,19 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   a compose file `docker-compose` cannot read (a `.env` without `JWT_SECRET`) stops the
   deploy before the build, with compose's reason.
 - **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat found by the local rehearsal is void since fix/rust-keeps-bcrypt (#100: Rust keeps bcrypt, user decision); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.
+- **CORS restricted to the production origin (2026-09-27, fix/rust-cors-allow-list).** Rust
+  had answered every origin since the switch (`CorsLayer::permissive()`), where Node had
+  honoured `ALLOWED_ORIGINS`; tower-http documents the permissive layer as unfit for
+  production. The value lives in `docker-compose.prod.yml` as a default rather than in the
+  NAS `.env`: the `.env` had dropped the key on 2026-09-25, and a restriction that depends on
+  a hand-edited file would silently fall back to permissive on the next rebuilt deploy
+  directory. Unset stays permissive for development (the Flutter web client and the e2e run
+  call the API from another port), logged as a warning so a production start without it
+  shows. A malformed entry stops the backend, as a bad `JWT_SECRET` does, rather than grant
+  something other than what was written. After review (same PR): the preflight's request
+  headers are mirrored instead of answered `*`, since by the Fetch standard `*` never covers
+  `Authorization` and a strict browser would refuse every authenticated call from a listed
+  origin; and a `*` among the entries logs that it is a wildcard, not "not set".
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** The rollback to
   Node, its rehearsal, what it kept readable and the Node-only `.env` keys left this page: a
   rollback is now the previous commit of the Rust deployment, and CI no longer builds the

@@ -30,7 +30,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
               └─ /               -> frontend:80           (nginx serving the Vite build)
 ```
 
-- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`build_app`, `zapzap-rust/src/api/mod.rs:21-35`, served by `main.rs`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:45-50`). Route list: [[Api]].
+- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; a CORS layer granting the origins of `ALLOWED_ORIGINS`, every origin when unset ([[Backend]]) (`build_app`, `zapzap-rust/src/api/mod.rs:21-35`, served by `main.rs`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:45-50`). Route list: [[Api]].
 - Dev mode: Vite proxies `/api` and `/suscribeupdate` to `http://localhost:9999` (`frontend/vite.config.js:7-17`).
 
 ### Real-time updates (SSE)
@@ -46,7 +46,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 ### SQLite database
 
 - URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`database_url`, `zapzap-rust/src/infrastructure/app_state.rs:246`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `docker-compose.yml`, `zapzap-rust/docker-compose.yml:11`). The server and `zapzap-backend seed` open the same file.
-- The schema: created at startup from `zapzap-rust/src/infrastructure/database/schema.sql` (`ensure_schema`, `zapzap-rust/src/infrastructure/app_state.rs:97`), all `IF NOT EXISTS`, so it is a no-op on an existing database — production's was built by the Node backend. `zapzap-rust/tests/schema_tests.rs` checks it against a frozen Node-built schema, `zapzap-rust/tests/fixtures/node_built_schema.sql` ([[Backend]]). A database older than the Node backend's last migrations is not upgraded by anything any more; the schema step fails on it as a whole, leaving it unchanged (`zapzap-rust/tests/schema_tests.rs`).
+- The schema: created at startup from `zapzap-rust/src/infrastructure/database/schema.sql` (`ensure_schema`, `zapzap-rust/src/infrastructure/app_state.rs:97`), all `IF NOT EXISTS`, so it is a no-op on an existing database, then the migrations that database has not had (`MIGRATIONS`, counted in `PRAGMA user_version`) — production's was built by the Node backend. `zapzap-rust/tests/schema_tests.rs` checks it against a frozen Node-built schema, `zapzap-rust/tests/fixtures/node_built_schema.sql` ([[Backend]]). A database older than the Node backend's last migrations is not upgraded by anything any more; the schema step fails on it as a whole, leaving it unchanged (`zapzap-rust/tests/schema_tests.rs`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
 
 ### `data/` directory

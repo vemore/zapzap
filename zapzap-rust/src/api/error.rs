@@ -19,6 +19,7 @@ use crate::application::party::{
     AddBotToPartyError, CreatePartyError, DeletePartyError, GetPartyDetailsError, JoinPartyError,
     LeavePartyError, ListPartiesError, StartPartyError,
 };
+use crate::domain::repositories::RepositoryError;
 
 /// An error answered as `{error, code, details?}` with its HTTP status.
 #[derive(Debug, thiserror::Error)]
@@ -83,6 +84,15 @@ impl ApiError {
 
     fn party_not_playing() -> Self {
         Self::bad_request("INVALID_PARTY_STATE", "Party is not in playing state")
+    }
+
+    /// A move whose write lost a race with another write of the game state (a forfeit,
+    /// a second request): nothing was played, the client should reload the table
+    fn game_state_conflict() -> Self {
+        Self::conflict(
+            "GAME_STATE_CONFLICT",
+            "The game changed meanwhile: reload it and try again",
+        )
     }
 }
 
@@ -337,6 +347,9 @@ impl From<SelectHandSizeError> for ApiError {
                 Self::bad_request("INVALID_ACTION_STATE", "Not in hand size selection phase")
             }
             e @ SelectHandSizeError::NoGameState => Self::internal(CODE, MSG, e),
+            SelectHandSizeError::Repository(RepositoryError::Conflict(_)) => {
+                Self::game_state_conflict()
+            }
             SelectHandSizeError::Repository(e) => Self::internal(CODE, MSG, e),
         }
     }
@@ -370,6 +383,7 @@ impl From<PlayCardsError> for ApiError {
             e @ (PlayCardsError::NoGameState | PlayCardsError::GameError(_)) => {
                 Self::internal(CODE, MSG, e)
             }
+            PlayCardsError::Repository(RepositoryError::Conflict(_)) => Self::game_state_conflict(),
             PlayCardsError::Repository(e) => Self::internal(CODE, MSG, e),
         }
     }
@@ -400,6 +414,7 @@ impl From<DrawCardError> for ApiError {
             e @ (DrawCardError::NoGameState | DrawCardError::GameError(_)) => {
                 Self::internal(CODE, MSG, e)
             }
+            DrawCardError::Repository(RepositoryError::Conflict(_)) => Self::game_state_conflict(),
             DrawCardError::Repository(e) => Self::internal(CODE, MSG, e),
         }
     }
@@ -424,6 +439,9 @@ impl From<CallZapZapError> for ApiError {
             e @ (CallZapZapError::NoGameState | CallZapZapError::GameError(_)) => {
                 Self::internal(CODE, MSG, e)
             }
+            CallZapZapError::Repository(RepositoryError::Conflict(_)) => {
+                Self::game_state_conflict()
+            }
             CallZapZapError::Repository(e) => Self::internal(CODE, MSG, e),
         }
     }
@@ -440,7 +458,33 @@ impl From<NextRoundError> for ApiError {
                 Self::bad_request("ROUND_NOT_FINISHED", "Current round is not finished")
             }
             e @ NextRoundError::NoGameState => Self::internal(CODE, MSG, e),
+            NextRoundError::Repository(RepositoryError::Conflict(_)) => Self::game_state_conflict(),
             NextRoundError::Repository(e) => Self::internal(CODE, MSG, e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_move_that_loses_a_race_is_409_game_state_conflict() {
+        let lost = || RepositoryError::Conflict("game state changed".to_string());
+        let answers: Vec<ApiError> = vec![
+            SelectHandSizeError::Repository(lost()).into(),
+            PlayCardsError::Repository(lost()).into(),
+            DrawCardError::Repository(lost()).into(),
+            CallZapZapError::Repository(lost()).into(),
+            NextRoundError::Repository(lost()).into(),
+        ];
+        for answer in answers {
+            assert_eq!(answer.status, StatusCode::CONFLICT, "{answer}");
+            assert_eq!(answer.code, "GAME_STATE_CONFLICT", "{answer}");
+        }
+        // Any other repository failure stays a 500
+        let other: ApiError =
+            PlayCardsError::Repository(RepositoryError::Database("x".into())).into();
+        assert_eq!(other.status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

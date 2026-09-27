@@ -29,7 +29,7 @@ Load this file first. Then read only the pages your task touches.
 |---|---|---|
 | [[Architecture]] | The four code bases (Rust backend in production, React frontend, Flutter client, native engine), runtime topology, SSE, `data/`, the compose files | 2026-09-27 |
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-27 |
-| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (`schema.sql`), the `seed` and `reset-password` commands | 2026-09-27 |
+| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, versioned game-state writes, the schema and its migrations, the `seed` and `reset-password` commands | 2026-09-27 |
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-27 |
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-27 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-27 |

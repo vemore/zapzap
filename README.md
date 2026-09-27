@@ -139,6 +139,8 @@ RUST_LOG=info
 PROXY_PORT=80
 GOOGLE_OAUTH_CLIENT_ID=...          # Google sign-in; VITE_GOOGLE_OAUTH_CLIENT_ID for the clients
 BOT_ACTION_DELAY_MS=1000
+ALLOWED_ORIGINS=https://a.example   # CORS origins, comma-separated; unset: every origin (dev).
+                                    # docker-compose.prod.yml defaults it to the production domain
 AWS_BEDROCK_ENABLED=true            # LLM bots, with AWS_BEDROCK_REGION, AWS_BEDROCK_MODEL_ID,
                                     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 ```
@@ -465,6 +467,7 @@ PORT=9999                          # default 9999
 DATABASE_URL=sqlite:./data/zapzap.db   # else DB_PATH, else ./data/zapzap.db
 JWT_SECRET=...                     # required: openssl rand -hex 32
 RUST_LOG=info                      # tracing filter
+ALLOWED_ORIGINS=                   # CORS origins, comma-separated; unset: every origin
 ```
 
 The complete list, Docker included: [`.llmwiki/Backend.md`](.llmwiki/Backend.md) and `.env.example`.
@@ -694,11 +697,11 @@ Player 4: 10 points
 - bcrypt password hashing (Argon2 hashes still verify)
 - Input validation
 - SQL injection protection via parameterized queries
+- CORS restricted to the origins of `ALLOWED_ORIGINS` (every origin when unset, for development)
 
 ⚠️ **Production Improvements Needed**:
 - Rate limiting
 - HTTPS enforcement
-- CORS configuration
 - Security headers
 - Session management improvements
 

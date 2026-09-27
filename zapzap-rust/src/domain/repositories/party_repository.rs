@@ -119,14 +119,37 @@ pub trait PartyRepository: Send + Sync {
 
     // ========== Game state operations ==========
 
-    /// Get game state for party
-    async fn get_game_state(&self, party_id: &str) -> Result<Option<GameState>, RepositoryError>;
+    /// Get game state for party, to read it
+    async fn get_game_state(&self, party_id: &str) -> Result<Option<GameState>, RepositoryError> {
+        Ok(self
+            .get_versioned_game_state(party_id)
+            .await?
+            .map(|read| read.state))
+    }
 
-    /// Save game state (as JSON)
+    /// Get game state for party with its version, to change it through
+    /// `update_game_state`
+    async fn get_versioned_game_state(
+        &self,
+        party_id: &str,
+    ) -> Result<Option<VersionedGameState>, RepositoryError>;
+
+    /// Write a game state whatever is stored (a game's first state), as a new version.
+    /// A move goes through `update_game_state`.
     async fn save_game_state(
         &self,
         party_id: &str,
         state: &GameState,
+    ) -> Result<(), RepositoryError>;
+
+    /// Write a game state read at `expected_version` (compare-and-swap), as the next
+    /// version. `RepositoryError::Conflict`, with nothing written, when another write
+    /// (a move, a bot move, a forfeit) came in since the read, or the state is gone.
+    async fn update_game_state(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
     ) -> Result<(), RepositoryError>;
 
     // ========== Game action logging ==========
@@ -170,6 +193,14 @@ pub trait PartyRepository: Send + Sync {
         was_golden_score: bool,
         player_results: Vec<PlayerGameResult>,
     ) -> Result<(), RepositoryError>;
+}
+
+/// A game state and the version it was read at: the token `update_game_state` compares,
+/// so that a write based on a stale read is refused instead of undoing the one before it
+#[derive(Debug, Clone)]
+pub struct VersionedGameState {
+    pub state: GameState,
+    pub version: i64,
 }
 
 /// Round score entry for saving

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
-use crate::domain::repositories::{PartyRepository, RepositoryError};
+use crate::domain::repositories::{PartyRepository, RepositoryError, VersionedGameState};
 use crate::domain::services::execute_play;
 use crate::domain::value_objects::GameAction;
 use crate::infrastructure::bot::card_analyzer;
@@ -50,9 +50,12 @@ impl<P: PartyRepository> PlayCards<P> {
             .ok_or(PlayCardsError::NotInParty)?;
 
         // Get game state
-        let mut game_state = self
+        let VersionedGameState {
+            state: mut game_state,
+            version,
+        } = self
             .party_repo
-            .get_game_state(&input.party_id)
+            .get_versioned_game_state(&input.party_id)
             .await?
             .ok_or(PlayCardsError::NoGameState)?;
 
@@ -90,9 +93,10 @@ impl<P: PartyRepository> PlayCards<P> {
         execute_play(&mut game_state, &input.card_ids)
             .map_err(|e| PlayCardsError::GameError(e.to_string()))?;
 
-        // Save game state
+        // Save game state, unless another write came in since the read (a forfeit, a
+        // second request): `Conflict`, and nothing below runs
         self.party_repo
-            .save_game_state(&input.party_id, &game_state)
+            .update_game_state(&input.party_id, &game_state, version)
             .await?;
 
         // Update round

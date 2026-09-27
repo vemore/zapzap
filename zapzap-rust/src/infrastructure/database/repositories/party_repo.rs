@@ -4,7 +4,9 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
 };
-use crate::domain::repositories::{GameAction, PartyRepository, PlayerGameResult, RepositoryError};
+use crate::domain::repositories::{
+    GameAction, PartyRepository, PlayerGameResult, RepositoryError, VersionedGameState,
+};
 use crate::domain::value_objects::{GameState, PartySettings};
 
 /// SQLite implementation of PartyRepository
@@ -497,19 +499,22 @@ impl PartyRepository for SqlitePartyRepository {
         Ok(row.as_ref().map(Self::row_to_round))
     }
 
-    async fn get_game_state(&self, party_id: &str) -> Result<Option<GameState>, RepositoryError> {
-        let result: Option<String> =
-            sqlx::query_scalar("SELECT state_json FROM game_state WHERE party_id = ?")
+    async fn get_versioned_game_state(
+        &self,
+        party_id: &str,
+    ) -> Result<Option<VersionedGameState>, RepositoryError> {
+        let row: Option<(String, i64)> =
+            sqlx::query_as("SELECT state_json, version FROM game_state WHERE party_id = ?")
                 .bind(party_id)
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        match result {
-            Some(json) => {
+        match row {
+            Some((json, version)) => {
                 // Parse the JSON into GameState
                 match GameState::from_json(&json) {
-                    Ok(state) => Ok(Some(state)),
+                    Ok(state) => Ok(Some(VersionedGameState { state, version })),
                     Err(e) => {
                         tracing::error!("Failed to parse game state JSON: {}", e);
                         Err(RepositoryError::Database(format!(
@@ -533,13 +538,16 @@ impl PartyRepository for SqlitePartyRepository {
         // Serialize GameState to JSON
         let state_json = state.to_json();
 
+        // A new version even when it replaces a state: a write based on the old one is
+        // refused by `update_game_state`
         sqlx::query(
             r#"
             INSERT INTO game_state (party_id, state_json, updated_at)
             VALUES (?, ?, ?)
             ON CONFLICT(party_id) DO UPDATE SET
                 state_json = excluded.state_json,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                version = game_state.version + 1
             "#,
         )
         .bind(party_id)
@@ -549,6 +557,35 @@ impl PartyRepository for SqlitePartyRepository {
         .await
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
+        Ok(())
+    }
+
+    async fn update_game_state(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
+    ) -> Result<(), RepositoryError> {
+        let now = chrono::Utc::now().timestamp();
+
+        // One statement, so SQLite checks the version and writes atomically
+        let written = sqlx::query(
+            "UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 \
+             WHERE party_id = ? AND version = ?",
+        )
+        .bind(state.to_json())
+        .bind(now)
+        .bind(party_id)
+        .bind(expected_version)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        if written.rows_affected() == 0 {
+            return Err(RepositoryError::Conflict(format!(
+                "game state of party {party_id} changed since version {expected_version}"
+            )));
+        }
         Ok(())
     }
 
