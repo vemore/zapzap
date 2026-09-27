@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+use tokio::sync::watch;
+
 /// User session status
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -39,6 +41,8 @@ struct Sessions {
     /// tabs, or a reconnection whose new stream opens before the old one closes), as
     /// Node's `SessionManager.streams`.
     streams: HashMap<String, usize>,
+    /// What ends a user's open event streams (`close_streams`), while they have any
+    closers: HashMap<String, watch::Sender<bool>>,
 }
 
 /// Session manager for tracking connected users
@@ -61,15 +65,26 @@ impl SessionManager {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Register one event stream of a user. Returns the new session on the user's first
-    /// stream, `None` when the user was already connected (the session, its status and
-    /// party included, is kept as is).
-    pub fn connect(&self, user_id: &str, username: &str) -> Option<UserSession> {
+    /// Register one event stream of a user, and hand it the signal that ends it (see
+    /// `remove_user`), taken under the same lock: a removal that follows the call always
+    /// reaches the stream. The session is `Some` on the user's first stream, `None` when
+    /// the user was already connected (the session, its status and party included, is
+    /// kept as is).
+    pub fn connect(
+        &self,
+        user_id: &str,
+        username: &str,
+    ) -> (Option<UserSession>, watch::Receiver<bool>) {
         let mut inner = self.write();
+        let closed = inner
+            .closers
+            .entry(user_id.to_string())
+            .or_insert_with(|| watch::channel(false).0)
+            .subscribe();
         let open = inner.streams.entry(user_id.to_string()).or_insert(0);
         *open += 1;
         if *open > 1 && inner.sessions.contains_key(user_id) {
-            return None;
+            return (None, closed);
         }
         let session = UserSession {
             user_id: user_id.to_string(),
@@ -79,7 +94,7 @@ impl SessionManager {
             connected_at: chrono::Utc::now().timestamp(),
         };
         inner.sessions.insert(user_id.to_string(), session.clone());
-        Some(session)
+        (Some(session), closed)
     }
 
     /// Unregister one event stream of a user. Returns the removed session when that was
@@ -92,14 +107,19 @@ impl SessionManager {
             return None;
         }
         inner.streams.remove(user_id);
+        inner.closers.remove(user_id);
         inner.sessions.remove(user_id)
     }
 
-    /// Forget a user whatever their open streams (a deleted account). Returns the removed
-    /// session; their streams, when they close, find nothing left to unregister.
+    /// Forget a user whatever their open streams (a deleted account), and end those
+    /// streams. Returns the removed session; the streams, as they close, find nothing
+    /// left to unregister.
     pub fn remove_user(&self, user_id: &str) -> Option<UserSession> {
         let mut inner = self.write();
         inner.streams.remove(user_id);
+        if let Some(closer) = inner.closers.remove(user_id) {
+            closer.send_replace(true);
+        }
         inner.sessions.remove(user_id)
     }
 
@@ -158,11 +178,11 @@ mod tests {
     #[test]
     fn a_user_stays_connected_until_the_last_stream_closes() {
         let sessions = SessionManager::new();
-        assert!(sessions.connect("u1", "alice").is_some());
+        assert!(sessions.connect("u1", "alice").0.is_some());
         sessions.update_status("u1", SessionStatus::Game, Some("p1".into()));
 
         // A second stream (another tab, a reconnection) is no arrival, and keeps the status
-        assert!(sessions.connect("u1", "alice").is_none());
+        assert!(sessions.connect("u1", "alice").0.is_none());
         let kept = sessions.get_session("u1").unwrap();
         assert_eq!(kept.status.as_str(), "game");
         assert_eq!(kept.party_id.as_deref(), Some("p1"));
@@ -175,15 +195,15 @@ mod tests {
 
         // A stray close changes nothing, and the next stream is an arrival again
         assert!(sessions.disconnect("u1").is_none());
-        assert!(sessions.connect("u1", "alice").is_some());
+        assert!(sessions.connect("u1", "alice").0.is_some());
         assert_eq!(sessions.count(), 1);
     }
 
     #[test]
     fn a_removed_user_is_gone_and_their_streams_close_quietly() {
         let manager = SessionManager::new();
-        assert!(manager.connect("u1", "Ada").is_some());
-        assert!(manager.connect("u1", "Ada").is_none());
+        assert!(manager.connect("u1", "Ada").0.is_some());
+        assert!(manager.connect("u1", "Ada").0.is_none());
         assert_eq!(
             manager.remove_user("u1").map(|s| s.username),
             Some("Ada".into())
@@ -193,5 +213,29 @@ mod tests {
         assert!(manager.disconnect("u1").is_none());
         assert!(manager.disconnect("u1").is_none());
         assert_eq!(manager.count(), 0);
+    }
+
+    #[test]
+    fn removing_a_user_signals_their_streams_only() {
+        let manager = SessionManager::new();
+        let (_, first) = manager.connect("u1", "Ada");
+        let (_, second) = manager.connect("u1", "Ada");
+        let (_, other) = manager.connect("u2", "Bob");
+
+        manager.remove_user("u1");
+        assert!(*first.borrow() && *second.borrow());
+        assert!(!*other.borrow());
+        // A new account's stream under that id starts with a fresh signal
+        assert!(!*manager.connect("u1", "Ada").1.borrow());
+    }
+
+    #[test]
+    fn a_removal_right_after_connecting_reaches_the_new_stream() {
+        let manager = SessionManager::new();
+        // No other stream of the user: nothing held a signal before this one
+        let (session, closed) = manager.connect("u1", "Ada");
+        assert!(session.is_some());
+        manager.remove_user("u1");
+        assert!(*closed.borrow(), "the stream hears of the removal");
     }
 }

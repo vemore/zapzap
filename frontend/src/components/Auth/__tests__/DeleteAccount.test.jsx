@@ -72,7 +72,7 @@ describe('DeleteAccount (/account/delete)', () => {
     expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
   });
 
-  it('a seat in a game in progress is explained', async () => {
+  it('a seat in a waiting party is explained', async () => {
     const refused = Object.assign(new Error('Leave first'), { code: 'ACTIVE_PARTY' });
     vi.mocked(auth.deleteAccount).mockRejectedValue(refused);
     renderAt();
@@ -80,7 +80,7 @@ describe('DeleteAccount (/account/delete)', () => {
     fireEvent.change(screen.getByLabelText(/mot de passe/i), { target: { value: 'secret' } });
     fireEvent.click(screen.getByRole('button', { name: /supprimer définitivement/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/quitte-la ou termine-la/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/partie en attente : quitte-la/);
   });
 
   it('an empty password is not sent', () => {

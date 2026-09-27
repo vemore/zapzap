@@ -114,6 +114,17 @@ async fn parties_of(state: &AppState, user_id: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Resolves when the account of the stream is deleted; never for an anonymous stream.
+async fn closed_signal(closed: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    match closed {
+        // An error means the signal is gone: the account was forgotten either way
+        Some(closed) => {
+            let _ = closed.wait_for(|closed| *closed).await;
+        }
+        None => std::future::pending().await,
+    }
+}
+
 /// One authenticated event stream. When the client goes away axum drops the stream, and
 /// the stream drops this guard: the stream is unregistered, and the user's last one
 /// broadcasts `userDisconnected` (as the Node backend's `close` handler did).
@@ -142,36 +153,44 @@ pub async fn sse_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SseParams>,
 ) -> impl IntoResponse {
-    // Validate token if provided; a deleted user's token names nobody
+    // Validate token if provided
     let claims = match params.token {
         Some(token) => state.jwt_service.verify(&token).ok(),
         None => None,
     };
-    let claims = match claims {
-        Some(claims) if user_exists(&state, &claims.user_id).await => Some(claims),
-        _ => None,
-    };
     // Subscribe first, as Node does, so the client hears its own arrival
     let mut receiver = state.event_sender.new_receiver();
 
-    // Register the stream; only the user's first one is an arrival. The guard, owned by
-    // the stream, unregisters it when the stream is dropped (the client went away)
-    let guard = claims.map(|claims| {
-        if state
+    // Register the stream, and take the signal that ends it when its account is deleted
+    // (`SessionManager::remove_user`). Only then check that the account exists: a
+    // deletion before the check is seen by it, one after it signals the stream. A deleted
+    // user's token names nobody: the stream goes on anonymous, with no arrival told.
+    let mut closed = None;
+    let mut guard = None;
+    if let Some(claims) = claims {
+        let (session, signal) = state
             .session_manager
-            .connect(&claims.user_id, &claims.username)
-            .is_some()
-        {
-            let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone()))
-                .with_data(serde_json::json!({ "username": claims.username }));
-            state.broadcast_event(event);
+            .connect(&claims.user_id, &claims.username);
+        if user_exists(&state, &claims.user_id).await {
+            // Only the user's first stream is an arrival
+            if session.is_some() {
+                let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone()))
+                    .with_data(serde_json::json!({ "username": claims.username }));
+                state.broadcast_event(event);
+            }
+            closed = Some(signal);
+            // The guard, owned by the stream, unregisters it when the stream is dropped
+            // (the client went away)
+            guard = Some(StreamGuard {
+                state: state.clone(),
+                user_id: claims.user_id,
+                username: claims.username,
+            });
+        } else {
+            // Unregistered quietly: no arrival was told, so no departure is
+            state.session_manager.disconnect(&claims.user_id);
         }
-        StreamGuard {
-            state: state.clone(),
-            user_id: claims.user_id,
-            username: claims.username,
-        }
-    });
+    }
 
     let mut known_parties = match &guard {
         Some(guard) => parties_of(&state, &guard.user_id).await,
@@ -197,6 +216,10 @@ pub async fn sse_handler(
 
         loop {
             tokio::select! {
+                _ = closed_signal(&mut closed) => {
+                    tracing::debug!("SSE stream closed: its account was deleted");
+                    break;
+                }
                 _ = heartbeat_interval.tick() => {
                     tracing::trace!("SSE heartbeat");
                     // Send heartbeat comment (not a real event)
