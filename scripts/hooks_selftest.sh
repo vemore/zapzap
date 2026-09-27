@@ -82,6 +82,13 @@ commit_field "git -C still commits"            false '.commit.all'   'git -C fro
 commit_field "commit after add in one line"    false '.commit.all'   'git add -A && git commit -m "x"'
 commit_field "-i adds the staged files"        true  '.commit.include' 'git commit -i -m x f'
 commit_field "no -i, a pathspec commit is --only" false '.commit.include' 'git commit -m x f'
+commit_field "--incl abbreviates --include"    true  '.commit.include' 'git commit --incl -m x f'
+commit_field "--inc abbreviates --include"     true  '.commit.include' 'git commit --inc -m x f'
+commit_field "an unknown long option counts as -i" true '.commit.include' 'git commit --frobnicate -m x f'
+commit_field "--no-verify is known, not -i"    false '.commit.include' 'git commit --no-verify -m x f'
+commit_field "--mess abbreviates --message"    'f' '.commit.pathspecs[0]' 'git commit --mess x f'
+commit_field "-mfix is a message, not -i"      false '.commit.include' 'git commit -mfix f'
+commit_field "-u takes no separate value"      'f' '.commit.pathspecs[0]' 'git commit -u -m x f'
 commit_field "a trailing pathspec"    'zapzap-rust/src/lib.rs' '.commit.pathspecs[0]' 'git commit -m x zapzap-rust/src/lib.rs'
 commit_field "--dry-run runs no gates"          null '.commit'       'git commit --dry-run'
 commit_field "git log is not a commit"          null '.commit'       'git log --grep=commit'
@@ -341,6 +348,10 @@ out=$(payload "git commit -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "
 report "a pathspec commit leaves a staged keystore elsewhere out" 0 "$?"
 out=$(payload "git commit -i -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
 report "the same with -i includes it" 2 "$?"
+out=$(payload "git commit --incl -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same with --incl, a prefix of --include" 2 "$?"
+out=$(payload "git commit --no-such-option -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same with an unknown long option" 2 "$?"
 git -C "$TREE" rm -rq --cached android && rm -rf "$TREE/android"
 git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/other.txt"
 # Untracking the database is a deletion, not a leak.

@@ -66,11 +66,32 @@ GIT_GLOBAL_FLAG = {"-p", "-P", "--paginate", "--no-pager", "--bare", "--no-repla
                    "--icase-pathspecs", "--no-optional-locks"}
 
 # `git commit` options that consume the next token.
-COMMIT_OPT_WITH_ARG = {"-m", "-F", "-C", "-c", "-t", "-S", "-u", "--message", "--file",
-                       "--reuse-message", "--reedit-message", "--template", "--author",
-                       "--date", "--cleanup", "--fixup", "--squash", "--gpg-sign",
-                       "--untracked-files", "--pathspec-from-file", "--trailer"}
-COMMIT_SHORT_WITH_ARG = set("mFCctSu")
+COMMIT_OPT_WITH_ARG = {"--message", "--file", "--reuse-message", "--reedit-message",
+                       "--template", "--author", "--date", "--cleanup", "--fixup",
+                       "--squash", "--pathspec-from-file", "--trailer"}
+# Long options that take no separate value; `--gpg-sign` and `--untracked-files` take
+# theirs only attached (`--gpg-sign=KEY`). git accepts any unique prefix of a long
+# option, so `--incl` is `--include`: an option resolved to none of these is unknown.
+COMMIT_LONG_FLAGS = {"--all", "--amend", "--include", "--only", "--interactive", "--patch",
+                     "--quiet", "--verbose", "--dry-run", "--short", "--branch",
+                     "--porcelain", "--long", "--null", "--signoff", "--no-signoff",
+                     "--no-verify", "--verify", "--allow-empty", "--allow-empty-message",
+                     "--edit", "--no-edit", "--reset-author", "--no-post-rewrite",
+                     "--status", "--no-status", "--gpg-sign", "--no-gpg-sign",
+                     "--untracked-files", "--pathspec-file-nul"}
+# Short options whose value is the rest of the bundle or the next token; `-u` and `-S`
+# take theirs only attached.
+COMMIT_SHORT_WITH_ARG = set("mFCct")
+COMMIT_SHORT_ATTACHED_ARG = set("uS")
+
+
+def resolve_long(name):
+    """The long commit option `name` abbreviates, or None if unknown or ambiguous."""
+    known = COMMIT_OPT_WITH_ARG | COMMIT_LONG_FLAGS
+    if name in known:
+        return name
+    matches = [option for option in known if option.startswith(name)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def strip_heredocs(text):
@@ -506,19 +527,30 @@ def parse_commit(tokens):
             continue
         if token == "--":
             after_dashdash = True
-        elif token in {"--all", "--amend", "--include"}:
-            info[token[2:]] = True
         elif token.startswith("--"):
-            if "=" not in token and token in COMMIT_OPT_WITH_ARG:
+            name = token.split("=", 1)[0]
+            option = resolve_long(name)
+            if option is None:
+                # Unknown: it might be --include, or take the next token as its value;
+                # either way judge every staged file, not the pathspecs alone.
+                info["include"] = True
+            elif option in {"--all", "--amend", "--include"}:
+                info[option[2:]] = True
+            elif "=" not in token and option in COMMIT_OPT_WITH_ARG:
                 index += 1
         elif token.startswith("-") and token != "-":
             letters = token[1:]
-            if "a" in letters:
-                info["all"] = True
-            if "i" in letters:
-                info["include"] = True
-            if letters and letters[-1] in COMMIT_SHORT_WITH_ARG:
-                index += 1
+            for position, letter in enumerate(letters):
+                if letter == "a":
+                    info["all"] = True
+                elif letter == "i":
+                    info["include"] = True
+                elif letter in COMMIT_SHORT_ATTACHED_ARG:
+                    break
+                elif letter in COMMIT_SHORT_WITH_ARG:
+                    if position == len(letters) - 1:
+                        index += 1
+                    break
         else:
             info["pathspecs"].append(token)
         index += 1
