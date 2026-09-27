@@ -58,7 +58,7 @@
   tokens. So each agent opens its own tab (`browser_tabs` new), works only in it and closes
   it (ship-parallel agent prompt); a check that needs a clean origin is serialised.
 - **When the MCP browser is unavailable**, the fallback is a headless script, run by path
-  from the agent's scratchpad subdirectory: `require('<MAIN>/node_modules/playwright')`
+  from the agent's scratch directory: `require('<MAIN>/node_modules/playwright')`
   (the only devDependency of the root `package.json`, installed by `npm ci` at the root of
   the main checkout; browsers in `~/.cache/ms-playwright`), then
   `chromium.launch()`, `browser.newPage({ viewport })`, `page.goto(url)`,
@@ -66,9 +66,11 @@
 - The server writes screenshots, console logs and network dumps to `.playwright-mcp/` in the
   checkout it runs from. The directory is gitignored and nothing in it is tracked; it is
   debris, never committed, and not an agent's to delete while others run.
-- **The scratchpad is shared too**: every agent of a session gets the same scratchpad
-  directory. An agent writes its scripts, PR body and commit messages under
-  `<scratchpad>/<branch-slug>/` (the branch name, `/` → `-`), never at the root.
+- **`/tmp` is shared too**: an agent writes its scripts, PR body and commit messages under
+  its own scratch directory, `/tmp/zapzap-<branch-slug>/` (the branch name, `/` → `-`;
+  `mkdir -p` first), never at a shared name. Not the session scratchpad under
+  `~/.claude/jobs/`, which every agent of a session shares and whose Write the harness
+  refuses to a worktree-isolated agent.
 - **`gh pr edit` fails** here: gh 2.45.0 still queries `projectCards` (Projects classic),
   which GitHub removed. A PR's title or body is edited with `gh api -X PATCH
   repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
@@ -183,6 +185,13 @@ tokens raw, 300 M weighted; 124 h of agent time active, 46 h waiting on the user
 - **Flutter tests left out of the size count (2026-09-27).** The filter already dropped Rust
   and JS tests but not `frontend-flutter/test/`: #133 counted 1 877 lines, 696 of them
   `*_test.dart`, and crossed into lane B on its tests alone; without them it counts 1 181.
+- **The scratch directory moved to `/tmp/zapzap-<branch-slug>/` (2026-09-27).** The prompt
+  named a subdirectory of the session scratchpad, `~/.claude/jobs/<job>/tmp/`; the harness
+  refused a Write there from an agent launched with `isolation: "worktree"` (#138), though
+  Bash could write it. The same session's five isolated agents then wrote their PR bodies,
+  commit messages and scripts under `/tmp/zapzap-<type>-<topic>/` without a refusal. A
+  gitignored folder inside the worktree was the alternative; `/tmp` needs no ignore rule
+  and cannot be committed by mistake.
 - **"Merged, not deployed" is tracked (2026-09-27)**, ported from countscore, where
   #212–#216 sat merged and undeployed for days with no trace: nothing in §4 covered a session
   that could merge but not reach the NAS.
