@@ -223,12 +223,11 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   indicator says which step it is, so the button can say what it does. The deck moved from
   the hand to the felt, beside the pile, so the draw step has one place to look. The new
   strings say "tu", as the mockups the user approved; the rest of the app still says
-  "vous" (a wip entry). `gameHandValues`, `gameZapZapEligible`, `gameTurnPlay`,
+  "vous" until the whole app moved to "tu" the same day (the entry in [[FlutterI18n]]). `gameHandValues`, `gameZapZapEligible`, `gameTurnPlay`,
   `gameTurnDraw`, `gamePlayButton`, `gamePlayButtonCount`, `gameTakeButton`,
   `gameTableDiscardLabel` and `gameSeatCards` lost their callers and were dropped. Absorbed:
   the player-list entry of 2026-09-22 (one equal-height line per player, turn order from
   the round's first player).
-  > **Status: Outdated** (2026-09-23) — the whole app says "tu" now (the entry in [[FlutterI18n]]).
 - **Card faces from SVG assets (2026-09-22).** React draws faces with the `cardmeister` web
   component, which Flutter cannot use; the CC0 English-pattern deck was picked over drawing
   faces in code. `analyzePlay` returns codes, not React's English `reason` strings, so the

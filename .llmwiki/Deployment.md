@@ -313,23 +313,18 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   set going stale.
 - **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
   and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
-  Google login, bot creation, authorization) — tracked in `wip/`.
-  > **Status: Outdated** (2026-09-23) — the schema bootstrap gap is closed: the Rust backend
-  > creates the Node schema itself, and on the production file that step is a no-op
-  > ([[Backend]]). The other gaps stand.
-  > **Status: Outdated** (2026-09-24) — Google login and bot creation/deletion are ported
-  > ([[Api]]); the Rust compose passes `GOOGLE_OAUTH_CLIENT_ID`.
-  > **Status: Outdated** (2026-09-24) — the authorization gap is closed (fix/rust-security). The
-  > switch now has two preconditions of its own: `JWT_SECRET` must be set to a private value
-  > (the Rust binary and `zapzap-rust/docker-compose.yml` refuse to start without it), and the
-  > database must have been opened once by the Node app after `scripts/docker-entrypoint.js`
-  > rebuilt `users` — the Rust schema step does not port Node's `ADD COLUMN` upgrades and
-  > refuses to start, leaving the file untouched, on a `users` table without `google_id`. And the
-  > React `GameBoard` and `PartyLobby` must pass `?token=` to `/suscribeupdate`: Rust sends a
-  > game's moves and a private party's events only to its players' streams, so tokenless
-  > streams would miss them (tracked in `wip/`).
-  > **Status: Outdated** (2026-09-24) — the React `GameBoard` and `PartyLobby` pass the token
-  > (#94), and production runs the Rust backend (the entry below).
+  Google login, bot creation, authorization) — tracked in `wip/`. They closed one by one:
+  the schema bootstrap on 2026-09-23 (the Rust backend creates the Node schema itself, a
+  no-op on the production file, [[Backend]]); Google login and bot creation/deletion on
+  2026-09-24 ([[Api]]; the Rust compose passes `GOOGLE_OAUTH_CLIENT_ID`); authorization the
+  same day (fix/rust-security). That fix added two preconditions of its own: a private
+  `JWT_SECRET` (the Rust binary and `zapzap-rust/docker-compose.yml` refuse to start without
+  one), and a database opened once by the Node app after its entrypoint script (since
+  removed) rebuilt `users` — the Rust schema step does not port Node's `ADD COLUMN` upgrades
+  and refuses to start, leaving the file untouched, on a `users` table without `google_id`.
+  Last, the React `GameBoard` and `PartyLobby` had to pass `?token=` to `/suscribeupdate`,
+  because Rust sends a game's moves and a private party's events only to its players'
+  streams; #94 did (2026-09-24), and production switched (the entry below).
 - **Production switches to the Rust backend (2026-09-24).** The user decided the switch once
   the gaps above were closed: the root compose's `backend` service builds `zapzap-rust/`
   with the Bedrock feature, under the same service and container names so that nginx and
