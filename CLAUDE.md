@@ -50,7 +50,8 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
   `git config branch.<name>.noPullRequest true`, and you say so.
 - **You merge and deploy your own green pull requests, through `ship-parallel`**, in the lane
   their risk picked at planning time: squash-merge, deploy what the merge changed (`deploy`
-  skill), smoke-test production; a problem found after is a new pull request.
+  skill), smoke-test production; a problem found after is a new pull request. A session that
+  cannot reach the NAS says "merged, not deployed" and files one `wip/todo/` entry for it.
   `.llmwiki/ParallelDelivery.md`.
 - **Several tasks at once are several pull requests, in parallel** — one per theme, one agent
   and worktree each: `ship-parallel`.

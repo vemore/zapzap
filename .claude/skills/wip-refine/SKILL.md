@@ -30,7 +30,7 @@ scripts/wip.sh check           # header fields, Status line in done/
 | `stale` | the entry file untouched (mtime) for over 60 days | revalidate or drop it. An idea that matters will come back. |
 | `dead-path:[…]` | a path in backticks no longer exists | refactored away (the evidence is stale), **or** a file the fix proposes to create. Read the sentence. |
 | `links-closed:[…]` | links an entry already in `done/` | a dependency now met, or a problem the other entry already solved |
-| `no-fix` / `no-acceptance` | the section is missing | a candidate for *needs detail* |
+| `no-fix` / `no-acceptance` | the section is missing, in any spelling (`wip/README.md` § An entry) | a candidate for *needs detail* |
 | `open-question` | a question waits on the user | ask it again, or keep it in *needs detail* |
 | `crowded theme` | a theme with more than 4 entries | overlaps and supersessions: *merge* |
 | `BLOCKS-RELEASE` | `Blocks release: yes` | always **promote**, whatever the rest |
@@ -65,7 +65,7 @@ Hygiene before prioritisation: what goes away is cleared first, so it is never r
 
 ## 4. Definition of ready
 
-An entry is ready when all five hold:
+An entry is ready when all six hold:
 
 1. **Still true.** The problem exists in today's code, and the evidence proves it.
 2. **One pull request.** The `**Fix:**` is concrete and fits one reviewable pull request
@@ -75,6 +75,13 @@ An entry is ready when all five hold:
    (`wip/README.md` § An entry). Draft them in the proposal; the user validates them.
 4. **Unblocked.** No decision waits on the user, and no open entry has to land first.
 5. **Themed.** The `Theme` reuses an existing tag (`scripts/wip.sh themes all`).
+6. **Grounded, if the subject is common.** An entry on a problem others have solved many
+   times, not specific to ZapZap (deploy ordering and locking, CORS, tokens in URLs, SSE
+   behind a proxy, allocators, database migrations, …), carries a `**State of the art:**`
+   section (`wip/README.md` § An entry). Missing on a common-subject entry, it makes the
+   entry *needs detail*, and the refinement pass fills it itself — a `WebSearch`/`WebFetch`
+   for current practice, the sources, the date consulted, and where the proposed fix departs
+   from it and why — rather than asking the user. An entry about this codebase alone skips it.
 
 Ready is required for **promotion**, not for writing an entry: a new entry stays twenty lines
 of evidence and a fix.
@@ -91,8 +98,11 @@ be measured. Rank by:
    Two entries in one theme that would share a pull request are ranked together.
 
 Give each ranked entry one line of reason. **WIP limit:** `wip/todo/` holds at most **12**
-entries, about one `ship-parallel` run. Promote only to that limit. Anything over it stays
-ready in `todo_nr/`.
+entries **per session**, about one `ship-parallel` run, while the sessions work disjoint
+`Area`s (one on `backend`, another on `frontend`, say; user's decision, 2026-09-25). Two
+sessions on one Area share 12. `scripts/wip.sh refine all` ends with the `todo/` count per
+Area, the count this rule reads. Promote only to that limit. Anything over it stays ready in
+`todo_nr/`.
 
 ## 6. Propose, then let the user decide
 

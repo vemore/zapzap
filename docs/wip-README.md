@@ -7,7 +7,7 @@ there by that absolute path, but never writes them (below). This file is copied 
 
 | Folder | Holds |
 |---|---|
-| `todo/` | Work committed to now — at most 12 entries |
+| `todo/` | Work committed to now — at most 12 entries per session, sessions working disjoint `Area`s |
 | `todo_nr/` | Backlog: noted, not yet committed to |
 | `done/` | Closed or dropped work, kept for its reasoning |
 | `assets/<entry-slug>/` | Images an entry points at (mock-ups, screenshots) |
@@ -31,11 +31,22 @@ and the fix, twenty lines or so.
 
 **Fix:** <the proposed change.>
 
+**State of the art:** <only when the subject is common, not specific to ZapZap — e.g.
+deploy ordering and locking, CORS, tokens in URLs, SSE behind a proxy, allocators, database
+migrations. Current practice from a web search, with sources and the date consulted, and
+where the proposed fix departs from it and why. Skip it for an entry about this codebase
+alone.>
+
 **Acceptance:** <required to be promoted to todo/ — 2 to 5 statements a test or a
 command can check.>
 
 **Open question:** <what the user must decide; the answer replaces it.>
 ```
+
+The bold run-ins are a guide, not a schema: `scripts/wip.sh refine` also finds a section
+written as a `##` heading, with the colon after the bold or none, in any case, with a
+qualifier (`**Fix (part a):**`, `**Fix, minimal:**`), and in French (`Correctif`,
+`Fix proposé`, `Critères d'acceptation`, `Question ouverte`).
 
 `Theme` groups entries into one pull request: reuse an existing tag (`scripts/wip.sh
 themes all`) before inventing one. `Blocks release: yes` is for what must not wait: a

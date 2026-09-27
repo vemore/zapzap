@@ -104,6 +104,11 @@ jobs:
           workspaces: zapzap-rust
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
+      # The `bedrock` feature (the AWS Bedrock client of the LLM bots) is what production
+      # builds (docker-compose.yml's CARGO_FEATURES): it is linted too, not only compiled
+      # by the image job.
+      - name: cargo clippy --features bedrock
+        run: cargo clippy --locked --all-targets --features bedrock -- -D warnings
       # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
       # SQLite, tests/schema_tests.rs checks the schema against a frozen Node-built one.
       - run: cargo test --locked --lib --bins --tests
@@ -203,12 +208,28 @@ jobs:
               echo "$f accepts a missing JWT_SECRET" >&2; exit 1
             fi
           done
+      # A layer cache for the backend image, the job's longest build (a release build of
+      # the AWS SDK, ~8 min cold). A builder of its own (`use: false`): made the default,
+      # its docker-container driver would leave the plain `docker build`s of this job
+      # without a loaded image. The runtime step exposes ACTIONS_RUNTIME_TOKEN and
+      # ACTIONS_RESULTS_URL to `run:` steps, which the buildx `gha` cache needs.
+      - name: Buildx builder for the backend image cache
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          use: false
+      - uses: crazy-max/ghaction-github-runtime@v3
       # The image production runs (.llmwiki/Deployment.md): the root compose's `backend`
       # service, the Rust backend built with the Bedrock client of the LLM bots. The script
-      # builds it through compose, starts it on an empty database with a throwaway secret,
-      # and waits for its own compose health check (busybox wget: the Alpine image has no
-      # curl), then checks the image user (uid 1000), its CA store and its size (< 40 MB).
-      - name: Rust backend image (production, bedrock) builds and passes its health check
+      # builds it from the compose file (buildx bake, with the GitHub Actions layer cache),
+      # starts it on an empty database with a throwaway secret, and waits for its own
+      # compose health check (busybox wget: the Alpine image has no curl), then checks the
+      # image user (uid 1000), its CA store and its size (< 40 MB).
+      - name: Rust backend image (production, bedrock, layer-cached) builds and passes its health check
+        env:
+          SMOKE_BUILDER: ${{ steps.buildx.outputs.name }}
+          SMOKE_CACHE_FROM: type=gha,scope=zapzap-backend-image
+          SMOKE_CACHE_TO: type=gha,scope=zapzap-backend-image,mode=max
         run: scripts/backend_image_smoke.sh
       - name: Frontend image
         run: docker build -t zapzap-frontend:ci frontend
@@ -242,6 +263,9 @@ jobs:
       # wiki with a known answer, runs here (.llmwiki/Documentation.md, Wiki lint).
       - name: Wiki lint self-test
         run: scripts/wiki_lint_selftest.sh
+      # scripts/wip.sh refine on a fixture wip/: section spellings, the per-Area todo/ count.
+      - name: wip.sh self-test
+        run: scripts/wip_selftest.sh
       # The Play release scripts (release-android skill): play_publish.py against a fake
       # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
       # No Google key and no upload key are ever in CI; these only prove the refusals.
