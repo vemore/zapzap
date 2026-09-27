@@ -132,7 +132,8 @@ the `ship-parallel` §4 paths), first-run-green share, size per change, `wip/` a
 checkout's). `scripts/agent_metrics.py` — cost, from the transcripts in
 `~/.claude/projects/-home-vemore-workspace-zapzap*/`: tokens raw and weighted by price class,
 active time, per session, branch, skill, agent, tool, file and hook; names and numbers only,
-never content. `ship-parallel` §7's report prints the first. DORA counts rework as unplanned
+never content. `ship-parallel` §7's report prints the first; the pruning pass before each release
+(`release-android` §3b) reads both against the baseline below and records new figures. DORA counts rework as unplanned
 deployments fixing a production issue; this file-level proxy needs no incident log.
 
 Baseline, measured 2026-09-27 on `origin/master` at `232fec3` (until exclusive; nothing
