@@ -1,11 +1,12 @@
 //! A player deletes their own account, confirmed by their password or, for an account
 //! created with Google, by a fresh Google ID token of the same Google account. Their
 //! finished games stay in the other players' history under an anonymous user
-//! (`UserRepository::delete_account`).
+//! (`UserRepository::delete_account`). A seat in a game in progress is forfeited; a
+//! waiting party refuses the deletion until the player leaves it.
 
 use std::sync::Arc;
 
-use crate::domain::repositories::{AccountDeletion, UserRepository};
+use crate::domain::repositories::{AccountDeletion, SeatForfeit, UserRepository};
 use crate::infrastructure::auth::PasswordService;
 use crate::infrastructure::services::{GoogleAuthError, GoogleOAuthService};
 
@@ -18,6 +19,15 @@ pub struct DeleteAccountInput {
     pub password: Option<String>,
     /// A Google ID token, for an account without a password
     pub credential: Option<String>,
+}
+
+/// What a deletion did besides removing the account
+#[derive(Debug)]
+pub struct DeletedAccount {
+    /// The anonymous user the account's games went to, `None` when it had played none
+    pub anonymised_as: Option<String>,
+    /// The seats given up in games in progress
+    pub forfeits: Vec<SeatForfeit>,
 }
 
 /// Delete own account use case
@@ -35,12 +45,12 @@ impl DeleteAccount {
         Self { user_repo, google }
     }
 
-    /// Deletes the user; returns the anonymous user their finished games went to, if any
+    /// Deletes the user; returns where their games went and the seats they gave up
     pub async fn execute(
         &self,
         user_id: &str,
         input: DeleteAccountInput,
-    ) -> Result<Option<String>, DeleteAccountError> {
+    ) -> Result<DeletedAccount, DeleteAccountError> {
         let user = self
             .user_repo
             .find_by_id(user_id)
@@ -80,9 +90,20 @@ impl DeleteAccount {
         }
 
         match self.user_repo.delete_account(user_id).await? {
-            AccountDeletion::Deleted { anonymised_as } => {
-                tracing::info!("Account deleted: {} ({})", user.username, user.id);
-                Ok(anonymised_as)
+            AccountDeletion::Deleted {
+                anonymised_as,
+                forfeits,
+            } => {
+                tracing::info!(
+                    "Account deleted: {} ({}), {} seat(s) forfeited",
+                    user.username,
+                    user.id,
+                    forfeits.len()
+                );
+                Ok(DeletedAccount {
+                    anonymised_as,
+                    forfeits,
+                })
             }
             AccountDeletion::NotFound => Err(DeleteAccountError::NotFound),
             AccountDeletion::ActiveParty => Err(DeleteAccountError::ActiveParty),
@@ -108,7 +129,7 @@ pub enum DeleteAccountError {
     OtherGoogleAccount,
     #[error("Google confirmation too old: sign in with Google again")]
     StaleGoogleConfirmation,
-    #[error("Leave or finish your waiting or playing parties first")]
+    #[error("Leave your waiting parties first")]
     ActiveParty,
     #[error("The only admin cannot delete their account")]
     LastAdmin,
@@ -223,20 +244,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_seat_in_an_active_party_keeps_the_account() {
-        for status in ["waiting", "playing"] {
-            let (use_case, repo) = setup().await;
-            let user = google_user(&repo, "g-1").await;
-            repo.seat_in_party(&user.id, status).await;
-            let err = use_case
-                .execute(
-                    &user.id,
-                    with_credential(sign(&claims("g-1", serde_json::json!({})), KID)),
-                )
-                .await
-                .unwrap_err();
-            assert!(matches!(err, DeleteAccountError::ActiveParty), "{status}");
-            assert!(repo.find_by_id(&user.id).await.unwrap().is_some());
-        }
+    async fn a_seat_in_a_waiting_party_keeps_the_account() {
+        let (use_case, repo) = setup().await;
+        let user = google_user(&repo, "g-1").await;
+        repo.seat_in_party(&user.id, "waiting").await;
+        let err = use_case
+            .execute(
+                &user.id,
+                with_credential(sign(&claims("g-1", serde_json::json!({})), KID)),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DeleteAccountError::ActiveParty));
+        assert!(repo.find_by_id(&user.id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn a_seat_in_a_playing_party_is_forfeited() {
+        use crate::domain::repositories::ForfeitOutcome;
+
+        let (use_case, repo) = setup().await;
+        let user = google_user(&repo, "g-2").await;
+        repo.seat_in_party(&user.id, "playing").await;
+        let deleted = use_case
+            .execute(
+                &user.id,
+                with_credential(sign(&claims("g-2", serde_json::json!({})), KID)),
+            )
+            .await
+            .unwrap();
+        // Nobody else sat at that table: the party went with the seat
+        assert_eq!(deleted.forfeits.len(), 1);
+        assert!(matches!(
+            deleted.forfeits[0].outcome,
+            ForfeitOutcome::Deleted { .. }
+        ));
+        assert!(repo.find_by_id(&user.id).await.unwrap().is_none());
     }
 }

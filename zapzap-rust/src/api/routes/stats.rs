@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::Claims;
 use crate::api::AppState;
+use crate::domain::entities::deleted_user_id_pattern;
 use crate::domain::repositories::UserRepository;
 
 // ============================================================================
@@ -316,13 +317,14 @@ pub async fn get_leaderboard(
             CAST(AVG(pgr.final_score) AS REAL) as avg_score
         FROM player_game_results pgr
         JOIN users u ON u.id = pgr.user_id
-        WHERE u.user_type = 'human' AND u.id NOT LIKE 'deleted-%'
+        WHERE u.user_type = 'human' AND u.id NOT LIKE ?
         GROUP BY u.id
         HAVING games_played >= ?
         ORDER BY (CAST(games_won AS REAL) / games_played) DESC, games_won DESC
         LIMIT ? OFFSET ?
         "#,
     )
+    .bind(deleted_user_id_pattern())
     .bind(params.min_games)
     .bind(params.limit)
     .bind(params.offset)

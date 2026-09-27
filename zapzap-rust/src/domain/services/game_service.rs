@@ -349,6 +349,82 @@ pub fn is_game_over(state: &GameState) -> Option<u8> {
     None
 }
 
+/// A player gives up their seat for good (their account is deleted): the seat is
+/// eliminated at once, as a player past 100 is, and its hand goes out of play, face down
+/// onto the discard pile (it comes back only when an empty deck is rebuilt from that
+/// pile, or with the next deal): the seat then holds no card, so it counts in no hand
+/// size and reveals nothing at the round's end, and the 54 cards stay accounted for.
+/// When the seat was to move, the turn passes to the next active seat: to choose the
+/// hand size (the round's starter), or to play (the draw that ended the seat's turn is
+/// skipped). Returns the winner when fewer than two seats remain active: the game is over,
+/// and the state says so (`Finished`; a round in progress scores nothing).
+pub fn forfeit_seat(state: &mut GameState, player: u8) -> Option<u8> {
+    if player >= state.player_count {
+        return None;
+    }
+    state.eliminate_player(player);
+    let hand = std::mem::take(state.get_hand_mut(player));
+    state.discard_pile.extend(hand);
+    state.card_tracker.taken_cards[player as usize] = 0;
+    state.card_tracker.taken_count[player as usize] = 0;
+    let active = state.active_players();
+    if active.len() < 2 {
+        // The game is over: a round in progress ends where it stands, scoring nothing
+        if state.current_action != GameAction::Finished {
+            state.current_action = GameAction::Finished;
+            state
+                .round_scores
+                .get_or_insert([0; crate::domain::value_objects::MAX_PLAYERS]);
+        }
+        return active.first().copied();
+    }
+    match state.current_action {
+        GameAction::SelectHandSize => {
+            // Nothing is dealt yet: the round becomes what it would have been without
+            // the seat, starter and Golden Score included
+            if state.current_turn == player {
+                state.advance_turn();
+                state.starting_player = state.current_turn;
+            }
+            state.is_golden_score = active.len() == 2;
+        }
+        GameAction::Play | GameAction::Draw if state.current_turn == player => {
+            state.advance_turn();
+            state.current_action = GameAction::Play;
+        }
+        // Between two rounds, or another seat to move: the next round deals without it
+        _ => {}
+    }
+    None
+}
+
+/// Sort the seats of a finished game into their final ranking: the winner first, then
+/// the seats never eliminated by score (lower is better), then the eliminated ones, the
+/// later eliminated first. Each seat is `(player index, final score, user id, round of
+/// its elimination)`.
+pub fn sort_final_ranking(players: &mut [(u8, u16, String, Option<u32>)], winner: u8) {
+    players.sort_by(|a, b| {
+        let (idx_a, score_a, _, elim_a) = a;
+        let (idx_b, score_b, _, elim_b) = b;
+
+        // Winner always first
+        if *idx_a == winner {
+            return std::cmp::Ordering::Less;
+        }
+        if *idx_b == winner {
+            return std::cmp::Ordering::Greater;
+        }
+
+        // Non-eliminated before eliminated
+        match (elim_a, elim_b) {
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, None) => score_a.cmp(score_b), // Both not eliminated: lower score = better
+            (Some(r_a), Some(r_b)) => r_b.cmp(r_a), // Both eliminated: later round = better position
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,5 +616,106 @@ mod tests {
         state.eliminate_player(2);
         state.is_golden_score = true;
         assert_eq!(hand_size_bounds(&state), (4, 10));
+    }
+
+    #[test]
+    fn test_forfeit_on_turn_passes_the_turn_to_play() {
+        for action in [GameAction::Play, GameAction::Draw] {
+            let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
+            state.current_action = action;
+            state.eliminate_player(1);
+            assert_eq!(forfeit_seat(&mut state, 0), None);
+            assert!(state.is_eliminated(0));
+            assert_eq!(
+                state.current_turn, 2,
+                "{action:?}: the eliminated seat 1 is skipped"
+            );
+            assert_eq!(state.current_action, GameAction::Play);
+        }
+    }
+
+    #[test]
+    fn test_forfeit_puts_the_hand_out_of_play_on_the_discard_pile() {
+        let mut state = four_player_state([&[1, 14], &[2, 15], &[0], &[4]]);
+        state.discard_pile = vec![40];
+        state.track_card_taken(1, 15);
+        let cards = |s: &GameState| {
+            let mut all: Vec<u8> = s.deck.clone();
+            all.extend(s.discard_pile.iter());
+            all.extend(s.last_cards_played.iter());
+            all.extend(s.cards_played.iter());
+            for hand in &s.hands {
+                all.extend(hand.iter());
+            }
+            all.sort_unstable();
+            all
+        };
+        let before = cards(&state);
+        assert_eq!(forfeit_seat(&mut state, 1), None);
+        assert!(state.get_hand(1).is_empty(), "the seat holds no card");
+        assert_eq!(state.discard_pile, vec![40, 2, 15]);
+        assert!(!state.has_player_taken(1, 15));
+        assert_eq!(cards(&state), before, "no card lost or duplicated");
+        // The empty seat (worth 0) neither counteracts a zapzap nor scores
+        state.current_turn = 2;
+        let result = execute_zapzap(&mut state).unwrap();
+        assert!(!result.counteracted);
+        assert!(result.scores.iter().all(|(p, _)| *p != 1));
+    }
+
+    #[test]
+    fn test_forfeit_off_turn_changes_only_the_seat() {
+        let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
+        state.current_action = GameAction::Draw;
+        assert_eq!(forfeit_seat(&mut state, 2), None);
+        assert_eq!(state.eliminated_mask, 0b0100);
+        assert_eq!(state.current_turn, 0);
+        assert_eq!(state.current_action, GameAction::Draw);
+    }
+
+    #[test]
+    fn test_forfeit_of_the_starter_hands_the_hand_size_choice_on() {
+        let mut state = initialize_round(3, 5, &[0u16; 8], 0, 1, 1, Some(3));
+        assert!(!state.is_golden_score);
+        assert_eq!(forfeit_seat(&mut state, 1), None);
+        assert_eq!(state.current_turn, 2);
+        assert_eq!(state.starting_player, 2);
+        assert_eq!(state.current_action, GameAction::SelectHandSize);
+        assert!(
+            state.is_golden_score,
+            "two seats left: the round is a Golden Score"
+        );
+    }
+
+    #[test]
+    fn test_forfeit_leaving_one_seat_ends_the_game() {
+        let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
+        state.eliminate_player(1);
+        state.eliminate_player(3);
+        assert_eq!(forfeit_seat(&mut state, 0), Some(2));
+        assert_eq!(state.current_action, GameAction::Finished);
+        assert_eq!(
+            state.round_scores,
+            Some([0; crate::domain::value_objects::MAX_PLAYERS]),
+            "no round was scored"
+        );
+        let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
+        state.current_action = GameAction::Finished;
+        state.eliminated_mask = 0b1010;
+        assert_eq!(forfeit_seat(&mut state, 2), Some(0));
+    }
+
+    #[test]
+    fn test_final_ranking_winner_then_survivors_then_later_eliminated() {
+        let mut players = vec![
+            (0, 120, "a".to_string(), Some(2)),
+            (1, 40, "b".to_string(), None),
+            (2, 110, "c".to_string(), Some(4)),
+            (3, 20, "d".to_string(), None),
+            (4, 30, "e".to_string(), None),
+        ];
+        sort_final_ranking(&mut players, 4);
+        let order: Vec<u8> = players.iter().map(|p| p.0).collect();
+        assert_eq!(order, vec![4, 3, 1, 2, 0]);
     }
 }

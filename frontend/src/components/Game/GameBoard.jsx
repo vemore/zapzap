@@ -112,7 +112,9 @@ function GameBoard() {
       case 'play':
       case 'draw':
       case 'selectHandSize':
-        // Refresh game state when any player plays, draws, or selects hand size
+      case 'playerForfeited':
+        // Refresh game state when any player plays, draws, or selects hand size, or a
+        // player's seat is forfeited (their account deleted mid-game)
         fetchGameState();
         break;
       case 'zapzap':

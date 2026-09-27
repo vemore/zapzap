@@ -31,14 +31,40 @@ impl RepositoryError {
 pub enum AccountDeletion {
     /// The user is gone; `anonymised_as` names the anonymous user their finished games
     /// now belong to, `None` when they had played none
+    /// `forfeits` are the seats the user held in games in progress, given up
     Deleted {
         anonymised_as: Option<String>,
+        forfeits: Vec<SeatForfeit>,
     },
     NotFound,
-    /// Seated in, or owner of, a waiting or playing party: nothing was changed
+    /// Seated in, or owner of, a waiting party: nothing was changed (they can leave it)
     ActiveParty,
     /// The only admin: nothing was changed
     LastAdmin,
+}
+
+/// A seat in a game in progress that an account deletion gave up: the seat is
+/// eliminated (`forfeit_seat`), under the anonymous user from then on
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatForfeit {
+    pub party_id: String,
+    pub player_index: u8,
+    pub outcome: ForfeitOutcome,
+}
+
+/// What became of the game a seat was forfeited in
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForfeitOutcome {
+    /// The other seats play on
+    Continues,
+    /// Fewer than two seats were left in the game: it is over, won by that seat
+    Finished {
+        winner_user_id: String,
+        winner_index: u8,
+    },
+    /// No other human sat at the table: the party was deleted, as when the last human
+    /// leaves a waiting party; `name` and `visibility` are the ones it had
+    Deleted { name: String, visibility: String },
 }
 
 /// User repository trait
@@ -71,9 +97,10 @@ pub trait UserRepository: Send + Sync {
     /// Delete user; `false` when no row was deleted
     async fn delete(&self, id: &str) -> Result<bool, RepositoryError>;
 
-    /// Delete an account, in one transaction: its finished games are handed to a new
-    /// anonymous user (`DELETED_USER_ID_PREFIX`), so they stay in the other players'
-    /// history, then the user row goes (and with it the Google id and email)
+    /// Delete an account, in one transaction: its seats in games in progress are
+    /// forfeited (`SeatForfeit`), its games are handed to a new anonymous user
+    /// (`DELETED_USER_ID_PREFIX`), so they stay in the other players' history, then the
+    /// user row goes (and with it the Google id and email)
     async fn delete_account(&self, id: &str) -> Result<AccountDeletion, RepositoryError>;
 
     /// Whether the user holds a seat in a waiting or playing party

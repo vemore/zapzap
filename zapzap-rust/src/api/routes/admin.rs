@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::error::{ApiBody, ApiJson};
 use crate::api::middleware::Claims;
+use crate::api::routes::auth::after_account_deletion;
 use crate::api::AppState;
+use crate::domain::entities::{deleted_user_id_pattern, DELETED_PLAYER_NAME};
 use crate::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
 
 // ============================================================================
@@ -131,7 +133,8 @@ const PARTY_INFO_SELECT: &str = r#"
         p.id,
         p.name,
         p.owner_id,
-        COALESCE(u.username, 'Unknown') as owner_username,
+        CASE WHEN p.owner_id LIKE ? THEN ? ELSE COALESCE(u.username, 'Unknown') END
+            as owner_username,
         p.invite_code,
         p.visibility,
         p.status,
@@ -295,11 +298,12 @@ pub async fn list_users(
             FROM player_game_results
             GROUP BY user_id
         ) pgr ON pgr.user_id = u.id
-        WHERE u.user_type = 'human' AND u.id NOT LIKE 'deleted-%'
+        WHERE u.user_type = 'human' AND u.id NOT LIKE ?
         ORDER BY u.created_at DESC
         LIMIT ? OFFSET ?
         "#,
     )
+    .bind(deleted_user_id_pattern())
     .bind(params.limit)
     .bind(params.offset)
     .fetch_all(state.party_repo.get_db())
@@ -345,8 +349,9 @@ pub async fn list_users(
 
     // Get total count
     let total: i32 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE user_type = 'human' AND id NOT LIKE 'deleted-%'",
+        "SELECT COUNT(*) FROM users WHERE user_type = 'human' AND id NOT LIKE ?",
     )
+    .bind(deleted_user_id_pattern())
     .fetch_one(state.party_repo.get_db())
     .await
     .map_err(|e| {
@@ -422,8 +427,9 @@ pub async fn delete_user(
         ));
     }
 
-    // As a player deleting their own account: finished games stay in the other players'
-    // history under an anonymous user, and a seat in a live game refuses the deletion
+    // As a player deleting their own account: the games stay in the other players'
+    // history under an anonymous user, a seat in a game in progress is forfeited, and a
+    // waiting party refuses the deletion
     let refuse = |status: StatusCode, error: &str| {
         (
             status,
@@ -434,7 +440,8 @@ pub async fn delete_user(
         )
     };
     match state.user_repo.delete_account(&user_id).await {
-        Ok(AccountDeletion::Deleted { .. }) => {
+        Ok(AccountDeletion::Deleted { forfeits, .. }) => {
+            after_account_deletion(&state, &user.id, &user.username, &forfeits);
             tracing::info!(
                 "Admin {} deleted account {} ({})",
                 claims.username,
@@ -446,10 +453,7 @@ pub async fn delete_user(
             return Err(refuse(StatusCode::NOT_FOUND, "User not found"));
         }
         Ok(AccountDeletion::ActiveParty) => {
-            return Err(refuse(
-                StatusCode::CONFLICT,
-                "User is in a waiting or playing party",
-            ));
+            return Err(refuse(StatusCode::CONFLICT, "User is in a waiting party"));
         }
         Ok(AccountDeletion::LastAdmin) => {
             return Err(refuse(
@@ -546,6 +550,8 @@ pub async fn list_parties(
             "{PARTY_INFO_SELECT} WHERE p.status = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
         );
         let parties = sqlx::query_as::<_, PartyInfo>(&sql)
+            .bind(deleted_user_id_pattern())
+            .bind(DELETED_PLAYER_NAME)
             .bind(status)
             .bind(params.limit)
             .bind(params.offset)
@@ -579,6 +585,8 @@ pub async fn list_parties(
     } else {
         let sql = format!("{PARTY_INFO_SELECT} ORDER BY p.created_at DESC LIMIT ? OFFSET ?");
         let parties = sqlx::query_as::<_, PartyInfo>(&sql)
+            .bind(deleted_user_id_pattern())
+            .bind(DELETED_PLAYER_NAME)
             .bind(params.limit)
             .bind(params.offset)
             .fetch_all(state.party_repo.get_db())
@@ -756,8 +764,9 @@ pub async fn get_statistics(
 ) -> Result<Json<StatisticsResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Get user count
     let total_users: i32 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE user_type = 'human' AND id NOT LIKE 'deleted-%'",
+        "SELECT COUNT(*) FROM users WHERE user_type = 'human' AND id NOT LIKE ?",
     )
+    .bind(deleted_user_id_pattern())
     .fetch_one(state.party_repo.get_db())
     .await
     .map_err(|e| {
@@ -850,12 +859,13 @@ pub async fn get_statistics(
             SUM(CASE WHEN pgr.is_winner = 1 THEN 1 ELSE 0 END) as games_won
         FROM player_game_results pgr
         JOIN users u ON u.id = pgr.user_id
-        WHERE u.user_type = 'human' AND u.id NOT LIKE 'deleted-%'
+        WHERE u.user_type = 'human' AND u.id NOT LIKE ?
         GROUP BY u.id
         ORDER BY games_played DESC
         LIMIT 10
         "#,
     )
+    .bind(deleted_user_id_pattern())
     .fetch_all(state.party_repo.get_db())
     .await
     .map_err(|e| {

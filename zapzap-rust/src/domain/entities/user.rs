@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 /// so no account can take it; the leaderboard and the admin user lists leave these out.
 pub const DELETED_USER_ID_PREFIX: &str = "deleted-";
 
+/// The name the server gives an anonymous user where it names one itself (the owner in
+/// the admin party list); elsewhere the clients show their own words, keyed on the id
+pub const DELETED_PLAYER_NAME: &str = "Joueur supprimé";
+
+/// The SQL `LIKE` pattern of the anonymous users' ids, to bind to a query
+pub fn deleted_user_id_pattern() -> String {
+    format!("{DELETED_USER_ID_PREFIX}%")
+}
+
 /// User type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
