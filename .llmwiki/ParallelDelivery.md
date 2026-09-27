@@ -82,6 +82,12 @@
 | **C** | authentication and secrets: `zapzap-rust/src/api/routes/auth.rs`, `zapzap-rust/src/api/middleware/`, `zapzap-rust/src/infrastructure/auth/`, compose environment, `nginx/` | B + an explicit go-ahead from the user for that merge |
 | **D** | an experiment | a `noPullRequest` branch, never merged; what it taught becomes an entry |
 
+The 1 500 lines are counted on the pull request's diff (`ship-parallel` §3.1): the `+` lines
+of the kept files, so added or modified, never deleted. Not counted: Markdown, lock files,
+the tests — `zapzap-rust/tests/`, `tests/`, `*.test.js(x)`, `frontend-flutter/test/`,
+`frontend-flutter/integration_test/`, `*_test.dart` — and the translated ARB files (every
+`frontend-flutter/lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`).
+
 A change confined to `frontend-flutter/` is lane **A** unless it meets a B criterion (its
 size, most often). The PWA ships under `/app/` since #36 ([[Deployment]]), so its merge is
 deployed like any other (`ship-parallel` §4); the proxy does not depend on it, so a broken
@@ -93,6 +99,17 @@ The reviewing agent gets these rules: verify each finding against the PR head; a
 or README the change makes false is at least Medium; read a page's `Decisions & History`
 before calling something redundant; judge the tests against the entry's acceptance
 criteria, not coverage.
+
+### Merged, not deployed
+
+Only a session on the LAN deploys: `scripts/deploy_nas.sh` needs ssh to the NAS and the
+registry `192.168.1.25:5050`, and `scripts/deploy.env` exists only in the main checkout. A
+claude.ai/code session, or any session while the NAS is down, can still squash-merge. So
+`ship-parallel` §1.5 probes both routes, read-only and with 5-second timeouts, and a failed
+probe heads the plan. A merge that needed a deploy and did not get one is reported
+**merged, not deployed** and listed, one line per squash sha, in a single
+`wip/todo/<date>-merged-not-deployed.md` (Blocks release: yes); the next session that passes
+the probe deploys `master` and closes it before merging anything new (§0, §4).
 
 ### `wip/` — local work tracking
 
@@ -129,6 +146,12 @@ moves from `todo_nr/` to `todo/` (12 per session, sessions on disjoint `Area`s: 
   fell back to headless Chromium. Isolated trades the persisted login for that. The
   per-branch scratchpad subdirectory and the `gh api` PR edit came the same day, after an
   agent overwrote another's `pr.md` (#71) and `gh pr edit` failed on #68.
+- **Flutter tests left out of the size count (2026-09-27).** The filter already dropped Rust
+  and JS tests but not `frontend-flutter/test/`: #133 counted 1 877 lines, 696 of them
+  `*_test.dart`, and crossed into lane B on its tests alone; without them it counts 1 181.
+- **"Merged, not deployed" is tracked (2026-09-27)**, ported from countscore, where
+  #212–#216 sat merged and undeployed for days with no trace: nothing in §4 covered a session
+  that could merge but not reach the NAS.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
 - **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.
