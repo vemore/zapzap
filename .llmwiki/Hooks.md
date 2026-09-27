@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -87,9 +87,11 @@ In an agent launched with `isolation: "worktree"`, Claude Code itself — not a 
 repository, no file under `.claude/` holds the text — refuses a Bash command it cannot prove
 stays inside the worktree: "too complex to verify that it stays inside the worktree". A
 heredoc (`python3 - <<'EOF'`, `cat > f <<'EOF'`), a `$(…)` substitution or a `cd … && …`
-chain is enough. The workaround: write the script to the session's scratchpad directory and
-run it by path (`bash <scratchpad>/x.sh`, `python3 <scratchpad>/x.py`); a script's contents
-are not inspected. The ship-parallel agent prompt says so.
+chain is enough. The workaround: write the script to the branch's own subdirectory of the
+session's scratchpad and run it by path (`bash <scratchpad>/<branch-slug>/x.sh`, `python3
+<scratchpad>/<branch-slug>/x.py`); a script's contents are not inspected. Every agent of a
+session shares the scratchpad, hence the subdirectory ([[ParallelDelivery]] § The shared
+browser). The ship-parallel agent prompt says so.
 
 ### What the hooks do not cover
 
