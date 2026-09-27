@@ -19,6 +19,8 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
 - `session-start.sh` lists the existing worktrees and the branches whose remote is gone. A
   worktree whose pull request is still open is work in flight — resume it rather than start
   the same theme twice. Debris from a finished loop: `scripts/cleanup_local.sh` (§7) first.
+- An open `wip/todo/*-merged-not-deployed.md` holds merges an earlier session could not
+  deploy (§4): when §1.5 finds the NAS reachable, deploy `master` and close it first.
 
 ## 1. Plan the pull requests
 
@@ -42,9 +44,28 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
      `docker-compose.yml` / `zapzap-rust/docker-compose.yml` environment, `nginx/`.
    - **D** an experiment, on a `noPullRequest` branch, never merged as is.
    Lanes B and C need **acceptance criteria in the entry**. In doubt, the stricter lane.
-5. Present the plan in **one** `AskUserQuestion` — per pull request: branch, entries, lane
-   (and criteria for B/C), likely files, wave, merge order — and wait. The go-ahead covers
-   the loop, merges and deploys included; it does not stand in for lane C's go-ahead in §3.
+5. **Check that this session can deploy.** A claude.ai/code session has no route to the LAN,
+   and the NAS or the registry can be down; §4 cannot run then. Read-only, a few seconds at
+   most, over the two routes `scripts/deploy_nas.sh` takes — ssh to the NAS, plain HTTP to
+   the registry (`/v2/` answers even unauthenticated) — from the main checkout, the only one
+   with `scripts/deploy.env`:
+   ```bash
+   ( f=scripts/deploy.env
+     [ -r "$f" ] || { echo "deploy: no $f in this checkout"; exit 1; }
+     set -a; . "$f"; set +a
+     ssh -o BatchMode=yes -o ConnectTimeout=5 "$NAS_SSH" true >/dev/null 2>&1 \
+       || { echo "deploy: NAS unreachable over ssh"; exit 1; }
+     curl -s -o /dev/null -m 5 "http://$REGISTRY/v2/" \
+       || { echo "deploy: registry unreachable"; exit 1; }
+     echo "deploy: reachable" )
+   ```
+   Anything but `deploy: reachable` is **the plan's first line**: "this session cannot
+   deploy — merges will land *merged, not deployed* (§4)". The user then chooses between
+   merging anyway and leaving the green pull requests to a session on the LAN.
+6. Present the plan in **one** `AskUserQuestion` — the deploy check, then per pull request:
+   branch, entries, lane (and criteria for B/C), likely files, wave, merge order — and wait.
+   The go-ahead covers the loop, merges and deploys included; it does not stand in for lane
+   C's go-ahead in §3.
 
 Four agents at a time at most: each worktree costs an `npm ci` and cargo builds.
 
@@ -140,12 +161,14 @@ history. So merges are serial. For each pull request, in the planned order:
 
 1. `gh pr view <n> --json state,mergeable,mergeStateStatus,headRefName`, and read the diff
    (`gh pr diff <n>`) — you are the only reviewer. Then its size, the added or modified lines
-   of code (docs, lock, generated and test files not counted, nor the translated ARB files
-   — every `frontend-flutter/lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`):
+   of code (docs, lock, generated and test files not counted — Rust, JS and Flutter tests
+   alike: `frontend-flutter/test/`, `frontend-flutter/integration_test/`, `*_test.dart` —
+   nor the translated ARB files, every `frontend-flutter/lib/l10n/app_*.arb` but
+   `app_fr.arb` and `app_en.arb`):
    ```bash
    gh pr diff <n> | awk '
      /^diff --git / { p = $4; sub(/^b\//, "", p)
-                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\//) \
+                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\/|^frontend-flutter\/(test|integration_test)\/|_test\.dart$/) \
                           && (p !~ /^frontend-flutter\/lib\/l10n\/app_.*\.arb$/ || p ~ /\/app_(fr|en)\.arb$/) }
      keep && /^\+/ && !/^\+\+\+/ { n++ }
      END { print n + 0 }'
@@ -181,6 +204,18 @@ After **each** merge, so a regression points at one pull request:
 Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, the frontend
 loads, and the path the pull request changed, driven for real (Playwright). Record it.
 
+**When the deploy cannot run** — §1.5 said so, or the `deploy` skill cannot reach the NAS or
+the registry — a merge whose paths call for a deploy is **merged, not deployed**, never a
+silent success. A deploy that ran and broke production is not this case: that is a rollback.
+- Say "merged, not deployed" for that pull request, then and in §7's report.
+- Write **one** entry for the loop, `wip/todo/<date>-merged-not-deployed.md` (Theme
+  `deployment`, Blocks release: yes — production runs older code than `master`), or add to
+  the one already open: one line per squash sha, with its pull request and the paths from
+  the table above that call for the deploy. Its fix: deploy `origin/master` from the main
+  checkout (one deploy covers every sha listed), smoke-test each listed pull request's path,
+  and close it (§5) naming the deployed sha — whichever session next passes §1.5 does so
+  before merging anything new. `wip/` is local: no pull request carries it.
+
 ## 5. Close the entries
 
 In the main checkout, for each entry the merged pull request fixed:
@@ -199,5 +234,6 @@ back first (`deploy` skill), then fixed.
 - Once **every agent has reported**: `scripts/cleanup_local.sh`, then `--apply`. Read the
   `keep` lines; an unmerged pull request or a dirty worktree is real — say so, never force it.
 - `git worktree list` and `git branch -vv` then show only `master` and work in flight.
-- Report: each pull request (URL, merged or not), each deploy and its smoke test, the entries
-  created and closed, and what is left (`scripts/wip.sh list`).
+- Report: each pull request (URL, merged or not, "merged, not deployed" when §4 could not
+  run), each deploy and its smoke test, the entries created and closed, and what is left
+  (`scripts/wip.sh list`).
