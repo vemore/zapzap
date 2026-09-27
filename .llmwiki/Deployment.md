@@ -81,8 +81,11 @@ before it builds, and refuses with the command.
 
 **The schema step on the production database.** At start-up the backend runs its DDL, all
 `IF NOT EXISTS`, in one transaction ([[Backend]]); on the production database, created by
-the Node backend and opened by it for months, it is a no-op (checked on a copy before the
-switch: `sqlite_master` and the row counts unchanged).
+the Node backend and opened by it for months, the DDL is a no-op (checked on a copy before the
+switch: `sqlite_master` and the row counts unchanged). The migrations it has not had run
+after it, in the same transaction, once each (`PRAGMA user_version`): the first start of
+fix/game-state-version adds `game_state.version` (existing rows 0). They are additive, so an
+older image rolled back to reads and writes the migrated file as before.
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
 bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`

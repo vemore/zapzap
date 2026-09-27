@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{
-    PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry,
+    PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry, VersionedGameState,
 };
 use crate::domain::services::{
     check_eliminations, execute_zapzap, is_game_over, sort_final_ranking,
@@ -71,9 +71,12 @@ impl<P: PartyRepository> CallZapZap<P> {
             .ok_or(CallZapZapError::NotInParty)?;
 
         // Get game state
-        let mut game_state = self
+        let VersionedGameState {
+            state: mut game_state,
+            version,
+        } = self
             .party_repo
-            .get_game_state(&input.party_id)
+            .get_versioned_game_state(&input.party_id)
             .await?
             .ok_or(CallZapZapError::NoGameState)?;
 
@@ -103,9 +106,10 @@ impl<P: PartyRepository> CallZapZap<P> {
         // Check if game is over
         let winner = is_game_over(&game_state);
 
-        // Save game state
+        // Save game state, unless another write came in since the read (a forfeit, a
+        // second request): `Conflict`, and nothing below runs
         self.party_repo
-            .save_game_state(&input.party_id, &game_state)
+            .update_game_state(&input.party_id, &game_state, version)
             .await?;
 
         // Update round as finished

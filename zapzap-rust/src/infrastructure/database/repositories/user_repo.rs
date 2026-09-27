@@ -105,7 +105,9 @@ async fn forfeit_playing_seats(
         let mut outcome = ForfeitOutcome::Continues;
         if let Some(mut state) = state {
             let winner = forfeit_seat(&mut state, player_index);
-            sqlx::query("UPDATE game_state SET state_json = ?, updated_at = ? WHERE party_id = ?")
+            // Read and written under the transaction's write lock; the new version refuses
+            // a move that read the state before it (`update_game_state`)
+            sqlx::query("UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 WHERE party_id = ?")
                 .bind(state.to_json())
                 .bind(now)
                 .bind(&party_id)

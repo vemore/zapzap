@@ -17,11 +17,12 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
 use crate::application::game::{
-    CallZapZap, CallZapZapInput, DrawCard, DrawCardInput, PlayCards, PlayCardsInput,
-    SelectHandSize, SelectHandSizeInput,
+    CallZapZap, CallZapZapError, CallZapZapInput, DrawCard, DrawCardError, DrawCardInput,
+    PlayCards, PlayCardsError, PlayCardsInput, SelectHandSize, SelectHandSizeError,
+    SelectHandSizeInput,
 };
 use crate::domain::entities::{BotDifficulty, PartyStatus};
-use crate::domain::repositories::{PartyRepository, UserRepository};
+use crate::domain::repositories::{PartyRepository, UserRepository, VersionedGameState};
 use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::{GameAction, GameState};
 use crate::infrastructure::app_state::{AppState, GameEvent};
@@ -322,7 +323,9 @@ async fn has_active_human(
 }
 
 /// Play bot moves until a human is to move or the round ends; the caller holds the
-/// party's roster, so no other loop runs for this party meanwhile.
+/// party's roster, so no other loop runs for this party meanwhile. A move whose write
+/// loses a race with another write of the game state (a forfeit, a human's request) wrote
+/// nothing: the loop reads the state again and decides afresh.
 async fn run_bot_loop(
     state: &Arc<AppState>,
     party_id: &str,
@@ -349,9 +352,12 @@ async fn run_bot_loop(
 
     let mut actions = 0;
     for _ in 0..max_actions {
-        let Some(game_state) = state
+        let Some(VersionedGameState {
+            state: game_state,
+            version,
+        }) = state
             .party_repo
-            .get_game_state(party_id)
+            .get_versioned_game_state(party_id)
             .await
             .map_err(|e| e.to_string())?
         else {
@@ -397,8 +403,13 @@ async fn run_bot_loop(
             }
             let mut updated = game_state.clone();
             updated.current_turn = next_turn;
-            if let Err(e) = state.party_repo.save_game_state(party_id, &updated).await {
-                tracing::error!("Failed to update game state: {}", e);
+            match state
+                .party_repo
+                .update_game_state(party_id, &updated, version)
+                .await
+            {
+                Err(e) if !e.is_conflict() => tracing::error!("Failed to update game state: {}", e),
+                _ => {}
             }
             continue;
         }
@@ -413,14 +424,17 @@ async fn run_bot_loop(
             GameAction::SelectHandSize => {
                 let hand_size = brain.select_hand_size(&game_state, player_index);
                 tracing::info!("Bot {} selecting hand size {}", user.username, hand_size);
-                SelectHandSize::new(state.party_repo.clone())
+                match SelectHandSize::new(state.party_repo.clone())
                     .execute(SelectHandSizeInput {
                         party_id: party_id.to_string(),
                         user_id: user_id.clone(),
                         hand_size,
                     })
                     .await
-                    .map_err(|e| e.to_string())?;
+                {
+                    Err(SelectHandSizeError::Repository(e)) if e.is_conflict() => continue,
+                    result => result.map_err(|e| e.to_string())?,
+                };
                 broadcast_bot_event(
                     state,
                     party_id,
@@ -432,13 +446,16 @@ async fn run_bot_loop(
             GameAction::Play => {
                 if brain.should_call_zapzap(&game_state, player_index).await {
                     tracing::info!("Bot {} calling ZapZap", user.username);
-                    let result = CallZapZap::new(state.party_repo.clone())
+                    let result = match CallZapZap::new(state.party_repo.clone())
                         .execute(CallZapZapInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                         })
                         .await
-                        .map_err(|e| e.to_string())?;
+                    {
+                        Err(CallZapZapError::Repository(e)) if e.is_conflict() => continue,
+                        result => result.map_err(|e| e.to_string())?,
+                    };
                     broadcast_bot_event(
                         state,
                         party_id,
@@ -460,14 +477,17 @@ async fn run_bot_loop(
                         return Err(format!("Bot {} has no valid play", user.username));
                     }
                     tracing::info!("Bot {} playing {:?}", user.username, cards);
-                    PlayCards::new(state.party_repo.clone())
+                    match PlayCards::new(state.party_repo.clone())
                         .execute(PlayCardsInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                             card_ids: cards.clone(),
                         })
                         .await
-                        .map_err(|e| e.to_string())?;
+                    {
+                        Err(PlayCardsError::Repository(e)) if e.is_conflict() => continue,
+                        result => result.map_err(|e| e.to_string())?,
+                    };
                     broadcast_bot_event(
                         state,
                         party_id,
@@ -495,8 +515,9 @@ async fn run_bot_loop(
                 // A discard pick that fails falls back to the deck
                 let source = match drawn {
                     Ok(_) => source,
+                    Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
                     Err(_) => {
-                        DrawCard::new(state.party_repo.clone())
+                        match DrawCard::new(state.party_repo.clone())
                             .execute(DrawCardInput {
                                 party_id: party_id.to_string(),
                                 user_id: user_id.clone(),
@@ -504,7 +525,10 @@ async fn run_bot_loop(
                                 card_id: None,
                             })
                             .await
-                            .map_err(|e| e.to_string())?;
+                        {
+                            Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
+                            result => result.map_err(|e| e.to_string())?,
+                        };
                         "deck"
                     }
                 };

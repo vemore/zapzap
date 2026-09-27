@@ -11,9 +11,18 @@ pub enum RepositoryError {
     AlreadyExists(String),
     #[error("Database error: {0}")]
     Database(String),
+    /// The row changed since it was read: a compare-and-swap write lost a race, and
+    /// wrote nothing (`PartyRepository::update_game_state`)
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 impl RepositoryError {
+    /// Another write came in between the read and this write, which wrote nothing
+    pub fn is_conflict(&self) -> bool {
+        matches!(self, RepositoryError::Conflict(_))
+    }
+
     /// A UNIQUE constraint refused the write (SQLite's message)
     pub fn is_unique_violation(&self) -> bool {
         matches!(self, RepositoryError::Database(m) if m.contains("UNIQUE constraint failed"))
