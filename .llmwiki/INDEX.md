@@ -27,11 +27,11 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Architecture]] | The four code bases (Rust backend in production, React frontend, Flutter client, native engine), runtime topology, SSE, `data/`, the compose files | 2026-09-25 |
+| [[Architecture]] | The four code bases (Rust backend in production, React frontend, Flutter client, native engine), runtime topology, SSE, `data/`, the compose files | 2026-09-27 |
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-27 |
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, the schema it creates (`schema.sql`), the `seed` command | 2026-09-27 |
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-27 |
-| [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-25 |
+| [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-27 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-27 |
 | [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-27 |
 | [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-27 |
@@ -42,13 +42,13 @@ Load this file first. Then read only the pages your task touches.
 | [[FlutterHistoryAdmin]] | Flutter history, game details and statistics screens; the admin screen (users, parties, statistics tabs) | 2026-09-27 |
 | [[FlutterI18n]] | Flutter l10n: ten ARB files, the game-terms glossary, the l10n tests, generated code not committed, the "tu" voice | 2026-09-27 |
 | [[FlutterAndroidPwa]] | Flutter Android app (CI APK, release signing, keys, OAuth SHA-1s, manifest, icons) and the PWA image (Dockerfile, nginx, manifest) | 2026-09-27 |
-| [[NativeEngine]] | `native/`: headless engine, DRL training, the two Node scripts that drive it (`train-native.js`, `genetic-optimize-thibot.js`) | 2026-09-25 |
+| [[NativeEngine]] | `native/`: headless engine, DRL training, the two Node scripts that drive it (`train-native.js`, `genetic-optimize-thibot.js`) | 2026-09-27 |
 
 ## Operations and process
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, the four containers, their environment and `data/`, `scripts/deploy_nas.sh`, `--rollback <sha>` | 2026-09-26 |
+| [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, the four containers, their environment and `data/`, `scripts/deploy_nas.sh`, `--rollback <sha>` | 2026-09-27 |
 | [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-27 |
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-27 |
 | [[ParallelDelivery]] | `master` protection, worktrees, the shared Playwright browser and its fallback, scratchpad and `gh` pitfalls, lanes A–D and the size count, merged-not-deployed, cleanup, local `wip/` | 2026-09-27 |

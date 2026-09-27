@@ -217,7 +217,8 @@
   the real client is the only end-to-end test of the production backend, and a debug build
   plus one round costs a few minutes, while the `flutter` flag would also have run the
   analyzer, the widget tests and the apk build on every backend change. `src/` sets it too:
-  the job seeds its bots with `scripts/init-bots.js`, which loads the Node code. The smoke
+  the job seeded its bots with scripts/init-bots.js, which loaded the Node code (since
+  2026-09-25 it seeds with `zapzap-backend seed`). The smoke
   script reads no `.env` (`--env-file /dev/null`), so a developer's secrets never reach it.
 - **2026-09-27 (ci/image-cache-bedrock): the backend image build is cached, and `bedrock` is
   linted.** Since #99 the `image` job built the production backend (release, AWS SDK) with no
