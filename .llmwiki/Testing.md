@@ -11,7 +11,7 @@
 |---|---|---|---|
 | Rust backend unit tests (`#[cfg(test)]` in `zapzap-rust/src`) | `cd zapzap-rust && cargo test --lib --bins` | green | yes |
 | Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 98 tests on 2026-09-25) | `cargo test --test api_tests` | green | yes |
-| Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 3 tests on 2026-09-27) | `cargo test --test schema_tests` | green | yes |
+| Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 5 tests on 2026-09-27) | `cargo test --test schema_tests` | green | yes |
 | Rust backend rules and bots tests (`zapzap-rust/tests/rules_and_bots_tests.rs`, 16 tests on 2026-09-27: eliminated starter, starter wrap, tied lowest hands, repeated card, hand size with 8 players, concurrent bot triggers, a trigger during a manual loop, one strategy per bot, concurrent game-state writes) | `cargo test --test rules_and_bots_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
