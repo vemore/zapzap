@@ -291,7 +291,7 @@ project `.gitignore`.
   routing and the auth pull request only has to set it. Error text stays out of the UI:
   screens map `ApiException.code` to ARB strings.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost its Node-vs-Rust comparisons (CORS, SSE, presence, shapes, the refusals the client pre-empts); the client code kept its Node-shape branches until refactor/flutter-drop-node-branches (2026-09-25), which checked each against `zapzap-rust/src/api/routes/*.rs` and `api/sse.rs` and dropped those Rust never reaches: the `isOwner` fallback on `ownerId`, the `winnerUserId` placement fallback, the JSON-string `handCards`, the unnamed SSE `message` and `userStatusChanged`, `NextRoundResult.isGoldenScore`/`enteringGoldenScore`, a `null` `roundScores`, a `join` without `playerIndex`, a leaderboard row without `averageScore`, and the old Rust party settings keys with the lobby's hand-size chip (`lobbyHandSizeChip`). The parsing kept for Rust answers before 2026-09-24 (list-shaped maps, bare indexes, RFC 3339 dates) was left alone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
-- **The page is split by sub-topic (2026-09-27, `docs/split-frontend-flutter`).** At 1645
+- **The page is split by sub-topic (2026-09-27, #136).** At 1645
   lines any Flutter task loaded the whole page to find one section. Its sections moved
   unchanged, each with its Decisions & History items, to [[FlutterAuth]], [[FlutterRealtime]],
   [[FlutterParties]], [[FlutterGameBoard]], [[FlutterGameUi]], [[FlutterHistoryAdmin]],
