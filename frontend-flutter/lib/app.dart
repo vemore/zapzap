@@ -112,6 +112,7 @@ class _ZapZapAppState extends State<ZapZapApp> {
     return TutorialOffer(
       store: store,
       onStart: () => _router?.push(AppRoutes.tutorial),
+      location: () => _router?.routerDelegate.currentConfiguration.uri,
       child: child,
     );
   }

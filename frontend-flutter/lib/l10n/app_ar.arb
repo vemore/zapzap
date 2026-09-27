@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "اضغط على {card} فقط، أعلى بطاقاتك، ثم لعب.",
   "tutorialDrawDeck": "ثم اسحب بطاقة لتنهي دورك: اضغط على المكدس.",
   "tutorialDrawDeckHint": "اضغط على المكدس، البطاقة المقلوبة.",
+  "tutorialOpponentTurn": "دور {player}: يلعب بطاقة، ثم يسحب.",
   "tutorialPlayPair": "بطاقتان من الرتبة نفسها تُلعبان معًا: اضغط على {first} و{second}، ثم لعب.",
   "tutorialPlayPairHint": "اختر {first} و{second} معًا، ثم لعب.",
   "tutorialTakePile": "بدلًا من السحب، خذ بطاقة لعبها {player} للتو: اضغط على {card} تحت «للأخذ التالي»، ثم أخذ.",

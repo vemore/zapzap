@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "Sentuh hanya {card}, kartu tertinggimu, lalu Mainkan.",
   "tutorialDrawDeck": "Lalu ambil satu kartu untuk mengakhiri giliranmu: sentuh tumpukan.",
   "tutorialDrawDeckHint": "Sentuh tumpukan, kartu yang tertutup.",
+  "tutorialOpponentTurn": "Giliran {player}: dia memainkan kartu, lalu mengambil satu.",
   "tutorialPlayPair": "Dua kartu dengan nilai yang sama dimainkan bersama: sentuh {first} dan {second}, lalu Mainkan.",
   "tutorialPlayPairHint": "Pilih {first} dan {second} bersama, lalu Mainkan.",
   "tutorialTakePile": "Alih-alih dari tumpukan, ambil kartu yang baru dimainkan {player}: sentuh {card} di bawah “Akan diambil selanjutnya”, lalu Ambil.",

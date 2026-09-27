@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "Tippe nur auf {card}, deine höchste Karte, dann auf Spielen.",
   "tutorialDrawDeck": "Dann zieh eine Karte, um deinen Zug zu beenden: Tippe auf den Kartenstapel.",
   "tutorialDrawDeckHint": "Tippe auf den Kartenstapel, die verdeckte Karte.",
+  "tutorialOpponentTurn": "{player} ist am Zug: Er spielt eine Karte und zieht dann.",
   "tutorialPlayPair": "Zwei Karten gleichen Rangs werden zusammen gespielt: Tippe auf {first} und {second}, dann auf Spielen.",
   "tutorialPlayPairHint": "Wähle {first} und {second} zusammen, dann tippe auf Spielen.",
   "tutorialTakePile": "Statt zu ziehen, nimm eine Karte, die {player} gerade gespielt hat: Tippe auf {card} unter „Nächstes zum Greifen“, dann auf Nehmen.",

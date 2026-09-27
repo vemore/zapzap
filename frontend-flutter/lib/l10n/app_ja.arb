@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "{card}（いちばん高いカード）だけをタップして、プレイ。",
   "tutorialDrawDeck": "次に 1 枚引いてターンを終えます：デッキをタップ。",
   "tutorialDrawDeckHint": "デッキ（裏向きのカード）をタップしてください。",
+  "tutorialOpponentTurn": "{player} の番：カードを 1 枚出してから、1 枚引きます。",
   "tutorialPlayPair": "同じランクの 2 枚は一緒にプレイできます：{first} と {second} をタップして、プレイ。",
   "tutorialPlayPairHint": "{first} と {second} を一緒に選んで、プレイ。",
   "tutorialTakePile": "デッキの代わりに、{player} が出したばかりのカードを取れます：「次は取得可能」の {card} をタップして、取る。",

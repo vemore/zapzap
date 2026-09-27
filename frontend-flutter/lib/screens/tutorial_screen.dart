@@ -85,7 +85,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
       : _myName(AppLocalizations.of(context));
 
   Widget _board(BuildContext context, AppLocalizations l10n) {
-    final drawing = _game.step.draws;
+    // The opponent's turn: the board as in a game once the player has
+    // drawn — not their draw step any more, the felt's message naming each
+    // move —, and nothing is played or drawn meanwhile.
+    final waiting = _game.opponentMoving;
+    final drawing = _game.step.draws && !waiting;
     final values = (
       eligibility: handValue(_game.hand),
       penalty: handValue(_game.hand, penalty: true),
@@ -104,12 +108,17 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     GameSeat(
                       playerIndex: player,
                       name: _nameOf(player),
-                      score: 0,
+                      // The opponent's hand, scored once ZapZap has held.
+                      score: player == TutorialGame.opponent
+                          ? _game.opponentScore
+                          : 0,
                       cardCount: player == TutorialGame.me
                           ? _game.hand.length
                           : _game.opponentCardCount,
                       isMe: player == TutorialGame.me,
-                      isCurrentTurn: player == TutorialGame.me,
+                      isCurrentTurn:
+                          player ==
+                          (waiting ? TutorialGame.opponent : TutorialGame.me),
                     ),
                 ],
               ),
@@ -182,9 +191,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
                   // Once ZapZap is called, no move is left to make.
                   if (_game.step.index <= TutorialStep.zapZap.index)
                     GameActionButtons(
-                      isMyTurn: true,
+                      isMyTurn: !waiting,
                       currentAction: _game.currentAction,
-                      currentPlayerName: _myName(l10n),
+                      currentPlayerName: waiting
+                          ? TutorialGame.opponentName
+                          : _myName(l10n),
                       selectedCards: _game.selectedCards,
                       invalidPlay: _game.invalidPlay,
                       takeCard: _game.selectedDiscardCard,
@@ -219,6 +230,13 @@ class _TutorialScreenState extends State<TutorialScreen> {
   Widget? _coach(AppLocalizations l10n, TutorialZone zone) {
     final step = _game.step;
     if (step.zone != zone) return null;
+    // The opponent's turn, after a draw: its bubble in the same place, so
+    // the felt keeps its size while his moves cross it.
+    if (_game.opponentMoving) {
+      return CoachBubble(
+        text: l10n.tutorialOpponentTurn(TutorialGame.opponentName),
+      );
+    }
     return CoachBubble(
       text: _text(l10n, step),
       hint: _game.refused ? _hint(l10n, step) : null,

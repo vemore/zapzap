@@ -93,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // The example game needs no account: pushed, so Back returns here.
           TextButton.icon(
             key: const Key('login-tutorial'),
-            onPressed: () => context.push(AppRoutes.tutorial),
+            onPressed: _busy ? null : () => context.push(AppRoutes.tutorial),
             icon: const Icon(Icons.school),
             label: Text(l10n.loginTutorialLink, textAlign: TextAlign.center),
           ),

@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "Tap only {card}, your highest card, then Play.",
   "tutorialDrawDeck": "Then draw a card to end your turn: tap the deck.",
   "tutorialDrawDeckHint": "Tap the deck, the face-down card.",
+  "tutorialOpponentTurn": "{player}'s turn: he plays a card, then draws.",
   "tutorialPlayPair": "Two cards of the same rank are played together: tap {first} and {second}, then Play.",
   "tutorialPlayPairHint": "Select {first} and {second} together, then Play.",
   "tutorialTakePile": "Instead of drawing, take a card {player} just played: tap {card} under “Up for grabs next”, then Take.",

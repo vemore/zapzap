@@ -2475,6 +2475,15 @@
   "@tutorialDrawDeckHint": {
     "description": "Example game: refusal hint of the deck-draw steps"
   },
+  "tutorialOpponentTurn": "Au tour de {player} : il pose une carte, puis pioche.",
+  "@tutorialOpponentTurn": {
+    "description": "Example game: the opponent's turn playing out on the felt, after the player's draw",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
   "tutorialPlayPair": "Deux cartes de même valeur se jouent ensemble : touche {first} et {second}, puis Jouer.",
   "@tutorialPlayPair": {
     "description": "Example game: play two cards of the same rank",

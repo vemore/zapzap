@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "सिर्फ {card} पर टैप करें, आपका सबसे ऊँचा कार्ड, फिर खेलें।",
   "tutorialDrawDeck": "फिर अपनी बारी खत्म करने के लिए एक कार्ड खींचें: डेक पर टैप करें।",
   "tutorialDrawDeckHint": "डेक पर टैप करें, उल्टा रखा कार्ड।",
+  "tutorialOpponentTurn": "{player} की बारी: वह एक कार्ड खेलता है, फिर खींचता है।",
   "tutorialPlayPair": "एक ही रैंक के दो कार्ड साथ खेले जाते हैं: {first} और {second} पर टैप करें, फिर खेलें।",
   "tutorialPlayPairHint": "{first} और {second} को साथ चुनें, फिर खेलें।",
   "tutorialTakePile": "डेक के बजाय, {player} का अभी खेला गया कार्ड लें: \"अगले लिए ग्रहण के लिए\" के नीचे {card} पर टैप करें, फिर लें।",

@@ -451,6 +451,7 @@
   "tutorialPlaySingleHint": "Toca solo {card}, tu carta más alta, y luego Jugar.",
   "tutorialDrawDeck": "Luego toma una carta para terminar tu turno: toca el mazo.",
   "tutorialDrawDeckHint": "Toca el mazo, la carta boca abajo.",
+  "tutorialOpponentTurn": "Turno de {player}: juega una carta y luego roba.",
   "tutorialPlayPair": "Dos cartas del mismo valor se juegan juntas: toca {first} y {second}, y luego Jugar.",
   "tutorialPlayPairHint": "Selecciona {first} y {second} juntas, y luego Jugar.",
   "tutorialTakePile": "En lugar de tomar del mazo, toma una carta que {player} acaba de jugar: toca {card} en «Disponible a continuación» y luego Tomar.",

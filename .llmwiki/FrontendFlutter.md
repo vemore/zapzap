@@ -25,8 +25,8 @@
   admin session also gets an **Admin** entry, leading to `/admin` (Admin, below). The same
   menu opens **the rules** in a bottom sheet and holds **Sign out**, confirmed (below).
 - **An example game teaches the game offline** (`/tutorial`, "The example game" below):
-  offered once on the app's first opening, then reached from the ⋮ menu and the login
-  screen.
+  offered once on the app's first opening, signed out, then reached from the ⋮ menu and the
+  login screen.
 - The card model, play rules and card widgets (below) are what the board draws hands with.
 - **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
   `frontend-flutter/nginx.conf`), the `frontend-flutter` service in both compose files, and
@@ -808,12 +808,17 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   from a `TutorialGame` (a `ChangeNotifier` of its own) instead of `GameProvider`: no
   repository, no event stream, no HTTP call. It moves the state as the backend would — a
   play puts the cards laid down before it on the pile (`_layDown`), a draw takes the pile
-  card picked or the deck's —, so the felt's motion (J9) runs as in a game.
+  card picked or the deck's —, so the felt's motion (J9) runs as in a game: each action is
+  notified on its own, the player's draw first (the card taken leaving down toward the hand),
+  then Alex's turn after it, one move per `TutorialGame.opponentPause` (900 ms: his play,
+  then his deck draw), the board meanwhile as after a draw in a game — not the draw step, the
+  felt's message naming each move, nothing playable — under a `tutorialOpponentTurn` bubble.
 - **The script** (`TutorialStep`): a fixed deal of six (K♠ 9♥ 9♣ 4♥ 5♥ joker, 40 points),
-  8♠ flipped, one opponent, "Alex" (not translated), who plays one card and draws after each
+  8♠ flipped, 41 cards left in the deck (54 − 2×6 − 1), one opponent, "Alex" (not translated), who plays one card and draws after each
   of the player's draws. Intro → play K♠ alone → draw from the deck (2♦) → play the pair of 9
   → take A♣, Alex's card, from "À prendre ensuite" → play the run 4♥ 5♥ joker → draw from the
-  deck (A♠) → call ZapZap at 4 (confirmed on the real sheet) → held, 0 points → the
+  deck (A♠) → call ZapZap at 4 (confirmed on the real sheet) → held, 0 points, Alex's seat
+  scoring his hand (`opponentFinalHand`, 39 points) → the
   counteract penalty and elimination above 100 → Finish. Each step names its zone
   (`TutorialZone`: hand, felt, moves) and a `CoachBubble` sits over it, its tail pointing
   down at it; a step with no move (intro, held, end) carries Next or Finish.
@@ -830,7 +835,12 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   `tutorial*` strings too.**
 - **The first opening** (`widgets/tutorial_offer.dart`): `ZapZapApp.tutorialOffer`, a
   `TutorialOfferStore`, puts `TutorialOffer` in `MaterialApp.builder`, above the navigator —
-  a card over a `ModalBarrier`, not a dialog, shown once the session is restored: « Apprendre
+  a card over a `ModalBarrier`, not a dialog, decided once the session and the flag are read,
+  and offered **only signed out and not on `/tutorial`** (nor the splash remembering it) — so
+  never over a game, which needs a session. A signed-in user (every tester who had the app
+  before it) or one opening on `/tutorial` gets no offer and the flag is set, so a later
+  sign-out does not bring it up. A store that fails to read offers nothing; one that fails to
+  write is logged, the answer still taken. The offer: « Apprendre
   avec une partie d'exemple ? », Commencer (`tutorial-offer-start`, pushes `/tutorial`) /
   Plus tard (`tutorial-offer-later`). Either answer sets `tutorialOffered` in
   `shared_preferences` (`PreferencesTutorialOfferStore`) and it is never offered again. The
@@ -838,12 +848,17 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   state. `null` (the default, every other test) offers nothing; `main.dart` passes the
   device's store.
 - **Reached from** the ⋮ menu (`menu-tutorial`) of every signed-in screen and a link under the
-  login form (`login-tutorial`), both `push`ed: Back returns.
+  login form (`login-tutorial`, disabled while a sign-in is in flight, as the register link
+  is), both `push`ed: Back returns.
 - `test/tutorial_test.dart`: the whole script played with no HTTP request; every step at
   360x740 in the ten languages (and German at 1.5) without overflow; a wrong move at the
   single, deck, take and ZapZap steps refused with its hint; Skip from each step back to the
-  login screen; the values against `GAME_RULES.md`; the offer on a first opening, gone after
-  Start or Later and a relaunch; the menu of `/parties` and `/history` opening it.
+  login screen; the values against `GAME_RULES.md`; the player's take, then Alex's play, then
+  his draw reaching the felt one at a time (the card taken leaving down), the deck draw
+  leaving down too; Alex's score after the held ZapZap; the deck's 41 cards and one per draw;
+  the offer on a first opening, gone after Start or Later and a relaunch, none signed in or
+  on `/tutorial` (flag set), none with a store that throws; the login link disabled while
+  signing in; the menu of `/parties` and `/history` opening it.
 - Checked in the PWA (2026-09-27, headless Chromium at 390x844, the web build served
   statically, no backend): the offer over the home screen, Commencer opening the intro with
   its bubble over the hand, a mixed selection refused by the action bar.
@@ -1617,6 +1632,7 @@ project `.gitignore`.
   `feat/flutter-tutorial`).** The widgets take plain data, so a local `TutorialGame` feeds
   them directly; faking `/state` answers would have run the tutorial through the network
   layer it must stay out of, and tied it to `GameProvider`'s event handling. The offer sits
-  in `MaterialApp.builder` so it shows over whatever screen the app opens on (home, login,
-  the parties) without each screen knowing about it; its store is injected and absent by
+  in `MaterialApp.builder` so it shows over the screen a signed-out app opens on (home,
+  login) without each screen knowing about it — signed out only, since a signed-in user may
+  be on a game and already knows ZapZap; its store is injected and absent by
   default so the existing tests keep pumping the app without `shared_preferences`.
