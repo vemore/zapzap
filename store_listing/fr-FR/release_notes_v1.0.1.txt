@@ -1,0 +1,6 @@
+• Nouveau : une partie d'exemple guidée pour apprendre ZapZap, dès la première ouverture.
+• Les règles s'ouvrent depuis le menu ⋮ ; la déconnexion y passe, avec une confirmation.
+• Les cartes glissent sur la pile, et une carte prise part vers celui qui la prend.
+• Supprimer ton compte en pleine partie t'en retire ; les autres continuent.
+• Une fois tous les humains éliminés, les bots finissent la partie sans attendre.
+• Termes du jeu plus clairs dans toutes les langues, et des corrections.
