@@ -83,6 +83,7 @@ Both recorded 2026-09-25.
 | Version | Tracks | Date | Tag |
 |---|---|---|---|
 | 1.0.0 (1) | internal, closed (`alpha`) | 2026-09-26 | not yet |
+| 1.0.1 (2) | closed (`alpha`) | 2026-09-27 | `1.0.1+2` |
 
 ## Decisions & History
 

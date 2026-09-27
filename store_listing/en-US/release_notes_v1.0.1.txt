@@ -1,0 +1,6 @@
+• New: learn ZapZap with a guided example game, offered on first opening.
+• The rules open from the ⋮ menu; sign out moves there, behind a confirmation.
+• Cards slide onto the pile, and a card taken leaves toward its taker.
+• Deleting your account during a game makes you leave it; the others play on.
+• Once every human is eliminated, the bots finish the game without waiting.
+• Clearer game terms in every language, and several fixes.
