@@ -53,6 +53,7 @@ Load this file first. Then read only the pages your task touches.
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-27 |
 | [[ParallelDelivery]] | `master` protection, worktrees, the shared browser, scratchpad and `gh` pitfalls, lanes A–D and the size count, merged-not-deployed, cleanup, local `wip/`, delivery and agent metrics | 2026-09-27 |
 | [[Release]] | Google Play: package `com.zapzap.app`, the keys' fingerprints, `scripts/verify_aab.sh` and `scripts/play_publish.py` (androidpublisher v3, from this machine only), the service account, versions shipped | 2026-09-26 |
+| [[AgentEvals]] | `evals/`: replaying past tasks with `claude -p` in throwaway worktrees, deterministic checks, the self-test, how to run a case for real and its cost | 2026-09-27 |
 | [[Documentation]] | Which documents a change implicates; the wiki lint (`scripts/wiki_lint.sh`); the `CLAUDE.md` budget | 2026-09-27 |
 | [[KnownLimits]] | What is deliberately left out of the gates, and why | 2026-09-25 |
 
