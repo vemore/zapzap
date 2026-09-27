@@ -412,6 +412,64 @@ async fn test_a_forfeit_and_a_knockout_in_one_round_rank_by_seat() {
 }
 
 #[tokio::test]
+async fn test_a_forfeit_between_rounds_counts_in_the_next_round_played() {
+    let (mut app, state) = test_app().await;
+    let (party_id, tokens) = started_party(&mut app, &state, "betweenrounds", 3, &[]).await;
+
+    // Round 1: seat 1 calls with 3 points and seat 0 goes past 100 (95 + 15)
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[
+            &[13, 14, 15, 16, 17],
+            &[0, 1],
+            &[26, 27, 28],
+            &[39, 40, 41, 42],
+        ],
+    );
+    gs.scores[..4].copy_from_slice(&[95, 10, 20, 30]);
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+    let zapzap = format!("/api/game/{party_id}/zapzap");
+    let (status, body) = send(&mut app, "POST", &zapzap, json!({}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["gameFinished"].is_null(), "{body}");
+
+    // Between rounds 1 and 2, seat 2 leaves: seats 1 and 3 play on
+    let leaver = user_at(&state, &party_id, 2).await;
+    let deletion = state.user_repo.delete_account(&leaver).await.unwrap();
+    assert!(
+        matches!(deletion, AccountDeletion::Deleted { ref forfeits, .. } if forfeits.len() == 1),
+        "{deletion:?}"
+    );
+    let (status, body) = send(
+        &mut app,
+        "POST",
+        &format!("/api/game/{party_id}/nextRound"),
+        json!({}),
+        &tokens[1],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Round 2, a Golden Score: seat 1's lower hand wins the game
+    let mut gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.round_number, 2);
+    set_hands(&mut gs, &[&[], &[0, 1], &[], &[39, 40, 41]]);
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+    let (status, body) = send(&mut app, "POST", &zapzap, json!({}), &tokens[1]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameFinished"], true, "{body}");
+
+    // GAME_RULES.md "Final Ranking": the game went on, so the leaver is out in round 2,
+    // after seat 0 (round 1), and ranks above it despite the higher seat
+    assert_eq!(finish_order(&state, &party_id).await, [1, 3, 2, 0]);
+}
+
+#[tokio::test]
 async fn test_a_zapzap_ending_the_game_saves_its_results() {
     let (mut app, state) = test_app().await;
     let (party_id, tokens) = started_party(&mut app, &state, "results", 2, &[]).await;
