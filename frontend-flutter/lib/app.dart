@@ -13,7 +13,9 @@ import 'services/api_config.dart';
 import 'services/google_sign_in_service.dart';
 import 'services/sse_transport.dart';
 import 'services/token_storage.dart';
+import 'services/tutorial_offer_store.dart';
 import 'utils/app_theme.dart';
+import 'widgets/tutorial_offer.dart';
 
 /// The root widget: providers, theme, localisation and routes.
 class ZapZapApp extends StatefulWidget {
@@ -26,6 +28,7 @@ class ZapZapApp extends StatefulWidget {
     this.tokenStorage,
     this.sseTransport,
     this.googleSignIn,
+    this.tutorialOffer,
   });
 
   final ApiConfig apiConfig;
@@ -44,6 +47,10 @@ class ZapZapApp extends StatefulWidget {
 
   /// Replaces Google sign-in, for tests.
   final GoogleSignInService? googleSignIn;
+
+  /// Remembers that the example game was offered; `null` never offers it
+  /// (the tests that are not about it). `main.dart` passes the device's.
+  final TutorialOfferStore? tutorialOffer;
 
   @override
   State<ZapZapApp> createState() => _ZapZapAppState();
@@ -88,13 +95,24 @@ class _ZapZapAppState extends State<ZapZapApp> {
         // whatever the route; app bars set the same style at the top.
         builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
           value: AppTheme.systemOverlayStyle,
-          child: child ?? const SizedBox.shrink(),
+          child: _withOffer(child ?? const SizedBox.shrink()),
         ),
         routerConfig: _router ??= createRouter(
           auth: context.read<AuthProvider>(),
           initialLocation: widget.initialLocation,
         ),
       ),
+    );
+  }
+
+  /// [child] under the first opening's offer of the example game.
+  Widget _withOffer(Widget child) {
+    final store = widget.tutorialOffer;
+    if (store == null) return child;
+    return TutorialOffer(
+      store: store,
+      onStart: () => _router?.push(AppRoutes.tutorial),
+      child: child,
     );
   }
 }

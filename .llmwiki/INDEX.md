@@ -24,7 +24,7 @@ Load this file first. Then read only the pages your task touches.
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-25 |
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-25 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-25 |
-| [[FrontendFlutter]] | `frontend-flutter/`: the Flutter client (Android + PWA under `/app/`), lib layout, ApiConfig, API layer, session and routing guard, Google sign-in (web + Android OAuth client), real-time channel (SSE), the app-bar menu (rules sheet, confirmed sign-out), theme, l10n in ten languages (fr, en and eight translated), card model, play rules and card widgets, board motion and reduced motion, the admin screen, build and tests | 2026-09-27 |
+| [[FrontendFlutter]] | `frontend-flutter/`: the Flutter client (Android + PWA under `/app/`), lib layout, ApiConfig, API layer, session and routing guard, Google sign-in (web + Android OAuth client), real-time channel (SSE), the app-bar menu (rules sheet, confirmed sign-out), the offline example game (`/tutorial`) and its first-opening offer, theme, l10n in ten languages (fr, en and eight translated), card model, play rules and card widgets, board motion and reduced motion, the admin screen, build and tests | 2026-09-27 |
 | [[NativeEngine]] | `native/`: headless engine, DRL training, the two Node scripts that drive it (`train-native.js`, `genetic-optimize-thibot.js`) | 2026-09-25 |
 
 ## Operations and process
