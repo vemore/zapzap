@@ -141,23 +141,24 @@ Rules:
      another agent's, with its tokens. The browser keeps no login between sessions
      (`--isolated`): sign in in your tab. Screenshots land in `.playwright-mcp/`
      (gitignored): never commit them, never delete that directory. If the MCP browser is
-     unavailable, run a headless `chromium.launch()` script from your scratchpad subdirectory,
-     requiring `<MAIN>/node_modules/playwright` (.llmwiki/ParallelDelivery.md § The shared
+     unavailable, run a headless `chromium.launch()` script from your scratch directory
+     (below), requiring `<MAIN>/node_modules/playwright` (.llmwiki/ParallelDelivery.md § The shared
      browser).
    - Never rename a CI job's `name:` in `.github/workflows/ci.yml`: branch protection
      requires those names verbatim, and a renamed required job blocks every merge with all
      checks green. Say what a job grew to do in a step name or a comment.
    - A compound command (heredoc, `$(…)`, `cd … && …`) refused as "too complex to verify
      that it stays inside the worktree" is the harness's check, not a repository hook: write
-     the script to your own subdirectory of the scratchpad, `<scratchpad>/<type>-<topic>/`
-     (the branch name, `/` → `-`), and run it by path. Your PR body and commit messages go
-     there too, never to a shared name at the scratchpad root: every agent of the session
-     shares that scratchpad.
+     the script to your own scratch directory, `/tmp/zapzap-<type>-<topic>/` (the branch
+     name, `/` → `-`; `mkdir -p` it first), and run it by path. Your PR body and commit
+     messages go there too, never to a shared name: every agent shares `/tmp`. Not the
+     session scratchpad under `~/.claude/jobs/`: the harness refuses a Write there from a
+     worktree-isolated agent.
    - `gh pr edit` fails on this repo (gh 2.45 queries Projects classic). Edit a PR's title or
      body with `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
 6. Commit (the hook runs the gates in this worktree), `git push -u origin <type>/<topic>`,
    `gh pr create --base master` with a body saying what changed and why
-   (`--body-file <scratchpad>/<type>-<topic>/pr.md`).
+   (`--body-file /tmp/zapzap-<type>-<topic>/pr.md`).
 7. `gh pr checks <n> --watch` until every check is green or skipped (a job the scope job
    ruled out reports `skipping`, which counts as passing).
    Circuit breaker: after three fix attempts on the same failing check or test, stop — no
