@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built, shipped through the registry and started,
 > where its data and secrets live, the Rust backend service, and the rollback.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-26
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -84,8 +84,9 @@ before it builds, and refuses with the command.
 the Node backend and opened by it for months, it is a no-op (checked on a copy before the
 switch: `sqlite_master` and the row counts unchanged).
 
-`CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker compose
-build backend`, then the container on an empty database until its compose health check
+`CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
+bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`
+without one, then the container on an empty database until its compose health check
 passes — busybox `wget`, the image has no curl —, then uid 1000, the CA store and the size).
 
 **The image** (since 2026-09-25, feat/backend-image-alpine): builder `rust:1.92-alpine` (in step with
