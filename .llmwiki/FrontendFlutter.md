@@ -281,9 +281,8 @@ project `.gitignore`.
   now. French and English from day one.
 - **CI job and commit gate (2026-09-22, `chore/flutter-ci-gates`).** The commit gate is the
   analyzer only (seconds); the tests and the two builds are CI's. No image flag: the client
-  was not deployed yet.
-  > **Status: Outdated** (2026-09-23) — `frontend-flutter/*` now also raises the `image`
-  > flag, and the `image` job builds the PWA image and smoke-tests it.
+  was not deployed yet. Since 2026-09-23, when the PWA got its image, `frontend-flutter/*`
+  also raises the `image` flag, and the `image` job builds the PWA image and smoke-tests it.
 - **API layer (2026-09-22, `feat/flutter-api-client`).** Models parse both backends
   leniently rather than one strictly: production runs Node, the target is Rust, and their
   shapes differ in types more than in names. The 401 hook is a plain callback on

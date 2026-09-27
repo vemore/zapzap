@@ -175,9 +175,9 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   screen stays on top of the parties list, so the Android system Back button returns to
   it. `/admin` still has only the router guard of #29, so an Admin entry would land on the
   not-found screen — it waits for the admin screen
-  (`wip/todo_nr/2026-09-22-flutter-admin.md`), and a test keeps the menu free of it.
-  > **Status: Outdated** (2026-09-24) — the admin screen exists (`feat/flutter-admin-users`),
-  > and admins get the Admin entry; the test now checks it leads to `/admin`.
+  (`wip/todo_nr/2026-09-22-flutter-admin.md`), and a test kept the menu free of it. The
+  admin screen came on 2026-09-24 (`feat/flutter-admin-users`): admins get the Admin entry
+  since, and the test checks it leads to `/admin`.
 - **Back navigation: `push`, and `popOrGo` (2026-09-23, `fix/flutter-back-navigation`).**
   Every screen but the app-bar menu's destinations was reached with `go`, so Android's
   system Back left the app from the form, the lobby, the history, the details and the
