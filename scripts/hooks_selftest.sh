@@ -250,7 +250,15 @@ secret_case "a .keystore"                          2 "android/app/release.keysto
 secret_case "key.properties, the keystore passwords" 2 "android/key.properties"
 secret_case "the committed key.properties.template" 0 "android/key.properties.template"
 secret_case "a service-account key, by its name"   2 "play-service-account.json"
-# A service-account key is refused by its content, whatever it is named.
+# Names match whatever their case, and a non-ASCII name is not quoted out of reach.
+secret_case "an upper-case .JKS"                   2 "android/upload.JKS"
+secret_case "an upper-case .ENV"                   2 "deploy/.ENV"
+secret_case "a non-ASCII .jks"                     2 "android/clé.jks"
+secret_case "a non-ASCII database"                 2 "data/données.db"
+# A Google credential file is refused by its content, whatever it is named. The key
+# strings are assembled so that this file does not itself hold one.
+t='"type"'
+SA_KEY="{ $t: \"service_account\", \"project_id\": \"zapzap-481109\", \"private_key\": \"x\" }"
 sa_case() {  # description, expected exit, path, content, [commit command]
     printf '%s\n' "$4" > "$TREE/$3"
     git -C "$TREE" add -f "$3"
@@ -258,17 +266,48 @@ sa_case() {  # description, expected exit, path, content, [commit command]
     report "$1" "$2" "$?"
     git -C "$TREE" rm -q --cached "$3" && rm "$TREE/$3"
 }
-sa_case "a service-account key under another name" 2 "credentials.json" \
-    '{ "type": "service_account", "project_id": "zapzap-481109", "private_key": "x" }'
-sa_case "the same, compact JSON"                   2 "gcp.json" '{"type":"service_account"}'
-sa_case "a JSON whose type is something else"      0 "config.json" '{ "type": "authorized_user" }'
+sa_case "a service-account key under another name" 2 "credentials.json" "$SA_KEY"
+sa_case "the same, compact JSON"                   2 "gcp.json" "{$t:\"service_account\"}"
+sa_case "a service-account key named .JSON"        2 "creds.JSON" "$SA_KEY"
+sa_case "a service-account key in a .txt"          2 "key.txt" "$SA_KEY"
+sa_case "a service-account key with no extension"  2 "gcp-key" "$SA_KEY"
+sa_case "a service-account key, non-ASCII name"    2 "clé.json" "$SA_KEY"
+sa_case "gcloud ADC, an authorized_user JSON"      2 "application_default_credentials.json" \
+    "{ $t: \"authorized_user\", \"client_id\": \"x\", \"refresh_token\": \"x\" }"
+sa_case "a workload-identity external_account JSON" 2 "wif.json" \
+    "{ $t: \"external_account\", \"audience\": \"x\", \"credential_source\": {} }"
+sa_case "a JSON whose type is something else"      0 "config.json" "{ $t: \"module\" }"
+sa_case "a document quoting the type in backticks" 0 "notes.md" \
+    "The hook refuses a file holding \`$t: \"service_account\"\`."
 # Under `commit -a` the key is only in the working file when the hook runs.
 echo '{}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+mkdir -p "$TREE/d/e" && echo '{}' > "$TREE/d/e/a.json" && git -C "$TREE" add d
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "settings" >/dev/null 2>&1
-echo '{"type": "service_account"}' > "$TREE/settings.json"
+echo "{$t: \"service_account\"}" > "$TREE/settings.json"
 out=$(payload "git commit -am x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
 report "a service-account key written into a tracked JSON, commit -a" 2 "$?"
-git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/settings.json"
+# Without -a or a pathspec naming it, that unstaged key is not part of the commit.
+echo x > "$TREE/other.txt" && git -C "$TREE" add other.txt
+out=$(payload "git commit -m x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "an unstaged key in a tracked JSON does not block another file" 0 "$?"
+git -C "$TREE" rm -q --cached other.txt && rm "$TREE/other.txt"
+out=$(payload "git commit -m x settings.json" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same key, named as a pathspec" 2 "$?"
+# The staged blob is what a plain commit records, not the working file behind it.
+echo '{"a": 1}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+echo "{$t: \"service_account\"}" > "$TREE/settings.json"
+out=$(payload "git commit -m x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a clean staged JSON with a key only in its working file" 0 "$?"
+git -C "$TREE" reset -q -- settings.json && git -C "$TREE" checkout -q -- settings.json
+# A directory pathspec commits the tracked files under it from the working tree.
+echo "$SA_KEY" > "$TREE/d/e/a.json"
+out=$(payload "git commit -m x d/" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a key under a directory pathspec" 2 "$?"
+out=$(payload "git commit -m x ." "$TREE/d" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same, pathspec . from the subdirectory" 2 "$?"
+out=$(payload "git commit -m x -- settings.json" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a pathspec elsewhere leaves that key out" 0 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -rf "$TREE/settings.json" "$TREE/d"
 # Untracking the database is a deletion, not a leak.
 echo x > "$TREE/data.db" && git -C "$TREE" add -f data.db
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "db" >/dev/null 2>&1
@@ -759,6 +798,16 @@ report "generate_keystore.sh: nothing written there" none \
     "$([ -e "$WIPREPO/zapzap-upload-keystore.jks" ] && echo written || echo none)"
 ZAPZAP_KEYSTORE="relative.jks" gen
 report "generate_keystore.sh refuses a relative path" 1 "$?"
+# A dotfiles repository at $HOME does not make the default location a refusal, while a
+# directory under it still is one.
+DOTHOME="$SANDBOX/dothome"
+mkdir -p "$DOTHOME/sub" && git init -q "$DOTHOME"
+KHOME="$DOTHOME" gen
+report "generate_keystore.sh: \$HOME a git repository, the default path" 0 "$?"
+report "generate_keystore.sh: and the keystore is in \$HOME" present \
+    "$([ -f "$DOTHOME/zapzap-upload-keystore.jks" ] && echo present || echo missing)"
+KHOME="$DOTHOME" ZAPZAP_KEYSTORE="$DOTHOME/sub/k.jks" gen
+report "generate_keystore.sh: a subdirectory of that repository is refused" 1 "$?"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

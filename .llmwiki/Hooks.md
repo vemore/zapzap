@@ -38,11 +38,12 @@ the repository a path remote leads to). A throwaway repository an agent builds u
 scratchpad to test a script is not that, and pushing to or committing on its master passes.
 A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
 
-`scripts/hooks_selftest.sh` exercises all of it — 191 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 211 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter` and `dart` — plus `scripts/cleanup_local.sh`, the
 `flutter pub get` of `scripts/worktree_setup.sh` (and that a failed one clears its setup
 marker) and its `--deploy` links and `scripts/generate_keystore.sh` (stub `keytool`: writes to `$HOME`,
-`umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository); it is the `hooks` CI
+`umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository other than `$HOME`
+itself); it is the `hooks` CI
 job. The same job runs
 `scripts/deploy_nas_selftest.sh`, the production deploy's own table (158 cases, `ssh`,
 `docker`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
@@ -60,15 +61,15 @@ no-op rather than an outage, the health wait, every refusal, `--rollback` — [[
 | `gh pr create --base <anything but master>` | parsed `--base`; unlocked per repository by `git config zapzap.allowStackedPr true` — the user's decision |
 | `gh pr merge` with `--admin`, or without `--squash`, or with `--merge`/`--rebase` | parsed flags, bundled short flags included |
 | Committing on master (of a checkout of this project), on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
-| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
+| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`), read NUL-separated so a non-ASCII name is not quoted, a directory pathspec expanded to its changed tracked files; names match in any case (`upload.JKS`); untracking a file with `git rm --cached` passes |
 | Committing an Android keystore (`*.jks`, `*.keystore`), `key.properties` (its passwords; `key.properties.template` passes) or a `*service-account*.json` | same path list |
-| Committing any JSON holding `"type": "service_account"` (a Google service-account key), whatever its name | the staged blob, or the working file under `-a` |
+| Committing any text file whose JSON `"type"` is `service_account` (a Google service-account key), `authorized_user` (gcloud application-default credentials, a refresh token), `external_account` or `impersonated_service_account`, whatever its name or extension | the key must open a line or follow `{` / `,`, so a document quoting it in backticks passes; the staged blob of every added file, and the working file only for what `-a` or a pathspec takes from the working tree — an unstaged key in another file does not block the commit |
 | Committing anything under `wip/`, or a root `TODO.md` / `DONE.md` | same path list |
 | Committing with a red gate, or with the gate's setup missing | see below |
 
 **Gates before a commit**, chosen from the union of paths the commit will contain (`--cached`,
 plus the working-tree diff under `-a` — staged *after* the hook runs — plus `HEAD`'s files
-under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERGE_HEAD`):
+under `--amend`, plus trailing pathspecs and the changed files under them; during a merge, the diff against `MERGE_HEAD`):
 
 | Paths | Gate |
 |---|---|
@@ -142,3 +143,4 @@ browser). The ship-parallel agent prompt says so.
 - **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 158 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.
 - **A retry, not a target directory per worktree (2026-09-27, fix/hook-clippy-retry).** The stale shared target of #79 had two fixes: a target directory per worktree (every fresh worktree rebuilds all dependencies, past the hook's timeout) or one retry after `touch src/lib.rs`. The user chose the retry (2026-09-25); it covers `native/` too, which shares its target the same way. Twelve self-test cases: a stub `cargo` whose clippy fails until the committing tree's `src/lib.rs` is newer than a marker passes on the retry for both crates, with two clippy runs and the file's content unchanged; a real error is refused after exactly two runs, saying so; a green clippy runs once and leaves the mtime alone.
 - **Keystores and service-account keys (2026-09-25, feat/flutter-android-release-signing).** The Android release build now signs with an upload key ([[FlutterAndroidPwa]] § Android), so the secret rule gained countscore's keystore, `key.properties` and service-account cases — the last judged by content too, since a downloaded key is named `<project>-<hash>.json`. Twenty self-test cases: the refused files, the template that passes, a key under another name and one written into a tracked JSON under `commit -a`, and the keystore script.
+- **Secret-rule gaps closed, gitleaks declined (2026-09-27, fix/hook-secret-rules).** A lane C review of #113 found the rules missed `upload.JKS`, non-ASCII names (`git diff --name-only` quotes them), a key in a `.txt` or with no extension, a directory pathspec, and gcloud's `authorized_user` / `external_account` credentials; and that the working file was read on every commit, so an unstaged key behind a clean staged JSON refused it. The user chose to patch the rules rather than adopt gitleaks, which would add a binary to install locally and in CI. Names now match case-insensitively on `-z` lists, pathspecs are expanded from the commit's directory, the content check runs over every added text file (`git grep --cached`, anchored on JSON structure so the wiki's backtick-quoted `"type"` passes), and the working file is read only under `-a` or a pathspec. `generate_keystore.sh` compares `--is-inside-work-tree` to `true` and accepts `$HOME` itself. Twenty new self-test cases; the key strings in the self-test are assembled so the file does not hold one.
