@@ -1217,6 +1217,13 @@ the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are 
   `@key` metadata: the template's is enough for gen-l10n. A new key goes into all ten
   files; the eight can be regenerated the same way. `ZapZap` and `Golden Score` are left
   untranslated.
+- **One glossary of game terms, `frontend-flutter/lib/l10n/GLOSSARY.md`** (2026-09-27): a
+  table with a column per language — deck, discard pile, the "À prendre ensuite" and
+  "Posées" labels, draw, take, call ZapZap, counteracted, round, hand, eliminated, run… Every
+  translated file uses its column on every screen; a new string or language takes its terms
+  from there, and a term changed there changes in its whole file. The eight files had one
+  review pass against it (a stronger model, not yet fluent speakers: the pull request
+  `chore/flutter-l10n-review` lists the terms held least certain).
 - `test/l10n_locales_test.dart`: each translated file has exactly the keys of `app_fr.arb`,
   the placeholders of the English message (a small ICU parser), the CLDR plural categories
   of its language (`ru` one/few/many/other, `ar` zero/one/two/few/many/other, `ja`/`id`
