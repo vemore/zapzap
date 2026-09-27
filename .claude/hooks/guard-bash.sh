@@ -181,7 +181,7 @@ on the Cloud project and can publish to Play. All are gitignored, so reaching th
 took a \`git add -f\` -- or a service-account key under another name. Unstage with
 \`git reset <path>\` and commit again. .env.example and
 frontend-flutter/android/key.properties.template are the committed templates; the keys
-live outside the repository (.llmwiki/FrontendFlutter.md, Android)."
+live outside the repository (.llmwiki/FlutterAndroidPwa.md, Android)."
 fi
 
 # 2. Work tracking ----------------------------------------------------------

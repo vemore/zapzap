@@ -40,7 +40,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A game's moves and every event of a private party reach only its players' streams; events without a party and a public party's lifecycle events (joined, left, started, deleted, finished) reach every stream ([[Backend]]).
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:112-115`).
 - Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js`); `PartyLobby` and `GameBoard` open the stream at `sseUrl()` (`frontend/src/services/sse.js`), which carries the user's token since #94 — without it the backend, which filters per user, would send them none of a game's moves nor any private-party event. Details: [[Backend]], [[Frontend]].
-- Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
+- Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FlutterRealtime]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
 ### SQLite database

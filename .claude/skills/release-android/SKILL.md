@@ -7,7 +7,7 @@ description: Build and publish a ZapZap Android release to Google Play from this
 
 The executable path, from a clean worktree to a release on a Play track. State facts — the
 keys, what is live on which track — are in `.llmwiki/Release.md`; the keystore and the
-Android build are `.llmwiki/FrontendFlutter.md` § Android. Ported from countscore's skill of
+Android build are `.llmwiki/FlutterAndroidPwa.md` § Android. Ported from countscore's skill of
 the same name, which has shipped several releases this way.
 
 **Nothing here runs in CI.** The upload keystore, `key.properties` and the Play
@@ -46,7 +46,7 @@ Signing holds the *app signing* key, so a lost *upload* key can be reset through
 support — but that takes days during which nothing ships. Record the upload key's SHA-256 in
 `.llmwiki/Release.md` (`keytool -list -v -keystore ~/zapzap-upload-keystore.jks -alias
 zapzap-upload`), and its SHA-1 as a Google sign-in Android client
-(`.llmwiki/FrontendFlutter.md` § Android).
+(`.llmwiki/FlutterAndroidPwa.md` § Android).
 
 ## 2. Version bump
 

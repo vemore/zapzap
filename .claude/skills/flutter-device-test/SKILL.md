@@ -8,7 +8,7 @@ description: Drive the ZapZap Android app (com.zapzap.app) on the user's real ph
 The app's Android-only code — the SSE transport (`lib/services/sse_transport_io.dart`), the
 secure token storage (`lib/services/token_storage_io.dart`), Google sign-in through Credential
 Manager, R8 in the release build — is unit-tested only on the host. This skill runs it on the
-user's phone. No emulator: `/dev/kvm` is not usable here (`.llmwiki/FrontendFlutter.md`
+user's phone. No emulator: `/dev/kvm` is not usable here (`.llmwiki/FlutterAndroidPwa.md`
 § Android). Adapted from countscore's skill of the same name.
 
 ## The device
@@ -88,7 +88,7 @@ Animations and transitions: `adb -s $DEV shell screenrecord --time-limit 20 /sdc
    the token was read back from secure storage.
 2. **Google sign-in** on a debug build with `GOOGLE_CLIENT_ID`: lands on the parties screen.
    A configuration error means the signing key's SHA-1 is not registered
-   (`.llmwiki/FrontendFlutter.md` § Android).
+   (`.llmwiki/FlutterAndroidPwa.md` § Android).
 3. **A round against two bots** — the integration test below, on the LAN backend.
 4. **Release APK** (a release): 1 and 2 on it, then
    `adb -s $DEV logcat -d | grep -E 'ClassNotFoundException|NoSuchMethodException'` empty —
@@ -142,7 +142,7 @@ adb -s $DEV shell dumpsys battery | grep level
 adb -s $DEV shell svc power stayon true              # screen on while testing; false after
 ```
 
-The debug APK from CI (`app-debug` artifact, `.llmwiki/FrontendFlutter.md` § Android) is
+The debug APK from CI (`app-debug` artifact, `.llmwiki/FlutterAndroidPwa.md` § Android) is
 signed by the runner's throwaway key: Google sign-in fails on it; use it for password flows.
 
 ## Limits
