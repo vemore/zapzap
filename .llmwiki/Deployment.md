@@ -90,8 +90,12 @@ before it builds, and refuses with the command.
 the Node backend and opened by it for months, the DDL is a no-op (checked on a copy before the
 switch: `sqlite_master` and the row counts unchanged). The migrations it has not had run
 after it, in the same transaction, once each (`PRAGMA user_version`): the first start of
-fix/game-state-version adds `game_state.version` (existing rows 0). They are additive, so an
-older image rolled back to reads and writes the migrated file as before.
+fix/game-state-version adds `game_state.version` (existing rows 0), that of
+fix/google-id-unique-index the unique index `idx_users_google_id_unique` — which fails, the
+backend refusing to start with the file unchanged, if two users share a `google_id` (none on
+2026-09-27; the read-only check is the query `SELECT google_id FROM users WHERE google_id IS
+NOT NULL GROUP BY google_id HAVING COUNT(*) > 1`). They are additive, so an older image
+rolled back to reads and writes the migrated file as before.
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
 bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`

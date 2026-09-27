@@ -75,9 +75,10 @@ impl LoginWithGoogle {
     }
 
     /// First login: create the user under a free username. Two first logins of the same
-    /// account can race; the loser's save hits the username UNIQUE index, and it then
-    /// answers the winner's user. A username taken by someone else meanwhile is picked
-    /// again, once.
+    /// account can race; the loser's save hits a UNIQUE index — the username's when both
+    /// picked the same name, `idx_users_google_id_unique` when they picked different ones —
+    /// and it then answers the winner's user. A username taken by someone else meanwhile
+    /// is picked again, once.
     async fn create_user(
         &self,
         profile: &GoogleProfile,
@@ -328,6 +329,31 @@ mod tests {
         let second = uc.execute(&token).await.unwrap();
         assert_eq!(second.user.id, first.user.id);
         assert!(!second.is_new_user);
+    }
+
+    #[tokio::test]
+    async fn racing_first_logins_on_different_usernames_end_with_one_user() {
+        let (uc, repo, _) = setup().await;
+        let token = sign(&claims("g-race", serde_json::json!({})), KID);
+        let first = uc.execute(&token).await.unwrap();
+        assert_eq!(first.user.username, "jean_dupont");
+
+        // The second request looked the account up before the first saved, but checked the
+        // username after: "jean_dupont" was taken, so it picked "jean_dupont_1". Its save
+        // hits the google_id unique index, not the username one
+        repo.stale_google_lookups.store(1, Ordering::SeqCst);
+        let second = uc.execute(&token).await.unwrap();
+        assert_eq!(second.user.id, first.user.id);
+        assert_eq!(second.user.username, "jean_dupont");
+        assert!(!second.is_new_user);
+
+        let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE google_id = ?")
+            .bind("g-race")
+            .fetch_one(&repo.pool)
+            .await
+            .unwrap();
+        assert_eq!(users, 1);
+        assert!(!repo.exists_by_username("jean_dupont_1").await.unwrap());
     }
 
     #[tokio::test]
