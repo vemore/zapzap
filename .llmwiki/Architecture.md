@@ -2,7 +2,7 @@
 
 > Scope: the four code bases of the repository (zapzap-rust, frontend, frontend-flutter, native), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -12,7 +12,7 @@
 |------|------|-------|------|--------|
 | Rust backend | `zapzap-rust/` | axum 0.7, tokio, sqlx 0.8 (sqlite), jsonwebtoken 10 (`rust_crypto` backend), argon2 + bcrypt (`zapzap-rust/Cargo.toml:10-25`) | HTTP API + SSE on port 9999, bots, persistence | **Production** backend since 2026-09-24 (the root compose's `backend` service, [[Deployment]]); the only backend since 2026-09-25. Binary `zapzap-backend` (`zapzap-rust/Cargo.toml:2`) |
 | Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
-| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **Playable**: the session, the party list, create-party, the lobby, the game board and the end of a round and of a game, the history and the statistics, the admin shell with its users tab; no Google sign-in, no admin parties or statistics yet. [[FrontendFlutter]], [[Deployment]] |
+| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **Playable**, at parity with the React client: the session with Google sign-in, the party list, create-party, the lobby, the game board and the end of a round and of a game, the history and the statistics, the admin screen with its users, parties and statistics tabs, the app-bar menu (history, statistics, rules, Admin, sign-out) and an offline example game (`/tutorial`). [[FrontendFlutter]], [[Deployment]] |
 | Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; driven by the Node scripts `scripts/train-native.js` and `scripts/genetic-optimize-thibot.js` | Offline tooling only |
 
 - The frontend is React (`frontend/src/main.jsx`, `frontend/src/App.jsx`), not the "Vanilla JS" an old `CLAUDE.md` described.
@@ -57,7 +57,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 |---------|----------|----------|
 | `zapzap.db` | the backend's schema step, then the backend at runtime | the backend |
 | `hard_vince_genetic_params.json`, `thibot_genetic_params.json` | the genetic optimisers (`scripts/genetic-optimize-thibot.js` for Thibot) | nothing yet: the Rust backend does not read them (no reference in `zapzap-rust/src`), see [[Bots]] |
-| `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors` | `scripts/train-native.js` (default save path `data/models/rust-drl`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
+| `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors` | `scripts/train-native.js` (default save-path prefix data/models/rust-drl, which writes `data/models/rust-drl.safetensors`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
 | `bot-strategies/<botUserId>.json` (gitignored) | LLM bot memory | Rust backend, dir overridable by `BOT_STRATEGIES_DIR` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:157`) |
 
 ### Docker / compose
@@ -82,5 +82,5 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - 2026-09-23 `feat/flutter-pwa-deploy`: the PWA gets its own image and compose service, and the proxy a `/app/` route — one more container in the topology above. [[Deployment]].
 - 2026-09-22 `feat/flutter-scaffold`: `frontend-flutter/` created — a Flutter client (Android + PWA) to reach parity with the React one; React stays on `/`, the PWA goes under `/app/` so the API is same-origin. [[FrontendFlutter]].
 - 2026-09-24 `chore/switch-prod-to-rust`: production switches to the Rust backend — the root compose's `backend` service builds `zapzap-rust/` (Bedrock feature) under the same names; the Node backend stays as the rollback. [[Deployment]].
-- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** Five code bases become four: `src/`, `app.js`, the root `Dockerfile`, its JS bots and ML models (`data/ml_model_*.json`, `data/models/default/`, `data/hard_vince_optimized_params.json`) and the scripts that upgraded old schemas are gone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/database/sqlite/DatabaseConnection.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** Five code bases become four: `src/`, `app.js`, the root `Dockerfile`, its JS bots and ML models (`data/ml_model_*.json`, the data/models/default/ directory, data/hard_vince_optimized_params.json) and the scripts that upgraded old schemas are gone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/database/sqlite/DatabaseConnection.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
 - 2026-09-25 `feat/deploy-through-registry`: production leaves the root compose for `docker-compose.prod.yml` (registry images, no build on the NAS); the proxy gets its own image. [[Deployment]].
