@@ -1,7 +1,9 @@
 //! GAME_RULES.md where the Rust code used to disagree (eliminated starter, tied lowest
-//! hands, a card named twice in a play), and the bot loop: one at a time per party, one
-//! strategy per bot for the whole game.
+//! hands, a card named twice in a play), the bot loop: one at a time per party, one
+//! strategy per bot for the whole game, and concurrent writes of a game state: a write
+//! based on a stale read is refused (409 for a human, a retry for the bot loop).
 
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +14,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tower::{Service, ServiceExt};
 
 use zapzap_backend::api;
@@ -19,9 +22,14 @@ use zapzap_backend::application::bot::{
     run_bot_turns_now, trigger_bot_turns, BotBrain, BotRunner, Roster,
 };
 use zapzap_backend::domain::entities::{BotDifficulty, User};
-use zapzap_backend::domain::repositories::{PartyRepository, UserRepository};
+use zapzap_backend::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
+use zapzap_backend::domain::services::{execute_play, forfeit_seat};
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
 use zapzap_backend::infrastructure::app_state::AppState;
+use zapzap_backend::infrastructure::database::repositories::{
+    SqlitePartyRepository, SqliteUserRepository,
+};
+use zapzap_backend::infrastructure::database::schema::ensure_schema;
 
 async fn test_app() -> (Router, Arc<AppState>) {
     test_app_with(|_| {}).await
@@ -567,4 +575,358 @@ async fn test_llm_bots_play_on_when_the_strategies_dir_is_not_writable() {
     let gs = game_state(&state, &party_id).await;
     assert_eq!((gs.current_turn, gs.current_action), (0, GameAction::Play));
     assert!(!memory.read().await.has_strategies());
+}
+
+// ============================================================================
+// Concurrent writes of the game state
+// ============================================================================
+
+/// The user seated at `seat`
+async fn user_at(state: &AppState, party_id: &str, seat: u8) -> String {
+    state
+        .party_repo
+        .get_party_players(party_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.player_index == seat)
+        .expect("seat")
+        .user_id
+}
+
+/// Seat 0 to play `hands[0]`, the others holding the rest; returns the stored version
+async fn seat_zero_to_play(state: &AppState, party_id: &str, hands: &[&[u8]]) -> i64 {
+    let mut gs = game_state(state, party_id).await;
+    set_hands(&mut gs, hands);
+    gs.current_turn = 0;
+    gs.current_action = GameAction::Play;
+    save_game_state(state, party_id, &gs).await;
+    stored_version(state, party_id).await
+}
+
+async fn stored_version(state: &AppState, party_id: &str) -> i64 {
+    state
+        .party_repo
+        .get_versioned_game_state(party_id)
+        .await
+        .unwrap()
+        .expect("game state")
+        .version
+}
+
+#[tokio::test]
+async fn test_a_move_read_before_a_forfeit_is_refused_and_the_seat_stays_out() {
+    let (mut app, state) = test_app().await;
+    let (party_id, _) = started_party(&mut app, &state, "stale", 2, &[]).await;
+    let version = seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+
+    // Seat 0's move reads the state …
+    let read = state
+        .party_repo
+        .get_versioned_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.version, version);
+
+    // … seat 2's account is deleted meanwhile, which forfeits the seat …
+    let leaver = user_at(&state, &party_id, 2).await;
+    let deletion = state.user_repo.delete_account(&leaver).await.unwrap();
+    assert!(
+        matches!(deletion, AccountDeletion::Deleted { ref forfeits, .. } if forfeits.len() == 1),
+        "{deletion:?}"
+    );
+    assert_eq!(stored_version(&state, &party_id).await, version + 1);
+
+    // … and the move's write, based on the read before the forfeit, is refused
+    let mut moved = read.state.clone();
+    execute_play(&mut moved, &[0]).unwrap();
+    let err = state
+        .party_repo
+        .update_game_state(&party_id, &moved, read.version)
+        .await
+        .expect_err("a write based on a stale read");
+    assert!(err.is_conflict(), "{err}");
+
+    // The forfeit stands: the seat is out, its hand gone; seat 0 still holds its card
+    let gs = game_state(&state, &party_id).await;
+    assert!(gs.is_eliminated(2));
+    assert!(gs.hands[2].is_empty());
+    assert_eq!(gs.hands[0].as_slice(), &[0, 1, 2]);
+    assert_eq!(stored_version(&state, &party_id).await, version + 1);
+}
+
+#[tokio::test]
+async fn test_two_writes_from_one_read_keep_the_first_and_refuse_the_second() {
+    let (mut app, state) = test_app().await;
+    let (party_id, _) = started_party(&mut app, &state, "twowrites", 2, &[]).await;
+    let version = seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+    let read = state
+        .party_repo
+        .get_versioned_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut first = read.state.clone();
+    execute_play(&mut first, &[0]).unwrap();
+    state
+        .party_repo
+        .update_game_state(&party_id, &first, read.version)
+        .await
+        .expect("the first write");
+    let mut second = read.state.clone();
+    execute_play(&mut second, &[1]).unwrap();
+    let err = state
+        .party_repo
+        .update_game_state(&party_id, &second, read.version)
+        .await
+        .expect_err("the second write from the same read");
+    assert!(err.is_conflict(), "{err}");
+
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.hands[0].as_slice(), &[1, 2], "the first play stands");
+    assert_eq!(stored_version(&state, &party_id).await, version + 1);
+}
+
+/// The test application on a database file. The in-memory database the other tests use
+/// is a shared cache, which makes a reader wait for a writer's whole transaction; a file
+/// locks as production's does, so a request reads the last committed state while
+/// another connection holds the write lock.
+async fn test_app_on_file(name: &str) -> (Router, Arc<AppState>, std::path::PathBuf) {
+    let path = std::env::temp_dir().join(format!(
+        "zapzap-race-{name}-{}-{}.db",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let db = SqlitePoolOptions::new()
+        .connect_with(
+            SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))
+                .unwrap()
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    ensure_schema(&db).await.unwrap();
+    let (app, state) = test_app_with(move |state| {
+        state.user_repo = Arc::new(SqliteUserRepository::new(db.clone()));
+        state.party_repo = Arc::new(SqlitePartyRepository::new(db.clone()));
+        state.db = db;
+    })
+    .await;
+    (app, state, path)
+}
+
+/// Open a write transaction that forfeits `seat` the way an account deletion does
+/// (`forfeit_playing_seats`: `forfeit_seat`, then the new version), and keep it open:
+/// until it commits, every other connection reads the state from before the forfeit and
+/// waits to write.
+async fn forfeit_held_open(
+    state: &AppState,
+    party_id: &str,
+    seat: u8,
+) -> sqlx::Transaction<'static, sqlx::Sqlite> {
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let json: String = sqlx::query_scalar("SELECT state_json FROM game_state WHERE party_id = ?")
+        .bind(party_id)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let mut gs = GameState::from_json(&json).unwrap();
+    assert_eq!(forfeit_seat(&mut gs, seat), None, "the game goes on");
+    sqlx::query("UPDATE game_state SET state_json = ?, version = version + 1 WHERE party_id = ?")
+        .bind(gs.to_json())
+        .bind(party_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx
+}
+
+/// Long enough for a request started now to read the state and reach its write, which
+/// then waits for the lock (SQLite's busy timeout, 5 s by default)
+const TO_REACH_THE_WRITE: Duration = Duration::from_millis(1000);
+
+#[tokio::test]
+async fn test_a_human_move_that_loses_the_race_to_a_forfeit_is_409() {
+    let (mut app, state, path) = test_app_on_file("human").await;
+    let (party_id, tokens) = started_party(&mut app, &state, "race409", 2, &[]).await;
+    seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+
+    // Seat 2 forfeits while seat 0's play is under way: the play reads the state from
+    // before the forfeit, and writes after it
+    let tx = forfeit_held_open(&state, &party_id, 2).await;
+    let play = {
+        let (mut app, token) = (app.clone(), tokens[0].clone());
+        let path = format!("/api/game/{party_id}/play");
+        tokio::spawn(
+            async move { send(&mut app, "POST", &path, json!({"cardIds": [0]}), &token).await },
+        )
+    };
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    tx.commit().await.unwrap();
+    let (status, body) = play.await.unwrap();
+
+    // The play is refused and played nothing; the client reloads
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["code"], "GAME_STATE_CONFLICT", "{body}");
+    let (status, body) = send(
+        &mut app,
+        "GET",
+        &format!("/api/game/{party_id}/state"),
+        json!({}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameState"]["eliminatedPlayers"], json!([2]), "{body}");
+    assert_eq!(body["gameState"]["currentAction"], "play", "{body}");
+    assert_eq!(body["gameState"]["currentTurn"], 0, "{body}");
+
+    // Played again on the reloaded table, the move goes through; the seat stays out
+    let (status, body) = send(
+        &mut app,
+        "POST",
+        &format!("/api/game/{party_id}/play"),
+        json!({"cardIds": [0]}),
+        &tokens[0],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let gs = game_state(&state, &party_id).await;
+    assert!(gs.is_eliminated(2));
+    assert_eq!(gs.hands[0].as_slice(), &[1, 2]);
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_the_same_move_sent_twice_at_once_is_played_once() {
+    let (mut app, state, path) = test_app_on_file("twice").await;
+    let (party_id, tokens) = started_party(&mut app, &state, "doublesend", 2, &[]).await;
+    let version = seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+
+    // Both requests read the same state while the lock is held, then race to write
+    let lock = state.db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let plays: Vec<_> = (0..2)
+        .map(|_| {
+            let (mut app, token) = (app.clone(), tokens[0].clone());
+            let path = format!("/api/game/{party_id}/play");
+            tokio::spawn(async move {
+                send(&mut app, "POST", &path, json!({"cardIds": [0]}), &token).await
+            })
+        })
+        .collect();
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    lock.commit().await.unwrap();
+    let mut statuses = Vec::new();
+    for play in plays {
+        let (status, body) = play.await.unwrap();
+        if status == StatusCode::CONFLICT {
+            assert_eq!(body["code"], "GAME_STATE_CONFLICT", "{body}");
+        }
+        statuses.push(status);
+    }
+    statuses.sort();
+    assert_eq!(statuses, [StatusCode::OK, StatusCode::CONFLICT]);
+
+    // One card left the hand, once
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.hands[0].as_slice(), &[1, 2]);
+    assert_eq!(gs.current_action, GameAction::Draw);
+    assert_eq!(stored_version(&state, &party_id).await, version + 1);
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_a_bot_move_that_loses_the_race_to_a_forfeit_is_played_again() {
+    let (mut app, state, path) = test_app_on_file("bot").await;
+    // Seats: the owner 0, a human 1, an Easy bot 2
+    let (party_id, _) = started_party(&mut app, &state, "racebot", 1, &[BotDifficulty::Easy]).await;
+    // The bot is to play, singles only (four ranks, four suits); no hand is low enough
+    // for an Easy ZapZap
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[&[1, 2, 3, 4], &[14, 15, 16, 17], &[9, 23, 37, 51]],
+    );
+    gs.current_turn = 2;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+
+    // Seat 1 forfeits while the bot's loop runs: its play reads the state from before
+    // the forfeit, and writes after it
+    let tx = forfeit_held_open(&state, &party_id, 1).await;
+    let bots = {
+        let (state, party_id) = (state.clone(), party_id.clone());
+        tokio::spawn(async move { run_bot_turns_now(&state, &party_id).await })
+    };
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    tx.commit().await.unwrap();
+
+    // The loop read the state again and played its turn on it: a play and a draw, then
+    // the owner is to move, with seat 1 still out
+    let actions = bots
+        .await
+        .unwrap()
+        .expect("the bot loop goes on after the conflict");
+    assert_eq!(actions, 2);
+    let gs = game_state(&state, &party_id).await;
+    assert!(gs.is_eliminated(1), "the forfeit stands");
+    assert!(gs.hands[1].is_empty());
+    assert_eq!((gs.current_turn, gs.current_action), (0, GameAction::Play));
+    assert_eq!(gs.hands[2].len(), 4, "the bot played one card and drew one");
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn test_next_round_asked_twice_at_once_starts_one_round() {
+    let (mut app, state, path) = test_app_on_file("nextround").await;
+    let (party_id, tokens) = started_party(&mut app, &state, "twonext", 2, &[]).await;
+    let mut gs = game_state(&state, &party_id).await;
+    gs.current_action = GameAction::Finished;
+    save_game_state(&state, &party_id, &gs).await;
+
+    // Two players ask for the next round at once: both read the finished round
+    let lock = state.db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let asks: Vec<_> = tokens[..2]
+        .iter()
+        .map(|token| {
+            let (mut app, token) = (app.clone(), token.clone());
+            let path = format!("/api/game/{party_id}/nextRound");
+            tokio::spawn(async move { send(&mut app, "POST", &path, json!({}), &token).await })
+        })
+        .collect();
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    lock.commit().await.unwrap();
+    let mut statuses = Vec::new();
+    for ask in asks {
+        let (status, body) = ask.await.unwrap();
+        if status == StatusCode::CONFLICT {
+            assert_eq!(body["code"], "GAME_STATE_CONFLICT", "{body}");
+        }
+        statuses.push(status);
+    }
+    statuses.sort();
+    assert_eq!(statuses, [StatusCode::OK, StatusCode::CONFLICT]);
+
+    // One round 2, and the state is its hand-size choice
+    let rounds: Vec<i64> =
+        sqlx::query_scalar("SELECT round_number FROM rounds WHERE party_id = ? ORDER BY 1")
+            .bind(&party_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap();
+    assert_eq!(rounds, [1, 2]);
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.round_number, 2);
+    assert_eq!(gs.current_action, GameAction::SelectHandSize);
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
 }

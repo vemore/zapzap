@@ -3,7 +3,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::entities::{PartyPlayer, PartyStatus, Round};
-use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError};
+use crate::domain::repositories::{
+    PartyRepository, PlayerGameResult, RepositoryError, VersionedGameState,
+};
 use crate::domain::services::{initialize_round, is_game_over, sort_final_ranking};
 use crate::domain::value_objects::{GameAction, GameState};
 
@@ -72,9 +74,12 @@ impl<P: PartyRepository> NextRound<P> {
         }
 
         // Get game state
-        let game_state = self
+        let VersionedGameState {
+            state: game_state,
+            version,
+        } = self
             .party_repo
-            .get_game_state(&input.party_id)
+            .get_versioned_game_state(&input.party_id)
             .await?
             .ok_or(NextRoundError::NoGameState)?;
 
@@ -219,13 +224,14 @@ impl<P: PartyRepository> NextRound<P> {
             next_starting_player,
         );
 
+        // Save game state first, unless another write came in since the read (a second
+        // nextRound, a forfeit): `Conflict`, and no round row is written
+        self.party_repo
+            .update_game_state(&input.party_id, &new_game_state, version)
+            .await?;
+
         // Save round
         self.party_repo.save_round(&round).await?;
-
-        // Save game state
-        self.party_repo
-            .save_game_state(&input.party_id, &new_game_state)
-            .await?;
 
         // Update party current round
         party.current_round_id = Some(round_id);
