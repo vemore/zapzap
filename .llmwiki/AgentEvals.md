@@ -98,8 +98,21 @@ about 0.25-0.35 USD per docs-sized case on the default model): `docs-only-wiki-f
 commit hook's clippy (minutes, no money); `rule-change-golden-hand-size` the most, about
 1-2 USD — the rule is restated in the Rust backend, `GAME_RULES.md`, `README.md`, several
 wiki pages, the React selector and the ten ARB files, and the setup is a full
-`scripts/worktree_setup.sh`. The 3 USD budget caps any runaway. No real run is recorded yet
-(§ Decisions & History).
+`scripts/worktree_setup.sh`. The 3 USD budget caps any runaway.
+
+### Runs
+
+| Date | Ref | Case | Turns, time | Cost (USD) | Verdict |
+|---|---|---|---|---|---|
+| 2026-09-27 | `origin/master` (`c77c16b`) | `docs-only-wiki-fact` | —, — | 0.28 | fail: INDEX.md's Bots row not re-dated (and the `wip/` watch, below) |
+| 2026-09-27 | `origin/master` (`c77c16b`) | `out-of-scope-finding` | 16, 70 s | 0.34 | fail: the entry is not headed `### todo_nr/<date>-<slug>.md` and has no `Area` |
+| 2026-09-27 | `origin/master` (`c77c16b`) | `rule-change-golden-hand-size` | 123, 315 s | 1.83 | pass on the task (11 checks); fail on the `wip/` watch only |
+
+The three runs also failed "main checkout's `wip/` untouched": the orchestrator of the same
+session was editing `wip/` while they ran, so that check cannot tell an agent's write from
+the user's own work (a wip entry). The two task failures are real: an agent given only
+`CLAUDE.md` and the wiki does not re-date the INDEX row, nor write an entry in
+`wip/README.md`'s format, which only the `ship-parallel` prompt spells out (wip entries).
 
 ### When to run it
 
@@ -141,7 +154,7 @@ check: `selftest.sh` must pass.
   reach by absolute path.
 - **No real run in the porting pull request (user, 2026-09-27).** A real run costs money
   and needs the user's login; the first runs, one per case, happen after the merge, in the
-  main checkout, and are recorded here (cost, verdict).
+  main checkout, and are recorded here (cost, verdict). Done the same day: § Runs.
 - **Self-test in CI, agents not (2026-09-27).** `evals/selftest.sh` needs no agent, no
   network and no secret, and takes seconds: it is a step of the hooks job (a new job would
   need a new required check). The real runs stay local, as countscore decided (no API key in
