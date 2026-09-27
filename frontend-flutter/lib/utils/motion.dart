@@ -16,6 +16,12 @@ abstract final class Motion {
   /// A card played gliding onto the felt.
   static const glide = Duration(milliseconds: 350);
 
+  /// The cards laid down ("Posées") sliding onto the pile ("À prendre ensuite").
+  static const shift = Duration(milliseconds: 300);
+
+  /// A card taken from the pile or the deck leaving the felt; the rest of the pile fading out.
+  static const leave = Duration(milliseconds: 350);
+
   /// The "Nouveau" badge popping onto a card that arrived.
   static const badgeIn = Duration(milliseconds: 200);
 

@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/app.dart';
 import 'package:zapzap/l10n/app_localizations.dart';
+import 'package:zapzap/models/game_state.dart';
 import 'package:zapzap/models/json.dart';
 import 'package:zapzap/router.dart';
 import 'package:zapzap/utils/app_theme.dart';
 import 'package:zapzap/utils/motion.dart';
+import 'package:zapzap/widgets/card_back.dart';
 import 'package:zapzap/widgets/card_fan.dart';
 import 'package:zapzap/widgets/game_table_area.dart';
 import 'package:zapzap/widgets/playing_card.dart';
@@ -14,9 +16,11 @@ import 'auth_helpers.dart';
 import 'game_helpers.dart';
 import 'sse_fakes.dart';
 
-/// J9 of the UX study: played cards glide onto the felt, the card a draw
-/// brings in is badged "Nouveau" for 2 s, and none of it moves when the
-/// system asks for reduced motion (`MediaQuery.disableAnimations`).
+/// J9 of the UX study: played cards glide onto the felt, slide from the
+/// played row to the pile, a card taken leaves the felt toward its taker
+/// while the rest of the pile fades out, the card a draw brings in is
+/// badged "Nouveau" for 2 s, and none of it moves when the system asks for
+/// reduced motion (`MediaQuery.disableAnimations`).
 void main() {
   /// [child] in French, with reduced motion when [still].
   Widget app(Widget child, {bool still = false}) => MediaQuery(
@@ -46,6 +50,8 @@ void main() {
     List<int> pile = const [],
     bool playedByMe = true,
     bool still = false,
+    LastAction? action,
+    int deckSize = 20,
   }) => app(
     SizedBox(
       width: 380,
@@ -55,12 +61,46 @@ void main() {
         lastCardsPlayed: pile,
         playerName: (index) => 'P$index',
         playedByMe: playedByMe,
+        lastAction: action,
+        deckSize: deckSize,
       ),
     ),
     still: still,
   );
 
   Finder badge(int cardId) => find.byKey(CardFan.freshBadgeKey(cardId));
+
+  /// The card, face or back, inside [finder].
+  Finder image(Finder finder) => find.descendant(
+    of: finder,
+    matching: find.byWidgetPredicate(
+      (widget) => widget is PlayingCard || widget is CardBack,
+    ),
+  );
+
+  /// Card [cardId] on the felt, or its image leaving it.
+  Finder onFelt(int cardId) => find.descendant(
+    of: find.byType(GameTableArea),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is PlayingCard && widget.cardId == cardId,
+    ),
+  );
+
+  /// A play by seat [player], [n]-th of the game.
+  LastAction play(int player, int n) => LastAction(
+    type: 'play',
+    playerIndex: player,
+    timestamp: DateTime.utc(2026, 9, 27, 12, 0, n),
+  );
+
+  /// A draw by seat [player], from the pile when [cardId] is given.
+  LastAction draw(int player, int n, {int? cardId}) => LastAction(
+    type: 'draw',
+    playerIndex: player,
+    source: cardId == null ? 'deck' : 'played',
+    cardId: cardId,
+    timestamp: DateTime.utc(2026, 9, 27, 12, 0, n),
+  );
 
   group('the card a draw brings in', () {
     testWidgets('is badged "Nouveau" for 2 s', (tester) async {
@@ -138,10 +178,115 @@ void main() {
       expect(find.byKey(GameTableArea.glideKey(20)), findsNothing);
       expect(tester.binding.hasScheduledFrame, isFalse);
     });
+  });
 
-    testWidgets('the first table drawn does not glide', (tester) async {
-      await tester.pumpWidget(felt(const [20], pile: [7, 8]));
+  group('the cards laid down', () {
+    testWidgets('slide from "Posées" to "À prendre ensuite" at the next play', (
+      tester,
+    ) async {
+      await tester.pumpWidget(felt(const [20], pile: [7], action: play(0, 1)));
+      final laid = tester.getRect(onFelt(20));
+      await tester.pumpWidget(
+        felt(const [30], pile: [20], action: play(1, 3), playedByMe: false),
+      );
+      expect(find.byKey(GameTableArea.slideKey(20)), findsOneWidget);
       expect(find.byKey(GameTableArea.glideKey(20)), findsNothing);
+      await tester.pump();
+      final start = tester.getRect(onFelt(20));
+      await tester.pump(Motion.shift ~/ 2);
+      final midway = tester.getRect(onFelt(20));
+      await tester.pump(Motion.shift);
+      await tester.pumpAndSettle();
+      final landed = tester.getRect(onFelt(20));
+
+      expect(start.topLeft, offsetMoreOrLessEquals(laid.topLeft));
+      expect(landed.top, greaterThan(laid.top), reason: 'the pile is lower');
+      expect(midway.top, greaterThan(start.top));
+      expect(midway.top, lessThan(landed.top));
+      expect(find.byKey(GameTableArea.slideKey(20)), findsNothing);
+    });
+
+    testWidgets('while the rest of the pile fades out where it lay', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        felt(const [20], pile: [7, 8], action: draw(0, 2, cardId: 8)),
+      );
+      final lay = tester.getRect(onFelt(7));
+      await tester.pumpWidget(
+        felt(const [30], pile: [20], action: play(1, 3), playedByMe: false),
+      );
+      final leaving = find.byKey(GameTableArea.leavingKey(7));
+      expect(leaving, findsOneWidget);
+      await tester.pump(Motion.leave ~/ 2);
+      expect(tester.getRect(leaving).topLeft, lay.topLeft, reason: 'in place');
+      final fade = tester.widget<FadeTransition>(
+        find.descendant(of: leaving, matching: find.byType(FadeTransition)),
+      );
+      expect(fade.opacity.value, inExclusiveRange(0, 1));
+      await tester.pumpAndSettle();
+      expect(leaving, findsNothing);
+    });
+  });
+
+  group('a card taken', () {
+    testWidgets('from the pile moves down toward the hand of this player', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        felt(const [20], pile: [7, 8], action: play(0, 1)),
+      );
+      final lay = tester.getRect(onFelt(7));
+      await tester.pumpWidget(
+        felt(const [20], pile: [8], action: draw(0, 2, cardId: 7)),
+      );
+      final leaving = find.byKey(GameTableArea.leavingKey(7));
+      expect(leaving, findsOneWidget);
+      await tester.pump(Motion.leave ~/ 2);
+      final midway = tester.getRect(image(leaving));
+      expect(midway.top, greaterThan(lay.top), reason: 'toward the hand');
+      expect(midway.left, lay.left);
+      await tester.pumpAndSettle();
+      expect(leaving, findsNothing);
+      expect(image(leaving), findsNothing);
+    });
+
+    testWidgets('from the pile by another player moves up toward the seats', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        felt(const [20], pile: [7, 8], action: play(1, 1), playedByMe: false),
+      );
+      final lay = tester.getRect(onFelt(8));
+      await tester.pumpWidget(
+        felt(
+          const [20],
+          pile: [7],
+          action: draw(1, 2, cardId: 8),
+          playedByMe: false,
+        ),
+      );
+      await tester.pump(Motion.leave ~/ 2);
+      final leaving = find.byKey(GameTableArea.leavingKey(8));
+      expect(tester.getRect(image(leaving)).top, lessThan(lay.top));
+      await tester.pumpAndSettle();
+      expect(leaving, findsNothing);
+    });
+
+    testWidgets('from the deck sends a card back off the deck', (tester) async {
+      await tester.pumpWidget(felt(const [20], pile: [7], action: play(0, 1)));
+      final deck = tester.getRect(find.byKey(const Key('deckTop')));
+      await tester.pumpWidget(felt(const [20], pile: [7], action: draw(0, 2)));
+      final leaving = find.byKey(GameTableArea.deckLeavingKey);
+      expect(leaving, findsOneWidget);
+      await tester.pump(Motion.leave ~/ 2);
+      expect(tester.getRect(image(leaving)).top, greaterThan(deck.top));
+      await tester.pumpAndSettle();
+      expect(leaving, findsNothing);
+
+      // The same draw refetched is not a second draw.
+      await tester.pumpWidget(felt(const [20], pile: [7], action: draw(0, 2)));
+      expect(leaving, findsNothing);
     });
   });
 
@@ -170,6 +315,30 @@ void main() {
         findsNothing,
       );
       expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('the played row goes to the pile, and a taken card off the '
+        'felt, at once', (tester) async {
+      await tester.pumpWidget(
+        felt(const [20], pile: [7, 8], action: play(0, 1), still: true),
+      );
+      await tester.pumpWidget(
+        felt(const [20], pile: [8], action: draw(0, 2, cardId: 7), still: true),
+      );
+      expect(find.byKey(GameTableArea.leavingKey(7)), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pumpWidget(
+        felt(const [20], pile: [8], action: draw(0, 3), still: true),
+      );
+      expect(find.byKey(GameTableArea.deckLeavingKey), findsNothing);
+      final laid = tester.getRect(onFelt(20));
+      await tester.pumpWidget(
+        felt(const [30], pile: [20], action: play(1, 4), still: true),
+      );
+      expect(find.byKey(GameTableArea.slideKey(20)), findsNothing);
+      expect(find.byKey(GameTableArea.leavingKey(8)), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.getRect(onFelt(20)).top, greaterThan(laid.top));
     });
 
     testWidgets('the drawn card is badged, still, and unbadged after 2 s', (
