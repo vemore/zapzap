@@ -267,19 +267,40 @@ Fix it, then commit again. Reproduce with: $name"
 
 # Worktrees share the main checkout's cargo target directories, so the first commit in
 # a fresh worktree does not rebuild every dependency inside the hook's timeout.
+# The price: clippy can check this tree's tests against a library another tree built
+# into the same directory (#79: E0432/E0609 on correct code). So a failed clippy
+# touches the crate's src/lib.rs in the tree being committed -- mtime only, never its
+# content -- which makes cargo rebuild it from these sources, and runs once more.
+run_clippy_gate() {  # name, crate directory under $ROOT, then the command
+    local name="$1" crate="$2"; shift 2
+    local output
+    output=$("$@" 2>&1) && return 0
+    touch -c "$ROOT/$crate/src/lib.rs"
+    if ! output=$("$@" 2>&1); then
+        refuse "Refused: \`$name\` fails, so this commit is not ready.
+
+It failed twice: after the first failure the hook touched $crate/src/lib.rs (in case the
+shared target directory held a stale build of it) and ran it again.
+
+$(printf '%s\n' "$output" | tail -40)
+
+Fix it, then commit again. Reproduce with: $name"
+    fi
+}
+
 MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
 
 if printf '%s\n' "$paths" | grep -qE '^zapzap-rust/'; then
     command -v cargo >/dev/null 2>&1 || needs_setup "cargo is not on PATH" "install Rust with rustup (.llmwiki/Backend.md)"
     run_gate "cargo fmt --check (zapzap-rust)" bash -c "cd '$ROOT/zapzap-rust' && cargo fmt --check"
-    run_gate "cargo clippy --locked --all-targets -- -D warnings (zapzap-rust)" \
+    run_clippy_gate "cargo clippy --locked --all-targets -- -D warnings (zapzap-rust)" zapzap-rust \
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/zapzap-rust/target}" bash -c "cd '$ROOT/zapzap-rust' && cargo clippy --locked --all-targets --quiet -- -D warnings"
 fi
 
 if printf '%s\n' "$paths" | grep -qE '^native/'; then
     command -v cargo >/dev/null 2>&1 || needs_setup "cargo is not on PATH" "install Rust with rustup (.llmwiki/NativeEngine.md)"
     run_gate "cargo fmt --check (native)" bash -c "cd '$ROOT/native' && cargo fmt --check"
-    run_gate "cargo clippy --all-targets -- -D warnings (native)" \
+    run_clippy_gate "cargo clippy --all-targets -- -D warnings (native)" native \
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 

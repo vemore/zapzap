@@ -310,6 +310,37 @@ stub_tool cargo 0
 tree_commit "a native change with green cargo gates" 0
 stub_tool cargo 1
 unstage "native/src/lib.rs"
+# A stale library in the shared target dir: this cargo's clippy fails until the committing
+# tree's src/lib.rs is newer than $MARK, as a real one rebuilds after a touch. Each clippy
+# run is logged, so the retry count is checked too.
+MARK="$SANDBOX/clippy-mark" CLIPPY_LOG="$SANDBOX/clippy-log"
+cat > "$TOOLS/cargo" <<EOF
+#!/bin/sh
+case "\$*" in *clippy*) echo run >> "$CLIPPY_LOG"; [ src/lib.rs -nt "$MARK" ] || { echo "error[E0432]: stale"; exit 1; } ;; esac
+exit 0
+EOF
+clippy_case() {  # description, expected exit, crate, expected clippy runs, [refusal text]
+    stage "$3/src/lib.rs"
+    touch -d '1 hour ago' "$TREE/$3/src/lib.rs"; touch "$MARK"; : > "$CLIPPY_LOG"
+    tree_commit "$1" "$2" "${5:-}"
+    report "$1: clippy runs" "$4" "$(wc -l < "$CLIPPY_LOG" | tr -d ' ')"
+    report "$1: src/lib.rs content untouched" "x" "$(cat "$TREE/$3/src/lib.rs")"
+    unstage "$3/src/lib.rs"
+}
+clippy_case "a backend change against a stale shared target passes on the retry" 0 zapzap-rust 2
+clippy_case "a native change against a stale shared target passes on the retry" 0 native 2
+# A real clippy error survives the touch: refused after exactly one retry, and says so.
+printf '#!/bin/sh\ncase "$*" in *clippy*) echo run >> "%s"; echo "error: real"; exit 1 ;; esac\nexit 0\n' "$CLIPPY_LOG" > "$TOOLS/cargo"
+clippy_case "a backend change with a real clippy error" 2 zapzap-rust 2 "It failed twice"
+# A green clippy runs once: no touch, no retry.
+stub_tool cargo 0
+: > "$CLIPPY_LOG"
+stage "zapzap-rust/src/lib.rs"
+touch -d '1 hour ago' "$TREE/zapzap-rust/src/lib.rs"; touch "$MARK"
+tree_commit "a backend change with a green clippy" 0
+report "a green clippy leaves src/lib.rs's mtime alone" "yes" "$([ "$MARK" -nt "$TREE/zapzap-rust/src/lib.rs" ] && echo yes || echo no)"
+unstage "zapzap-rust/src/lib.rs"
+stub_tool cargo 1
 stage "scripts/train-native.js"
 tree_commit "a path outside every gated tree runs no gate" 0
 unstage "scripts/train-native.js"
