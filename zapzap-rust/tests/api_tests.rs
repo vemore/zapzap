@@ -3326,6 +3326,142 @@ async fn test_root_health_and_unknown_root_path_answer_nodes_bodies() {
     assert_eq!(body["path"], "/nowhere");
 }
 
+mod cors {
+    //! `ALLOWED_ORIGINS` (`infrastructure/cors.rs`): the origins CORS answers, every origin
+    //! when unset. The value is parsed here rather than set in the environment, which the
+    //! tests running in parallel share.
+    use super::*;
+    use axum::http::{header, HeaderMap};
+    use zapzap_backend::infrastructure::cors::AllowedOrigins;
+
+    /// `build_app` with `ALLOWED_ORIGINS` set to `value` (`None`: unset)
+    async fn app_with_origins(value: Option<&str>) -> Router {
+        std::env::set_var("DATABASE_URL", "sqlite::memory:");
+        std::env::set_var("JWT_SECRET", "test-secret-key");
+        let mut state = AppState::new().await.expect("Failed to create app state");
+        state.allowed_origins = AllowedOrigins::parse(value).expect("ALLOWED_ORIGINS");
+        api::build_app(Arc::new(state))
+    }
+
+    /// Sends `method path` with these headers; answers the status and the headers
+    async fn send(
+        app: &mut Router,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+    ) -> (StatusCode, HeaderMap) {
+        let mut builder = Request::builder().method(method).uri(path);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let response = ServiceExt::<Request<Body>>::ready(app)
+            .await
+            .unwrap()
+            .call(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        (response.status(), response.headers().clone())
+    }
+
+    /// A browser's preflight for a cross-origin `POST /api/auth/login` with a JSON body
+    async fn preflight(app: &mut Router, origin: &str) -> (StatusCode, HeaderMap) {
+        send(
+            app,
+            "OPTIONS",
+            "/api/auth/login",
+            &[
+                ("Origin", origin),
+                ("Access-Control-Request-Method", "POST"),
+                (
+                    "Access-Control-Request-Headers",
+                    "content-type,authorization",
+                ),
+            ],
+        )
+        .await
+    }
+
+    fn allow_origin(headers: &HeaderMap) -> Option<&str> {
+        headers
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .map(|v| v.to_str().unwrap())
+    }
+
+    #[tokio::test]
+    async fn test_cors_allowed_origins_grants_the_listed_origin_only() {
+        let mut app = app_with_origins(Some("https://a.example")).await;
+
+        let (status, headers) = preflight(&mut app, "https://a.example").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), Some("https://a.example"));
+        // Any method and request header, as the permissive layer granted: `*`, which a
+        // browser honours for a request without credentials (the token is a header)
+        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_METHODS], "*");
+        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_HEADERS], "*");
+
+        let (_, headers) = preflight(&mut app, "https://b.example").await;
+        assert_eq!(allow_origin(&headers), None, "{headers:?}");
+        // A look-alike of the listed origin is another origin
+        let (_, headers) = preflight(&mut app, "https://a.example.evil").await;
+        assert_eq!(allow_origin(&headers), None, "{headers:?}");
+        let (_, headers) = preflight(&mut app, "http://a.example").await;
+        assert_eq!(allow_origin(&headers), None, "{headers:?}");
+    }
+
+    #[tokio::test]
+    async fn test_cors_allowed_origins_still_serves_requests_without_a_grant() {
+        let mut app = app_with_origins(Some("https://a.example")).await;
+
+        // The Android app and a same-origin GET send no Origin: served as before
+        let (status, headers) = send(&mut app, "GET", "/api/health", &[]).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), None);
+
+        // The listed origin reads the answer
+        let (status, headers) = send(
+            &mut app,
+            "GET",
+            "/api/health",
+            &[("Origin", "https://a.example")],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), Some("https://a.example"));
+        let vary = headers[header::VARY].to_str().unwrap().to_ascii_lowercase();
+        assert!(vary.contains("origin"), "{vary}");
+
+        // Another origin is served too, without the grant: the browser withholds the answer
+        let (status, headers) = send(
+            &mut app,
+            "GET",
+            "/api/health",
+            &[("Origin", "https://b.example")],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), None);
+    }
+
+    #[tokio::test]
+    async fn test_cors_unset_allowed_origins_answers_every_origin() {
+        let mut app = app_with_origins(None).await;
+
+        let (status, headers) = preflight(&mut app, "https://b.example").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), Some("*"));
+
+        let (status, headers) = send(
+            &mut app,
+            "GET",
+            "/api/health",
+            &[("Origin", "http://localhost:8080")],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(allow_origin(&headers), Some("*"));
+    }
+}
+
 /// Node routes by method and path together, so a served path asked with another method
 /// falls through to its 404 like an unknown path; axum's bare 405 must not show.
 #[tokio::test]

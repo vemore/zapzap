@@ -21,6 +21,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env (openssl rand -hex 32)}
       - RUST_LOG=${RUST_LOG:-info}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      # The browser origins CORS answers (zapzap-rust/src/infrastructure/cors.rs): passed
+      # only when set in .env; unset, every origin (local use). Production's default is in
+      # docker-compose.prod.yml.
+      - ALLOWED_ORIGINS
       # The pause between two bot actions (zapzap-rust/src/application/bot/runner.rs)
       - BOT_ACTION_DELAY_MS=${BOT_ACTION_DELAY_MS:-1000}
       # LLM bots (.llmwiki/Bots.md): passed only when set in .env, because a variable that
