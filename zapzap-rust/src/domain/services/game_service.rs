@@ -398,33 +398,6 @@ pub fn forfeit_seat(state: &mut GameState, player: u8) -> Option<u8> {
     None
 }
 
-/// Sort the seats of a finished game into their final ranking: the winner first, then
-/// the seats never eliminated by score (lower is better), then the eliminated ones, the
-/// later eliminated first. Each seat is `(player index, final score, user id, round of
-/// its elimination)`.
-pub fn sort_final_ranking(players: &mut [(u8, u16, String, Option<u32>)], winner: u8) {
-    players.sort_by(|a, b| {
-        let (idx_a, score_a, _, elim_a) = a;
-        let (idx_b, score_b, _, elim_b) = b;
-
-        // Winner always first
-        if *idx_a == winner {
-            return std::cmp::Ordering::Less;
-        }
-        if *idx_b == winner {
-            return std::cmp::Ordering::Greater;
-        }
-
-        // Non-eliminated before eliminated
-        match (elim_a, elim_b) {
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, None) => score_a.cmp(score_b), // Both not eliminated: lower score = better
-            (Some(r_a), Some(r_b)) => r_b.cmp(r_a), // Both eliminated: later round = better position
-        }
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -703,19 +676,5 @@ mod tests {
         state.current_action = GameAction::Finished;
         state.eliminated_mask = 0b1010;
         assert_eq!(forfeit_seat(&mut state, 2), Some(0));
-    }
-
-    #[test]
-    fn test_final_ranking_winner_then_survivors_then_later_eliminated() {
-        let mut players = vec![
-            (0, 120, "a".to_string(), Some(2)),
-            (1, 40, "b".to_string(), None),
-            (2, 110, "c".to_string(), Some(4)),
-            (3, 20, "d".to_string(), None),
-            (4, 30, "e".to_string(), None),
-        ];
-        sort_final_ranking(&mut players, 4);
-        let order: Vec<u8> = players.iter().map(|p| p.0).collect();
-        assert_eq!(order, vec![4, 3, 1, 2, 0]);
     }
 }

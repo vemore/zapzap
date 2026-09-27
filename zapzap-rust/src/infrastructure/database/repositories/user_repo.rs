@@ -6,9 +6,9 @@ use crate::domain::entities::{
     deleted_user_id_pattern, BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX,
 };
 use crate::domain::repositories::{
-    AccountDeletion, ForfeitOutcome, PlayerGameResult, RepositoryError, SeatForfeit, UserRepository,
+    AccountDeletion, ForfeitOutcome, RepositoryError, SeatForfeit, UserRepository,
 };
-use crate::domain::services::{forfeit_seat, sort_final_ranking};
+use crate::domain::services::{build_game_results, forfeit_seat};
 use crate::domain::value_objects::GameState;
 
 /// The columns that name a user in a game, each handed to the anonymous user when an
@@ -133,9 +133,8 @@ async fn forfeit_playing_seats(
 }
 
 /// Finish a game a forfeit left with one seat: the party and its round are finished and
-/// the results written, ranked as `sort_final_ranking` ranks a zapzap's. A seat eliminated
-/// without a `round_scores` row to say when (a forfeit, this one included) counts as
-/// eliminated in the current round. Returns the winner's user id.
+/// the results written by `build_game_results`, as a zapzap's are (the forfeited seats
+/// count as eliminated in the current round). Returns the winner's user id.
 async fn finish_forfeited_game(
     conn: &mut SqliteConnection,
     party_id: &str,
@@ -159,56 +158,34 @@ async fn finish_forfeited_game(
     .await
     .map_err(db_err)?;
 
-    let rounds = state.round_number as u32;
-    let seats: Vec<(String, i64)> =
-        sqlx::query_as("SELECT user_id, player_index FROM party_players WHERE party_id = ?")
-            .bind(party_id)
-            .fetch_all(&mut *conn)
-            .await
-            .map_err(db_err)?;
-    let eliminated_in: std::collections::HashMap<String, Option<u32>> =
-        elimination_order(conn, party_id)
-            .await?
+    let seats: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT player_index, user_id FROM party_players WHERE party_id = ? \
+         ORDER BY player_index",
+    )
+    .bind(party_id)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(db_err)?;
+    let recorded = elimination_order(conn, party_id).await?;
+    let results = build_game_results(
+        state,
+        seats
             .into_iter()
-            .collect();
-    let mut ranking: Vec<(u8, u16, String, Option<u32>)> = seats
-        .into_iter()
-        .map(|(user_id, index)| {
-            let index = index as u8;
-            let round = eliminated_in.get(&user_id).copied().flatten();
-            let round = round.or(state.is_eliminated(index).then_some(rounds));
-            (index, state.get_score(index), user_id, round)
-        })
-        .collect();
-    sort_final_ranking(&mut ranking, winner_index);
-
-    let winner_user_id = ranking
-        .iter()
-        .find(|(index, ..)| *index == winner_index)
-        .map(|(_, _, user_id, _)| user_id.clone())
-        .unwrap_or_default();
-    let results = ranking
-        .iter()
-        .enumerate()
-        .map(|(position, (index, score, user_id, _))| PlayerGameResult {
-            user_id: user_id.clone(),
-            final_score: *score,
-            finish_position: (position + 1) as u8,
-            rounds_played: rounds,
-            is_winner: *index == winner_index,
-        })
-        .collect();
+            .map(|(index, user_id)| (index as u8, user_id)),
+        &recorded,
+        winner_index,
+    );
     write_game_results(
         conn,
         party_id,
-        &winner_user_id,
-        state.get_score(winner_index),
-        rounds,
-        state.is_golden_score,
-        results,
+        &results.winner_user_id,
+        results.winner_score,
+        results.total_rounds,
+        results.was_golden_score,
+        results.players,
     )
     .await?;
-    Ok(winner_user_id)
+    Ok(results.winner_user_id)
 }
 
 /// SQLite implementation of UserRepository
