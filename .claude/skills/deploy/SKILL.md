@@ -226,3 +226,22 @@ The fix of whatever broke is a new pull request (`ship-parallel` §6), never a h
 the NAS. A `.env` change alone needs no deploy: edit it on the NAS (never print it), then
 `docker-compose -f compose.yaml up -d` in the deploy directory with
 `COMPOSE_PROJECT_NAME=zapzap`, and §3.
+
+## 6. Reset a user's password
+
+`zapzap-backend reset-password <username>` (`zapzap-rust/src/main.rs`), the only reset tool
+since the Node scripts went: it reads the new password from one line of stdin — never a
+command-line argument, so it never lands in argv, a shell history or a process list — and
+bcrypt-hashes it through `PasswordService::hash`, as registration does. `-T` on `exec`
+disables the pseudo-tty so the piped stdin reaches the binary rather than a terminal:
+
+```bash
+read -rsp 'new password: ' PW; echo
+printf '%s' "$PW" | ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin COMPOSE_PROJECT_NAME=zapzap; cd /home/vemore/docker/zapzap && docker-compose -f compose.yaml exec -T backend /app/zapzap-backend reset-password <username>'
+unset PW
+```
+
+`password reset for <username>` on success; `no such user: <username>` (exit 1) for an
+unknown username, the database untouched. The account's other sessions are not revoked (its
+JWTs, unlike Google's, carry no password version); tell the player to sign out everywhere if
+that matters.
