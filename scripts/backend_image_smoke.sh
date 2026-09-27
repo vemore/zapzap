@@ -14,6 +14,13 @@
 #
 # Usage: scripts/backend_image_smoke.sh        (SMOKE_PROJECT sets the compose project)
 # The image it builds is kept (<project>-backend); the container and network are removed.
+#
+# Layer cache (CI): with SMOKE_CACHE_FROM and/or SMOKE_CACHE_TO set, the image is built by
+# `docker buildx bake` from the same compose file — same service, context, Dockerfile and
+# build args, nothing restated — with those buildx cache specs (e.g. `type=gha,scope=x`
+# and `type=gha,scope=x,mode=max`), on the builder SMOKE_BUILDER names (a cache export
+# needs a docker-container builder), loaded into the local engine under the name
+# `compose build` gives it. Without them: `docker compose build backend`, as before.
 
 set -euo pipefail
 
@@ -52,8 +59,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-compose build backend
-compose up -d --no-deps backend
+if [ -n "${SMOKE_CACHE_FROM:-}${SMOKE_CACHE_TO:-}" ]; then
+    # bake reads the compose file itself and interpolates all of it: JWT_SECRET is set for
+    # the environment block, which the build does not use.
+    bake_args=(--load --set "backend.tags=${PROJECT}-backend")
+    [ -z "${SMOKE_BUILDER:-}" ] || bake_args+=(--builder "$SMOKE_BUILDER")
+    [ -z "${SMOKE_CACHE_FROM:-}" ] || bake_args+=(--set "backend.cache-from=$SMOKE_CACHE_FROM")
+    [ -z "${SMOKE_CACHE_TO:-}" ] || bake_args+=(--set "backend.cache-to=$SMOKE_CACHE_TO")
+    # From the root: the compose file's build contexts are relative to it.
+    (cd "$ROOT" && JWT_SECRET=smoke-test-only-secret \
+        docker buildx bake -f docker-compose.yml "${bake_args[@]}" backend)
+else
+    compose build backend
+fi
+# --no-build: the image is the one just built, never a rebuild by compose.
+compose up -d --no-deps --no-build backend
 cid=$(compose ps -q backend)
 
 # The compose health check: interval 30 s, start_period 10 s — the first verdict comes
