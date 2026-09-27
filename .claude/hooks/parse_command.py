@@ -6,8 +6,8 @@ stdout:
 
     {"parse_ok": bool,
      "blocks":   [{"rule": str, "message": str}, ...],
-     "commit":   null | {"all": bool, "amend": bool, "pathspecs": [str, ...],
-                         "cwd": str},
+     "commit":   null | {"all": bool, "amend": bool, "include": bool,
+                         "pathspecs": [str, ...], "cwd": str},
      "push":     null | {"refspecs": [str, ...], "remote": str | null, "cwd": str,
                          "known": bool}}
 
@@ -496,7 +496,7 @@ def parse_commit(tokens):
     if "--dry-run" in rest or "-h" in rest or "--help" in rest:
         return None
 
-    info = {"all": False, "amend": False, "pathspecs": []}
+    info = {"all": False, "amend": False, "include": False, "pathspecs": []}
     index, after_dashdash = 0, False
     while index < len(rest):
         token = rest[index]
@@ -506,7 +506,7 @@ def parse_commit(tokens):
             continue
         if token == "--":
             after_dashdash = True
-        elif token in {"--all", "--amend"}:
+        elif token in {"--all", "--amend", "--include"}:
             info[token[2:]] = True
         elif token.startswith("--"):
             if "=" not in token and token in COMMIT_OPT_WITH_ARG:
@@ -515,6 +515,8 @@ def parse_commit(tokens):
             letters = token[1:]
             if "a" in letters:
                 info["all"] = True
+            if "i" in letters:
+                info["include"] = True
             if letters and letters[-1] in COMMIT_SHORT_WITH_ARG:
                 index += 1
         else:
@@ -545,7 +547,7 @@ def main():
         if moves and (commits or pushes):
             verdict["blocks"].append(unknown_repo("git commit" if commits else "git push"))
         elif commits:
-            verdict["commit"] = {"all": True, "amend": True, "pathspecs": [],
+            verdict["commit"] = {"all": True, "amend": True, "include": True, "pathspecs": [],
                                  "cwd": posixpath.normpath(cwd)}
         print(json.dumps(verdict))
         return

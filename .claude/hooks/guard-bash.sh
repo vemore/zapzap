@@ -137,7 +137,7 @@ base=()
 git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=(MERGE_HEAD)
 # Every list is read NUL-separated: `--name-only` alone quotes a non-ASCII path
 # ("cl\303\251.jks"), which no rule below would then match.
-names() { git "$@" -z 2>/dev/null | tr '\0' '\n'; }
+names() { git "$@" 2>/dev/null | tr '\0' '\n'; }
 # A pathspec is relative to the directory the commit runs in, and may be a directory:
 # the files it commits are the tracked ones under it that differ from HEAD, taken from
 # the working tree.
@@ -149,15 +149,15 @@ spec_cwd=$command_cwd
 spec_files=""
 if [ "${#pathspecs[@]}" -gt 0 ]; then
     if git rev-parse --verify -q HEAD >/dev/null; then
-        spec_files=$(names -C "$spec_cwd" diff --name-only --diff-filter=d HEAD -- "${pathspecs[@]}")
+        spec_files=$(names -C "$spec_cwd" diff -z --name-only --diff-filter=d HEAD -- "${pathspecs[@]}")
     else
-        spec_files=$(names -C "$spec_cwd" ls-files --full-name -- "${pathspecs[@]}")
+        spec_files=$(names -C "$spec_cwd" ls-files -z --full-name -- "${pathspecs[@]}")
     fi
 fi
-paths=$(names diff --cached --name-only "${base[@]}")
-[ "$commit_all" = "true" ] && paths="$paths"$'\n'"$(names diff --name-only "${base[@]}")"
+paths=$(names diff -z --cached --name-only "${base[@]}")
+[ "$commit_all" = "true" ] && paths="$paths"$'\n'"$(names diff -z --name-only "${base[@]}")"
 if [ "$commit_amend" = "true" ] && git rev-parse --verify -q HEAD >/dev/null; then
-    paths="$paths"$'\n'"$(names show --name-only --pretty=format: HEAD)"
+    paths="$paths"$'\n'"$(names show -z --name-only --pretty=format: HEAD)"
 fi
 paths="$paths"$'\n'"$spec_files"$'\n'"$(printf '%s\n' "${pathspecs[@]}")"
 paths=$(printf '%s\n' "$paths" | grep -v '^$' | sort -u)
@@ -167,9 +167,15 @@ paths=$(printf '%s\n' "$paths" | grep -v '^$' | sort -u)
 # tree -- `-a` and pathspecs -- are read there; a file only staged is read in the index,
 # so an unstaged edit of another file never decides this commit.
 worktree_files=$spec_files
-[ "$commit_all" = "true" ] && worktree_files="$worktree_files"$'\n'"$(names diff --name-only --diff-filter=d "${base[@]}")"
+[ "$commit_all" = "true" ] && worktree_files="$worktree_files"$'\n'"$(names diff -z --name-only --diff-filter=d "${base[@]}")"
 worktree_files=$(printf '%s\n' "$worktree_files" | grep -v '^$' | sort -u)
-added="$(names diff --cached --name-only --diff-filter=d "${base[@]}")"$'\n'"$worktree_files"
+added="$(names diff -z --cached --name-only --diff-filter=d "${base[@]}")"$'\n'"$worktree_files"
+# A commit with pathspecs and no -i (git's --only) records those paths alone: a staged
+# file outside them stays staged and is not part of it.
+commit_include=$(printf '%s' "$verdict" | jq -r '.commit.include // false')
+if [ "${#pathspecs[@]}" -gt 0 ] && [ "$commit_include" != "true" ] && [ "$commit_all" != "true" ]; then
+    added=$worktree_files
+fi
 added=$(printf '%s\n' "$added" | grep -v '^$' | sort -u)
 
 refuse() {

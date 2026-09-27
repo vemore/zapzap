@@ -49,12 +49,14 @@
   - **Upload key** — alias `zapzap-upload`, JKS, RSA 2048, ~27 years — made **once** by
     `scripts/generate_keystore.sh`, which writes `~/zapzap-upload-keystore.jks` (`keytool` under `umask 077`, then mode 600;
     `ZAPZAP_KEYSTORE=<absolute path>` overrides it), refuses a path inside a git work tree
-    and never overwrites an existing keystore. Then copy
+    — `$HOME` itself being a dotfiles repository passes only if that repository ignores the
+    keystore (`git check-ignore`) — and never overwrites an existing keystore. Then copy
     `frontend-flutter/android/key.properties.template` to `android/key.properties` (next to
     the template) and fill it in. Neither the keystore nor `key.properties` is in the
     repository: `android/.gitignore` ignores `key.properties`, `*.jks`, `*.keystore`, the root
-    `.gitignore` `*service-account*.json`, and the commit hook refuses all of them and any JSON
-    holding `"type": "service_account"` ([[Hooks]]).
+    `.gitignore` `*service-account*.json`, and the commit hook refuses all of them, whatever their case, and any added text
+    file holding a Google credential `"type"` — `service_account`, `authorized_user`,
+    `external_account`, `impersonated_service_account` — whatever its name ([[Hooks]]).
   - **Backup**: the keystore file **and** its password, in the password manager plus an
     offline copy (encrypted USB). Lost, the app can only be updated after an upload-key
     reset requested from the Play Console (days, and only once Play App Signing is on).
@@ -199,5 +201,5 @@
   signing config, so CI and worktrees keep building a release APK — but only an APK: the
   review of #113 made `bundleRelease` fail without it, since a Play bundle must never be
   debug-signed and a worktree has no `key.properties`. The script refuses a path inside a
-  repository and runs `keytool` under `umask 077`. The real upload key and its OAuth client are the user's
+  repository (`$HOME` itself only when that repository ignores the keystore) and runs `keytool` under `umask 077`. The real upload key and its OAuth client are the user's
   manual steps.
