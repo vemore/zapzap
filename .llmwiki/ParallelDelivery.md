@@ -1,7 +1,8 @@
 # ParallelDelivery
 
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
-> risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
+> risk, the model per pull request, serial squash merges, deploy after each merge, local
+> cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-27
 
@@ -58,7 +59,7 @@
   tokens. So each agent opens its own tab (`browser_tabs` new), works only in it and closes
   it (ship-parallel agent prompt); a check that needs a clean origin is serialised.
 - **When the MCP browser is unavailable**, the fallback is a headless script, run by path
-  from the agent's scratchpad subdirectory: `require('<MAIN>/node_modules/playwright')`
+  from the agent's scratch directory: `require('<MAIN>/node_modules/playwright')`
   (the only devDependency of the root `package.json`, installed by `npm ci` at the root of
   the main checkout; browsers in `~/.cache/ms-playwright`), then
   `chromium.launch()`, `browser.newPage({ viewport })`, `page.goto(url)`,
@@ -66,9 +67,11 @@
 - The server writes screenshots, console logs and network dumps to `.playwright-mcp/` in the
   checkout it runs from. The directory is gitignored and nothing in it is tracked; it is
   debris, never committed, and not an agent's to delete while others run.
-- **The scratchpad is shared too**: every agent of a session gets the same scratchpad
-  directory. An agent writes its scripts, PR body and commit messages under
-  `<scratchpad>/<branch-slug>/` (the branch name, `/` → `-`), never at the root.
+- **`/tmp` is shared too**: an agent writes its scripts, PR body and commit messages under
+  its own scratch directory, `/tmp/zapzap-<branch-slug>/` (the branch name, `/` → `-`;
+  `mkdir -p` first), never at a shared name. Not the session scratchpad under
+  `~/.claude/jobs/`, which every agent of a session shares and whose Write the harness
+  refuses to a worktree-isolated agent.
 - **`gh pr edit` fails** here: gh 2.45.0 still queries `projectCards` (Projects classic),
   which GitHub removed. A PR's title or body is edited with `gh api -X PATCH
   repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
@@ -99,6 +102,41 @@ The reviewing agent gets these rules: verify each finding against the PR head; a
 or README the change makes false is at least Medium; read a page's `Decisions & History`
 before calling something redundant; judge the tests against the entry's acceptance
 criteria, not coverage.
+
+### Model routing — the rating picks the model
+
+The lane rates the **risk to production**; a second rating, made at the same moment
+(`ship-parallel` §1) and shown in the same plan, rates the **difficulty**, and picks the model
+the implementing agent runs on. Without it every agent inherits the orchestrator's model and
+effort, and a string rename costs what a scoring change costs.
+
+| Rating | When | Launched as (`ship-parallel` §2) |
+|---|---|---|
+| **complex** | A design choice is open, several subsystems move together, the root cause is unknown, or the lane is B or C. **In doubt, complex** | `subagent_type: "implementer-complex"` — `.claude/agents/implementer-complex.md`, `model: opus`, `effort: high` |
+| **simple** | The entry's fix is explicit and local, and its acceptance is mechanical | `subagent_type: "implementer-simple"` — `.claude/agents/implementer-simple.md`, `model: sonnet`, effort inherited |
+| **bulk** | Many independent, mechanical, well-specified units — the eight translated locales of a translation, a sweep over files | One `general-purpose` agent per unit, `model: "haiku"`, in parallel, launched by the orchestrator; the French and English master is the orchestrator's (`i18n-add-string` §1b) |
+
+- **Effort needs a definition.** The `Agent` tool takes a per-call `model`, but `effort` comes
+  only from an agent definition's frontmatter (`low` … `max`, Claude Code's sub-agents
+  reference) — hence the two files. A per-call `model` overrides the definition's, so §2
+  passes none with them.
+- **The definitions hold no procedure.** Their body only frames the rating (understand
+  first; or stop and ask for a re-rate); the §2 prompt, passed in full, stays the one
+  specification, and its rules override the body.
+- **Bulk is the orchestrator's, not an implementer's**: a subagent has no `Agent` tool, and
+  the commit hook refuses an ARB key missing from a locale, so nothing commits between the
+  master and the units. An implementer whose pull request has bulk units stops before its
+  first commit; the orchestrator finishes them in its worktree and resumes it.
+- **Loading.** Claude Code watches `.claude/agents/` and picks up an edited definition
+  without a restart, but a session started before the directory first existed does not see
+  it; §2 then falls back to `general-purpose` with `model: "opus"` or `"sonnet"` (no effort).
+- The hooks key on the working directory, never on the agent type: `SubagentStop`
+  ([[Hooks]]) judges the two implementers exactly as it judged `general-purpose` ones.
+- **Checking the thresholds**: `scripts/agent_metrics.py --by agent,branch` gives the
+  weighted tokens and active time per `implementer-*` type and pull request, and
+  `scripts/delivery_metrics.sh` the rework per change — an over-reworked `simple` or a cheap,
+  never-reworked `complex` moves the thresholds or the models. The weights are by price
+  class, not by model: an Opus token costs more than a Sonnet one of the same class.
 
 ### Merged, not deployed
 
@@ -132,7 +170,8 @@ the `ship-parallel` §4 paths), first-run-green share, size per change, `wip/` a
 checkout's). `scripts/agent_metrics.py` — cost, from the transcripts in
 `~/.claude/projects/-home-vemore-workspace-zapzap*/`: tokens raw and weighted by price class,
 active time, per session, branch, skill, agent, tool, file and hook; names and numbers only,
-never content. `ship-parallel` §7's report prints the first. DORA counts rework as unplanned
+never content. `ship-parallel` §7's report prints the first; the pruning pass before each release
+(`release-android` §3b) reads both against the baseline below and records new figures. DORA counts rework as unplanned
 deployments fixing a production issue; this file-level proxy needs no incident log.
 
 Baseline, measured 2026-09-27 on `origin/master` at `232fec3` (until exclusive; nothing
@@ -183,9 +222,24 @@ tokens raw, 300 M weighted; 124 h of agent time active, 46 h waiting on the user
 - **Flutter tests left out of the size count (2026-09-27).** The filter already dropped Rust
   and JS tests but not `frontend-flutter/test/`: #133 counted 1 877 lines, 696 of them
   `*_test.dart`, and crossed into lane B on its tests alone; without them it counts 1 181.
+- **The scratch directory moved to `/tmp/zapzap-<branch-slug>/` (2026-09-27).** The prompt
+  named a subdirectory of the session scratchpad, `~/.claude/jobs/<job>/tmp/`; the harness
+  refused a Write there from an agent launched with `isolation: "worktree"` (#138), though
+  Bash could write it. The same session's five isolated agents then wrote their PR bodies,
+  commit messages and scripts under `/tmp/zapzap-<type>-<topic>/` without a refusal. A
+  gitignored folder inside the worktree was the alternative; `/tmp` needs no ignore rule
+  and cannot be committed by mistake.
 - **"Merged, not deployed" is tracked (2026-09-27)**, ported from countscore, where
   #212–#216 sat merged and undeployed for days with no trace: nothing in §4 covered a session
   that could merge but not reach the NAS.
+- **Model routing by a rating made at planning time (2026-09-27)**, ported from countscore
+  (#229). Every implementer inherited the orchestrator's model and effort. Routing by task
+  envelope is current practice (Haiku for volume, Sonnet for execution, Opus for
+  judgement); here the orchestrator rates each pull request at planning time and shows the
+  rating to the user, rather than letting a router infer it per call — the rating is
+  reviewable, and it is made where the lane already is. Two project agent definitions
+  rather than a per-call `model`, because effort can only be set in a definition. "In
+  doubt, complex", like "in doubt, the stricter lane": a rework costs more than the tokens.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
 - **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.

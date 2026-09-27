@@ -2,7 +2,8 @@
 
 > Scope: the Google Play state of the Android app — package, keys and their fingerprints, how
 > a release reaches Play (the scripts, the service account), what is live on which track.
-> The procedure is the `release-android` skill; testing on the phone is `flutter-device-test`.
+> The procedure is the `release-android` skill (its §3b, the pruning pass of the process, runs
+> before each build); testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
 > Updated: 2026-09-27
 
@@ -104,3 +105,8 @@ Both recorded 2026-09-25.
   Pack was joined before the review passed: four members reported ZapZap "Not Found" and it
   was removed (50 of 100 moons refunded). Hence the rule in the skill: join a Pack once the
   closed test is live.
+- **2026-09-27: a pruning pass before each release** (chore/process-pruning-pass), ported
+  from countscore's `release-android` §3b. A release is the checkpoint: every hook refusal
+  and `CLAUDE.md` rule without evidence since the last tag is proposed for removal, with the
+  wiki lint, the delivery and agent metrics against the baseline, and the evals before and
+  after. The proposal is its own pull request, never a reason to hold the release.

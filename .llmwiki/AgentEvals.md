@@ -105,7 +105,8 @@ wiki pages, the React selector and the ten ARB files, and the setup is a full
 
 - **After changing `CLAUDE.md`, `.claude/**` or `.llmwiki/**`** — the cases that touch
   what changed at least, from the branch with `--ref HEAD`, before the pull request merges.
-- **In a pruning pass** of the agent configuration: the whole suite on `origin/master`, and
+- **In a pruning pass** of the agent configuration (`release-android` §3b, before each
+  release): the whole suite on `origin/master`, and
   again with `--ref HEAD` on the pruning branch — a case that passes before and fails after
   is evidence that the removed rule was carrying weight.
 - **After editing a check, a fixture or `evals/lib.sh`:** `evals/selftest.sh`, which needs

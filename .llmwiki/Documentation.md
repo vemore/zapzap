@@ -42,7 +42,10 @@ strings of the ten ARB files): the same change updates them.
 
 At most **120 lines**: what the project is, "read the wiki first", the non-negotiables, each
 workflow rule in one line with a pointer, the commands, Git. Anything longer moves to the
-page that owns it. When a rule becomes a hook, it leaves `CLAUDE.md` for [[Hooks]].
+page that owns it. When a rule becomes a hook, it leaves `CLAUDE.md` for [[Hooks]]. The
+process gets pruned, not only grown: before each release, the `release-android` §3b pass
+looks for evidence each hook refusal and `CLAUDE.md` rule fired or was needed since the last
+tag, and proposes removing those with none, in a pull request of its own.
 
 ### Wiki lint
 

@@ -1,6 +1,6 @@
 ---
 name: release-android
-description: Build and publish a ZapZap Android release to Google Play from this machine — release worktree, upload key and key.properties, version bump in frontend-flutter/pubspec.yaml, release notes (fr-FR, en-US), policy gate, device pre-flight, signed App Bundle, artifact verification (scripts/verify_aab.sh — upload key not debug, versionCode, INTERNET, targetSdk 36, 16 KB pages), then a Play track through the Google Play Developer Publishing API (scripts/play_publish.py — status, publish --track internal|closed|production, validate, commit only on the user's go, --promote, --rollout), the store listing alone with no rebuild (play_publish.py listing), the Play API service account, the annotated tag and the GitHub release. No signing secret and no Google key in CI. Use when preparing a release, cutting a version, building or verifying a signed AAB, uploading to a Play track, promoting internal to production, updating the store listing, or setting up Play API access. Triggers: "release Android", "publie sur le Play Store", "appbundle", "AAB", "nouvelle version", "bump version", "internal testing", "upload to Play", "promote to production", "fiche Play", "store listing", "service account", "Play API".
+description: Build and publish a ZapZap Android release to Google Play from this machine — release worktree, upload key and key.properties, version bump in frontend-flutter/pubspec.yaml, release notes (fr-FR, en-US), a pruning pass of the process (hooks, CLAUDE.md rules, wiki lint, metrics, evals), policy gate, device pre-flight, signed App Bundle, artifact verification (scripts/verify_aab.sh — upload key not debug, versionCode, INTERNET, targetSdk 36, 16 KB pages), then a Play track through the Google Play Developer Publishing API (scripts/play_publish.py — status, publish --track internal|closed|production, validate, commit only on the user's go, --promote, --rollout), the store listing alone with no rebuild (play_publish.py listing), the Play API service account, the annotated tag and the GitHub release. No signing secret and no Google key in CI. Use when preparing a release, cutting a version, building or verifying a signed AAB, uploading to a Play track, promoting internal to production, updating the store listing, or setting up Play API access. Triggers: "release Android", "publie sur le Play Store", "appbundle", "AAB", "nouvelle version", "bump version", "internal testing", "upload to Play", "promote to production", "fiche Play", "store listing", "service account", "Play API".
 ---
 
 # Releasing ZapZap to the Play Store
@@ -68,6 +68,38 @@ One file per notes locale, `fr-FR` and `en-US` (`NOTES_LOCALES` in `scripts/play
 - No claim that contradicts the Data Safety declaration or the privacy policy.
 
 Commit them on the release branch with the bump.
+
+## 3b. Pruning pass — before the build
+
+A release is the checkpoint where the process shrinks as well as grows (`CLAUDE.md`
+§ Workflow). With `<tag>` the last release tag (`git describe --tags --abbrev=0
+origin/master`) and `<tag date>` its date — none yet: the first release's date, 2026-09-26,
+`.llmwiki/Release.md` § Versions shipped:
+
+1. List each refusal of `.claude/hooks/guard-bash.sh` (the table in `.llmwiki/Hooks.md`
+   § What is refused) and each rule of `CLAUDE.md`.
+2. For each, look for evidence it fired or was needed since `<tag>`: `git log <tag>..`, the
+   `wip/done/` entries closed since, the pull requests merged since
+   (`gh pr list --state merged --search "merged:>=<tag date>"`), and reports that quote a
+   refusal.
+3. Propose removing or merging those with no evidence, and check `wc -l CLAUDE.md` against
+   its 120-line budget (`.llmwiki/Documentation.md`). The proposal is its own pull request,
+   decided by the user — never folded into the release branch, never a reason to hold the
+   release.
+4. Lint the wiki: `scripts/wiki_lint.sh` (`.llmwiki/Documentation.md` § Wiki lint, which
+   also lists what it does not cover). Its findings, and those left to do by hand, join the
+   same proposal.
+5. Read the outcome and the cost against the baseline in `.llmwiki/ParallelDelivery.md`
+   § Measuring delivery: `scripts/delivery_metrics.sh <tag date>` (rework rate, change
+   failure rate, first-run-green, size) and `scripts/agent_metrics.py --since <tag date>`
+   (tokens and active time per skill, agent, tool, hook). A rule whose cost shows and whose
+   outcome did not move is a candidate for removal; a figure that got worse since a rule was
+   added is evidence against it. Record the new figures in that section, numbers only —
+   never a transcript line.
+6. Run the agent evals (`.llmwiki/AgentEvals.md`, paid): `evals/run.sh` (off `origin/master`),
+   then `evals/run.sh --ref HEAD` on the pruning branch once its removals are committed. A
+   case that passes before and fails after is evidence the removed rule was carrying weight;
+   the verdicts join the same proposal.
 
 ## 4. Policy gate — before building
 
@@ -268,6 +300,7 @@ terms, or touch signing, pricing or users.
 - [ ] Built in a release worktree off `origin/master`, `key.properties` linked
 - [ ] Version code above every track's; bump and notes committed on `chore/release-<x.y.z>`
 - [ ] Release notes fr-FR and en-US, ≤ 500 characters, nothing contradicting Data Safety
+- [ ] Pruning pass (§3b) proposed to the user as its own pull request
 - [ ] Policy gate passed, or its failures in `wip/todo/` and cleared by the user
 - [ ] `flutter analyze` and `flutter test` clean; integration round on the phone against a
       LAN backend; release APK signed in (password and Google) with a clean logcat
