@@ -266,6 +266,10 @@ jobs:
       # scripts/wip.sh refine on a fixture wip/: section spellings, the per-Area todo/ count.
       - name: wip.sh self-test
         run: scripts/wip_selftest.sh
+      # scripts/delivery_metrics.sh on a throwaway repository with a known answer and a
+      # stubbed gh (.llmwiki/ParallelDelivery.md § Measuring delivery).
+      - name: Delivery metrics self-test
+        run: scripts/delivery_metrics_selftest.sh
       # The Play release scripts (release-android skill): play_publish.py against a fake
       # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
       # No Google key and no upload key are ever in CI; these only prove the refusals.
@@ -278,6 +282,10 @@ jobs:
         env:
           VERIFY_AAB_REQUIRE_TOOLS: "1"
         run: uv run --no-project --with pytest pytest -q scripts/test_play_publish.py scripts/test_verify_aab.py
+      # scripts/agent_metrics.py reads the local Claude Code transcripts; its tests build a
+      # synthetic projects directory, and check no transcript content reaches the output.
+      - name: Agent metrics tests
+        run: uv run --no-project --with pytest pytest -q scripts/test_agent_metrics.py
 
   flutter:
     name: Flutter client — analyze, test, build web and apk

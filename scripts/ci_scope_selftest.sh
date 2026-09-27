@@ -45,6 +45,8 @@ check "0 0 0 0 1 0 0" ".claude/hooks/guard-bash.sh"
 # The Play release scripts: their tests run in the hooks job.
 check "0 0 0 0 1 0 0" "scripts/verify_aab.sh" "scripts/play_publish.py" "scripts/test_verify_aab.py" "scripts/test_play_publish.py"
 check "1 1 1 1 1 1 1" "scripts/ci_scope.sh"
+# The delivery and agent metrics: their self-test and tests run in the hooks job.
+check "0 0 0 0 1 0 0" "scripts/delivery_metrics.sh" "scripts/delivery_metrics_selftest.sh" "scripts/agent_metrics.py" "scripts/test_agent_metrics.py"
 check "0 0 0 0 0 0 1" "scripts/flutter_e2e.sh"
 check "1 1 1 1 1 1 1" "some-new-dir/file"
 check "1 0 1 1 0 0 1" "zapzap-rust/src/lib.rs" "frontend/package.json"
