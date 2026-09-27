@@ -29,17 +29,24 @@
 
 ### Keys
 
-Both recorded 2026-09-25.
+Both recorded 2026-09-25; the app signing key's SHA-1 corrected 2026-09-27.
 
 | Certificate | SHA-1 | SHA-256 | Signs |
 |---|---|---|---|
 | Upload key (`zapzap-upload`, `~/zapzap-upload-keystore.jks`, `scripts/generate_keystore.sh`, valid until 2054-02-10) | `22:37:47:25:16:52:29:77:CB:2E:35:EE:DB:D8:02:FB:DA:77:D6:16` | `0C:75:B1:44:1B:46:EE:0D:EC:4D:72:69:AF:1D:49:5A:56:B4:6A:17:B7:5D:20:15:81:EC:9F:ED:D4:A5:07:89` | the bundle uploaded to Play |
-| Play app signing key (held by Google) | `68:9B:C2:1A:AE:47:F3:3A:DA:1E:D1:A2:01:7B:D6:79:26:CC:6F:FB` | `46:7E:22:08:87:9A:CC:B5:E3:C2:C5:2B:D7:3A:2A:9D:BC:5B:AD:FE:E0:62:2F:8C:0D:A3:A6:A2:1C:67:2E:F0` | every APK Play serves; what Android verifies |
+| Play app signing key (held by Google) | `B8:40:C7:9D:D8:21:D2:AF:64:14:46:0F:B5:08:EB:57:B2:93:76:A3` | `46:7E:22:08:87:9A:CC:B5:E3:C2:C5:2B:D7:3A:2A:9D:BC:5B:AD:FE:E0:62:2F:8C:0D:A3:A6:A2:1C:67:2E:F0` | every APK Play serves; what Android verifies |
 
 - Read the upload key's with `keytool -list -v -keystore ~/zapzap-upload-keystore.jks -alias
   zapzap-upload`; the app signing key's is in the Console, Test and release → App integrity
   → App signing. Both SHA-1s are registered as Google sign-in Android clients
   ([[FlutterAndroidPwa]] § Android).
+- The app signing key's SHA-1 recorded on 2026-09-25 (`68:9B:C2:…:6F:FB`) was wrong, and the
+  "ZapZap Android Play" client registered with it (corrected in the console 2026-09-27):
+  Google sign-in in 1.0.1 (2) from the alpha track reopened the login screen, silently,
+  after the account was picked. Check the
+  fingerprint against what Play actually serves: `adb shell pm path com.zapzap.app`, `adb pull`
+  the `base.apk`, then `apksigner verify --print-certs base.apk` — its SHA-256 must be the one
+  above, and its SHA-1 is the one to register.
 - Play App Signing stays on: a lost upload key can then be reset through Play support (days).
 - Signing in the build, the keystore's backup and `key.properties`: [[FlutterAndroidPwa]]
   § Android.
