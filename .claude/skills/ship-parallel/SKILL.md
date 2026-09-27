@@ -237,3 +237,5 @@ back first (`deploy` skill), then fixed.
 - Report: each pull request (URL, merged or not, "merged, not deployed" when §4 could not
   run), each deploy and its smoke test, the entries created and closed, and what is left
   (`scripts/wip.sh list`).
+- And the **delivery metrics** of the last seven days, `scripts/delivery_metrics.sh $(date -d
+  '7 days ago' +%F)`, next to the baseline in `ParallelDelivery.md` § Measuring delivery.

@@ -121,6 +121,40 @@ heading of its final report, and the orchestrator writes them to `todo_nr/` afte
 hand-back (`ship-parallel` §2). The orchestrator closes entries after the merge (§5). `wip-refine` decides what
 moves from `todo_nr/` to `todo/` (12 per session, sessions on disjoint `Area`s: its §5).
 
+### Measuring delivery and its cost
+
+Two local scripts, ported from countscore, no tracking of their own; each documents its
+definitions in its header. `scripts/delivery_metrics.sh [since [until]]` — outcomes from git
+and `gh` on `origin/master`: `fix:` share, **rework rate** (a change followed within 48 h by
+a `fix:` on one of its files; the §3.1 size exclusion list applied, so the wiki, `*.md`,
+tests, locks and `wip/` never count), deployments and **change failure rate** (derived from
+the `ship-parallel` §4 paths), first-run-green share, size per change, `wip/` ages (the main
+checkout's). `scripts/agent_metrics.py` — cost, from the transcripts in
+`~/.claude/projects/-home-vemore-workspace-zapzap*/`: tokens raw and weighted by price class,
+active time, per session, branch, skill, agent, tool, file and hook; names and numbers only,
+never content. `ship-parallel` §7's report prints the first. DORA counts rework as unplanned
+deployments fixing a production issue; this file-level proxy needs no incident log.
+
+Baseline, measured 2026-09-27 on `origin/master` at `232fec3` (until exclusive; nothing
+landed 09-14..09-21 — the history on `master` resumes on 09-22 with #21):
+
+| Window | Changes | `fix:` | Rework | Deploys | CFR | 1st-run green | Size p50 / p90 / max |
+|---|---|---|---|---|---|---|---|
+| 2026-09-14..09-25 | 75 | 25 (33.3 %) | 69.3 % | 58 | 70.7 % | 94.8 % | 172 / 1164 / 2606 |
+| 2026-09-25..09-28 | 46 | 6 (13.0 %) | 15.2 % | 24 | 16.7 % | 93.2 % | 61 / 1173 / 1639 |
+
+The second window is young: a change of 09-27 has not had its 48 h yet, so its rework and
+CFR are floors. `wip/` on 2026-09-27: `todo` 8 open (max 2 d), `todo_nr` 44 (median 2 d, max
+5 d); 171 entries closed since 09-14, median age at close 0 d, max 4 d.
+
+Cost, `--since 2026-09-14` (35 sessions, 13 587 model calls, 460 MB of transcripts): 2.0 G
+tokens raw, 300 M weighted; 124 h of agent time active, 46 h waiting on the user.
+- **Cache reads are 65 % of the weighted cost**, cache writes 31 %, output 4 %. Subagents
+  (`general-purpose`) hold 70 % of it, the main agent 28 %.
+- **By skill:** `ship-parallel` 35 %, `deploy` 16 %, `code-review` 4 %; 41 % under no skill.
+- **Time:** `sleep` is 17.6 % of tool time and waiting on CI (`gh pr checks`) 15.0 %; hooks
+  that leave a record total about 12 min.
+
 ## Decisions & History
 
 - **Adopted 2026-09-22**, ported from countscore at the user's request: Claude merges and
