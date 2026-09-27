@@ -257,7 +257,8 @@ Tests (no network, no credentials, no Flutter build):
    and uncomment `playServiceAccount=<that absolute path>` in the main checkout's
    `frontend-flutter/android/key.properties`. **Back it up like the keystore.** It never
    enters the repository: `.gitignore` has `*service-account*.json`, and the commit hook
-   refuses any JSON holding `"type": "service_account"`.
+   refuses any added text file holding a Google credential `"type"` (`service_account`,
+   `authorized_user`, `external_account`, …), whatever its name.
 4. **Play Console** → Users and permissions → invite the service account's e-mail, **limited
    to ZapZap**, with *View app information*, *Release apps to testing tracks*, *Release to
    production*, *Manage store presence*. Propagation can take up to 24 h; until then

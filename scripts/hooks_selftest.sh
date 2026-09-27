@@ -80,6 +80,17 @@ commit_field "commit -am stages tracked files" true  '.commit.all'   'git commit
 commit_field "--amend rewrites the last one"   true  '.commit.amend' 'git commit --amend --no-edit'
 commit_field "git -C still commits"            false '.commit.all'   'git -C frontend commit -m x'
 commit_field "commit after add in one line"    false '.commit.all'   'git add -A && git commit -m "x"'
+commit_field "-i adds the staged files"        true  '.commit.include' 'git commit -i -m x f'
+commit_field "no -i, a pathspec commit is --only" false '.commit.include' 'git commit -m x f'
+commit_field "--incl abbreviates --include"    true  '.commit.include' 'git commit --incl -m x f'
+commit_field "--inc abbreviates --include"     true  '.commit.include' 'git commit --inc -m x f'
+commit_field "an unknown long option counts as -i" true '.commit.include' 'git commit --frobnicate -m x f'
+commit_field "--no-verify is known, not -i"    false '.commit.include' 'git commit --no-verify -m x f'
+commit_field "--no-ahead-behind is known, not -i" false '.commit.include' 'git commit --no-ahead-behind -m x f'
+commit_field "--post-rewrite is known, not -i" false '.commit.include' 'git commit --post-rewrite -m x f'
+commit_field "--mess abbreviates --message"    'f' '.commit.pathspecs[0]' 'git commit --mess x f'
+commit_field "-mfix is a message, not -i"      false '.commit.include' 'git commit -mfix f'
+commit_field "-u takes no separate value"      'f' '.commit.pathspecs[0]' 'git commit -u -m x f'
 commit_field "a trailing pathspec"    'zapzap-rust/src/lib.rs' '.commit.pathspecs[0]' 'git commit -m x zapzap-rust/src/lib.rs'
 commit_field "--dry-run runs no gates"          null '.commit'       'git commit --dry-run'
 commit_field "git log is not a commit"          null '.commit'       'git log --grep=commit'
@@ -250,7 +261,15 @@ secret_case "a .keystore"                          2 "android/app/release.keysto
 secret_case "key.properties, the keystore passwords" 2 "android/key.properties"
 secret_case "the committed key.properties.template" 0 "android/key.properties.template"
 secret_case "a service-account key, by its name"   2 "play-service-account.json"
-# A service-account key is refused by its content, whatever it is named.
+# Names match whatever their case, and a non-ASCII name is not quoted out of reach.
+secret_case "an upper-case .JKS"                   2 "android/upload.JKS"
+secret_case "an upper-case .ENV"                   2 "deploy/.ENV"
+secret_case "a non-ASCII .jks"                     2 "android/clé.jks"
+secret_case "a non-ASCII database"                 2 "data/données.db"
+# A Google credential file is refused by its content, whatever it is named. The key
+# strings are assembled so that this file does not itself hold one.
+t='"type"'
+SA_KEY="{ $t: \"service_account\", \"project_id\": \"zapzap-481109\", \"private_key\": \"x\" }"
 sa_case() {  # description, expected exit, path, content, [commit command]
     printf '%s\n' "$4" > "$TREE/$3"
     git -C "$TREE" add -f "$3"
@@ -258,17 +277,90 @@ sa_case() {  # description, expected exit, path, content, [commit command]
     report "$1" "$2" "$?"
     git -C "$TREE" rm -q --cached "$3" && rm "$TREE/$3"
 }
-sa_case "a service-account key under another name" 2 "credentials.json" \
-    '{ "type": "service_account", "project_id": "zapzap-481109", "private_key": "x" }'
-sa_case "the same, compact JSON"                   2 "gcp.json" '{"type":"service_account"}'
-sa_case "a JSON whose type is something else"      0 "config.json" '{ "type": "authorized_user" }'
+sa_case "a service-account key under another name" 2 "credentials.json" "$SA_KEY"
+sa_case "the same, compact JSON"                   2 "gcp.json" "{$t:\"service_account\"}"
+sa_case "a service-account key named .JSON"        2 "creds.JSON" "$SA_KEY"
+sa_case "a service-account key in a .txt"          2 "key.txt" "$SA_KEY"
+sa_case "a service-account key with no extension"  2 "gcp-key" "$SA_KEY"
+sa_case "a service-account key, non-ASCII name"    2 "clé.json" "$SA_KEY"
+sa_case "gcloud ADC, an authorized_user JSON"      2 "application_default_credentials.json" \
+    "{ $t: \"authorized_user\", \"client_id\": \"x\", \"refresh_token\": \"x\" }"
+sa_case "a workload-identity external_account JSON" 2 "wif.json" \
+    "{ $t: \"external_account\", \"audience\": \"x\", \"credential_source\": {} }"
+sa_case "a JSON whose type is something else"      0 "config.json" "{ $t: \"module\" }"
+sa_case "a document quoting the type in backticks" 0 "notes.md" \
+    "The hook refuses a file holding \`$t: \"service_account\"\`."
 # Under `commit -a` the key is only in the working file when the hook runs.
 echo '{}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+mkdir -p "$TREE/d/e" && echo '{}' > "$TREE/d/e/a.json" && git -C "$TREE" add d
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "settings" >/dev/null 2>&1
-echo '{"type": "service_account"}' > "$TREE/settings.json"
+echo "{$t: \"service_account\"}" > "$TREE/settings.json"
 out=$(payload "git commit -am x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
 report "a service-account key written into a tracked JSON, commit -a" 2 "$?"
-git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/settings.json"
+# Without -a or a pathspec naming it, that unstaged key is not part of the commit.
+echo x > "$TREE/other.txt" && git -C "$TREE" add other.txt
+out=$(payload "git commit -m x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "an unstaged key in a tracked JSON does not block another file" 0 "$?"
+git -C "$TREE" rm -q --cached other.txt && rm "$TREE/other.txt"
+out=$(payload "git commit -m x settings.json" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same key, named as a pathspec" 2 "$?"
+# The staged blob is what a plain commit records, not the working file behind it.
+echo '{"a": 1}' > "$TREE/settings.json" && git -C "$TREE" add settings.json
+echo "{$t: \"service_account\"}" > "$TREE/settings.json"
+out=$(payload "git commit -m x" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a clean staged JSON with a key only in its working file" 0 "$?"
+git -C "$TREE" reset -q -- settings.json && git -C "$TREE" checkout -q -- settings.json
+# A directory pathspec commits the tracked files under it from the working tree.
+echo "$SA_KEY" > "$TREE/d/e/a.json"
+out=$(payload "git commit -m x d/" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a key under a directory pathspec" 2 "$?"
+out=$(payload "git commit -m x ." "$TREE/d" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same, pathspec . from the subdirectory" 2 "$?"
+out=$(payload "git commit -m x -- settings.json" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a pathspec elsewhere leaves that key out" 0 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -rf "$TREE/settings.json" "$TREE/d"
+# A non-ASCII name reached through a pathspec: the list after `--` is read NUL-separated too.
+mkdir -p "$TREE/d" && echo '{}' > "$TREE/d/clé.json" && git -C "$TREE" add d
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "clé" >/dev/null 2>&1
+echo "$SA_KEY" > "$TREE/d/clé.json"
+out=$(payload "git commit -m x d/clé.json" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a key in a tracked non-ASCII JSON, named as a pathspec" 2 "$?"
+out=$(payload "git commit -m x d/" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same, under a directory pathspec" 2 "$?"
+out=$(payload "git commit -m x ." "$TREE/d" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same, pathspec . from its directory" 2 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -rf "$TREE/d"
+# A tracked non-ASCII keystore modified in the working tree is reached only through the
+# pathspec: nothing is staged.
+mkdir -p "$TREE/android" && echo x > "$TREE/android/clé.jks" && git -C "$TREE" add -f android
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "jks" >/dev/null 2>&1
+echo y > "$TREE/android/clé.jks"
+out=$(payload "git commit -m x android/clé.jks" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a non-ASCII .jks named as a pathspec" 2 "$?"
+out=$(payload "git commit -m x android" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a non-ASCII .jks under a directory pathspec" 2 "$?"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -rf "$TREE/android"
+# A pathspec commit without -i records those paths alone; a staged keystore elsewhere
+# stays staged. With -i it is part of the commit.
+echo x > "$TREE/other.txt" && git -C "$TREE" add other.txt
+git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "other" -- other.txt >/dev/null 2>&1
+echo y > "$TREE/other.txt"
+mkdir -p "$TREE/android" && echo x > "$TREE/android/up.jks" && git -C "$TREE" add -f android
+out=$(payload "git commit -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "a pathspec commit leaves a staged keystore elsewhere out" 0 "$?"
+out=$(payload "git commit -i -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same with -i includes it" 2 "$?"
+out=$(payload "git commit --incl -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same with --incl, a prefix of --include" 2 "$?"
+out=$(payload "git commit --no-such-option -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+report "the same with an unknown long option" 2 "$?"
+# --patch / --interactive stage the hunks picked and commit the whole index.
+for opt in -p -pq --patch --inter; do
+    out=$(payload "git commit $opt -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+    report "the same with $opt, which commits the whole index" 2 "$?"
+done
+git -C "$TREE" rm -rq --cached android && rm -rf "$TREE/android"
+git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/other.txt"
 # Untracking the database is a deletion, not a leak.
 echo x > "$TREE/data.db" && git -C "$TREE" add -f data.db
 git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "db" >/dev/null 2>&1
@@ -759,6 +851,21 @@ report "generate_keystore.sh: nothing written there" none \
     "$([ -e "$WIPREPO/zapzap-upload-keystore.jks" ] && echo written || echo none)"
 ZAPZAP_KEYSTORE="relative.jks" gen
 report "generate_keystore.sh refuses a relative path" 1 "$?"
+# A dotfiles repository at $HOME: the default location passes only when that repository
+# ignores the keystore, and a directory under it is refused either way.
+DOTHOME="$SANDBOX/dothome"
+mkdir -p "$DOTHOME/sub" && git init -q "$DOTHOME"
+KHOME="$DOTHOME" gen
+report "generate_keystore.sh: \$HOME a git repository not ignoring it is refused" 1 "$?"
+report "generate_keystore.sh: and nothing is written there" none \
+    "$([ -e "$DOTHOME/zapzap-upload-keystore.jks" ] && echo written || echo none)"
+echo "/zapzap-upload-keystore.jks" > "$DOTHOME/.gitignore"
+KHOME="$DOTHOME" gen
+report "generate_keystore.sh: \$HOME a git repository ignoring it, the default path" 0 "$?"
+report "generate_keystore.sh: and the keystore is in \$HOME" present \
+    "$([ -f "$DOTHOME/zapzap-upload-keystore.jks" ] && echo present || echo missing)"
+KHOME="$DOTHOME" ZAPZAP_KEYSTORE="$DOTHOME/sub/k.jks" gen
+report "generate_keystore.sh: a subdirectory of that repository is refused" 1 "$?"
 
 for script in "$HOOKS"/*.sh "$HOOKS"/*.py; do
     [ -x "$script" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL  $script is not executable"; }

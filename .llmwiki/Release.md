@@ -74,8 +74,9 @@ Both recorded 2026-09-25.
   (`chmod 600`), named by `playServiceAccount=` in `frontend-flutter/android/key.properties`
   (commented out in `key.properties.template`); the key exists since 2026-09-26. The root
   `.gitignore` has
-  `*service-account*.json`, and the commit hook refuses any JSON holding
-  `"type": "service_account"` ([[Hooks]]).
+  `*service-account*.json`, and the commit hook refuses any added text file holding
+  a Google credential `"type"` (`service_account`, `authorized_user`, `external_account`,
+  `impersonated_service_account`), whatever its name ([[Hooks]]).
 
 ### Versions shipped
 
