@@ -2304,5 +2304,93 @@
   "deleteAccountGoogleUnavailable": "Google est injoignable d'ici : il ne peut pas confirmer la suppression. Réessaie plus tard, ou demande-la par e-mail (voir la politique de confidentialité).",
   "@deleteAccountGoogleUnavailable": {
     "description": "A Google account cannot confirm its deletion: Google did not get ready (script blocked, no route to Google)"
+  },
+  "menuRules": "Règles",
+  "@menuRules": {
+    "description": "Entry of the app-bar menu opening the rules sheet"
+  },
+  "rulesTitle": "Règles du ZapZap",
+  "@rulesTitle": {
+    "description": "Title of the rules bottom sheet"
+  },
+  "rulesGoalTitle": "But",
+  "@rulesGoalTitle": {
+    "description": "Rules sheet: heading of the goal of the game"
+  },
+  "rulesGoalBody": "Finis chaque manche avec la main la plus faible. Les points s'additionnent de manche en manche : reste à 100 ou moins plus longtemps que les autres.",
+  "@rulesGoalBody": {
+    "description": "Rules sheet: the goal (GAME_RULES.md, Game Elimination)"
+  },
+  "rulesRoundTitle": "La manche",
+  "@rulesRoundTitle": {
+    "description": "Rules sheet: heading of how a round starts"
+  },
+  "rulesRoundBody": "Celui qui commence la manche choisit le nombre de cartes distribuées (4 à 7), puis une carte est retournée à côté de la pioche. Le joueur suivant commence la manche suivante.",
+  "@rulesRoundBody": {
+    "description": "Rules sheet: the starting player picks the hand size, one card flipped, rotation (GAME_RULES.md, Round Start)"
+  },
+  "rulesCardsTitle": "Valeur des cartes",
+  "@rulesCardsTitle": {
+    "description": "Rules sheet: heading of the card values"
+  },
+  "rulesCardsBody": "As 1, 2 à 10 leur valeur, Valet 11, Dame 12, Roi 13. Le joker vaut 0 pour appeler ZapZap, mais 25 au décompte de la manche.",
+  "@rulesCardsBody": {
+    "description": "Rules sheet: card values, the joker at 0 for ZapZap and 25 in scoring (GAME_RULES.md, Card Values)"
+  },
+  "rulesTurnTitle": "Ton tour",
+  "@rulesTurnTitle": {
+    "description": "Rules sheet: heading of a turn"
+  },
+  "rulesTurnBody": "① Joue une ou plusieurs cartes, puis ② pioche une carte : dans la pioche, ou l'une des cartes que le joueur précédent vient de jouer.",
+  "@rulesTurnBody": {
+    "description": "Rules sheet: play then draw, from the deck or the cards last played (GAME_RULES.md, Turn Flow); ① and ② as in the step chips"
+  },
+  "rulesPlaysTitle": "Combinaisons valides",
+  "@rulesPlaysTitle": {
+    "description": "Rules sheet: heading of the valid plays"
+  },
+  "rulesPlaysBody": "Une carte seule ; deux cartes ou plus de même valeur ; ou une suite d'au moins 3 cartes qui se suivent, de la même couleur. Un joker remplace n'importe quelle carte.",
+  "@rulesPlaysBody": {
+    "description": "Rules sheet: single, same rank, run of 3+ of one suit, jokers (GAME_RULES.md, Valid Card Combinations)"
+  },
+  "rulesZapZapTitle": "ZapZap",
+  "@rulesZapZapTitle": {
+    "description": "Rules sheet: heading of calling ZapZap"
+  },
+  "rulesZapZapBody": "Au lieu de jouer, appelle ZapZap quand ta main vaut 5 points ou moins (joker = 0). La manche s'arrête : la main la plus faible marque 0 (toutes, en cas d'égalité), les autres joueurs marquent les points de leur main (joker = 25).",
+  "@rulesZapZapBody": {
+    "description": "Rules sheet: 5 points or less, the round's scoring and ties (GAME_RULES.md, ZapZap Eligibility, Final Scoring)"
+  },
+  "rulesCounteractTitle": "ZapZap contré",
+  "@rulesCounteractTitle": {
+    "description": "Rules sheet: heading of the counteract penalty"
+  },
+  "rulesCounteractBody": "Si un autre joueur a une main inférieure ou égale à celle de l'appelant, le ZapZap est contré : l'appelant marque les points de sa main plus 5 par autre joueur encore en jeu.",
+  "@rulesCounteractBody": {
+    "description": "Rules sheet: hand points + 5 per other active player (GAME_RULES.md, Counteract penalty)"
+  },
+  "rulesEliminationTitle": "Élimination",
+  "@rulesEliminationTitle": {
+    "description": "Rules sheet: heading of elimination"
+  },
+  "rulesEliminationBody": "Au-delà de 100 points, un joueur est éliminé. Quand il ne reste que deux joueurs, le Golden Score décide.",
+  "@rulesEliminationBody": {
+    "description": "Rules sheet: above 100 points a player is out (GAME_RULES.md, Game Elimination)"
+  },
+  "rulesGoldenScoreTitle": "Golden Score",
+  "@rulesGoldenScoreTitle": {
+    "description": "Rules sheet: heading of the Golden Score (left untranslated)"
+  },
+  "rulesGoldenScoreBody": "Une dernière manche (4 à 10 cartes) : la main la plus faible gagne la partie, quels que soient les scores. Un ZapZap contré, égalité comprise, fait perdre celui qui l'a appelé.",
+  "@rulesGoldenScoreBody": {
+    "description": "Rules sheet: the two-player final round (GAME_RULES.md, Golden Score Rules)"
+  },
+  "logoutConfirmTitle": "Se déconnecter ?",
+  "@logoutConfirmTitle": {
+    "description": "Title of the dialog confirming a sign-out"
+  },
+  "logoutConfirmBody": "Tu devras te reconnecter pour jouer.",
+  "@logoutConfirmBody": {
+    "description": "Body of the dialog confirming a sign-out"
   }
 }

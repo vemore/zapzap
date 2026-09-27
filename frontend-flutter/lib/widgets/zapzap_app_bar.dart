@@ -9,12 +9,11 @@ import '../utils/app_theme.dart';
 import 'connected_players.dart';
 import 'connection_indicator.dart';
 import 'delete_account_dialog.dart';
+import 'rules_sheet.dart';
 
 /// The app bar of the signed-in screens: who is online, whether the event
-/// stream is up, where else to go, and the way out. Icons only, so it fits a
-/// phone.
-///
-/// Signing out needs no navigation: the router follows [AuthProvider].
+/// stream is up, and the ⋮ menu — where else to go, the rules, and the way
+/// out. Icons only, so it fits a phone.
 class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
   const ZapZapAppBar({
     super.key,
@@ -37,7 +36,6 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     return AppBar(
       leading: leading,
       title: Text(title, overflow: TextOverflow.ellipsis),
@@ -45,12 +43,6 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         const ConnectedPlayers(),
         const ConnectionIndicator(),
-        IconButton(
-          key: const Key('logout'),
-          tooltip: l10n.logoutButton,
-          icon: const Icon(Icons.logout),
-          onPressed: () => context.read<AuthProvider>().logout(),
-        ),
         _NavigationMenu(actions: actions),
       ],
     );
@@ -62,20 +54,30 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// bar at a large system font.
 ///
 /// Admins get an Admin entry too ([AppRoutes.admin]); for anyone else the
-/// router would send it back to the parties. Last, on every signed-in
-/// screen, "Delete my account" ([showDeleteAccountDialog]): Google Play wants
-/// it reachable from the app.
+/// router would send it back to the parties. Then the help, over the current
+/// screen: the rules ([showRulesSheet]). Last, on every signed-in screen,
+/// "Sign out", confirmed first ([confirmLogout]) — the game screen's players
+/// took a one-tap icon for "leave the table" —, and "Delete my account"
+/// ([showDeleteAccountDialog]): Google Play wants it reachable from the app.
 class _NavigationMenu extends StatelessWidget {
   const _NavigationMenu({required this.actions});
 
   final List<AppBarMenuAction> actions;
 
-  /// The id of the "Delete my account" entry: not a route.
+  /// The ids of the entries that open something over the screen rather than
+  /// lead to a route.
+  static const _rules = 'rules';
+  static const _logout = 'logout';
   static const _deleteAccount = 'delete-account';
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final overlays = <String, void Function()>{
+      _rules: () => showRulesSheet(context),
+      _logout: () => confirmLogout(context),
+      _deleteAccount: () => showDeleteAccountDialog(context),
+    };
     return PopupMenuButton<String>(
       key: const Key('app-bar-menu'),
       tooltip: l10n.appBarMenu,
@@ -83,8 +85,9 @@ class _NavigationMenu extends StatelessWidget {
       // `push`, not `go`: the destination goes on top of the screen the
       // player came from, so the Android system Back button returns to it.
       onSelected: (route) {
-        if (route == _deleteAccount) {
-          showDeleteAccountDialog(context);
+        final overlay = overlays[route];
+        if (overlay != null) {
+          overlay();
           return;
         }
         final action = actions.where((action) => action.id == route);
@@ -114,6 +117,13 @@ class _NavigationMenu extends StatelessWidget {
             icon: Icons.admin_panel_settings,
             label: l10n.adminTitle,
           ),
+        const PopupMenuDivider(),
+        _item(
+          key: const Key('menu-rules'),
+          route: _rules,
+          icon: Icons.menu_book,
+          label: l10n.menuRules,
+        ),
         if (actions.isNotEmpty) const PopupMenuDivider(),
         for (final action in actions)
           _item(
@@ -125,6 +135,12 @@ class _NavigationMenu extends StatelessWidget {
             enabled: action.enabled,
           ),
         const PopupMenuDivider(),
+        _item(
+          key: const Key('menu-logout'),
+          route: _logout,
+          icon: Icons.logout,
+          label: l10n.logoutButton,
+        ),
         _item(
           key: const Key('menu-delete-account'),
           route: _deleteAccount,
@@ -159,6 +175,37 @@ class _NavigationMenu extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Asks before signing out (`logout-dialog`): Cancel keeps the session and
+/// the screen, Sign out calls [AuthProvider.logout] (Google signed out too).
+/// No navigation: the router follows [AuthProvider] to the login screen.
+Future<void> confirmLogout(BuildContext context) async {
+  final auth = context.read<AuthProvider>();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      final l10n = AppLocalizations.of(context);
+      return AlertDialog(
+        key: const Key('logout-dialog'),
+        title: Text(l10n.logoutConfirmTitle),
+        content: Text(l10n.logoutConfirmBody),
+        actions: [
+          TextButton(
+            key: const Key('logout-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.cancelButton),
+          ),
+          FilledButton(
+            key: const Key('logout-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.logoutButton),
+          ),
+        ],
+      );
+    },
+  );
+  if (confirmed ?? false) await auth.logout();
 }
 
 /// An entry a screen adds to the app bar's ⋮ menu.
