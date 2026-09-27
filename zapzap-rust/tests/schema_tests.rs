@@ -1,17 +1,23 @@
-//! The schema the Rust backend creates must be the one production's database has, and
-//! running it on that database must change nothing.
+//! The schema the Rust backend creates must be the one production's database has once
+//! migrated, and running the startup step on that database must change nothing but what
+//! the migrations change.
 //!
 //! Production's database was built by the Node backend. Its schema is frozen in
 //! `tests/fixtures/node_built_schema.sql` (how it was generated is at the top of that
-//! file), so these tests need nothing outside `zapzap-rust/`.
+//! file), so these tests need nothing outside `zapzap-rust/`. The fixture is never edited
+//! to follow the code: a schema change is a migration (`schema::MIGRATIONS`) that
+//! upgrades it.
 
 use std::str::FromStr;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
+use zapzap_backend::domain::entities::User;
+use zapzap_backend::domain::repositories::UserRepository;
 use zapzap_backend::infrastructure::app_state::AppState;
-use zapzap_backend::infrastructure::database::schema::ensure_schema;
+use zapzap_backend::infrastructure::database::repositories::SqliteUserRepository;
+use zapzap_backend::infrastructure::database::schema::{ensure_schema, MIGRATIONS};
 
 /// The `sqlite_master` of a Node-built database, in creation order.
 const NODE_BUILT_SCHEMA: &str = include_str!("fixtures/node_built_schema.sql");
@@ -31,6 +37,12 @@ const NODE_TABLES: [&str; 9] = [
     "rounds",
     "users",
 ];
+
+/// `game_state` as the Node DDL declares it, whitespace collapsed
+const NODE_GAME_STATE_COLUMNS: &str = "updated_at INTEGER NOT NULL, FOREIGN KEY";
+/// The same once migration 1 added `version` (SQLite splices it in after the last column)
+const MIGRATED_GAME_STATE_COLUMNS: &str =
+    "updated_at INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 0, FOREIGN KEY";
 
 /// Give `db` the schema of a Node-built database.
 async fn build_node_schema(db: &SqlitePool) {
@@ -67,6 +79,49 @@ async fn schema_objects(db: &SqlitePool) -> Vec<(String, String, String, String)
     .collect()
 }
 
+/// The index migration 2 adds, as `sqlite_master` holds it (SQLite drops `IF NOT EXISTS`)
+const GOOGLE_ID_UNIQUE_INDEX: &str = "CREATE UNIQUE INDEX idx_users_google_id_unique \
+                                      ON users(google_id) WHERE google_id IS NOT NULL";
+
+/// `objects` as the migrations leave them: `game_state` gains its `version` column, and
+/// `users` its partial unique index on `google_id`.
+fn migrated(
+    objects: Vec<(String, String, String, String)>,
+) -> Vec<(String, String, String, String)> {
+    let mut objects: Vec<_> = objects
+        .into_iter()
+        .map(|(kind, name, table, sql)| {
+            if kind == "table" && name == "game_state" {
+                assert!(sql.contains(NODE_GAME_STATE_COLUMNS), "{sql}");
+                let sql = sql.replace(NODE_GAME_STATE_COLUMNS, MIGRATED_GAME_STATE_COLUMNS);
+                (kind, name, table, sql)
+            } else {
+                (kind, name, table, sql)
+            }
+        })
+        .collect();
+    assert!(!objects.iter().any(|o| o.1 == "idx_users_google_id_unique"));
+    objects.push((
+        "index".into(),
+        "idx_users_google_id_unique".into(),
+        "users".into(),
+        GOOGLE_ID_UNIQUE_INDEX
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    ));
+    // `schema_objects` order
+    objects.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    objects
+}
+
+async fn user_version(db: &SqlitePool) -> i64 {
+    sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
 /// Every row of every table, each value `quote()`d, in rowid order.
 async fn dump_rows(db: &SqlitePool) -> Vec<(String, String)> {
     let mut out = Vec::new();
@@ -93,7 +148,7 @@ async fn dump_rows(db: &SqlitePool) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn rust_schema_matches_the_node_built_schema() {
+async fn rust_schema_matches_the_node_built_schema_and_its_migrations() {
     let node = memory_pool().await;
     build_node_schema(&node).await;
 
@@ -116,16 +171,32 @@ async fn rust_schema_matches_the_node_built_schema() {
     );
 
     // Same tables, columns, types, constraints and indexes, statement for statement,
-    // but for the indexes only the entrypoint migration made.
+    // but for the indexes only the entrypoint migration made and what the migrations add.
     let node_objects: Vec<_> = node_objects
         .into_iter()
         .filter(|o| !ENTRYPOINT_INDEXES.contains(&o.1.as_str()))
         .collect();
-    assert_eq!(rust_objects, node_objects);
+    assert_eq!(rust_objects, migrated(node_objects));
+    assert_eq!(user_version(&rust).await, MIGRATIONS.len() as i64);
+
+    // The Node-built database, upgraded by the startup step, ends where a fresh one starts
+    assert_eq!(
+        user_version(&node).await,
+        0,
+        "the Node backend sets no user_version"
+    );
+    ensure_schema(&node).await.unwrap();
+    let upgraded: Vec<_> = schema_objects(&node)
+        .await
+        .into_iter()
+        .filter(|o| !ENTRYPOINT_INDEXES.contains(&o.1.as_str()))
+        .collect();
+    assert_eq!(upgraded, rust_objects);
+    assert_eq!(user_version(&node).await, MIGRATIONS.len() as i64);
 }
 
 #[tokio::test]
-async fn schema_step_is_a_noop_on_a_node_built_database() {
+async fn schema_step_upgrades_a_node_built_database_and_keeps_every_row() {
     let path = std::env::temp_dir().join(format!(
         "zapzap-schema-test-{}-{}.db",
         std::process::id(),
@@ -199,10 +270,30 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
     let state = AppState::new()
         .await
         .expect("AppState::new on a Node database");
+    let objects_upgraded = schema_objects(&state.db).await;
+    let rows_upgraded = dump_rows(&state.db).await;
     ensure_schema(&state.db).await.unwrap();
 
-    assert_eq!(schema_objects(&state.db).await, objects_before);
-    assert_eq!(dump_rows(&state.db).await, rows_before);
+    // The migrations changed what they change, and nothing else: every row is kept, and
+    // the existing game state starts at version 0
+    assert_eq!(objects_upgraded, migrated(objects_before));
+    let rows_expected: Vec<_> = rows_before
+        .into_iter()
+        .map(|(table, row)| {
+            let row = if table == "game_state" {
+                format!("{row}|0")
+            } else {
+                row
+            };
+            (table, row)
+        })
+        .collect();
+    assert_eq!(rows_upgraded, rows_expected);
+    assert_eq!(user_version(&state.db).await, MIGRATIONS.len() as i64);
+
+    // A second run is a no-op: no migration runs twice
+    assert_eq!(schema_objects(&state.db).await, objects_upgraded);
+    assert_eq!(dump_rows(&state.db).await, rows_upgraded);
     let sqlx_table: Option<String> =
         sqlx::query_scalar("SELECT name FROM sqlite_master WHERE name = '_sqlx_migrations'")
             .fetch_optional(&state.db)
@@ -211,6 +302,20 @@ async fn schema_step_is_a_noop_on_a_node_built_database() {
     assert_eq!(
         sqlx_table, None,
         "no sqlx migration bookkeeping on a Node DB"
+    );
+
+    // The upgraded database refuses a second user of alice's Google account
+    let err = sqlx::raw_sql(
+        "INSERT INTO users (id, username, google_id, created_at, updated_at)
+           VALUES ('u2', 'alice_1', 'g-123', 1700000000, 1700000000)",
+    )
+    .execute(&state.db)
+    .await
+    .expect_err("a second user of one google_id");
+    assert!(
+        err.to_string()
+            .contains("UNIQUE constraint failed: users.google_id"),
+        "{err}"
     );
 
     state.db.close().await;
@@ -258,12 +363,91 @@ async fn schema_step_failure_leaves_the_database_unchanged() {
         .expect_err("the schema step cannot index a column the table lacks");
     assert!(err.to_string().contains("google_id"), "{err}");
 
-    // Nothing the step ran before the failing index survived: no parties table, no index.
+    // Nothing the step ran before the failing index survived: no parties table, no index,
+    // no migration counted.
     assert_eq!(schema_objects(&db).await, objects_before);
+    assert_eq!(user_version(&db).await, 0);
     let rows_after: Vec<String> =
         sqlx::query_scalar("SELECT id || '|' || username FROM users ORDER BY rowid")
             .fetch_all(&db)
             .await
             .unwrap();
     assert_eq!(rows_after, rows_before);
+}
+
+#[tokio::test]
+async fn users_google_id_is_unique_when_set_and_null_repeats() {
+    let db = memory_pool().await;
+    ensure_schema(&db).await.unwrap();
+    let repo = SqliteUserRepository::new(db.clone());
+
+    // Password users and bots have no Google id: any number of NULLs
+    repo.save(&User::new_human("h1".into(), "alice".into(), "hash".into()))
+        .await
+        .unwrap();
+    repo.save(&User::new_human("h2".into(), "bob".into(), "hash".into()))
+        .await
+        .unwrap();
+
+    repo.save(&User::new_google(
+        "g1".into(),
+        "jean_dupont".into(),
+        "g-1".into(),
+        "jean@example.com".into(),
+    ))
+    .await
+    .unwrap();
+    // Another user of the same Google account, under another username, is refused
+    let err = repo
+        .save(&User::new_google(
+            "g2".into(),
+            "jean_dupont_1".into(),
+            "g-1".into(),
+            "jean@example.com".into(),
+        ))
+        .await
+        .expect_err("two users of one google_id");
+    assert!(err.is_unique_violation(), "{err}");
+    assert!(err.to_string().contains("users.google_id"), "{err}");
+    // The account's own user still saves over itself (the upsert on its id)
+    let mut jean = repo.find_by_google_id("g-1").await.unwrap().unwrap();
+    jean.email = Some("jean.dupont@example.com".into());
+    repo.save(&jean).await.unwrap();
+
+    let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM users ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(ids, ["g1", "h1", "h2"]);
+}
+
+/// A database already holding two users of one Google account cannot take migration 2: the
+/// startup step fails as a whole and leaves it as it was, migration 1 included.
+#[tokio::test]
+async fn google_id_migration_refuses_duplicates_and_leaves_the_database_unchanged() {
+    let db = memory_pool().await;
+    build_node_schema(&db).await;
+    sqlx::raw_sql(
+        "INSERT INTO users (id, username, google_id, created_at, updated_at)
+           VALUES ('u1', 'jean_dupont', 'g-1', 1700000000, 1700000000),
+                  ('u2', 'jean_dupont_1', 'g-1', 1700000000, 1700000000);",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let objects_before = schema_objects(&db).await;
+    let rows_before = dump_rows(&db).await;
+
+    let err = ensure_schema(&db)
+        .await
+        .expect_err("the unique index cannot be built over duplicates");
+    assert!(
+        err.to_string().contains("UNIQUE constraint failed"),
+        "{err}"
+    );
+
+    // Not even migration 1 (`game_state.version`) survived
+    assert_eq!(schema_objects(&db).await, objects_before);
+    assert_eq!(dump_rows(&db).await, rows_before);
+    assert_eq!(user_version(&db).await, 0);
 }

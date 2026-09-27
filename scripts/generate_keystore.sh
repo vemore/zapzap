@@ -5,8 +5,9 @@
 # never overwritten: a new upload key means asking Play for an upload-key reset.
 #
 # Usage: scripts/generate_keystore.sh
-#        ZAPZAP_KEYSTORE=<path> overrides the location; a path inside a git work tree is
-#        refused, so the keystore cannot land next to the code.
+#        ZAPZAP_KEYSTORE=<path> overrides the location; a path inside a git work tree
+#        is refused, so the keystore cannot land next to the code; $HOME itself passes
+#        when it is one only if that repository ignores the keystore.
 #
 # Then: copy frontend-flutter/android/key.properties.template to
 # frontend-flutter/android/key.properties, fill it in, back up the keystore and the
@@ -36,9 +37,19 @@ fi
 
 dir=$(dirname "$KEYSTORE")
 [ -d "$dir" ] || die "no such directory: $dir"
-if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    die "$dir is inside a git work tree ($(git -C "$dir" rev-parse --show-toplevel)).
+# rev-parse succeeds inside .git too, printing false: only "true" is a work tree. $HOME
+# itself, the documented place, may be one (a dotfiles repository): it passes only when
+# that repository ignores the keystore, so a `git add -A` there cannot pick it up.
+if [ "$(git -C "$dir" rev-parse --is-inside-work-tree 2>/dev/null)" = true ]; then
+    if [ "$(cd "$dir" && pwd -P)" != "$(cd "$HOME" 2>/dev/null && pwd -P)" ]; then
+        die "$dir is inside a git work tree ($(git -C "$dir" rev-parse --show-toplevel)).
 The keystore never goes into a repository: use the default, \$HOME/zapzap-upload-keystore.jks."
+    fi
+    if ! git -C "$dir" check-ignore -q "$KEYSTORE"; then
+        die "\$HOME is a git work tree ($(git -C "$dir" rev-parse --show-toplevel)) that does not ignore
+$KEYSTORE. Ignore it in that repository (e.g. add /$(basename "$KEYSTORE") to its
+.gitignore) or pick a path outside it with ZAPZAP_KEYSTORE=<absolute path>."
+    fi
 fi
 
 command -v keytool >/dev/null 2>&1 || die "keytool not found: install a JDK (17)."

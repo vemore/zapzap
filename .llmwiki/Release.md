@@ -2,9 +2,10 @@
 
 > Scope: the Google Play state of the Android app — package, keys and their fingerprints, how
 > a release reaches Play (the scripts, the service account), what is live on which track.
-> The procedure is the `release-android` skill; testing on the phone is `flutter-device-test`.
+> The procedure is the `release-android` skill (its §3b, the pruning pass of the process, runs
+> before each build); testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-26
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -38,9 +39,9 @@ Both recorded 2026-09-25.
 - Read the upload key's with `keytool -list -v -keystore ~/zapzap-upload-keystore.jks -alias
   zapzap-upload`; the app signing key's is in the Console, Test and release → App integrity
   → App signing. Both SHA-1s are registered as Google sign-in Android clients
-  ([[FrontendFlutter]] § Android).
+  ([[FlutterAndroidPwa]] § Android).
 - Play App Signing stays on: a lost upload key can then be reset through Play support (days).
-- Signing in the build, the keystore's backup and `key.properties`: [[FrontendFlutter]]
+- Signing in the build, the keystore's backup and `key.properties`: [[FlutterAndroidPwa]]
   § Android.
 
 ### Publishing
@@ -73,14 +74,16 @@ Both recorded 2026-09-25.
   (`chmod 600`), named by `playServiceAccount=` in `frontend-flutter/android/key.properties`
   (commented out in `key.properties.template`); the key exists since 2026-09-26. The root
   `.gitignore` has
-  `*service-account*.json`, and the commit hook refuses any JSON holding
-  `"type": "service_account"` ([[Hooks]]).
+  `*service-account*.json`, and the commit hook refuses any added text file holding
+  a Google credential `"type"` (`service_account`, `authorized_user`, `external_account`,
+  `impersonated_service_account`), whatever its name ([[Hooks]]).
 
 ### Versions shipped
 
 | Version | Tracks | Date | Tag |
 |---|---|---|---|
 | 1.0.0 (1) | internal, closed (`alpha`) | 2026-09-26 | not yet |
+| 1.0.1 (2) | closed (`alpha`) | 2026-09-27 | `1.0.1+2` |
 
 ## Decisions & History
 
@@ -103,3 +106,8 @@ Both recorded 2026-09-25.
   Pack was joined before the review passed: four members reported ZapZap "Not Found" and it
   was removed (50 of 100 moons refunded). Hence the rule in the skill: join a Pack once the
   closed test is live.
+- **2026-09-27: a pruning pass before each release** (chore/process-pruning-pass), ported
+  from countscore's `release-android` §3b. A release is the checkpoint: every hook refusal
+  and `CLAUDE.md` rule without evidence since the last tag is proposed for removal, with the
+  wiki lint, the delivery and agent metrics against the baseline, and the evals before and
+  after. The proposal is its own pull request, never a reason to hold the release.

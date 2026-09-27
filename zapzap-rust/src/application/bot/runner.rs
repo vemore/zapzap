@@ -6,7 +6,8 @@
 //! goes round once more before it lets go. Each bot of a party keeps **one strategy
 //! instance for the whole game**, so what a strategy remembers between two calls
 //! (Thibot's play/draw coordination, VinceBot's round memory) survives from its play to
-//! its draw and from one turn to the next.
+//! its draw and from one turn to the next. When no human who is still in the game sits
+//! at the table, the bots also deal the next round themselves, and play the game out.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,11 +18,12 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::application::bot::{ReflectOnRound, ReflectOnRoundInput, RoundOutcome};
 use crate::application::game::{
-    CallZapZap, CallZapZapInput, DrawCard, DrawCardInput, PlayCards, PlayCardsInput,
-    SelectHandSize, SelectHandSizeInput,
+    CallZapZap, CallZapZapError, CallZapZapInput, DrawCard, DrawCardError, DrawCardInput,
+    NextRound, NextRoundError, NextRoundInput, PlayCards, PlayCardsError, PlayCardsInput,
+    SelectHandSize, SelectHandSizeError, SelectHandSizeInput,
 };
 use crate::domain::entities::{BotDifficulty, PartyStatus};
-use crate::domain::repositories::{PartyRepository, UserRepository};
+use crate::domain::repositories::{PartyRepository, UserRepository, VersionedGameState};
 use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::{GameAction, GameState};
 use crate::infrastructure::app_state::{AppState, GameEvent};
@@ -34,10 +36,14 @@ use crate::infrastructure::bot::strategies::{
 /// Pause between two bot actions, so clients can follow them, when `BOT_ACTION_DELAY_MS`
 /// is unset or not a number: the Node backend's default too
 pub const DEFAULT_ACTION_DELAY: Duration = Duration::from_millis(1000);
-/// Most bot actions one loop takes while a human is still in the game
+/// Most bot actions one loop takes in a round while a human is still in the game
 const MAX_ACTIONS_WITH_HUMANS: usize = 50;
-/// Most bot actions one loop takes when only bots remain (they play the game out)
+/// Most bot actions one loop takes in a round when only bots remain: the count starts
+/// again with each round the bots deal, so they play the game out
 const MAX_ACTIONS_BOTS_ONLY: usize = 500;
+/// Pauses the round's results stay on the table, on top of the one after the ZapZap,
+/// before the bots deal the next round: time for an eliminated human to read them
+const RESULTS_PAUSES: u32 = 2;
 
 /// A bot's decision maker: a rule-based strategy, or the LLM bot and its async calls
 #[derive(Clone)]
@@ -132,7 +138,7 @@ struct PartySlot {
 /// What ended a bot loop
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopEnd {
-    /// A human is to move, or the round waits for its next-round call
+    /// A human is to move, or the round waits for a human's next-round call
     Waiting,
     /// The party has no game state or is over: its bots are dropped
     GameOver,
@@ -297,32 +303,118 @@ pub async fn run_bot_turns_now(state: &Arc<AppState>, party_id: &str) -> Result<
     result.map(|(_, actions)| actions)
 }
 
-/// Whether a human who is not eliminated sits in the party
-async fn has_active_human(
+/// The seats still in the game (not eliminated)
+struct ActiveSeats {
+    /// Whether a human sits among them
+    human: bool,
+    /// A bot among them, in whose name the bots deal the next round
+    bot: Option<String>,
+}
+
+async fn active_seats(
     state: &AppState,
     party_id: &str,
     game_state: &GameState,
-) -> Result<bool, String> {
+) -> Result<ActiveSeats, String> {
     let players = state
         .party_repo
         .get_party_players(party_id)
         .await
         .map_err(|e| e.to_string())?;
+    let mut seats = ActiveSeats {
+        human: false,
+        bot: None,
+    };
     for player in &players {
         if game_state.is_eliminated(player.player_index) {
             continue;
         }
         if let Ok(Some(user)) = state.user_repo.find_by_id(&player.user_id).await {
-            if user.user_type.as_str() == "human" {
-                return Ok(true);
+            match user.user_type.as_str() {
+                "human" => seats.human = true,
+                "bot" if seats.bot.is_none() => seats.bot = Some(user.id),
+                _ => {}
             }
         }
     }
-    Ok(false)
+    Ok(seats)
 }
 
-/// Play bot moves until a human is to move or the round ends; the caller holds the
-/// party's roster, so no other loop runs for this party meanwhile.
+/// What the bots did at the end of a round
+enum RoundEnd {
+    /// A human still in the game asks for the next round, not the bots
+    Waiting,
+    /// The bots dealt the next round
+    Dealt,
+    /// Another write came in since the read (an eliminated human's client dealt the
+    /// round, a forfeit): nothing was written, read again
+    DealtElsewhere,
+    /// The game is over
+    GameOver,
+}
+
+/// At the end of a round with no human left in the game, deal the next round as the
+/// nextRound route does, and tell the clients as it does. A nextRound call that wins the
+/// race writes first: this call then writes nothing, and the loop reads the state again.
+async fn deal_next_round(
+    state: &Arc<AppState>,
+    party_id: &str,
+    game_state: &GameState,
+) -> Result<RoundEnd, String> {
+    let seats = active_seats(state, party_id, game_state).await?;
+    if seats.human {
+        return Ok(RoundEnd::Waiting);
+    }
+    let Some(dealer) = seats.bot else {
+        // Nobody left in the game at all: nothing for the bots to do
+        return Ok(RoundEnd::Waiting);
+    };
+    tokio::time::sleep(state.bot_runner.action_delay() * RESULTS_PAUSES).await;
+    let dealt = match NextRound::new(state.party_repo.clone())
+        .execute(NextRoundInput {
+            party_id: party_id.to_string(),
+            user_id: dealer.clone(),
+        })
+        .await
+    {
+        Ok(dealt) => dealt,
+        Err(NextRoundError::RoundNotFinished) => return Ok(RoundEnd::DealtElsewhere),
+        Err(NextRoundError::Repository(e)) if e.is_conflict() => {
+            return Ok(RoundEnd::DealtElsewhere)
+        }
+        // The ZapZap that ended the game finished the party, or the party is gone
+        Err(
+            NextRoundError::PartyNotPlaying
+            | NextRoundError::PartyNotFound
+            | NextRoundError::NoGameState,
+        ) => return Ok(RoundEnd::GameOver),
+        Err(e) => return Err(e.to_string()),
+    };
+    tracing::info!("Bots of party {} dealt the next round", party_id);
+    let action = if dealt.game_finished {
+        "gameFinished"
+    } else {
+        "roundStarted"
+    };
+    broadcast_bot_event(
+        state,
+        party_id,
+        &dealer,
+        action,
+        serde_json::json!({"gameFinished": dealt.game_finished, "isBot": true}),
+    );
+    Ok(if dealt.game_finished {
+        RoundEnd::GameOver
+    } else {
+        RoundEnd::Dealt
+    })
+}
+
+/// Play bot moves until a human is to move, a round ends while a human is still in the
+/// game, or the game ends; the caller holds the party's roster, so no other loop runs for
+/// this party meanwhile. A move whose write loses a race with another write of the game
+/// state (a forfeit, a human's request) wrote nothing: the loop reads the state again and
+/// decides afresh.
 async fn run_bot_loop(
     state: &Arc<AppState>,
     party_id: &str,
@@ -341,27 +433,47 @@ async fn run_bot_loop(
     else {
         return Ok((LoopEnd::GameOver, 0));
     };
-    let max_actions = if has_active_human(state, party_id, &initial).await? {
+    let mut max_steps = if active_seats(state, party_id, &initial).await?.human {
         MAX_ACTIONS_WITH_HUMANS
     } else {
         MAX_ACTIONS_BOTS_ONLY
     };
 
     let mut actions = 0;
-    for _ in 0..max_actions {
-        let Some(game_state) = state
+    // Passes through the loop since it started, or since the bots last dealt a round
+    let mut steps = 0;
+    loop {
+        if steps == max_steps {
+            tracing::warn!("Bot loop of party {} hit its action cap", party_id);
+            return Ok((LoopEnd::Capped, actions));
+        }
+        steps += 1;
+        let Some(VersionedGameState {
+            state: game_state,
+            version,
+        }) = state
             .party_repo
-            .get_game_state(party_id)
+            .get_versioned_game_state(party_id)
             .await
             .map_err(|e| e.to_string())?
         else {
             return Ok((LoopEnd::GameOver, actions));
         };
-        if matches!(
-            game_state.current_action,
-            GameAction::Finished | GameAction::ZapZap
-        ) {
-            return Ok((LoopEnd::Waiting, actions));
+        match game_state.current_action {
+            GameAction::ZapZap => return Ok((LoopEnd::Waiting, actions)),
+            GameAction::Finished => match deal_next_round(state, party_id, &game_state).await? {
+                RoundEnd::Waiting => return Ok((LoopEnd::Waiting, actions)),
+                RoundEnd::GameOver => return Ok((LoopEnd::GameOver, actions)),
+                RoundEnd::DealtElsewhere => continue,
+                RoundEnd::Dealt => {
+                    actions += 1;
+                    steps = 0;
+                    max_steps = MAX_ACTIONS_BOTS_ONLY;
+                    tokio::time::sleep(state.bot_runner.action_delay()).await;
+                    continue;
+                }
+            },
+            _ => {}
         }
 
         let players = state
@@ -397,8 +509,13 @@ async fn run_bot_loop(
             }
             let mut updated = game_state.clone();
             updated.current_turn = next_turn;
-            if let Err(e) = state.party_repo.save_game_state(party_id, &updated).await {
-                tracing::error!("Failed to update game state: {}", e);
+            match state
+                .party_repo
+                .update_game_state(party_id, &updated, version)
+                .await
+            {
+                Err(e) if !e.is_conflict() => tracing::error!("Failed to update game state: {}", e),
+                _ => {}
             }
             continue;
         }
@@ -413,14 +530,17 @@ async fn run_bot_loop(
             GameAction::SelectHandSize => {
                 let hand_size = brain.select_hand_size(&game_state, player_index);
                 tracing::info!("Bot {} selecting hand size {}", user.username, hand_size);
-                SelectHandSize::new(state.party_repo.clone())
+                match SelectHandSize::new(state.party_repo.clone())
                     .execute(SelectHandSizeInput {
                         party_id: party_id.to_string(),
                         user_id: user_id.clone(),
                         hand_size,
                     })
                     .await
-                    .map_err(|e| e.to_string())?;
+                {
+                    Err(SelectHandSizeError::Repository(e)) if e.is_conflict() => continue,
+                    result => result.map_err(|e| e.to_string())?,
+                };
                 broadcast_bot_event(
                     state,
                     party_id,
@@ -432,13 +552,16 @@ async fn run_bot_loop(
             GameAction::Play => {
                 if brain.should_call_zapzap(&game_state, player_index).await {
                     tracing::info!("Bot {} calling ZapZap", user.username);
-                    let result = CallZapZap::new(state.party_repo.clone())
+                    let result = match CallZapZap::new(state.party_repo.clone())
                         .execute(CallZapZapInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                         })
                         .await
-                        .map_err(|e| e.to_string())?;
+                    {
+                        Err(CallZapZapError::Repository(e)) if e.is_conflict() => continue,
+                        result => result.map_err(|e| e.to_string())?,
+                    };
                     broadcast_bot_event(
                         state,
                         party_id,
@@ -460,14 +583,17 @@ async fn run_bot_loop(
                         return Err(format!("Bot {} has no valid play", user.username));
                     }
                     tracing::info!("Bot {} playing {:?}", user.username, cards);
-                    PlayCards::new(state.party_repo.clone())
+                    match PlayCards::new(state.party_repo.clone())
                         .execute(PlayCardsInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                             card_ids: cards.clone(),
                         })
                         .await
-                        .map_err(|e| e.to_string())?;
+                    {
+                        Err(PlayCardsError::Repository(e)) if e.is_conflict() => continue,
+                        result => result.map_err(|e| e.to_string())?,
+                    };
                     broadcast_bot_event(
                         state,
                         party_id,
@@ -495,8 +621,9 @@ async fn run_bot_loop(
                 // A discard pick that fails falls back to the deck
                 let source = match drawn {
                     Ok(_) => source,
+                    Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
                     Err(_) => {
-                        DrawCard::new(state.party_repo.clone())
+                        match DrawCard::new(state.party_repo.clone())
                             .execute(DrawCardInput {
                                 party_id: party_id.to_string(),
                                 user_id: user_id.clone(),
@@ -504,7 +631,10 @@ async fn run_bot_loop(
                                 card_id: None,
                             })
                             .await
-                            .map_err(|e| e.to_string())?;
+                        {
+                            Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
+                            result => result.map_err(|e| e.to_string())?,
+                        };
                         "deck"
                     }
                 };
@@ -516,6 +646,7 @@ async fn run_bot_loop(
                     serde_json::json!({"source": source, "isBot": true}),
                 );
             }
+            // Handled above, before the seat on turn is looked up
             GameAction::Finished | GameAction::ZapZap => {
                 return Ok((LoopEnd::Waiting, actions));
             }
@@ -524,9 +655,6 @@ async fn run_bot_loop(
 
         tokio::time::sleep(state.bot_runner.action_delay()).await;
     }
-
-    tracing::warn!("Bot loop of party {} hit its action cap", party_id);
-    Ok((LoopEnd::Capped, actions))
 }
 
 fn broadcast_bot_event(

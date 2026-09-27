@@ -3,8 +3,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::entities::{PartyPlayer, PartyStatus, Round};
-use crate::domain::repositories::{PartyRepository, PlayerGameResult, RepositoryError};
-use crate::domain::services::{initialize_round, is_game_over, sort_final_ranking};
+use crate::domain::repositories::{PartyRepository, RepositoryError, VersionedGameState};
+use crate::domain::services::{build_game_results, initialize_round, is_game_over};
 use crate::domain::value_objects::{GameAction, GameState};
 
 /// Next round input
@@ -72,9 +72,12 @@ impl<P: PartyRepository> NextRound<P> {
         }
 
         // Get game state
-        let game_state = self
+        let VersionedGameState {
+            state: game_state,
+            version,
+        } = self
             .party_repo
-            .get_game_state(&input.party_id)
+            .get_versioned_game_state(&input.party_id)
             .await?
             .ok_or(NextRoundError::NoGameState)?;
 
@@ -102,62 +105,26 @@ impl<P: PartyRepository> NextRound<P> {
             // Get players for saving results
             let players = self.party_repo.get_party_players(&input.party_id).await?;
 
-            // Get elimination order (user_id -> elimination_round)
             let elimination_order = self
                 .party_repo
                 .get_elimination_order(&input.party_id)
                 .await?;
-            let elimination_map: std::collections::HashMap<String, Option<u32>> =
-                elimination_order.into_iter().collect();
-
-            // Build player results with elimination info
-            let mut player_results: Vec<(u8, u16, String, Option<u32>)> = players
-                .iter()
-                .map(|p| {
-                    let elimination_round = elimination_map.get(&p.user_id).cloned().flatten();
-                    (
-                        p.player_index,
-                        game_state.scores[p.player_index as usize],
-                        p.user_id.clone(),
-                        elimination_round,
-                    )
-                })
-                .collect();
-
-            sort_final_ranking(&mut player_results, winner);
-
-            let winner_user_id = players
-                .iter()
-                .find(|p| p.player_index == winner)
-                .map(|p| p.user_id.clone())
-                .unwrap_or_default();
-
-            let winner_score = game_state.scores[winner as usize];
-
-            // Create PlayerGameResult entries
-            let results: Vec<PlayerGameResult> = player_results
-                .iter()
-                .enumerate()
-                .map(
-                    |(position, (player_index, final_score, user_id, _))| PlayerGameResult {
-                        user_id: user_id.clone(),
-                        final_score: *final_score,
-                        finish_position: (position + 1) as u8,
-                        rounds_played: game_state.round_number as u32,
-                        is_winner: *player_index == winner,
-                    },
-                )
-                .collect();
-
-            // Save game results
+            let results = build_game_results(
+                &game_state,
+                players.iter().map(|p| (p.player_index, p.user_id.clone())),
+                &elimination_order,
+                winner,
+            );
+            let winner_user_id = results.winner_user_id.clone();
+            let winner_score = results.winner_score;
             self.party_repo
                 .save_game_results(
                     &input.party_id,
-                    &winner_user_id,
-                    winner_score,
-                    game_state.round_number as u32,
-                    game_state.is_golden_score,
-                    results,
+                    &results.winner_user_id,
+                    results.winner_score,
+                    results.total_rounds,
+                    results.was_golden_score,
+                    results.players,
                 )
                 .await?;
 
@@ -219,13 +186,14 @@ impl<P: PartyRepository> NextRound<P> {
             next_starting_player,
         );
 
+        // Save game state first, unless another write came in since the read (a second
+        // nextRound, a forfeit): `Conflict`, and no round row is written
+        self.party_repo
+            .update_game_state(&input.party_id, &new_game_state, version)
+            .await?;
+
         // Save round
         self.party_repo.save_round(&round).await?;
-
-        // Save game state
-        self.party_repo
-            .save_game_state(&input.party_id, &new_game_state)
-            .await?;
 
         // Update party current round
         party.current_round_id = Some(round_id);

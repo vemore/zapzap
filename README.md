@@ -139,6 +139,8 @@ RUST_LOG=info
 PROXY_PORT=80
 GOOGLE_OAUTH_CLIENT_ID=...          # Google sign-in; VITE_GOOGLE_OAUTH_CLIENT_ID for the clients
 BOT_ACTION_DELAY_MS=1000
+ALLOWED_ORIGINS=https://a.example   # CORS origins, comma-separated; unset: every origin (dev).
+                                    # docker-compose.prod.yml defaults it to the production domain
 AWS_BEDROCK_ENABLED=true            # LLM bots, with AWS_BEDROCK_REGION, AWS_BEDROCK_MODEL_ID,
                                     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 ```
@@ -338,7 +340,7 @@ flutter build appbundle --release            # signed with the upload key when a
 The release build signs with the upload key `zapzap-upload` named by
 `frontend-flutter/android/key.properties` (never committed; copy `key.properties.template`,
 generate the keystore once with `scripts/generate_keystore.sh`). Without it a release APK
-falls back to the debug key, with a warning, and a release bundle is refused: [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md) § Android.
+falls back to the debug key, with a warning, and a release bundle is refused: [`.llmwiki/FlutterAndroidPwa.md`](.llmwiki/FlutterAndroidPwa.md) § Android.
 A bundle is checked by `scripts/verify_aab.sh` and published to Google Play from the
 developer's machine by `scripts/play_publish.py` (never from CI): the `release-android`
 skill, and [`.llmwiki/Release.md`](.llmwiki/Release.md).
@@ -370,7 +372,7 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
 unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
 compose's Rust backend with the Bedrock feature, started until its health check passes; both
-frontends), hooks (the Claude Code hooks self-test), Flutter client (analyze, tests, web, debug and
+frontends), hooks (the Claude Code hooks self-test, and the self-tests of the deploy script, the wiki lint and the agent evals' checks), Flutter client (analyze, tests, web, debug and
 release apk builds; the debug APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
@@ -445,6 +447,17 @@ The seed opens the database the server would (`DATABASE_URL`, else `DB_PATH`, el
 whose username is free: run it twice, or on a database in use, and nothing is duplicated.
 It needs no `JWT_SECRET` and no running server. It creates no demo party.
 
+### Resetting a password
+
+```bash
+printf '%s' 'the-new-password' | (cd zapzap-rust && cargo run -- reset-password Vincent)
+```
+
+The new password is read from one line of stdin — never a command-line argument, so it
+never lands in argv, a shell history or a process list — and bcrypt-hashed the way
+registration hashes it. `no such user: <username>` (exit 1) for an unknown username, the
+database untouched. In production: `docker-compose exec -T backend /app/zapzap-backend reset-password <username>` (`.claude/skills/deploy/SKILL.md`).
+
 ### Environment Variables
 
 The backend reads them from its environment (`zapzap-rust/src/main.rs`, `zapzap-rust/src/infrastructure/app_state.rs`):
@@ -454,6 +467,7 @@ PORT=9999                          # default 9999
 DATABASE_URL=sqlite:./data/zapzap.db   # else DB_PATH, else ./data/zapzap.db
 JWT_SECRET=...                     # required: openssl rand -hex 32
 RUST_LOG=info                      # tracing filter
+ALLOWED_ORIGINS=                   # CORS origins, comma-separated; unset: every origin
 ```
 
 The complete list, Docker included: [`.llmwiki/Backend.md`](.llmwiki/Backend.md) and `.env.example`.
@@ -683,11 +697,11 @@ Player 4: 10 points
 - bcrypt password hashing (Argon2 hashes still verify)
 - Input validation
 - SQL injection protection via parameterized queries
+- CORS restricted to the origins of `ALLOWED_ORIGINS` (every origin when unset, for development)
 
 ⚠️ **Production Improvements Needed**:
 - Rate limiting
 - HTTPS enforcement
-- CORS configuration
 - Security headers
 - Session management improvements
 

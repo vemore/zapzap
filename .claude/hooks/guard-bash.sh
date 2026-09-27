@@ -135,19 +135,47 @@ commit_amend=$(printf '%s' "$verdict" | jq -r '.commit.amend')
 # own changes and the resolutions -- not on everything the merge brings in.
 base=()
 git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=(MERGE_HEAD)
-paths=$(git diff --cached --name-only "${base[@]}" 2>/dev/null)
-[ "$commit_all" = "true" ] && paths="$paths"$'\n'"$(git diff --name-only "${base[@]}" 2>/dev/null)"
-if [ "$commit_amend" = "true" ] && git rev-parse --verify -q HEAD >/dev/null; then
-    paths="$paths"$'\n'"$(git show --name-only --pretty=format: HEAD 2>/dev/null)"
+# Every list is read NUL-separated: `--name-only` alone quotes a non-ASCII path
+# ("cl\303\251.jks"), which no rule below would then match.
+names() { git "$@" 2>/dev/null | tr '\0' '\n'; }
+# A pathspec is relative to the directory the commit runs in, and may be a directory:
+# the files it commits are the tracked ones under it that differ from HEAD, taken from
+# the working tree.
+pathspecs=()
+while IFS= read -r p; do [ -n "$p" ] && pathspecs+=("$p"); done \
+    < <(printf '%s' "$verdict" | jq -r '.commit.pathspecs[]?' 2>/dev/null)
+spec_cwd=$command_cwd
+[ -d "$spec_cwd" ] || spec_cwd=$ROOT
+spec_files=""
+if [ "${#pathspecs[@]}" -gt 0 ]; then
+    if git rev-parse --verify -q HEAD >/dev/null; then
+        spec_files=$(names -C "$spec_cwd" diff -z --name-only --diff-filter=d HEAD -- "${pathspecs[@]}")
+    else
+        spec_files=$(names -C "$spec_cwd" ls-files -z --full-name -- "${pathspecs[@]}")
+    fi
 fi
-paths="$paths"$'\n'"$(printf '%s' "$verdict" | jq -r '.commit.pathspecs[]?')"
+paths=$(names diff -z --cached --name-only "${base[@]}")
+[ "$commit_all" = "true" ] && paths="$paths"$'\n'"$(names diff -z --name-only "${base[@]}")"
+if [ "$commit_amend" = "true" ] && git rev-parse --verify -q HEAD >/dev/null; then
+    paths="$paths"$'\n'"$(names show -z --name-only --pretty=format: HEAD)"
+fi
+paths="$paths"$'\n'"$spec_files"$'\n'"$(printf '%s\n' "${pathspecs[@]}")"
 paths=$(printf '%s\n' "$paths" | grep -v '^$' | sort -u)
 
 # A deletion (`git rm --cached data/zapzap.db`) is not an addition: only the paths
-# this commit adds or modifies can leak a secret.
-added=$(git diff --cached --name-only --diff-filter=d "${base[@]}" 2>/dev/null)
-[ "$commit_all" = "true" ] && added="$added"$'\n'"$(git diff --name-only --diff-filter=d "${base[@]}" 2>/dev/null)"
-added="$added"$'\n'"$(printf '%s' "$verdict" | jq -r '.commit.pathspecs[]?' | while read -r f; do [ -e "$f" ] && echo "$f"; done)"
+# this commit adds or modifies can leak a secret. Those the commit takes from the working
+# tree -- `-a` and pathspecs -- are read there; a file only staged is read in the index,
+# so an unstaged edit of another file never decides this commit.
+worktree_files=$spec_files
+[ "$commit_all" = "true" ] && worktree_files="$worktree_files"$'\n'"$(names diff -z --name-only --diff-filter=d "${base[@]}")"
+worktree_files=$(printf '%s\n' "$worktree_files" | grep -v '^$' | sort -u)
+added="$(names diff -z --cached --name-only --diff-filter=d "${base[@]}")"$'\n'"$worktree_files"
+# A commit with pathspecs and no -i (git's --only) records those paths alone: a staged
+# file outside them stays staged and is not part of it.
+commit_include=$(printf '%s' "$verdict" | jq -r '.commit.include // false')
+if [ "${#pathspecs[@]}" -gt 0 ] && [ "$commit_include" != "true" ] && [ "$commit_all" != "true" ]; then
+    added=$worktree_files
+fi
 added=$(printf '%s\n' "$added" | grep -v '^$' | sort -u)
 
 refuse() {
@@ -156,18 +184,25 @@ refuse() {
 }
 
 # 1. Secrets and the database ------------------------------------------------
-secrets=$(printf '%s\n' "$added" | grep -E '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$|(^|/)key\.properties$|\.(jks|keystore)$|service-account[^/]*\.json$' \
-          | grep -vE '(^|/)\.env\.example$')
-# A Google service-account key is recognised by its content, whatever it is named: the
-# staged blob, or the working file when `commit -a` stages it after this hook runs.
-sa_key='"type"[[:space:]]*:[[:space:]]*"service_account"'
+# Names match whatever their case: `upload.JKS` is the same keystore.
+secrets=$(printf '%s\n' "$added" | grep -iE '(^|/)\.env$|(^|/)\.env\.|(^|/)client_secret_[^/]*\.json$|\.(db|sqlite|sqlite3)(\.bak-[^/]*)?$|(^|/)key\.properties$|\.(jks|keystore)$|service-account[^/]*\.json$' \
+          | grep -viE '(^|/)\.env\.example$')
+# A Google credential file is recognised by its content, whatever its name or extension:
+# a service-account key, gcloud's application-default credentials (authorized_user, a
+# live refresh token) or a workload-identity config (external_account). `"type"` must
+# open a line or follow `{` or `,`, as in JSON, so a document quoting it in backticks
+# passes. The staged blob is read for every added file, the working file for those the
+# commit takes from the working tree.
+sa_key='(^|[{,])[[:space:]]*"type"[[:space:]]*:[[:space:]]*"(service_account|authorized_user|external_account|external_account_authorized_user|impersonated_service_account)"'
+keys=$( { printf '%s\n' "$added" | grep -v '^$' | tr '\n' '\0' \
+              | xargs -0 -r git --literal-pathspecs grep --cached -I -l -z -E "$sa_key" -- 2>/dev/null
+          printf '%s\n' "$worktree_files" | grep -v '^$' | tr '\n' '\0' \
+              | xargs -0 -r grep -I -l -Z -E "$sa_key" -- 2>/dev/null; } | tr '\0' '\n' | sort -u)
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     printf '%s\n' "$secrets" | grep -qxF "$f" && continue
-    if git show ":$f" 2>/dev/null | grep -qE "$sa_key" || { [ -f "$f" ] && grep -qE "$sa_key" "$f"; }; then
-        secrets="${secrets:+$secrets$'\n'}$f"
-    fi
-done < <(printf '%s\n' "$added" | grep -E '\.json$')
+    secrets="${secrets:+$secrets$'\n'}$f"
+done <<< "$keys"
 if [ -n "$secrets" ]; then
     refuse "Refused: this commit would add a secret or a database to the repository.
 
@@ -177,11 +212,12 @@ Every .env holds JWT_SECRET and the cloud credentials; client_secret_*.json is t
 OAuth client; data/zapzap.db holds every account and password hash. A *.jks / *.keystore
 is the Android upload key and key.properties its passwords: whoever holds them can sign
 an update of the app. A Google service-account key (\"type\": \"service_account\") acts
-on the Cloud project and can publish to Play. All are gitignored, so reaching this point
-took a \`git add -f\` -- or a service-account key under another name. Unstage with
+on the Cloud project and can publish to Play; application-default credentials
+(authorized_user, external_account) act as whoever logged in. All are gitignored, so
+reaching this point took a \`git add -f\` -- or a credential file under another name. Unstage with
 \`git reset <path>\` and commit again. .env.example and
 frontend-flutter/android/key.properties.template are the committed templates; the keys
-live outside the repository (.llmwiki/FrontendFlutter.md, Android)."
+live outside the repository (.llmwiki/FlutterAndroidPwa.md, Android)."
 fi
 
 # 2. Work tracking ----------------------------------------------------------
@@ -267,19 +303,40 @@ Fix it, then commit again. Reproduce with: $name"
 
 # Worktrees share the main checkout's cargo target directories, so the first commit in
 # a fresh worktree does not rebuild every dependency inside the hook's timeout.
+# The price: clippy can check this tree's tests against a library another tree built
+# into the same directory (#79: E0432/E0609 on correct code). So a failed clippy
+# touches the crate's src/lib.rs in the tree being committed -- mtime only, never its
+# content -- which makes cargo rebuild it from these sources, and runs once more.
+run_clippy_gate() {  # name, crate directory under $ROOT, then the command
+    local name="$1" crate="$2"; shift 2
+    local output
+    output=$("$@" 2>&1) && return 0
+    touch -c "$ROOT/$crate/src/lib.rs"
+    if ! output=$("$@" 2>&1); then
+        refuse "Refused: \`$name\` fails, so this commit is not ready.
+
+It failed twice: after the first failure the hook touched $crate/src/lib.rs (in case the
+shared target directory held a stale build of it) and ran it again.
+
+$(printf '%s\n' "$output" | tail -40)
+
+Fix it, then commit again. Reproduce with: $name"
+    fi
+}
+
 MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
 
 if printf '%s\n' "$paths" | grep -qE '^zapzap-rust/'; then
     command -v cargo >/dev/null 2>&1 || needs_setup "cargo is not on PATH" "install Rust with rustup (.llmwiki/Backend.md)"
     run_gate "cargo fmt --check (zapzap-rust)" bash -c "cd '$ROOT/zapzap-rust' && cargo fmt --check"
-    run_gate "cargo clippy --locked --all-targets -- -D warnings (zapzap-rust)" \
+    run_clippy_gate "cargo clippy --locked --all-targets -- -D warnings (zapzap-rust)" zapzap-rust \
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/zapzap-rust/target}" bash -c "cd '$ROOT/zapzap-rust' && cargo clippy --locked --all-targets --quiet -- -D warnings"
 fi
 
 if printf '%s\n' "$paths" | grep -qE '^native/'; then
     command -v cargo >/dev/null 2>&1 || needs_setup "cargo is not on PATH" "install Rust with rustup (.llmwiki/NativeEngine.md)"
     run_gate "cargo fmt --check (native)" bash -c "cd '$ROOT/native' && cargo fmt --check"
-    run_gate "cargo clippy --all-targets -- -D warnings (native)" \
+    run_clippy_gate "cargo clippy --all-targets -- -D warnings (native)" native \
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 

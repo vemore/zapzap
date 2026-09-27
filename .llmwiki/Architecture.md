@@ -2,7 +2,7 @@
 
 > Scope: the four code bases of the repository (zapzap-rust, frontend, frontend-flutter, native), how they talk to each other, the shared `data/` directory, SQLite location, SSE, docker-compose files.
 > Related: [[Deployment]] · [[Backend]] · [[Api]] · [[Frontend]] · [[FrontendFlutter]] · [[NativeEngine]] · [[Bots]] · [[Testing]] · [[GameRules]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -12,7 +12,7 @@
 |------|------|-------|------|--------|
 | Rust backend | `zapzap-rust/` | axum 0.7, tokio, sqlx 0.8 (sqlite), jsonwebtoken 10 (`rust_crypto` backend), argon2 + bcrypt (`zapzap-rust/Cargo.toml:10-25`) | HTTP API + SSE on port 9999, bots, persistence | **Production** backend since 2026-09-24 (the root compose's `backend` service, [[Deployment]]); the only backend since 2026-09-25. Binary `zapzap-backend` (`zapzap-rust/Cargo.toml:2`) |
 | Frontend | `frontend/` | React 19 + react-router-dom 7 + Vite + Tailwind, `@react-oauth/google` (`frontend/package.json:16-42`) | SPA, served by nginx in its container | Current |
-| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **Playable**: the session, the party list, create-party, the lobby, the game board and the end of a round and of a game, the history and the statistics, the admin shell with its users tab; no Google sign-in, no admin parties or statistics yet. [[FrontendFlutter]], [[Deployment]] |
+| Flutter client | `frontend-flutter/` | Flutter 3.47.2 / Dart 3.13, Provider, go_router, `http`, gen-l10n (`frontend-flutter/pubspec.yaml`) | Android app and PWA; the PWA is served under `/app/` on the production domain, from its own image (`frontend-flutter/Dockerfile`) | **Playable**, at parity with the React client: the session with Google sign-in, the party list, create-party, the lobby, the game board and the end of a round and of a game, the history and the statistics, the admin screen with its users, parties and statistics tabs, the app-bar menu (history, statistics, rules, Admin, sign-out) and an offline example game (`/tutorial`). [[FrontendFlutter]], [[Deployment]] |
 | Native engine | `native/` | Rust `cdylib` via napi 2 (`native/Cargo.toml:8`, `native/Cargo.toml:12-13`), npm name `zapzap-native` (`native/package.json:2`) | Headless game simulation, DRL training, genetic optimisation; driven by the Node scripts `scripts/train-native.js` and `scripts/genetic-optimize-thibot.js` | Offline tooling only |
 
 - The frontend is React (`frontend/src/main.jsx`, `frontend/src/App.jsx`), not the "Vanilla JS" an old `CLAUDE.md` described.
@@ -30,7 +30,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
               └─ /               -> frontend:80           (nginx serving the Vite build)
 ```
 
-- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; `CorsLayer::permissive()` (`build_app`, `zapzap-rust/src/api/mod.rs:21-35`, served by `main.rs`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:45-50`). Route list: [[Api]].
+- Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; a CORS layer granting the origins of `ALLOWED_ORIGINS`, every origin when unset ([[Backend]]) (`build_app`, `zapzap-rust/src/api/mod.rs:21-35`, served by `main.rs`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:45-50`). Route list: [[Api]].
 - Dev mode: Vite proxies `/api` and `/suscribeupdate` to `http://localhost:9999` (`frontend/vite.config.js:7-17`).
 
 ### Real-time updates (SSE)
@@ -40,13 +40,13 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - Stream sends an initial `connected` event, a `heartbeat` comment every 20 s, and each broadcast as SSE event name `event` with JSON payload, with `X-Accel-Buffering: no` (`zapzap-rust/src/api/sse.rs`). A game's moves and every event of a private party reach only its players' streams; events without a party and a public party's lifecycle events (joined, left, started, deleted, finished) reach every stream ([[Backend]]).
 - Broadcaster: `async-broadcast` channel of capacity 1000 with overflow enabled (drop oldest instead of blocking) (`zapzap-rust/src/infrastructure/app_state.rs:112-115`).
 - Frontend: `useSSE` hook (`frontend/src/hooks/useSSE.js`); `PartyLobby` and `GameBoard` open the stream at `sseUrl()` (`frontend/src/services/sse.js`), which carries the user's token since #94 — without it the backend, which filters per user, would send them none of a game's moves nor any private-party event. Details: [[Backend]], [[Frontend]].
-- Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FrontendFlutter]].
+- Flutter client: one connection per signed-in session, with the token (`frontend-flutter/lib/services/sse_client.dart`), reconnecting 3 s after a drop. [[FlutterRealtime]].
 - The PWA is same-origin with the API (`/app/` on the production domain), so its SSE stream and API calls need no CORS grant. [[Deployment]].
 
 ### SQLite database
 
 - URL: `DATABASE_URL`, else `DB_PATH`, else `sqlite:./data/zapzap.db`; `sqlite:` prefix added if missing (`database_url`, `zapzap-rust/src/infrastructure/app_state.rs:246`). Docker sets `DATABASE_URL=sqlite:/app/data/zapzap.db` (`zapzap-rust/Dockerfile:62`, `docker-compose.yml`, `zapzap-rust/docker-compose.yml:11`). The server and `zapzap-backend seed` open the same file.
-- The schema: created at startup from `zapzap-rust/src/infrastructure/database/schema.sql` (`ensure_schema`, `zapzap-rust/src/infrastructure/app_state.rs:97`), all `IF NOT EXISTS`, so it is a no-op on an existing database — production's was built by the Node backend. `zapzap-rust/tests/schema_tests.rs` checks it against a frozen Node-built schema, `zapzap-rust/tests/fixtures/node_built_schema.sql` ([[Backend]]). A database older than the Node backend's last migrations is not upgraded by anything any more; the schema step fails on it as a whole, leaving it unchanged (`zapzap-rust/tests/schema_tests.rs`).
+- The schema: created at startup from `zapzap-rust/src/infrastructure/database/schema.sql` (`ensure_schema`, `zapzap-rust/src/infrastructure/app_state.rs:97`), all `IF NOT EXISTS`, so it is a no-op on an existing database, then the migrations that database has not had (`MIGRATIONS`, counted in `PRAGMA user_version`) — production's was built by the Node backend. `zapzap-rust/tests/schema_tests.rs` checks it against a frozen Node-built schema, `zapzap-rust/tests/fixtures/node_built_schema.sql` ([[Backend]]). A database older than the Node backend's last migrations is not upgraded by anything any more; the schema step fails on it as a whole, leaving it unchanged (`zapzap-rust/tests/schema_tests.rs`).
 - `data/zapzap.db` is git-ignored (`.gitignore`, "Database" section) since commit 1e063d6.
 
 ### `data/` directory
@@ -57,7 +57,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 |---------|----------|----------|
 | `zapzap.db` | the backend's schema step, then the backend at runtime | the backend |
 | `hard_vince_genetic_params.json`, `thibot_genetic_params.json` | the genetic optimisers (`scripts/genetic-optimize-thibot.js` for Thibot) | nothing yet: the Rust backend does not read them (no reference in `zapzap-rust/src`), see [[Bots]] |
-| `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors` | `scripts/train-native.js` (default save path `data/models/rust-drl`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
+| `models/rust-drl.safetensors`, `models/rust-drl-hard.safetensors` | `scripts/train-native.js` (default save-path prefix data/models/rust-drl, which writes `data/models/rust-drl.safetensors`, `scripts/train-native.js:56`) via `native/src/training/model_io.rs` | native engine / DRL bot, see [[NativeEngine]] |
 | `bot-strategies/<botUserId>.json` (gitignored) | LLM bot memory | Rust backend, dir overridable by `BOT_STRATEGIES_DIR` (`zapzap-rust/src/infrastructure/bot/llm_memory.rs:157`) |
 
 ### Docker / compose
@@ -82,5 +82,5 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
 - 2026-09-23 `feat/flutter-pwa-deploy`: the PWA gets its own image and compose service, and the proxy a `/app/` route — one more container in the topology above. [[Deployment]].
 - 2026-09-22 `feat/flutter-scaffold`: `frontend-flutter/` created — a Flutter client (Android + PWA) to reach parity with the React one; React stays on `/`, the PWA goes under `/app/` so the API is same-origin. [[FrontendFlutter]].
 - 2026-09-24 `chore/switch-prod-to-rust`: production switches to the Rust backend — the root compose's `backend` service builds `zapzap-rust/` (Bedrock feature) under the same names; the Node backend stays as the rollback. [[Deployment]].
-- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** Five code bases become four: `src/`, `app.js`, the root `Dockerfile`, its JS bots and ML models (`data/ml_model_*.json`, `data/models/default/`, `data/hard_vince_optimized_params.json`) and the scripts that upgraded old schemas are gone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/database/sqlite/DatabaseConnection.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** Five code bases become four: `src/`, `app.js`, the root `Dockerfile`, its JS bots and ML models (`data/ml_model_*.json`, the data/models/default/ directory, data/hard_vince_optimized_params.json) and the scripts that upgraded old schemas are gone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/infrastructure/database/sqlite/DatabaseConnection.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
 - 2026-09-25 `feat/deploy-through-registry`: production leaves the root compose for `docker-compose.prod.yml` (registry images, no build on the NAS); the proxy gets its own image. [[Deployment]].

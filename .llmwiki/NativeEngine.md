@@ -2,7 +2,7 @@
 
 > Scope: `native/` — the Rust cdylib (napi) simulation engine used offline for DRL training and genetic tuning of bots, plus the two Node scripts in `scripts/` that drive it. The backend does not use it at runtime.
 > Related: [[Architecture]] · [[Bots]] · [[GameRules]] · [[Testing]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -80,7 +80,7 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 | Tuning/debug | setTraceConfig, thibotSetParams, thibotGetDefaultParams | 1109, 1194, 1236 |
 
 ### Driver scripts
-**`scripts/train-native.js`** (native): modes `--train/-t`, `--bench`, default = batch simulation (`scripts/train-native.js:66-78`). Defaults: games 1000, strategies `hard,hard,hard,hard`, batch-size 64, lr 0.0005, epsilon 1.0→0.01 over 50000, gamma 0.99, tau 0.005, save-path `data/models/rust-drl`, save-interval 10000, games-per-batch 100 (`:36-63`); `--load/-l`, `--seed`, `--quiet`, `--trace=game,buffer,training,weights,features|all`, `--debug` (`:105-126`). Training requires a `drl` entry in `--strategies` (`:286-291`), passes bufferCapacity 1000000 and targetUpdateFreq 1000 (`:255-256`), trains `min(100, buffer/batch/4)` steps per batch once buffer ≥ 10×batch (`:329-339`), checkpoints to `<save-path>_checkpoint_<games>.safetensors` (`:372-374`).
+**`scripts/train-native.js`** (native): modes `--train/-t`, `--bench`, default = batch simulation (`scripts/train-native.js:66-78`). Defaults: games 1000, strategies `hard,hard,hard,hard`, batch-size 64, lr 0.0005, epsilon 1.0→0.01 over 50000, gamma 0.99, tau 0.005, save-path prefix data/models/rust-drl (the model lands in `data/models/rust-drl.safetensors`), save-interval 10000, games-per-batch 100 (`:36-63`); `--load/-l`, `--seed`, `--quiet`, `--trace=game,buffer,training,weights,features|all`, `--debug` (`:105-126`). Training requires a `drl` entry in `--strategies` (`:286-291`), passes bufferCapacity 1000000 and targetUpdateFreq 1000 (`:255-256`), trains `min(100, buffer/batch/4)` steps per batch once buffer ≥ 10×batch (`:329-339`), checkpoints to `<save-path>_checkpoint_<games>.safetensors` (`:372-374`).
 
 **`scripts/genetic-optimize-thibot.js`** (native): fitness = win rate of `thibot` vs 3 `hard` via `runGamesBatch` (`scripts/genetic-optimize-thibot.js:305-326`). Defaults: generations 30, population 16 (forced even), elite 2, mutation 0.1, mutation-range 0.3, crossover 0.7, games 2000, output `data/thibot_genetic_params.json`, `--seed` (`:25-72`). Nothing reads the output file back; tuned values are hand-copied into `ThibotParams::default` / `THIBOT_PARAMS`.
 
@@ -100,4 +100,4 @@ Hard and Thibot are re-instantiated with `::new()` on every decision (`native/sr
 - FastDQN was introduced to mirror the burn DuelingDQN layout for cheap in-simulation inference and weight sync (`6e2cc04`, `55c4378`; `native/src/fast_dqn.rs:3-13`).
 - Thibot added (`e445ed5`), later coordination/safety timeout (`cbdc7ac`); golden-score-by-lowest-hand (`d5df375`) and starting-player rotation (`4ee11f8`) were applied to the engine at the same time as the backend.
 - `rust-toolchain.toml` pins 1.92 so the commit hook and CI share one rustfmt/clippy (`native/rust-toolchain.toml:1`, commit `0773216`, squash-merged as `1e063d6`).
-- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost the JS simulation and training (`src/simulation/`, `scripts/run-simulation.js`, the JS hard_vince optimisers, the JS ML models in `data/`) and the ad-hoc `native/*.js` checks that required it. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/simulation/SimulationRunner.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost the JS simulation and training (`src/simulation/`, scripts/run-simulation.js, the JS hard_vince optimisers, the JS ML models in `data/`) and the ad-hoc `native/*.js` checks that required it. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/simulation/SimulationRunner.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).

@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{
-    PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry,
+    PartyRepository, RepositoryError, RoundScoreEntry, VersionedGameState,
 };
 use crate::domain::services::{
-    check_eliminations, execute_zapzap, is_game_over, sort_final_ranking,
+    build_game_results, check_eliminations, execute_zapzap, is_game_over,
 };
 use crate::domain::value_objects::GameAction;
 use crate::infrastructure::bot::card_analyzer;
@@ -71,9 +71,12 @@ impl<P: PartyRepository> CallZapZap<P> {
             .ok_or(CallZapZapError::NotInParty)?;
 
         // Get game state
-        let mut game_state = self
+        let VersionedGameState {
+            state: mut game_state,
+            version,
+        } = self
             .party_repo
-            .get_game_state(&input.party_id)
+            .get_versioned_game_state(&input.party_id)
             .await?
             .ok_or(CallZapZapError::NoGameState)?;
 
@@ -103,9 +106,10 @@ impl<P: PartyRepository> CallZapZap<P> {
         // Check if game is over
         let winner = is_game_over(&game_state);
 
-        // Save game state
+        // Save game state, unless another write came in since the read (a forfeit, a
+        // second request): `Conflict`, and nothing below runs
         self.party_repo
-            .save_game_state(&input.party_id, &game_state)
+            .update_game_state(&input.party_id, &game_state, version)
             .await?;
 
         // Update round as finished
@@ -173,56 +177,24 @@ impl<P: PartyRepository> CallZapZap<P> {
             party.finish();
             self.party_repo.save(&party).await?;
 
-            // Get elimination order (user_id -> elimination_round)
             let elimination_order = self
                 .party_repo
                 .get_elimination_order(&input.party_id)
                 .await?;
-            let elimination_map: std::collections::HashMap<String, Option<u32>> =
-                elimination_order.into_iter().collect();
-
-            // Build player results with elimination info
-            let mut player_results: Vec<(u8, u16, String, Option<u32>)> = players
-                .iter()
-                .map(|p| {
-                    let elimination_round = elimination_map.get(&p.user_id).cloned().flatten();
-                    (
-                        p.player_index,
-                        game_state.scores[p.player_index as usize],
-                        p.user_id.clone(),
-                        elimination_round,
-                    )
-                })
-                .collect();
-
-            sort_final_ranking(&mut player_results, winner_idx);
-
-            let winner_score = game_state.scores[winner_idx as usize];
-
-            // Create PlayerGameResult entries
-            let results: Vec<PlayerGameResult> = player_results
-                .iter()
-                .enumerate()
-                .map(
-                    |(position, (player_index, final_score, user_id, _))| PlayerGameResult {
-                        user_id: user_id.clone(),
-                        final_score: *final_score,
-                        finish_position: (position + 1) as u8,
-                        rounds_played: game_state.round_number as u32,
-                        is_winner: *player_index == winner_idx,
-                    },
-                )
-                .collect();
-
-            // Save game results
+            let results = build_game_results(
+                &game_state,
+                players.iter().map(|p| (p.player_index, p.user_id.clone())),
+                &elimination_order,
+                winner_idx,
+            );
             self.party_repo
                 .save_game_results(
                     &input.party_id,
-                    winner_user_id.as_deref().unwrap_or_default(),
-                    winner_score,
-                    game_state.round_number as u32,
-                    game_state.is_golden_score,
-                    results,
+                    &results.winner_user_id,
+                    results.winner_score,
+                    results.total_rounds,
+                    results.was_golden_score,
+                    results.players,
                 )
                 .await?;
         }

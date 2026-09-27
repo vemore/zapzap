@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -38,11 +38,12 @@ the repository a path remote leads to). A throwaway repository an agent builds u
 scratchpad to test a script is not that, and pushing to or committing on its master passes.
 A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
 
-`scripts/hooks_selftest.sh` exercises all of it — 179 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 237 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter` and `dart` — plus `scripts/cleanup_local.sh`, the
 `flutter pub get` of `scripts/worktree_setup.sh` (and that a failed one clears its setup
 marker) and its `--deploy` links and `scripts/generate_keystore.sh` (stub `keytool`: writes to `$HOME`,
-`umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository); it is the `hooks` CI
+`umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository; `$HOME`
+itself passes only when a dotfiles repository there ignores the keystore); it is the `hooks` CI
 job. The same job runs
 `scripts/deploy_nas_selftest.sh`, the production deploy's own table (158 cases, `ssh`,
 `docker`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
@@ -60,23 +61,33 @@ no-op rather than an outage, the health wait, every refusal, `--rollback` — [[
 | `gh pr create --base <anything but master>` | parsed `--base`; unlocked per repository by `git config zapzap.allowStackedPr true` — the user's decision |
 | `gh pr merge` with `--admin`, or without `--squash`, or with `--merge`/`--rebase` | parsed flags, bundled short flags included |
 | Committing on master (of a checkout of this project), on a detached HEAD, on a branch whose upstream is `[gone]`, or one replaying commits already on `origin/master` | `%(upstream:track)`, `git cherry origin/master HEAD` |
-| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`): untracking a file with `git rm --cached` passes |
+| Committing a `.env` / `.env.*` (not `.env.example`), `client_secret_*.json`, a `*.db` / `*.sqlite` or a `*.db.bak-*` backup | paths the commit **adds or modifies** (`--diff-filter=d`), read NUL-separated so a non-ASCII name is not quoted, a directory pathspec expanded to its changed tracked files — and, for a pathspec commit without `-i` (git's `--only`), those files alone, not a staged file it leaves out; names match in any case (`upload.JKS`); untracking a file with `git rm --cached` passes |
 | Committing an Android keystore (`*.jks`, `*.keystore`), `key.properties` (its passwords; `key.properties.template` passes) or a `*service-account*.json` | same path list |
-| Committing any JSON holding `"type": "service_account"` (a Google service-account key), whatever its name | the staged blob, or the working file under `-a` |
+| Committing any text file whose JSON `"type"` is `service_account` (a Google service-account key), `authorized_user` (gcloud application-default credentials, a refresh token), `external_account` or `impersonated_service_account`, whatever its name or extension | the key must open a line or follow `{` / `,`, so a document quoting it in backticks passes; the staged blob of every added file, and the working file only for what `-a` or a pathspec takes from the working tree — an unstaged key in another file does not block the commit |
 | Committing anything under `wip/`, or a root `TODO.md` / `DONE.md` | same path list |
 | Committing with a red gate, or with the gate's setup missing | see below |
 
 **Gates before a commit**, chosen from the union of paths the commit will contain (`--cached`,
 plus the working-tree diff under `-a` — staged *after* the hook runs — plus `HEAD`'s files
-under `--amend`, plus trailing pathspecs; during a merge, the diff against `MERGE_HEAD`):
+under `--amend`, plus trailing pathspecs and the changed files under them; during a merge, the diff against `MERGE_HEAD`):
 
 | Paths | Gate |
 |---|---|
-| `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout) |
-| `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout) |
+| `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout; a failure touches `zapzap-rust/src/lib.rs` and runs clippy once more before refusing — see below) |
+| `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout; the same one retry, touching `native/src/lib.rs`) |
 | `frontend/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `dart format --output=none --set-exit-if-changed lib test` (plus `integration_test` when it exists; the whole tree, not only the staged files, so drift another commit let through is caught — under a second; the refusal names `dart format lib test`), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get`; a `pubspec.lock` the pub get rewrote and that is left unstaged (not under `-a`) → refusal naming `git add` |
 | anything else (docs, `scripts/`, the root `package.json`) | none |
+
+**The clippy retry.** Worktrees build into the main checkout's `target/` so a fresh worktree's
+first commit does not rebuild every dependency, and that shared directory can hold a library
+another worktree built: clippy then checks this tree's tests against it and reports errors
+the sources do not have (#79: E0432, E0609 on correct code). So when a clippy gate fails, the
+hook touches the crate's `src/lib.rs` in the tree being committed — its mtime only, never its
+content, never another tree's file — which makes cargo rebuild the library from these
+sources, and runs clippy once more. A second failure is refused, and the refusal says the
+retry ran; a green first run touches nothing. Cost: a real clippy error takes two runs to
+refuse. `fmt` has no retry: it reads sources, not the target directory.
 
 The test suites run in CI, not here. A setup refusal says to run the install as **its own**
 Bash call: the hook judges the whole line before any of it runs.
@@ -87,9 +98,13 @@ In an agent launched with `isolation: "worktree"`, Claude Code itself — not a 
 repository, no file under `.claude/` holds the text — refuses a Bash command it cannot prove
 stays inside the worktree: "too complex to verify that it stays inside the worktree". A
 heredoc (`python3 - <<'EOF'`, `cat > f <<'EOF'`), a `$(…)` substitution or a `cd … && …`
-chain is enough. The workaround: write the script to the session's scratchpad directory and
-run it by path (`bash <scratchpad>/x.sh`, `python3 <scratchpad>/x.py`); a script's contents
-are not inspected. The ship-parallel agent prompt says so.
+chain is enough. The workaround: write the script to the branch's own scratch directory,
+`/tmp/zapzap-<branch-slug>/` (`mkdir -p` first), and run it by path (`bash
+/tmp/zapzap-<branch-slug>/x.sh`, `python3 /tmp/zapzap-<branch-slug>/x.py`); a script's
+contents are not inspected. Not the session scratchpad under `~/.claude/jobs/`: the harness
+refuses the Write tool there for an isolated agent. Every agent shares `/tmp`, hence one
+directory per branch, never a shared name ([[ParallelDelivery]] § The shared browser). The
+ship-parallel agent prompt says so.
 
 ### What the hooks do not cover
 
@@ -128,4 +143,6 @@ are not inspected. The ship-parallel agent prompt says so.
 - **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** It had no gate, so the table only loses its `src/` row; the self-test's "no gate" case now stages `scripts/train-native.js`, and its OAuth-secret case a root `client_secret_*.json`. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
 - **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 158 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.
-- **Keystores and service-account keys (2026-09-25, feat/flutter-android-release-signing).** The Android release build now signs with an upload key ([[FrontendFlutter]] § Android), so the secret rule gained countscore's keystore, `key.properties` and service-account cases — the last judged by content too, since a downloaded key is named `<project>-<hash>.json`. Twenty self-test cases: the refused files, the template that passes, a key under another name and one written into a tracked JSON under `commit -a`, and the keystore script.
+- **A retry, not a target directory per worktree (2026-09-27, fix/hook-clippy-retry).** The stale shared target of #79 had two fixes: a target directory per worktree (every fresh worktree rebuilds all dependencies, past the hook's timeout) or one retry after `touch src/lib.rs`. The user chose the retry (2026-09-25); it covers `native/` too, which shares its target the same way. Twelve self-test cases: a stub `cargo` whose clippy fails until the committing tree's `src/lib.rs` is newer than a marker passes on the retry for both crates, with two clippy runs and the file's content unchanged; a real error is refused after exactly two runs, saying so; a green clippy runs once and leaves the mtime alone.
+- **Keystores and service-account keys (2026-09-25, feat/flutter-android-release-signing).** The Android release build now signs with an upload key ([[FlutterAndroidPwa]] § Android), so the secret rule gained countscore's keystore, `key.properties` and service-account cases — the last judged by content too, since a downloaded key is named `<project>-<hash>.json`. Twenty self-test cases: the refused files, the template that passes, a key under another name and one written into a tracked JSON under `commit -a`, and the keystore script.
+- **Secret-rule gaps closed, gitleaks declined (2026-09-27, fix/hook-secret-rules).** A lane C review of #113 found the rules missed `upload.JKS`, non-ASCII names (`git diff --name-only` quotes them), a key in a `.txt` or with no extension, a directory pathspec, and gcloud's `authorized_user` / `external_account` credentials; and that the working file was read on every commit, so an unstaged key behind a clean staged JSON refused it. The user chose to patch the rules rather than adopt gitleaks, which would add a binary to install locally and in CI. Names now match case-insensitively on `-z` lists, pathspecs are expanded from the commit's directory, the content check runs over every added text file (`git grep --cached`, anchored on JSON structure so the wiki's backtick-quoted `"type"` passes), and the working file is read only under `-a` or a pathspec. `generate_keystore.sh` compares `--is-inside-work-tree` to `true` and accepts `$HOME` itself only when, being a repository, it ignores the keystore (`git check-ignore`) — the user's decision on review. The review of this change found `-z` placed after `--` read as a pathspec, so a non-ASCII name reached through a pathspec was still quoted: `-z` now leads each option list, and a pathspec commit without `-i` is judged on its own paths only (the parser reports `include`; a re-review found `--incl` slipped past it, so a long option resolves by unique prefix as git does, an unknown one counts as `-i`, short-flag bundles stop at the first letter taking a value, and `-p` / `--patch` / `--interactive`, which commit the whole index, count as `-i` too). Forty-six new self-test cases; the key strings in the self-test are assembled so the file does not hold one.

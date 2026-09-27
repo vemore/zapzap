@@ -64,14 +64,24 @@ while IFS= read -r path; do
         # The Claude Code hooks and the scripts the hooks job exercises: hooks_selftest.sh
         # (and generate_keystore.sh, which it runs with a stub keytool), and
         # deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
-        # sibling). No image holds them.
-        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh)
+        # sibling), wiki_lint_selftest.sh for the wiki lint (and scripts/lib/, which it
+        # and wip.sh share), wip_selftest.sh for wip.sh refine, and evals/selftest.sh for
+        # the agent evals' checks (a prompt or preamble, `*.md`, runs nothing). No image
+        # holds them.
+        .claude/hooks/*|.claude/settings.json|evals/*|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh|scripts/wiki_lint.sh|scripts/wiki_lint_selftest.sh|scripts/wip_selftest.sh|scripts/lib/*)
             hooks=true ;;
 
         # The Play release scripts and their tests, which the hooks job runs: they are
         # never run in CI against Google, only on a fake service and throwaway keystores.
         scripts/verify_aab.sh|scripts/play_publish.py|scripts/test_verify_aab.py|scripts/test_play_publish.py)
             hooks=true ;;
+
+        # The delivery and agent metrics scripts and their tests, which the hooks job runs
+        # (.llmwiki/ParallelDelivery.md § Measuring delivery).
+        scripts/delivery_metrics.sh|scripts/delivery_metrics_selftest.sh|scripts/agent_metrics.py|scripts/test_agent_metrics.py)
+            hooks=true ;;
+        # The ARB checker of the i18n-add-string skill and its tests, which the hooks job runs.
+        scripts/arb_keys.py|scripts/test_arb_keys.py) hooks=true ;;
 
         # The Flutter end-to-end run, which the flutter-e2e job (on the e2e flag) runs.
         scripts/flutter_e2e.sh) e2e=true ;;

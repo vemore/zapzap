@@ -19,6 +19,8 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
 - `session-start.sh` lists the existing worktrees and the branches whose remote is gone. A
   worktree whose pull request is still open is work in flight — resume it rather than start
   the same theme twice. Debris from a finished loop: `scripts/cleanup_local.sh` (§7) first.
+- An open `wip/todo/*-merged-not-deployed.md` holds merges an earlier session could not
+  deploy (§4): when §1.5 finds the NAS reachable, deploy `master` and close it first.
 
 ## 1. Plan the pull requests
 
@@ -42,17 +44,65 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
      `docker-compose.yml` / `zapzap-rust/docker-compose.yml` environment, `nginx/`.
    - **D** an experiment, on a `noPullRequest` branch, never merged as is.
    Lanes B and C need **acceptance criteria in the entry**. In doubt, the stricter lane.
-5. Present the plan in **one** `AskUserQuestion` — per pull request: branch, entries, lane
-   (and criteria for B/C), likely files, wave, merge order — and wait. The go-ahead covers
-   the loop, merges and deploys included; it does not stand in for lane C's go-ahead in §3.
+   **And rate it complex, simple or bulk** — the lane rates the risk to production, the
+   rating the difficulty, and it picks the model §2 launches (why: `ParallelDelivery.md`
+   § Model routing):
+   - **complex** → `implementer-complex` (Opus, effort high): a design choice is still open,
+     several subsystems move together, the root cause is unknown, or the lane is B or C.
+   - **simple** → `implementer-simple` (Sonnet): the entry's fix is explicit and local, and
+     its acceptance is mechanical (a string, a rename, a documented one-file change).
+   - **bulk** → Haiku, one agent per unit, in parallel: many independent, mechanical,
+     well-specified units — the eight translated locales of `i18n-add-string` §1b, a sweep
+     over files. The pull request is rated simple or complex for the rest of its work; the
+     units are **yours** to fan out (§2) — a subagent has no `Agent` tool — and so is a
+     translation's French and English master.
+   - In doubt, complex: an under-rated change costs a rework, an over-rated one only tokens.
+5. **Check that this session can deploy.** A claude.ai/code session has no route to the LAN,
+   and the NAS or the registry can be down; §4 cannot run then. Read-only, a few seconds at
+   most, over the two routes `scripts/deploy_nas.sh` takes — ssh to the NAS, plain HTTP to
+   the registry (`/v2/` answers even unauthenticated) — from the main checkout, the only one
+   with `scripts/deploy.env`:
+   ```bash
+   ( f=scripts/deploy.env
+     [ -r "$f" ] || { echo "deploy: no $f in this checkout"; exit 1; }
+     set -a; . "$f"; set +a
+     ssh -o BatchMode=yes -o ConnectTimeout=5 "$NAS_SSH" true >/dev/null 2>&1 \
+       || { echo "deploy: NAS unreachable over ssh"; exit 1; }
+     curl -s -o /dev/null -m 5 "http://$REGISTRY/v2/" \
+       || { echo "deploy: registry unreachable"; exit 1; }
+     echo "deploy: reachable" )
+   ```
+   Anything but `deploy: reachable` is **the plan's first line**: "this session cannot
+   deploy — merges will land *merged, not deployed* (§4)". The user then chooses between
+   merging anyway and leaving the green pull requests to a session on the LAN.
+6. Present the plan in **one** `AskUserQuestion` — the deploy check, then per pull request:
+   branch, entries, lane (and criteria for B/C), rating (complex or simple, and bulk units if
+   any), likely files, wave, merge order — and wait.
+   The go-ahead covers the loop, merges and deploys included; it does not stand in for lane
+   C's go-ahead in §3.
 
 Four agents at a time at most: each worktree costs an `npm ci` and cargo builds.
 
 ## 2. Launch one agent per pull request
 
-All agents of a wave in **one message**, each with `isolation: "worktree"`. The tool creates
-the worktree under `.claude/worktrees/<name>` on a branch `worktree-<name>`; the agent moves
-to a proper branch first. Fill in this prompt — do not shorten the rules:
+All agents of a wave in **one message**, each with `isolation: "worktree"` and the
+**`subagent_type` its §1 rating picks**: `implementer-complex` or `implementer-simple`
+(`.claude/agents/`). Pass no `model`: a per-call `model` overrides the definition's, and
+effort comes only from the definition. If the session does not list the two (a session
+started before `.claude/agents/` first existed needs a restart), launch `general-purpose`
+with `model: "opus"` or `"sonnet"` instead, and say so in the report. The tool creates the
+worktree under `.claude/worktrees/<name>` on a branch `worktree-<name>`; the agent moves to
+a proper branch first.
+
+**Bulk units** (§1) are launched by you, never by an implementer: add to its prompt that it
+stops **before its first commit** and reports what is left; then write the master in its
+worktree and launch one `general-purpose` agent per unit with `model: "haiku"`, all in one
+message, **no** `isolation`, each given the worktree's absolute path and the one file it
+owns, no commit. Review what comes back, then `SendMessage` the implementer to commit and
+carry on (translations: `i18n-add-string` §1b). A pull request that is nothing but bulk you
+hold yourself, in a worktree of your own.
+
+Fill in this prompt — do not shorten the rules:
 
 ```text
 You implement one pull request of ZapZap, in the git worktree you start in.
@@ -91,23 +141,24 @@ Rules:
      another agent's, with its tokens. The browser keeps no login between sessions
      (`--isolated`): sign in in your tab. Screenshots land in `.playwright-mcp/`
      (gitignored): never commit them, never delete that directory. If the MCP browser is
-     unavailable, run a headless `chromium.launch()` script from your scratchpad subdirectory,
-     requiring `<MAIN>/node_modules/playwright` (.llmwiki/ParallelDelivery.md § The shared
+     unavailable, run a headless `chromium.launch()` script from your scratch directory
+     (below), requiring `<MAIN>/node_modules/playwright` (.llmwiki/ParallelDelivery.md § The shared
      browser).
    - Never rename a CI job's `name:` in `.github/workflows/ci.yml`: branch protection
      requires those names verbatim, and a renamed required job blocks every merge with all
      checks green. Say what a job grew to do in a step name or a comment.
    - A compound command (heredoc, `$(…)`, `cd … && …`) refused as "too complex to verify
      that it stays inside the worktree" is the harness's check, not a repository hook: write
-     the script to your own subdirectory of the scratchpad, `<scratchpad>/<type>-<topic>/`
-     (the branch name, `/` → `-`), and run it by path. Your PR body and commit messages go
-     there too, never to a shared name at the scratchpad root: every agent of the session
-     shares that scratchpad.
+     the script to your own scratch directory, `/tmp/zapzap-<type>-<topic>/` (the branch
+     name, `/` → `-`; `mkdir -p` it first), and run it by path. Your PR body and commit
+     messages go there too, never to a shared name: every agent shares `/tmp`. Not the
+     session scratchpad under `~/.claude/jobs/`: the harness refuses a Write there from a
+     worktree-isolated agent.
    - `gh pr edit` fails on this repo (gh 2.45 queries Projects classic). Edit a PR's title or
      body with `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -f title=… -F body=@<file>`.
 6. Commit (the hook runs the gates in this worktree), `git push -u origin <type>/<topic>`,
    `gh pr create --base master` with a body saying what changed and why
-   (`--body-file <scratchpad>/<type>-<topic>/pr.md`).
+   (`--body-file /tmp/zapzap-<type>-<topic>/pr.md`).
 7. `gh pr checks <n> --watch` until every check is green or skipped (a job the scope job
    ruled out reports `skipping`, which counts as passing).
    Circuit breaker: after three fix attempts on the same failing check or test, stop — no
@@ -140,12 +191,14 @@ history. So merges are serial. For each pull request, in the planned order:
 
 1. `gh pr view <n> --json state,mergeable,mergeStateStatus,headRefName`, and read the diff
    (`gh pr diff <n>`) — you are the only reviewer. Then its size, the added or modified lines
-   of code (docs, lock, generated and test files not counted, nor the translated ARB files
-   — every `frontend-flutter/lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`):
+   of code (docs, lock, generated and test files not counted — Rust, JS and Flutter tests
+   alike: `frontend-flutter/test/`, `frontend-flutter/integration_test/`, `*_test.dart` —
+   nor the translated ARB files, every `frontend-flutter/lib/l10n/app_*.arb` but
+   `app_fr.arb` and `app_en.arb`):
    ```bash
    gh pr diff <n> | awk '
      /^diff --git / { p = $4; sub(/^b\//, "", p)
-                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\//) \
+                      keep = (p !~ /\.md$|\.lock$|package-lock\.json$|^zapzap-rust\/tests\/|\.test\.jsx?$|^tests\/|^frontend-flutter\/(test|integration_test)\/|_test\.dart$/) \
                           && (p !~ /^frontend-flutter\/lib\/l10n\/app_.*\.arb$/ || p ~ /\/app_(fr|en)\.arb$/) }
      keep && /^\+/ && !/^\+\+\+/ { n++ }
      END { print n + 0 }'
@@ -181,6 +234,18 @@ After **each** merge, so a regression points at one pull request:
 Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, the frontend
 loads, and the path the pull request changed, driven for real (Playwright). Record it.
 
+**When the deploy cannot run** — §1.5 said so, or the `deploy` skill cannot reach the NAS or
+the registry — a merge whose paths call for a deploy is **merged, not deployed**, never a
+silent success. A deploy that ran and broke production is not this case: that is a rollback.
+- Say "merged, not deployed" for that pull request, then and in §7's report.
+- Write **one** entry for the loop, `wip/todo/<date>-merged-not-deployed.md` (Theme
+  `deployment`, Blocks release: yes — production runs older code than `master`), or add to
+  the one already open: one line per squash sha, with its pull request and the paths from
+  the table above that call for the deploy. Its fix: deploy `origin/master` from the main
+  checkout (one deploy covers every sha listed), smoke-test each listed pull request's path,
+  and close it (§5) naming the deployed sha — whichever session next passes §1.5 does so
+  before merging anything new. `wip/` is local: no pull request carries it.
+
 ## 5. Close the entries
 
 In the main checkout, for each entry the merged pull request fixed:
@@ -199,5 +264,8 @@ back first (`deploy` skill), then fixed.
 - Once **every agent has reported**: `scripts/cleanup_local.sh`, then `--apply`. Read the
   `keep` lines; an unmerged pull request or a dirty worktree is real — say so, never force it.
 - `git worktree list` and `git branch -vv` then show only `master` and work in flight.
-- Report: each pull request (URL, merged or not), each deploy and its smoke test, the entries
-  created and closed, and what is left (`scripts/wip.sh list`).
+- Report: each pull request (URL, merged or not, "merged, not deployed" when §4 could not
+  run), each deploy and its smoke test, the entries created and closed, and what is left
+  (`scripts/wip.sh list`).
+- And the **delivery metrics** of the last seven days, `scripts/delivery_metrics.sh $(date -d
+  '7 days ago' +%F)`, next to the baseline in `ParallelDelivery.md` § Measuring delivery.

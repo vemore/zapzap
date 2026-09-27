@@ -116,7 +116,8 @@ void main() {
 
     final refusals = {
       (403, 'INVALID_PASSWORD'): 'Mot de passe incorrect.',
-      (409, 'ACTIVE_PARTY'): "Quitte ou termine d'abord tes parties en cours.",
+      (409, 'ACTIVE_PARTY'):
+          "Tu es encore dans une partie en attente : quitte-la d'abord.",
       (409, 'LAST_ADMIN'):
           'Tu es le seul administrateur : ton compte ne peut pas être '
           'supprimé.',

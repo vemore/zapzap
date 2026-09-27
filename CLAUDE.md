@@ -15,7 +15,7 @@ guess at architecture, routes, rules or deployment — a page already has it. `[
 wiki page resolves to `.llmwiki/Name.md`. The game rules are `GAME_RULES.md`.
 
 Repeatable procedures are **skills** in `.claude/skills/`: `ship-parallel`, `wip-refine`,
-`deploy`, `release-android`, `flutter-device-test`.
+`deploy`, `release-android`, `flutter-device-test`, `i18n-add-string`.
 
 ## Non-negotiables
 
@@ -50,12 +50,15 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
   `git config branch.<name>.noPullRequest true`, and you say so.
 - **You merge and deploy your own green pull requests, through `ship-parallel`**, in the lane
   their risk picked at planning time: squash-merge, deploy what the merge changed (`deploy`
-  skill), smoke-test production; a problem found after is a new pull request.
+  skill), smoke-test production; a problem found after is a new pull request. A session that
+  cannot reach the NAS says "merged, not deployed" and files one `wip/todo/` entry for it.
   `.llmwiki/ParallelDelivery.md`.
 - **Several tasks at once are several pull requests, in parallel** — one per theme, one agent
   and worktree each: `ship-parallel`.
 - **Leave the local environment clean**: the main checkout back on a fast-forwarded `master`,
   then `scripts/cleanup_local.sh` and `--apply` once no agent is working.
+- **The process gets pruned, not only grown**: this file's budget above, and a pruning pass
+  before each release (`release-android` §3b). `.llmwiki/Documentation.md`.
 
 ## Commands
 
@@ -81,6 +84,7 @@ node scripts/train-native.js                     # .llmwiki/NativeEngine.md
 # Tooling
 scripts/wip.sh list all                          # the local backlog
 scripts/hooks_selftest.sh                        # the hooks
+evals/selftest.sh                                # agent-eval checks; real runs (paid): .llmwiki/AgentEvals.md
 ```
 
 Kill a local server by port, never by name: `lsof -ti:9999 | xargs kill`.
