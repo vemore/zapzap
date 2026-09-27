@@ -78,7 +78,8 @@ COMMIT_LONG_FLAGS = {"--all", "--amend", "--include", "--only", "--interactive",
                      "--no-verify", "--verify", "--allow-empty", "--allow-empty-message",
                      "--edit", "--no-edit", "--reset-author", "--no-post-rewrite",
                      "--status", "--no-status", "--gpg-sign", "--no-gpg-sign",
-                     "--untracked-files", "--pathspec-file-nul"}
+                     "--untracked-files", "--pathspec-file-nul", "--ahead-behind",
+                     "--no-ahead-behind", "--post-rewrite"}
 # Short options whose value is the rest of the bundle or the next token; `-u` and `-S`
 # take theirs only attached.
 COMMIT_SHORT_WITH_ARG = set("mFCct")
@@ -536,6 +537,9 @@ def parse_commit(tokens):
                 info["include"] = True
             elif option in {"--all", "--amend", "--include"}:
                 info[option[2:]] = True
+            elif option in {"--interactive", "--patch"}:
+                # The hunks picked are staged, and the whole index is committed.
+                info["include"] = True
             elif "=" not in token and option in COMMIT_OPT_WITH_ARG:
                 index += 1
         elif token.startswith("-") and token != "-":
@@ -543,7 +547,7 @@ def parse_commit(tokens):
             for position, letter in enumerate(letters):
                 if letter == "a":
                     info["all"] = True
-                elif letter == "i":
+                elif letter in "ip":
                     info["include"] = True
                 elif letter in COMMIT_SHORT_ATTACHED_ARG:
                     break

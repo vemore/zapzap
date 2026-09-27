@@ -86,6 +86,8 @@ commit_field "--incl abbreviates --include"    true  '.commit.include' 'git comm
 commit_field "--inc abbreviates --include"     true  '.commit.include' 'git commit --inc -m x f'
 commit_field "an unknown long option counts as -i" true '.commit.include' 'git commit --frobnicate -m x f'
 commit_field "--no-verify is known, not -i"    false '.commit.include' 'git commit --no-verify -m x f'
+commit_field "--no-ahead-behind is known, not -i" false '.commit.include' 'git commit --no-ahead-behind -m x f'
+commit_field "--post-rewrite is known, not -i" false '.commit.include' 'git commit --post-rewrite -m x f'
 commit_field "--mess abbreviates --message"    'f' '.commit.pathspecs[0]' 'git commit --mess x f'
 commit_field "-mfix is a message, not -i"      false '.commit.include' 'git commit -mfix f'
 commit_field "-u takes no separate value"      'f' '.commit.pathspecs[0]' 'git commit -u -m x f'
@@ -352,6 +354,11 @@ out=$(payload "git commit --incl -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$
 report "the same with --incl, a prefix of --include" 2 "$?"
 out=$(payload "git commit --no-such-option -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
 report "the same with an unknown long option" 2 "$?"
+# --patch / --interactive stage the hunks picked and commit the whole index.
+for opt in -p -pq --patch --inter; do
+    out=$(payload "git commit $opt -m x other.txt" "$TREE" | CLAUDE_PROJECT_DIR="$WORK" "$HOOKS/guard-bash.sh" 2>/dev/null)
+    report "the same with $opt, which commits the whole index" 2 "$?"
+done
 git -C "$TREE" rm -rq --cached android && rm -rf "$TREE/android"
 git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null; rm -f "$TREE/other.txt"
 # Untracking the database is a deletion, not a leak.
