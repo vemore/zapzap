@@ -82,6 +82,7 @@ node scripts/train-native.js                     # .llmwiki/NativeEngine.md
 # Tooling
 scripts/wip.sh list all                          # the local backlog
 scripts/hooks_selftest.sh                        # the hooks
+evals/selftest.sh                                # agent-eval checks; real runs (paid): .llmwiki/AgentEvals.md
 ```
 
 Kill a local server by port, never by name: `lsof -ti:9999 | xargs kill`.

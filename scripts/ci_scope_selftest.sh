@@ -52,6 +52,9 @@ check "0 0 0 0 1 0 0" ".claude/settings.json" "scripts/wip.sh" "scripts/wip_self
 # The wiki lint and the finder it shares with wip.sh: its self-test runs in the hooks job.
 check "0 0 0 0 1 0 0" "scripts/wiki_lint.sh" "scripts/wiki_lint_selftest.sh" "scripts/lib/dead_paths.sh"
 check "0 0 0 0 0 0 0" "docs/wip-README.md"
+# The agent evals: their self-test runs in the hooks job; a prompt is documentation.
+check "0 0 0 0 1 0 0" "evals/run.sh" "evals/cases/docs-only-wiki-fact/check.sh" "evals/cases/out-of-scope-finding/case.env"
+check "0 0 0 0 0 0 0" "evals/preamble.md" "evals/cases/docs-only-wiki-fact/prompt.md"
 check "0 0 0 1 0 0 0" "scripts/pwa_image_smoke.sh"
 check "0 0 0 1 0 0 0" "scripts/backend_image_smoke.sh"
 check "0 0 0 1 0 1 1" "frontend-flutter/lib/main.dart"

@@ -266,6 +266,11 @@ jobs:
       # scripts/wip.sh refine on a fixture wip/: section spellings, the per-Area todo/ count.
       - name: wip.sh self-test
         run: scripts/wip_selftest.sh
+      # The agent evals' checks (evals/, .llmwiki/AgentEvals.md): each judges its untouched
+      # tree, its good.sh and its bad.sh right, in throwaway worktrees off HEAD. No agent and
+      # no claude CLI: the real runs are local, on the user's login.
+      - name: Agent evals self-test
+        run: evals/selftest.sh
       # The Play release scripts (release-android skill): play_publish.py against a fake
       # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
       # No Google key and no upload key are ever in CI; these only prove the refusals.
