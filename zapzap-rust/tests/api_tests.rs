@@ -4145,6 +4145,55 @@ async fn test_seed_with_demo_users_lets_a_demo_user_log_in_with_demo123() {
     }
 }
 
+// ========== `zapzap-backend reset-password <username>` ==========
+
+#[tokio::test]
+async fn test_reset_password_logs_in_with_the_new_password_and_the_old_one_answers_401() {
+    use zapzap_backend::infrastructure::database::reset_password::{reset_password, ResetOutcome};
+
+    let (mut app, state) = create_test_app_with_state().await;
+    register(&mut app, "resetme").await;
+
+    let outcome = reset_password(&state.db, "resetme", "a-brand-new-password")
+        .await
+        .unwrap();
+    assert_eq!(outcome, ResetOutcome::Reset);
+
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({ "username": "resetme", "password": "a-brand-new-password" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["username"], "resetme");
+
+    // The password `register` set (`password123`) no longer works
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({ "username": "resetme", "password": "password123" }),
+    )
+    .await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::UNAUTHORIZED,
+        "INVALID_CREDENTIALS",
+    );
+}
+
+#[tokio::test]
+async fn test_reset_password_of_an_unknown_username_answers_not_found() {
+    use zapzap_backend::infrastructure::database::reset_password::{reset_password, ResetOutcome};
+
+    let (_app, state) = create_test_app_with_state().await;
+    let outcome = reset_password(&state.db, "nobody-here", "whatever-password")
+        .await
+        .unwrap();
+    assert_eq!(outcome, ResetOutcome::NotFound);
+}
+
 // ============================================================================
 // A player deletes their own account (DELETE /api/auth/me)
 // ============================================================================

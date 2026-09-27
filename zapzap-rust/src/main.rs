@@ -8,11 +8,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // tests drive
 use zapzap_backend::api;
 use zapzap_backend::infrastructure::app_state::{database_url, AppState};
-use zapzap_backend::infrastructure::database::seed;
+use zapzap_backend::infrastructure::database::{reset_password, seed};
 
 const USAGE: &str = "usage: zapzap-backend            serve the API (PORT, default 9999)
        zapzap-backend seed       create the bot accounts that are missing
-       zapzap-backend seed --demo  the bots, and the demo users (password demo123)";
+       zapzap-backend seed --demo  the bots, and the demo users (password demo123)
+       zapzap-backend reset-password <username>  set the user's password to the line
+                                   read from stdin (never argv), bcrypt-hashed";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,6 +28,7 @@ async fn main() -> anyhow::Result<()> {
         [] => serve().await,
         ["seed"] => run_seed(false).await,
         ["seed", "--demo"] => run_seed(true).await,
+        ["reset-password", username] => run_reset_password(username).await,
         _ => anyhow::bail!("unknown arguments {args:?}\n{USAGE}"),
     }
 }
@@ -46,6 +49,37 @@ async fn run_seed(demo: bool) -> anyhow::Result<()> {
         report.existing.join(", ")
     );
     Ok(())
+}
+
+/// `zapzap-backend reset-password <username>`: reads the new password from stdin — one
+/// line, never a command-line argument, so it never lands in argv, a shell history or a
+/// process list — and stores its bcrypt hash on the database the server would open. Needs
+/// no `JWT_SECRET`. Exits with an error, the database untouched, when stdin is empty or
+/// blank or when no such username exists.
+async fn run_reset_password(username: &str) -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
+    let mut new_password = String::new();
+    std::io::stdin().read_line(&mut new_password)?;
+    let new_password = new_password.trim_end_matches(['\n', '\r']);
+    if new_password.is_empty() {
+        anyhow::bail!("empty password on stdin\n{USAGE}");
+    }
+
+    let url = database_url();
+    let db = seed::open(&url).await?;
+    let outcome = reset_password::reset_password(&db, username, new_password).await?;
+    db.close().await;
+
+    match outcome {
+        reset_password::ResetOutcome::Reset => {
+            println!("password reset for {username}");
+            Ok(())
+        }
+        reset_password::ResetOutcome::NotFound => {
+            anyhow::bail!("no such user: {username}")
+        }
+    }
 }
 
 async fn serve() -> anyhow::Result<()> {

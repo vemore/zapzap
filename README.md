@@ -445,6 +445,17 @@ The seed opens the database the server would (`DATABASE_URL`, else `DB_PATH`, el
 whose username is free: run it twice, or on a database in use, and nothing is duplicated.
 It needs no `JWT_SECRET` and no running server. It creates no demo party.
 
+### Resetting a password
+
+```bash
+printf '%s' 'the-new-password' | (cd zapzap-rust && cargo run -- reset-password Vincent)
+```
+
+The new password is read from one line of stdin — never a command-line argument, so it
+never lands in argv, a shell history or a process list — and bcrypt-hashed the way
+registration hashes it. `no such user: <username>` (exit 1) for an unknown username, the
+database untouched. In production: `docker-compose exec -T backend /app/zapzap-backend reset-password <username>` (`.claude/skills/deploy/SKILL.md`).
+
 ### Environment Variables
 
 The backend reads them from its environment (`zapzap-rust/src/main.rs`, `zapzap-rust/src/infrastructure/app_state.rs`):
