@@ -87,7 +87,7 @@ impl ApiError {
     }
 
     /// A move whose write lost a race with another write of the game state (a forfeit,
-    /// a second request): nothing was played, the client reloads the table
+    /// a second request): nothing was played, the client should reload the table
     fn game_state_conflict() -> Self {
         Self::conflict(
             "GAME_STATE_CONFLICT",
