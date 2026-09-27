@@ -1,7 +1,8 @@
 # ParallelDelivery
 
 > Scope: how changes reach production — worktrees, one pull request per theme, lanes by
-> risk, serial squash merges, deploy after each merge, local cleanup, and `wip/`.
+> risk, the model per pull request, serial squash merges, deploy after each merge, local
+> cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
 > Updated: 2026-09-27
 
@@ -102,6 +103,41 @@ or README the change makes false is at least Medium; read a page's `Decisions & 
 before calling something redundant; judge the tests against the entry's acceptance
 criteria, not coverage.
 
+### Model routing — the rating picks the model
+
+The lane rates the **risk to production**; a second rating, made at the same moment
+(`ship-parallel` §1) and shown in the same plan, rates the **difficulty**, and picks the model
+the implementing agent runs on. Without it every agent inherits the orchestrator's model and
+effort, and a string rename costs what a scoring change costs.
+
+| Rating | When | Launched as (`ship-parallel` §2) |
+|---|---|---|
+| **complex** | A design choice is open, several subsystems move together, the root cause is unknown, or the lane is B or C. **In doubt, complex** | `subagent_type: "implementer-complex"` — `.claude/agents/implementer-complex.md`, `model: opus`, `effort: high` |
+| **simple** | The entry's fix is explicit and local, and its acceptance is mechanical | `subagent_type: "implementer-simple"` — `.claude/agents/implementer-simple.md`, `model: sonnet`, effort inherited |
+| **bulk** | Many independent, mechanical, well-specified units — the eight translated locales of a translation, a sweep over files | One `general-purpose` agent per unit, `model: "haiku"`, in parallel, launched by the orchestrator; the French and English master is the orchestrator's (`i18n-add-string` §1b) |
+
+- **Effort needs a definition.** The `Agent` tool takes a per-call `model`, but `effort` comes
+  only from an agent definition's frontmatter (`low` … `max`, Claude Code's sub-agents
+  reference) — hence the two files. A per-call `model` overrides the definition's, so §2
+  passes none with them.
+- **The definitions hold no procedure.** Their body only frames the rating (understand
+  first; or stop and ask for a re-rate); the §2 prompt, passed in full, stays the one
+  specification, and its rules override the body.
+- **Bulk is the orchestrator's, not an implementer's**: a subagent has no `Agent` tool, and
+  the commit hook refuses an ARB key missing from a locale, so nothing commits between the
+  master and the units. An implementer whose pull request has bulk units stops before its
+  first commit; the orchestrator finishes them in its worktree and resumes it.
+- **Loading.** Claude Code watches `.claude/agents/` and picks up an edited definition
+  without a restart, but a session started before the directory first existed does not see
+  it; §2 then falls back to `general-purpose` with `model: "opus"` or `"sonnet"` (no effort).
+- The hooks key on the working directory, never on the agent type: `SubagentStop`
+  ([[Hooks]]) judges the two implementers exactly as it judged `general-purpose` ones.
+- **Checking the thresholds**: `scripts/agent_metrics.py --by agent,branch` gives the
+  weighted tokens and active time per `implementer-*` type and pull request, and
+  `scripts/delivery_metrics.sh` the rework per change — an over-reworked `simple` or a cheap,
+  never-reworked `complex` moves the thresholds or the models. The weights are by price
+  class, not by model: an Opus token costs more than a Sonnet one of the same class.
+
 ### Merged, not deployed
 
 Only a session on the LAN deploys: `scripts/deploy_nas.sh` needs ssh to the NAS and the
@@ -195,6 +231,14 @@ tokens raw, 300 M weighted; 124 h of agent time active, 46 h waiting on the user
 - **"Merged, not deployed" is tracked (2026-09-27)**, ported from countscore, where
   #212–#216 sat merged and undeployed for days with no trace: nothing in §4 covered a session
   that could merge but not reach the NAS.
+- **Model routing by a rating made at planning time (2026-09-27)**, ported from countscore
+  (#229). Every implementer inherited the orchestrator's model and effort. Routing by task
+  envelope is current practice (Haiku for volume, Sonnet for execution, Opus for
+  judgement); here the orchestrator rates each pull request at planning time and shows the
+  rating to the user, rather than letting a router infer it per call — the rating is
+  reviewable, and it is made where the lane already is. Two project agent definitions
+  rather than a per-call `model`, because effort can only be set in a definition. "In
+  doubt, complex", like "in doubt, the stricter lane": a rework costs more than the tokens.
 - **Squash, update by merging `master` in** (`gh api -X PUT .../update-branch`): linear history
   without force-pushes, which would destroy an agent's commits in its worktree.
 - **A `zapzap-rust/` merge is deployed, a `src/` one is not (2026-09-24).** Production switched to the Rust backend; the `ship-parallel` §4 table follows, and the Node backend stays gated in CI as the rollback.

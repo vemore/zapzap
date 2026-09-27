@@ -44,6 +44,19 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
      `docker-compose.yml` / `zapzap-rust/docker-compose.yml` environment, `nginx/`.
    - **D** an experiment, on a `noPullRequest` branch, never merged as is.
    Lanes B and C need **acceptance criteria in the entry**. In doubt, the stricter lane.
+   **And rate it complex, simple or bulk** — the lane rates the risk to production, the
+   rating the difficulty, and it picks the model §2 launches (why: `ParallelDelivery.md`
+   § Model routing):
+   - **complex** → `implementer-complex` (Opus, effort high): a design choice is still open,
+     several subsystems move together, the root cause is unknown, or the lane is B or C.
+   - **simple** → `implementer-simple` (Sonnet): the entry's fix is explicit and local, and
+     its acceptance is mechanical (a string, a rename, a documented one-file change).
+   - **bulk** → Haiku, one agent per unit, in parallel: many independent, mechanical,
+     well-specified units — the eight translated locales of `i18n-add-string` §1b, a sweep
+     over files. The pull request is rated simple or complex for the rest of its work; the
+     units are **yours** to fan out (§2) — a subagent has no `Agent` tool — and so is a
+     translation's French and English master.
+   - In doubt, complex: an under-rated change costs a rework, an over-rated one only tokens.
 5. **Check that this session can deploy.** A claude.ai/code session has no route to the LAN,
    and the NAS or the registry can be down; §4 cannot run then. Read-only, a few seconds at
    most, over the two routes `scripts/deploy_nas.sh` takes — ssh to the NAS, plain HTTP to
@@ -63,7 +76,8 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
    deploy — merges will land *merged, not deployed* (§4)". The user then chooses between
    merging anyway and leaving the green pull requests to a session on the LAN.
 6. Present the plan in **one** `AskUserQuestion` — the deploy check, then per pull request:
-   branch, entries, lane (and criteria for B/C), likely files, wave, merge order — and wait.
+   branch, entries, lane (and criteria for B/C), rating (complex or simple, and bulk units if
+   any), likely files, wave, merge order — and wait.
    The go-ahead covers the loop, merges and deploys included; it does not stand in for lane
    C's go-ahead in §3.
 
@@ -71,9 +85,24 @@ Four agents at a time at most: each worktree costs an `npm ci` and cargo builds.
 
 ## 2. Launch one agent per pull request
 
-All agents of a wave in **one message**, each with `isolation: "worktree"`. The tool creates
-the worktree under `.claude/worktrees/<name>` on a branch `worktree-<name>`; the agent moves
-to a proper branch first. Fill in this prompt — do not shorten the rules:
+All agents of a wave in **one message**, each with `isolation: "worktree"` and the
+**`subagent_type` its §1 rating picks**: `implementer-complex` or `implementer-simple`
+(`.claude/agents/`). Pass no `model`: a per-call `model` overrides the definition's, and
+effort comes only from the definition. If the session does not list the two (a session
+started before `.claude/agents/` first existed needs a restart), launch `general-purpose`
+with `model: "opus"` or `"sonnet"` instead, and say so in the report. The tool creates the
+worktree under `.claude/worktrees/<name>` on a branch `worktree-<name>`; the agent moves to
+a proper branch first.
+
+**Bulk units** (§1) are launched by you, never by an implementer: add to its prompt that it
+stops **before its first commit** and reports what is left; then write the master in its
+worktree and launch one `general-purpose` agent per unit with `model: "haiku"`, all in one
+message, **no** `isolation`, each given the worktree's absolute path and the one file it
+owns, no commit. Review what comes back, then `SendMessage` the implementer to commit and
+carry on (translations: `i18n-add-string` §1b). A pull request that is nothing but bulk you
+hold yourself, in a worktree of your own.
+
+Fill in this prompt — do not shorten the rules:
 
 ```text
 You implement one pull request of ZapZap, in the git worktree you start in.
