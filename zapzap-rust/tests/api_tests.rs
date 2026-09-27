@@ -4431,6 +4431,8 @@ async fn test_delete_account_forfeits_the_seat_and_the_game_goes_on() {
     assert_eq!(body["gameState"]["currentTurn"], 1, "{body}");
     assert_eq!(body["gameState"]["currentAction"], "play", "{body}");
     assert_eq!(body["gameState"]["scores"]["0"], 10, "{body}");
+    // Its hand left play: the seat holds no card
+    assert_eq!(body["gameState"]["otherPlayersHandSizes"]["0"], 0, "{body}");
     let seat = body["players"][0]["userId"].as_str().unwrap();
     assert!(seat.starts_with("deleted-"), "{body}");
     assert!(!body.to_string().contains("forfeiter"), "{body}");
@@ -4534,6 +4536,16 @@ async fn test_delete_account_forfeit_leaving_one_player_finishes_the_game() {
     assert!(events.contains(&stayer_id), "{events}");
     let body = game_state(&mut app, &party_id, &stayer).await;
     assert_eq!(body["party"]["status"], "finished", "{body}");
+    // The state says so too, so the board shows the end screen; the leaver's score (30)
+    // was the lowest, yet an eliminated seat never wins
+    assert_eq!(body["gameState"]["currentAction"], "finished", "{body}");
+    assert_eq!(body["gameState"]["gameFinished"], true, "{body}");
+    assert_eq!(body["gameState"]["winner"]["playerIndex"], 1, "{body}");
+    assert_eq!(
+        body["gameState"]["winner"]["userId"],
+        stayer_id.as_str(),
+        "{body}"
+    );
 
     // The stayer's history holds the game, won, the leaver anonymised
     let (status, body) = get_auth(&mut app, "/api/history", &stayer).await;

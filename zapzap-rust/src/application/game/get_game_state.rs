@@ -208,55 +208,27 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                     None
                 };
 
-            // Determine winner if game is finished
+            // Determine winner if game is finished: the seat `is_game_over` names, as the
+            // move that finished the game did (the last seat in play, or the Golden
+            // Score's lowest hand), so the state agrees with the saved game results. An
+            // eliminated seat (past 100, or forfeited) never wins, whatever its score.
             let (game_finished, winner) = if is_game_finished {
-                // Find the winner (player with score <= 100 in golden score, or lowest score)
-                let winner_info = if gs.is_golden_score {
-                    // In golden score, winner is the player with lowest hand who called zapzap successfully
-                    // or the only player still <= 100
-                    let surviving: Vec<_> = scores
+                let winner_idx = crate::domain::services::is_game_over(&gs).or_else(|| {
+                    gs.active_players()
+                        .into_iter()
+                        .min_by_key(|&i| gs.get_score(i))
+                });
+                let winner_info = winner_idx.and_then(|winner_idx| {
+                    players
                         .iter()
-                        .enumerate()
-                        .filter(|(_, &score)| score <= 100)
-                        .collect();
-
-                    if surviving.len() == 1 {
-                        let (winner_idx, &winner_score) = surviving[0];
-                        let winner_user =
-                            players.iter().find(|p| p.player_index == winner_idx as u8);
-                        winner_user.map(|w| WinnerInfoView {
+                        .find(|p| p.player_index == winner_idx)
+                        .map(|w| WinnerInfoView {
                             user_id: w.user.id.clone(),
-                            player_index: winner_idx as u8,
+                            player_index: winner_idx,
                             username: w.user.username.clone(),
-                            score: winner_score,
+                            score: gs.get_score(winner_idx),
                         })
-                    } else if let Some(lowest_idx) = gs.lowest_hand_player_index {
-                        // Winner is the one with lowest hand
-                        let winner_user = players.iter().find(|p| p.player_index == lowest_idx);
-                        winner_user.map(|w| WinnerInfoView {
-                            user_id: w.user.id.clone(),
-                            player_index: lowest_idx,
-                            username: w.user.username.clone(),
-                            score: gs.get_score(lowest_idx),
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    // Normal game end - find player with lowest score
-                    let (winner_idx, &winner_score) = scores
-                        .iter()
-                        .enumerate()
-                        .min_by_key(|(_, &score)| score)
-                        .unwrap_or((0, &0));
-                    let winner_user = players.iter().find(|p| p.player_index == winner_idx as u8);
-                    winner_user.map(|w| WinnerInfoView {
-                        user_id: w.user.id.clone(),
-                        player_index: winner_idx as u8,
-                        username: w.user.username.clone(),
-                        score: winner_score,
-                    })
-                };
+                });
                 (true, winner_info)
             } else {
                 (false, None)

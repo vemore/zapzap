@@ -350,17 +350,32 @@ pub fn is_game_over(state: &GameState) -> Option<u8> {
 }
 
 /// A player gives up their seat for good (their account is deleted): the seat is
-/// eliminated at once, as a player past 100 is, and its hand goes out of play. When the
-/// seat was to move, the turn passes to the next active seat: to choose the hand size
-/// (the round's starter), or to play (the draw that ended the seat's turn is skipped).
-/// Returns the winner when fewer than two seats remain active: the game is over.
+/// eliminated at once, as a player past 100 is, and its hand goes out of play, face down
+/// onto the discard pile (it comes back only when an empty deck is rebuilt from that
+/// pile, or with the next deal): the seat then holds no card, so it counts in no hand
+/// size and reveals nothing at the round's end, and the 54 cards stay accounted for.
+/// When the seat was to move, the turn passes to the next active seat: to choose the
+/// hand size (the round's starter), or to play (the draw that ended the seat's turn is
+/// skipped). Returns the winner when fewer than two seats remain active: the game is over,
+/// and the state says so (`Finished`; a round in progress scores nothing).
 pub fn forfeit_seat(state: &mut GameState, player: u8) -> Option<u8> {
     if player >= state.player_count {
         return None;
     }
     state.eliminate_player(player);
+    let hand = std::mem::take(state.get_hand_mut(player));
+    state.discard_pile.extend(hand);
+    state.card_tracker.taken_cards[player as usize] = 0;
+    state.card_tracker.taken_count[player as usize] = 0;
     let active = state.active_players();
     if active.len() < 2 {
+        // The game is over: a round in progress ends where it stands, scoring nothing
+        if state.current_action != GameAction::Finished {
+            state.current_action = GameAction::Finished;
+            state
+                .round_scores
+                .get_or_insert([0; crate::domain::value_objects::MAX_PLAYERS]);
+        }
         return active.first().copied();
     }
     match state.current_action {
@@ -620,6 +635,35 @@ mod tests {
     }
 
     #[test]
+    fn test_forfeit_puts_the_hand_out_of_play_on_the_discard_pile() {
+        let mut state = four_player_state([&[1, 14], &[2, 15], &[0], &[4]]);
+        state.discard_pile = vec![40];
+        state.track_card_taken(1, 15);
+        let cards = |s: &GameState| {
+            let mut all: Vec<u8> = s.deck.clone();
+            all.extend(s.discard_pile.iter());
+            all.extend(s.last_cards_played.iter());
+            all.extend(s.cards_played.iter());
+            for hand in &s.hands {
+                all.extend(hand.iter());
+            }
+            all.sort_unstable();
+            all
+        };
+        let before = cards(&state);
+        assert_eq!(forfeit_seat(&mut state, 1), None);
+        assert!(state.get_hand(1).is_empty(), "the seat holds no card");
+        assert_eq!(state.discard_pile, vec![40, 2, 15]);
+        assert!(!state.has_player_taken(1, 15));
+        assert_eq!(cards(&state), before, "no card lost or duplicated");
+        // The empty seat (worth 0) neither counteracts a zapzap nor scores
+        state.current_turn = 2;
+        let result = execute_zapzap(&mut state).unwrap();
+        assert!(!result.counteracted);
+        assert!(result.scores.iter().all(|(p, _)| *p != 1));
+    }
+
+    #[test]
     fn test_forfeit_off_turn_changes_only_the_seat() {
         let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
         state.current_action = GameAction::Draw;
@@ -649,6 +693,12 @@ mod tests {
         state.eliminate_player(1);
         state.eliminate_player(3);
         assert_eq!(forfeit_seat(&mut state, 0), Some(2));
+        assert_eq!(state.current_action, GameAction::Finished);
+        assert_eq!(
+            state.round_scores,
+            Some([0; crate::domain::value_objects::MAX_PLAYERS]),
+            "no round was scored"
+        );
         let mut state = four_player_state([&[1], &[2], &[3], &[4]]);
         state.current_action = GameAction::Finished;
         state.eliminated_mask = 0b1010;
