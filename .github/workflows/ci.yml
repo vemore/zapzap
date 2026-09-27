@@ -263,6 +263,9 @@ jobs:
       # wiki with a known answer, runs here (.llmwiki/Documentation.md, Wiki lint).
       - name: Wiki lint self-test
         run: scripts/wiki_lint_selftest.sh
+      # scripts/wip.sh refine on a fixture wip/: section spellings, the per-Area todo/ count.
+      - name: wip.sh self-test
+        run: scripts/wip_selftest.sh
       # The Play release scripts (release-android skill): play_publish.py against a fake
       # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
       # No Google key and no upload key are ever in CI; these only prove the refusals.

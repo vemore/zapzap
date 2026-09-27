@@ -220,6 +220,8 @@ ask the user first.
 
 ## 5. After
 
+A deploy that passed §3 closes an open `wip/todo/*-merged-not-deployed.md` whose shas the
+deployed `master` contains (`ship-parallel` §4): `mv` it to `wip/done/`, naming that sha.
 The fix of whatever broke is a new pull request (`ship-parallel` §6), never a hand edit on
 the NAS. A `.env` change alone needs no deploy: edit it on the NAS (never print it), then
 `docker-compose -f compose.yaml up -d` in the deploy directory with

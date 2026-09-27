@@ -64,9 +64,9 @@ while IFS= read -r path; do
         # The Claude Code hooks and the scripts the hooks job exercises: hooks_selftest.sh
         # (and generate_keystore.sh, which it runs with a stub keytool), and
         # deploy_nas_selftest.sh for the production deploy (rebuild.sh is its local
-        # sibling), and wiki_lint_selftest.sh for the wiki lint (and scripts/lib/, which it
-        # and wip.sh share). No image holds them.
-        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh|scripts/wiki_lint.sh|scripts/wiki_lint_selftest.sh|scripts/lib/*)
+        # sibling), wiki_lint_selftest.sh for the wiki lint (and scripts/lib/, which it
+        # and wip.sh share), and wip_selftest.sh for wip.sh refine. No image holds them.
+        .claude/hooks/*|.claude/settings.json|scripts/hooks_selftest.sh|scripts/cleanup_local.sh|scripts/worktree_setup.sh|scripts/wip.sh|scripts/deploy_nas.sh|scripts/deploy_nas_selftest.sh|scripts/deploy.env.example|scripts/generate_keystore.sh|rebuild.sh|scripts/wiki_lint.sh|scripts/wiki_lint_selftest.sh|scripts/wip_selftest.sh|scripts/lib/*)
             hooks=true ;;
 
         # The Play release scripts and their tests, which the hooks job runs: they are
