@@ -49,6 +49,8 @@ pub struct GameStateView {
     pub round_number: u16,
     pub is_golden_score: bool,
     pub scores: Vec<u16>,
+    /// The eliminated seats: past 100, or forfeited (an account deleted mid-game)
+    pub eliminated_players: Vec<u8>,
     pub hand_sizes: Vec<usize>,
     pub starting_player: u8,
     pub last_action: Option<serde_json::Value>,
@@ -155,6 +157,9 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 (0..gs.player_count).map(|i| gs.get_hand(i).len()).collect();
 
             let scores: Vec<u16> = (0..gs.player_count).map(|i| gs.get_score(i)).collect();
+            let eliminated_players: Vec<u8> = (0..gs.player_count)
+                .filter(|&i| gs.is_eliminated(i) || gs.get_score(i) > 100)
+                .collect();
 
             // Get cards_played from game state
             let cards_played = gs.cards_played.to_vec();
@@ -267,6 +272,7 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 round_number: gs.round_number,
                 is_golden_score: gs.is_golden_score,
                 scores,
+                eliminated_players,
                 hand_sizes,
                 starting_player,
                 last_action,

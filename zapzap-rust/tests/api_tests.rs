@@ -4313,12 +4313,12 @@ async fn test_deleted_player_stays_anonymised_in_the_others_history() {
 }
 
 #[tokio::test]
-async fn test_delete_account_seated_in_an_active_party_is_409() {
+async fn test_delete_account_seated_in_a_waiting_party_is_409() {
     let (mut app, state) = create_test_app_with_state().await;
 
     // Owner of a waiting party
     let (owner, owner_id) = register(&mut app, "waitowner").await;
-    create_party(&mut app, &owner, "Waiting table").await;
+    let party_id = create_party(&mut app, &owner, "Waiting table").await;
     let (status, body) = delete_me(&mut app, &owner, json!({"password": "password123"})).await;
     assert_error(status, &body, StatusCode::CONFLICT, "ACTIVE_PARTY");
     assert!(state
@@ -4328,12 +4328,280 @@ async fn test_delete_account_seated_in_an_active_party_is_409() {
         .unwrap()
         .is_some());
 
-    // Seated, not owner, in a game in progress
-    let (_, tokens) = started_party(&mut app, "active").await;
-    let (status, body) = delete_me(&mut app, &tokens[1], json!({"password": "password123"})).await;
+    // Seated, not owner, in a waiting party
+    let (guest, guest_id) = register(&mut app, "waitguest").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &guest,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    let (status, body) = delete_me(&mut app, &guest, json!({"password": "password123"})).await;
     assert_error(status, &body, StatusCode::CONFLICT, "ACTIVE_PARTY");
-    let (status, _) = get_auth(&mut app, "/api/history", &tokens[1]).await;
-    assert_eq!(status, StatusCode::OK);
+    assert!(state
+        .user_repo
+        .find_by_id(&guest_id)
+        .await
+        .unwrap()
+        .is_some());
+}
+
+/// Read an SSE body until the server ends it; returns everything read. Fails when the
+/// stream is still open after 10 s.
+async fn read_sse_to_end(body: &mut Body) -> String {
+    let mut text = String::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let frame = tokio::time::timeout_at(deadline, body.frame())
+            .await
+            .unwrap_or_else(|_| panic!("the SSE stream is still open after 10 s; read: {text}"));
+        match frame {
+            Some(Ok(frame)) => {
+                if let Ok(data) = frame.into_data() {
+                    text.push_str(&String::from_utf8_lossy(&data));
+                }
+            }
+            Some(Err(_)) | None => return text,
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_delete_account_forfeits_the_seat_and_the_game_goes_on() {
+    let (mut app, state) = create_test_app_with_state().await;
+    // Seats: the leaver (owner) 0, a human 1, a bot 2
+    let (leaver, leaver_id) = register(&mut app, "forfeiter").await;
+    let (stayer, stayer_id) = register(&mut app, "playson").await;
+    let party_id = create_party(&mut app, &leaver, "Forfeit table").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &stayer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    let bot_id = create_bot(&state, "forfeitbot").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/bots"),
+        json!({"botId": bot_id}),
+        &leaver,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "add bot: {body}");
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &leaver,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+    // The leaver is to play
+    set_game_state(
+        &state,
+        &party_id,
+        &[&[0, 1, 2, 3], &[4, 5, 6, 7], &[8, 9, 10, 11]],
+        &[10, 20, 30],
+        0,
+        GameAction::Play,
+    )
+    .await;
+    let (_, mut stayer_stream) = open_sse(&mut app, Some(&stayer)).await;
+    read_sse_until(&mut stayer_stream, "connected").await;
+
+    let (status, body) = delete_me(&mut app, &leaver, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(state
+        .user_repo
+        .find_by_id(&leaver_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    // The others hear of it; the seat is out, the human after it is to play
+    let events = read_sse_until(&mut stayer_stream, "playerForfeited").await;
+    assert!(events.contains(r#""playerIndex":0"#), "{events}");
+    let body = game_state(&mut app, &party_id, &stayer).await;
+    assert_eq!(body["party"]["status"], "playing", "{body}");
+    assert_eq!(body["gameState"]["eliminatedPlayers"], json!([0]), "{body}");
+    assert_eq!(body["gameState"]["currentTurn"], 1, "{body}");
+    assert_eq!(body["gameState"]["currentAction"], "play", "{body}");
+    assert_eq!(body["gameState"]["scores"]["0"], 10, "{body}");
+    let seat = body["players"][0]["userId"].as_str().unwrap();
+    assert!(seat.starts_with("deleted-"), "{body}");
+    assert!(!body.to_string().contains("forfeiter"), "{body}");
+    // The party the leaver owned is the stayer's now
+    let party = state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(party.owner_id, stayer_id);
+
+    // The game goes on: the stayer plays, then the bot, and the turn skips the lost seat
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/play"),
+        json!({"cardIds": [4]}),
+        &stayer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "play: {body}");
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/game/{party_id}/draw"),
+        json!({"source": "deck"}),
+        &stayer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "draw: {body}");
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let body = game_state(&mut app, &party_id, &stayer).await;
+        let turn = body["gameState"]["currentTurn"].as_u64().unwrap();
+        assert_ne!(turn, 0, "the forfeited seat never plays: {body}");
+        if turn == 1 && body["gameState"]["currentAction"] == "play" {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the bot did not play within 10 s: {body}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+}
+
+#[tokio::test]
+async fn test_delete_account_forfeit_leaving_one_player_finishes_the_game() {
+    let (mut app, state) = create_test_app_with_state().await;
+    // Three seats: the leaver 0, the stayer 1, and seat 2 already out past 100
+    let (party_id, tokens) = started_party(&mut app, "lastforfeit").await;
+    let (leaver, stayer) = (tokens[0].clone(), tokens[1].clone());
+    let user_id = |name: &'static str| {
+        let state = state.clone();
+        async move {
+            state
+                .user_repo
+                .find_by_username(name)
+                .await
+                .unwrap()
+                .unwrap()
+                .id
+        }
+    };
+    let leaver_id = user_id("lastforfeit_a").await;
+    let stayer_id = user_id("lastforfeit_b").await;
+    set_game_state(
+        &state,
+        &party_id,
+        &[&[0, 1, 2, 3], &[4, 5, 6, 7], &[]],
+        &[30, 50, 120],
+        1,
+        GameAction::Play,
+    )
+    .await;
+    let mut gs = state
+        .party_repo
+        .get_game_state(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    gs.eliminate_player(2);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+    let (_, mut stayer_stream) = open_sse(&mut app, Some(&stayer)).await;
+    read_sse_until(&mut stayer_stream, "connected").await;
+
+    let (status, body) = delete_me(&mut app, &leaver, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(state
+        .user_repo
+        .find_by_id(&leaver_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    // One player left: the game is over, won by the stayer
+    let events = read_sse_until(&mut stayer_stream, "gameFinished").await;
+    assert!(events.contains(&stayer_id), "{events}");
+    let body = game_state(&mut app, &party_id, &stayer).await;
+    assert_eq!(body["party"]["status"], "finished", "{body}");
+
+    // The stayer's history holds the game, won, the leaver anonymised
+    let (status, body) = get_auth(&mut app, "/api/history", &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let games = body["games"].as_array().unwrap();
+    assert_eq!(games.len(), 1, "{body}");
+    assert_eq!(games[0]["partyId"], party_id.as_str());
+    assert_eq!(games[0]["winnerUserId"], stayer_id.as_str());
+    assert_eq!(games[0]["userPlacement"], 1);
+    let (status, body) = get_auth(&mut app, &format!("/api/history/{party_id}"), &stayer).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let text = body.to_string();
+    assert!(text.contains("deleted-"), "{body}");
+    assert!(!text.contains("lastforfeit_a"), "{body}");
+    assert!(!text.contains(&leaver_id), "{body}");
+}
+
+#[tokio::test]
+async fn test_delete_account_forfeit_leaving_only_bots_deletes_the_party() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (leaver, _) = register(&mut app, "botsonly").await;
+    let party_id = create_party(&mut app, &leaver, "Bot table").await;
+    for name in ["lonebot1", "lonebot2"] {
+        let bot_id = create_bot(&state, name).await;
+        let (status, body) = post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/bots"),
+            json!({"botId": bot_id}),
+            &leaver,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "add bot: {body}");
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/start"),
+        json!({}),
+        &leaver,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start: {body}");
+
+    let (status, body) = delete_me(&mut app, &leaver, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_delete_account_ends_its_event_streams() {
+    let (mut app, _) = create_test_app_with_state().await;
+    let (leaver, _) = register(&mut app, "streamgone").await;
+    let (stayer, _) = register(&mut app, "streamstays").await;
+    let (_, mut leaver_stream) = open_sse(&mut app, Some(&leaver)).await;
+    read_sse_until(&mut leaver_stream, "connected").await;
+    let (_, mut stayer_stream) = open_sse(&mut app, Some(&stayer)).await;
+    read_sse_until(&mut stayer_stream, "connected").await;
+
+    let (status, body) = delete_me(&mut app, &leaver, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The deleted account's stream ends; the others' stays open and hears it leave
+    read_sse_to_end(&mut leaver_stream).await;
+    read_sse_until(&mut stayer_stream, "userDisconnected").await;
 }
 
 #[tokio::test]
@@ -4405,10 +4673,10 @@ async fn test_admin_delete_user_keeps_their_finished_games_anonymised() {
 }
 
 #[tokio::test]
-async fn test_admin_delete_user_seated_in_a_live_game_is_409() {
+async fn test_admin_delete_user_seated_in_a_live_game_forfeits_the_seat() {
     let (mut app, state) = create_test_app_with_state().await;
     let (admin, _) = register_admin(&mut app, &state, "liveadmin").await;
-    started_party(&mut app, "adminlive").await;
+    let (party_id, tokens) = started_party(&mut app, "adminlive").await;
     let user_id = state
         .user_repo
         .find_by_username("adminlive_b")
@@ -4419,12 +4687,55 @@ async fn test_admin_delete_user_seated_in_a_live_game_is_409() {
 
     let path = format!("/api/admin/users/{user_id}");
     let (status, body) = send_raw(&mut app, "DELETE", &path, "", None, Some(&admin)).await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    assert_eq!(body["success"], false);
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert!(state
         .user_repo
         .find_by_id(&user_id)
         .await
         .unwrap()
-        .is_some());
+        .is_none());
+    let body = game_state(&mut app, &party_id, &tokens[0]).await;
+    assert_eq!(body["party"]["status"], "playing", "{body}");
+    assert_eq!(body["gameState"]["eliminatedPlayers"], json!([1]), "{body}");
+}
+
+#[tokio::test]
+async fn test_admin_party_list_names_a_deleted_owner_anonymously() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (admin, _) = register_admin(&mut app, &state, "listadmin").await;
+    let (owner, owner_id) = register(&mut app, "goneowner").await;
+    let (guest, guest_id) = register(&mut app, "stillhere").await;
+    let party_id = create_party(&mut app, &owner, "Owned table").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &guest,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    finish_party(&state, &party_id).await;
+    let results = [
+        (owner_id.as_str(), 3, 1, true),
+        (guest_id.as_str(), 40, 2, false),
+    ];
+    record_finished_game(&state, &party_id, &owner_id, &results, false, 1700000500).await;
+    let (status, body) = delete_me(&mut app, &owner, json!({"password": "password123"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, body) = get_auth(&mut app, "/api/admin/parties", &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let party = &body["parties"][0];
+    assert_eq!(party["id"], party_id.as_str());
+    assert!(
+        party["ownerId"].as_str().unwrap().starts_with("deleted-"),
+        "{body}"
+    );
+    assert_eq!(party["ownerUsername"], "Joueur supprimé", "{body}");
+    let (status, body) = get_auth(&mut app, "/api/admin/parties?status=finished", &admin).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["parties"][0]["ownerUsername"], "Joueur supprimé",
+        "{body}"
+    );
 }

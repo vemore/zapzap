@@ -4,7 +4,9 @@ use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{
     PartyRepository, PlayerGameResult, RepositoryError, RoundScoreEntry,
 };
-use crate::domain::services::{check_eliminations, execute_zapzap, is_game_over};
+use crate::domain::services::{
+    check_eliminations, execute_zapzap, is_game_over, sort_final_ranking,
+};
 use crate::domain::value_objects::GameAction;
 use crate::infrastructure::bot::card_analyzer;
 
@@ -193,28 +195,7 @@ impl<P: PartyRepository> CallZapZap<P> {
                 })
                 .collect();
 
-            // Sort by: winner first, then by elimination order (later = better), never eliminated by score
-            let winner_idx_copy = winner_idx;
-            player_results.sort_by(|a, b| {
-                let (idx_a, score_a, _, elim_a) = a;
-                let (idx_b, score_b, _, elim_b) = b;
-
-                // Winner always first
-                if *idx_a == winner_idx_copy {
-                    return std::cmp::Ordering::Less;
-                }
-                if *idx_b == winner_idx_copy {
-                    return std::cmp::Ordering::Greater;
-                }
-
-                // Non-eliminated before eliminated
-                match (elim_a, elim_b) {
-                    (None, Some(_)) => std::cmp::Ordering::Less,
-                    (Some(_), None) => std::cmp::Ordering::Greater,
-                    (None, None) => score_a.cmp(score_b), // Both not eliminated: lower score = better
-                    (Some(r_a), Some(r_b)) => r_b.cmp(r_a), // Both eliminated: later round = better position
-                }
-            });
+            sort_final_ranking(&mut player_results, winner_idx);
 
             let winner_score = game_state.scores[winner_idx as usize];
 

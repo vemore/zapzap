@@ -114,6 +114,17 @@ async fn parties_of(state: &AppState, user_id: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Resolves when the account of the stream is deleted; never for an anonymous stream.
+async fn closed_signal(closed: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    match closed {
+        // An error means the signal is gone: the account was forgotten either way
+        Some(closed) => {
+            let _ = closed.wait_for(|closed| *closed).await;
+        }
+        None => std::future::pending().await,
+    }
+}
+
 /// One authenticated event stream. When the client goes away axum drops the stream, and
 /// the stream drops this guard: the stream is unregistered, and the user's last one
 /// broadcasts `userDisconnected` (as the Node backend's `close` handler did).
@@ -173,6 +184,11 @@ pub async fn sse_handler(
         }
     });
 
+    // A deleted account's streams end (`SessionManager::remove_user`)
+    let mut closed = guard
+        .as_ref()
+        .map(|guard| state.session_manager.close_signal(&guard.user_id));
+
     let mut known_parties = match &guard {
         Some(guard) => parties_of(&state, &guard.user_id).await,
         None => HashSet::new(),
@@ -197,6 +213,10 @@ pub async fn sse_handler(
 
         loop {
             tokio::select! {
+                _ = closed_signal(&mut closed) => {
+                    tracing::debug!("SSE stream closed: its account was deleted");
+                    break;
+                }
                 _ = heartbeat_interval.tick() => {
                     tracing::trace!("SSE heartbeat");
                     // Send heartbeat comment (not a real event)

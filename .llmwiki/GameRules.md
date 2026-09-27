@@ -2,7 +2,7 @@
 
 > Scope: where the ZapZap rules (`GAME_RULES.md` at repo root = the reference) are implemented in the Rust backend, and where code and doc disagree.
 > Related: [[Bots]] · [[Backend]] · [[Api]] · [[NativeEngine]]
-> Updated: 2026-09-25
+> Updated: 2026-09-27
 
 ## Facts
 
@@ -50,7 +50,8 @@
 - Eliminated when total score > 100 (`game_service.rs:312-323`), checked right after ZapZap (`call_zapzap.rs:90`).
 - Golden Score flag = exactly 2 active players at round init (`game_service.rs:61`).
 - Game over (`game_service.rs:332-350`): one active player left, or Golden Score round finished → winner = `lowest_hand_player_index` (caller loses ties because ties counteract). Matches `GAME_RULES.md:170-198`; unit tests `game_service.rs:384-429`.
-- Final ranking: winner, then non-eliminated by score, then eliminated by later elimination round (`call_zapzap.rs:182-201`; duplicated in `next_round.rs:105-124`).
+- Final ranking: winner, then non-eliminated by score, then eliminated by later elimination round (`sort_final_ranking`, `game_service.rs`; used by `call_zapzap.rs`, `next_round.rs` and a forfeit that ends the game).
+- Forfeit (`GAME_RULES.md` "Game Elimination", an account deleted mid-game): `forfeit_seat` (`game_service.rs`) eliminates the seat; on its turn, the turn passes to the next active seat to play (a pending draw is skipped), or to choose the hand size when the round had not started (then `starting_player` and the Golden Score flag follow the seats left); fewer than two active seats → game over. Called by `UserRepository::delete_account` ([[Backend]] § Account deletion). A forfeited seat with no `round_scores` row marking it counts as eliminated in the current round for the ranking. Tests: the `test_forfeit_*` unit tests in `game_service.rs`; `test_delete_account_forfeits_the_seat_and_the_game_goes_on`, `test_delete_account_forfeit_leaving_one_player_finishes_the_game` (`zapzap-rust/tests/api_tests.rs`).
 
 ### Doc vs code
 | `GAME_RULES.md` | Code | Verdict |
@@ -62,6 +63,7 @@
 | LLM prompt penalty | built from `COUNTERACT_PENALTY_PER_OPPONENT` | agree (fixed 2026-09-24) |
 
 ## Decisions & History
+- 2026-09-27 (fix/account-deletion-followups): a player may delete their account while seated in a game in progress; the seat is forfeited as an elimination (user decision, 2026-09-27), because a game the others abandoned never finished and blocked the deletion for ever. `GAME_RULES.md` "Game Elimination" says it. The final ranking's sort, duplicated in `call_zapzap.rs` and `next_round.rs`, became `sort_final_ranking`, which the forfeit uses too.
 - 2026-09-24 (fix/rust-rules-and-bots): the three places where the Rust code disagreed with `GAME_RULES.md` were fixed — the eliminated starter, the tied lowest hands (decided 2026-09-22: every tied player scores 0, as Node does; `GAME_RULES.md` "Final Scoring" now says so outright) and the repeated card in a play. The parity suite's `invariant:*@rust` items for them were removed from `tests/parity/divergences.json`.
 - Counteract penalty was changed to depend on active players in 15570c2 (2025-12-15, "correct zapzap caller score calculation to account for active players").
 - Golden Score first implemented d5df375 (2025-12-18) then switched to "lowest hand wins, not lowest total" in ec13b2b (2025-12-21); starting-player rotation added 4ee11f8 (2025-12-20) — all in the Node backend, ported in e4f83da (2025-12-23).

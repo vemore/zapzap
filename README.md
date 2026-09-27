@@ -626,6 +626,10 @@ Player 4: 10 points
 ### Game Elimination
 
 - Players above **100 points** are eliminated (dead)
+- A player who **deletes their account** during a game gives up their seat: they are
+  eliminated at once and their hand leaves play. If it was their turn, the next player
+  plays (or picks the hand size, when the round had not started). The others play on;
+  with one player left, that player wins.
 - Last 2 players alive: "Golden Score" final round
 - Winner: Last player alive (≤100 points)
 

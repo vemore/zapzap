@@ -14,6 +14,8 @@ use crate::application::auth::{
     DeleteAccount, DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput,
     LoginWithGoogle, RegisterUser, RegisterUserInput,
 };
+use crate::application::bot::spawn_bot_turns;
+use crate::domain::repositories::{ForfeitOutcome, SeatForfeit};
 use crate::infrastructure::app_state::{AppState, GameEvent};
 
 /// Create auth router
@@ -346,6 +348,67 @@ async fn google_handler(
     }
 }
 
+/// What follows an account deletion, by the player or by an admin: the account's live
+/// session goes and its event streams end; each game it forfeited a seat in hears of it,
+/// and its bots play on when the game goes on (`SeatForfeit`).
+pub(crate) fn after_account_deletion(
+    state: &Arc<AppState>,
+    user_id: &str,
+    username: &str,
+    forfeits: &[SeatForfeit],
+) {
+    if state.session_manager.remove_user(user_id).is_some() {
+        state.broadcast_event(
+            GameEvent::new("userDisconnected", None, Some(user_id.to_string()))
+                .with_data(serde_json::json!({ "username": username })),
+        );
+    }
+    for forfeit in forfeits {
+        let party_id = Some(forfeit.party_id.clone());
+        let user_id = Some(user_id.to_string());
+        match &forfeit.outcome {
+            ForfeitOutcome::Continues => {
+                state.broadcast_event(
+                    GameEvent::new("gameUpdate", party_id, user_id)
+                        .with_action("playerForfeited")
+                        .with_data(serde_json::json!({ "playerIndex": forfeit.player_index })),
+                );
+                spawn_bot_turns(
+                    state,
+                    forfeit.party_id.clone(),
+                    std::time::Duration::from_millis(100),
+                );
+            }
+            ForfeitOutcome::Finished {
+                winner_user_id,
+                winner_index,
+            } => {
+                state.bot_runner.drop_party(&forfeit.party_id);
+                state.broadcast_event(
+                    GameEvent::new("gameUpdate", party_id, user_id)
+                        .with_action("gameFinished")
+                        .with_data(serde_json::json!({
+                            "gameFinished": true,
+                            "playerIndex": forfeit.player_index,
+                            "winner": { "userId": winner_user_id, "playerIndex": winner_index },
+                        })),
+                );
+            }
+            ForfeitOutcome::Deleted { name, visibility } => {
+                state.bot_runner.drop_party(&forfeit.party_id);
+                state.broadcast_event(
+                    GameEvent::new("partyUpdate", party_id, user_id)
+                        .with_action("partyDeleted")
+                        .with_data(serde_json::json!({
+                            "partyName": name,
+                            "visibility": visibility,
+                        })),
+                );
+            }
+        }
+    }
+}
+
 /// DELETE /api/auth/me - a player deletes their own account, confirmed by `password`, or
 /// for an account created with Google by `credential`, a fresh Google ID token of that
 /// account. A wrong confirmation is 403, not 401: the clients sign out on a 401.
@@ -367,14 +430,8 @@ async fn delete_me_handler(
 
     let use_case = DeleteAccount::new(state.user_repo.clone(), state.google_oauth.clone());
     match use_case.execute(&claims.user_id, input).await {
-        Ok(_) => {
-            // The account's live session goes with it; its streams now name nobody
-            if state.session_manager.remove_user(&claims.user_id).is_some() {
-                state.broadcast_event(
-                    GameEvent::new("userDisconnected", None, Some(claims.user_id.clone()))
-                        .with_data(serde_json::json!({ "username": claims.username })),
-                );
-            }
+        Ok(deleted) => {
+            after_account_deletion(&state, &claims.user_id, &claims.username, &deleted.forfeits);
             Ok(Json(DeleteAccountResponse {
                 success: true,
                 deleted_user_id: claims.user_id,

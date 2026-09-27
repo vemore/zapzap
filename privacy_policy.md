@@ -67,7 +67,8 @@ nom « Joueur supprimé », sans lien avec toi.
   <https://zapzap.ombivince.synology.me/account/delete> — connecte-toi, puis confirme.
 - **Par e-mail** : écris à <scribio.ai@gmail.com> depuis l'adresse de ton compte Google, ou
   en donnant ton pseudo, et ton compte sera supprimé de la même façon.
-- Une partie en attente ou en cours doit d'abord être quittée ou terminée.
+- Une partie en attente doit d'abord être quittée. Dans une partie en cours, tu abandonnes
+  ta place : tu en es éliminé et les autres joueurs continuent sans toi.
 
 ### Contact
 
@@ -131,7 +132,8 @@ in the other players' history under the name "Deleted player", with no link to y
   <https://zapzap.ombivince.synology.me/account/delete> — sign in, then confirm.
 - **By e-mail**: write to <scribio.ai@gmail.com> from your Google account's address, or
   giving your username, and your account will be deleted the same way.
-- A game that is waiting or in progress must be left or finished first.
+- A waiting game must be left first. In a game in progress you give up your seat: you are
+  eliminated from it and the other players carry on without you.
 
 ### Contact
 
