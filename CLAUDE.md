@@ -57,6 +57,8 @@ without squash — and what it does not cover: `.llmwiki/Hooks.md`.
   and worktree each: `ship-parallel`.
 - **Leave the local environment clean**: the main checkout back on a fast-forwarded `master`,
   then `scripts/cleanup_local.sh` and `--apply` once no agent is working.
+- **The process gets pruned, not only grown**: this file's budget above, and a pruning pass
+  before each release (`release-android` §3b). `.llmwiki/Documentation.md`.
 
 ## Commands
 
