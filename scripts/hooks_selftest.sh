@@ -644,13 +644,25 @@ fi
 echo "== wiring ===================================================="
 # wip/ lives in the main checkout: found from its root, a subdirectory and a worktree.
 WIPREPO="$SANDBOX/wiprepo"
-git init -q "$WIPREPO" && mkdir -p "$WIPREPO/scripts" "$WIPREPO/sub/dir"
+git init -q "$WIPREPO" && mkdir -p "$WIPREPO/scripts/lib" "$WIPREPO/sub/dir"
 cp "$ROOT/scripts/wip.sh" "$WIPREPO/scripts/"
+cp "$ROOT/scripts/lib/dead_paths.sh" "$WIPREPO/scripts/lib/"
 git -C "$WIPREPO" add -A && git -C "$WIPREPO" -c user.email=t@t -c user.name=t commit -qm init
 git -C "$WIPREPO" worktree add -q "$SANDBOX/wipwt" 2>/dev/null
 report "wip.sh path from the main checkout"   "$WIPREPO/wip" "$(cd "$WIPREPO" && scripts/wip.sh path)"
 report "wip.sh path from a subdirectory"      "$WIPREPO/wip" "$(cd "$WIPREPO/sub/dir" && ../../scripts/wip.sh path)"
 report "wip.sh path from a worktree"          "$WIPREPO/wip" "$(cd "$SANDBOX/wipwt" && scripts/wip.sh path)"
+
+# wip.sh refine flags a dead backticked path through scripts/lib/dead_paths.sh (shared with
+# scripts/wiki_lint.sh, whose own self-test is scripts/wiki_lint_selftest.sh), and not a
+# live one.
+mkdir -p "$WIPREPO/wip/todo"
+printf -- '# t\n\n- **Noted:** 2026-09-27\n- **Theme:** t\n- **Area:** tooling\n- **Blocks release:** no\n\nSee `scripts/wip.sh` and `scripts/gone.sh`.\n\n**Fix:** f\n\n**Acceptance:** a\n' \
+    > "$WIPREPO/wip/todo/2026-09-27-t.md"
+out=$(cd "$WIPREPO" && scripts/wip.sh refine todo 2>&1)
+case "$out" in *"dead-path:[scripts/gone.sh]"*) got=flagged ;; *) got="$out" ;; esac
+report "wip.sh refine flags only the dead path" flagged "$got"
+rm -rf "$WIPREPO/wip"
 
 # worktree_setup.sh fetches the Flutter packages when the tree has the client, and a stub
 # flutter records how it was called.

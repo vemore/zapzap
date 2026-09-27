@@ -237,6 +237,11 @@ jobs:
       # stubbed: its refusals, the order pull/down/up, the health wait, --rollback.
       - name: Deploy script self-test
         run: scripts/deploy_nas_selftest.sh
+      # scripts/wiki_lint.sh is a report, not a gate: the real wiki fails it (a page over
+      # budget, status blocks not folded back). Only its self-test, on a throwaway fixture
+      # wiki with a known answer, runs here (.llmwiki/Documentation.md, Wiki lint).
+      - name: Wiki lint self-test
+        run: scripts/wiki_lint_selftest.sh
       # The Play release scripts (release-android skill): play_publish.py against a fake
       # Google service, verify_aab.sh against fake bundles signed by throwaway keystores.
       # No Google key and no upload key are ever in CI; these only prove the refusals.
