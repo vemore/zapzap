@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "Putaran belum selesai.",
   "gameRefreshFailed": "Meja mungkin belum diperbarui: penyegaran gagal",
   "errorNotInParty": "Kamu tidak punya kursi di meja ini.",
+  "errorGameStateConflict": "Meja berubah sementara itu: coba lagi.",
   "gameRoundOverZapZapSuccess": "{player} berhasil menyerukan ZapZap!",
   "gameRoundOverCounteractedCall": "{player} menyerukan ZapZap tapi ditangkis!",
   "gameRoundOverPenalty": "Penalti: {hand} + ({players} − 1) × 5 = {score} poin",

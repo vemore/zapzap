@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "لم تنتهِ الجولة بعد.",
   "gameRefreshFailed": "قد تكون الطاولة غير محدَّثة: فشل التحديث",
   "errorNotInParty": "ليس لديك مقعد على هذه الطاولة.",
+  "errorGameStateConflict": "تغيّرت الطاولة في هذه الأثناء: حاول مرة أخرى.",
   "gameRoundOverZapZapSuccess": "أعلن {player} ZapZap بنجاح!",
   "gameRoundOverCounteractedCall": "أعلن {player} ZapZap لكنه أُحبِط!",
   "gameRoundOverPenalty": "العقوبة: {hand} + ({players} − 1) × 5 = {score} نقطة",

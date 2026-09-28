@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "La ronda no ha terminado.",
   "gameRefreshFailed": "El tablero puede estar desactualizado: falló la actualización",
   "errorNotInParty": "No tienes un asiento en esta mesa.",
+  "errorGameStateConflict": "La mesa cambió mientras tanto: inténtalo de nuevo.",
   "gameRoundOverZapZapSuccess": "¡{player} cantó ZapZap con éxito!",
   "gameRoundOverCounteractedCall": "¡{player} cantó ZapZap, pero fue contrarrestado!",
   "gameRoundOverPenalty": "Penalización: {hand} + ({players} − 1) × 5 = {score} puntos",
