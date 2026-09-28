@@ -443,7 +443,7 @@ async fn test_create_party_success() {
             "settings": {
                 "playerCount": 4,
                 "allowSpectators": true,
-                "roundTimeLimit": 90
+                "turnTimeLimit": 60
             }
         }),
         token,
@@ -458,10 +458,10 @@ async fn test_create_party_success() {
     assert!(body["party"]["inviteCode"].is_string());
     assert_eq!(body["party"]["visibility"], "public");
     assert_eq!(body["party"]["status"], "waiting");
-    // Node's settings keys, and only them
+    // The settings keys, and only them
     assert_eq!(
         body["party"]["settings"],
-        json!({"playerCount": 4, "allowSpectators": true, "roundTimeLimit": 90})
+        json!({"playerCount": 4, "allowSpectators": true, "turnTimeLimit": 60})
     );
     assert!(
         body["party"]["createdAt"].is_i64(),
@@ -2790,7 +2790,7 @@ async fn test_create_party_player_count_validation() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(
         body["party"]["settings"],
-        json!({"playerCount": 5, "allowSpectators": false, "roundTimeLimit": 0})
+        json!({"playerCount": 5, "allowSpectators": false, "turnTimeLimit": 0})
     );
 
     let (_, list) = get_auth(&mut app, "/api/party", &token).await;
@@ -2890,7 +2890,7 @@ async fn test_party_timestamps_and_player_ids_are_numbers() {
         assert!(party["updatedAt"].is_i64(), "{details}");
         assert_eq!(
             party["settings"],
-            json!({"playerCount": 4, "allowSpectators": false, "roundTimeLimit": 0})
+            json!({"playerCount": 4, "allowSpectators": false, "turnTimeLimit": 0})
         );
         let player = &details["players"][0];
         assert!(player["id"].is_i64(), "{details}");
@@ -2945,7 +2945,7 @@ async fn test_party_with_node_written_settings() {
     assert_eq!(status, StatusCode::OK, "{details}");
     assert_eq!(
         details["party"]["settings"],
-        json!({"playerCount": 3, "allowSpectators": false, "roundTimeLimit": 0})
+        json!({"playerCount": 3, "allowSpectators": false, "turnTimeLimit": 0})
     );
     assert_eq!(details["party"]["createdAt"], now);
 
@@ -3141,7 +3141,7 @@ async fn test_party_with_loosely_typed_node_settings_keeps_its_seats() {
     assert_eq!(status, StatusCode::OK, "{details}");
     assert_eq!(
         details["party"]["settings"],
-        json!({"playerCount": 6, "allowSpectators": true, "roundTimeLimit": 0})
+        json!({"playerCount": 6, "allowSpectators": true, "turnTimeLimit": 0})
     );
 }
 

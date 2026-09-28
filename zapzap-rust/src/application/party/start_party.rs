@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::domain::entities::{Party, PartyStatus, Round};
 use crate::domain::repositories::{PartyRepository, RepositoryError};
 use crate::domain::services::initialize_round;
-use crate::domain::value_objects::PROVISIONAL_HAND_SIZE;
+use crate::domain::value_objects::{TurnClock, PROVISIONAL_HAND_SIZE};
 
 /// Start party input
 pub struct StartPartyInput {
@@ -77,7 +77,7 @@ impl<P: PartyRepository> StartParty<P> {
 
         // Initialize game state
         let scores = [0u16; 8];
-        let game_state = initialize_round(
+        let mut game_state = initialize_round(
             players.len() as u8,
             PROVISIONAL_HAND_SIZE,
             &scores,
@@ -86,6 +86,19 @@ impl<P: PartyRepository> StartParty<P> {
             0, // Player 0 starts
             None,
         );
+        // The turn clock runs only with at least two humans at the table: a lone human
+        // against bots holds nobody up (GAME_RULES.md "Turn Time Limit")
+        let limit_secs = party.settings.turn_time_limit;
+        if limit_secs > 0 {
+            let humans = self.party_repo.human_seats(&input.party_id).await?;
+            if humans.len() >= 2 {
+                game_state.turn_clock = TurnClock {
+                    limit_secs,
+                    timed_seats: humans.iter().fold(0, |mask, &seat| mask | (1 << seat)),
+                    ..TurnClock::default()
+                };
+            }
+        }
 
         // Save round
         self.party_repo.save_round(&round).await?;

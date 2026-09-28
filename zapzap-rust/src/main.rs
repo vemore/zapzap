@@ -7,6 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // The binary links the library crate: `api::build_app` is the application the API
 // tests drive
 use zapzap_backend::api;
+use zapzap_backend::application::game;
 use zapzap_backend::infrastructure::app_state::{database_url, AppState};
 use zapzap_backend::infrastructure::database::{reset_password, seed};
 
@@ -101,6 +102,10 @@ async fn serve() -> anyhow::Result<()> {
     // Initialize application state
     let state = AppState::new().await?;
     let state = Arc::new(state);
+
+    // The turn timer: ejects a human past their turn deadline (GAME_RULES.md "Turn Time
+    // Limit")
+    game::spawn_turn_timer(state.clone(), game::TURN_TIMER_TICK);
 
     // The whole router, the same the API tests drive (`api::build_app`)
     let app = api::build_app(state);

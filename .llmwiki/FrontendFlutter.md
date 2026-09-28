@@ -6,7 +6,7 @@
 > Related: [[FlutterAuth]] · [[FlutterRealtime]] · [[FlutterParties]] · [[FlutterGameBoard]] ·
 > [[FlutterGameUi]] · [[FlutterHistoryAdmin]] · [[FlutterI18n]] · [[FlutterAndroidPwa]] ·
 > [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -159,9 +159,11 @@
   become UTC `DateTime`. Ids are strings even when the backend sends an integer (party seat
   `id`). Admin party `settings` arrive as a JSON-encoded string, decoded.
 - **Shapes** (`zapzap-rust/src/api/routes/*.rs`): party settings are `{playerCount,
-  allowSpectators, roundTimeLimit}` since 2026-09-24 — `playerCount` 3-8 is required on
-  create (else 400 `VALIDATION_ERROR`). `PartySettings` reads and sends those three keys
-  only; `PartyRepository.create` always sends `playerCount`. `GET /party/:id` carries
+  allowSpectators, turnTimeLimit}` (0, 30, 60 or 120 s per turn, since 2026-09-28; [[Api]])
+  — `playerCount` 3-8 is required on create (else 400 `VALIDATION_ERROR`). The Flutter
+  `PartySettings` still reads and sends `roundTimeLimit`, the key the backend had before
+  and now ignores, until the client's turn-timer change; `PartyRepository.create` always
+  sends `playerCount`. `GET /party/:id` carries
   `isOwner` and `userPlayerIndex`, which the lobby reads as they are; a `join` answers the
   `playerIndex` taken. The move answers (play, draw, selectHandSize) carry no `gameState`.
 - **Shapes the models read**: `zapzap` answers `scores` (the running totals, an object → `totalScores`),
