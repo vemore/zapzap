@@ -140,7 +140,7 @@ function CreateParty() {
                 {TURN_TIME_LIMITS.map(({ value, label }) => (
                   <label
                     key={value}
-                    className={`flex items-center justify-center px-2 py-2 rounded-lg border text-sm cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-amber-400 ${
+                    className={`flex items-center justify-center px-2 py-2 rounded-lg border text-sm cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
                       turnTimeLimit === value
                         ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                         : 'bg-slate-700 border-slate-600 text-white hover:border-amber-400/60'
