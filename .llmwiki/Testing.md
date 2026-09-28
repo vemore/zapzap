@@ -19,7 +19,7 @@
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |
 | Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
 | Frontend build | `npm run build` | green | yes |
-| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web`, `build apk --debug` and `build apk --release`; the format check and the analyzer also in the commit hook |
+| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web`, `build apk --debug` and `build apk --release`; the format check and the analyzer also in the commit hook. `test/gis_script_guard_test.dart` runs headless Chrome (`CHROME_EXECUTABLE`, else `google-chrome` on the PATH, the runner's) |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand, below | green (2026-09-24) | yes (`flutter-e2e` job) |
 | Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes; then uid 1000, the CA store and the size under 40 MB), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, the proxy image (`nginx/Dockerfile`) and `nginx -t` in it, `docker compose config` of both compose files | green | yes |
 

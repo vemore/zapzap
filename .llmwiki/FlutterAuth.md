@@ -3,7 +3,7 @@
 > Scope: the Flutter client's session (`AuthProvider`, token storage), the login and register
 > screens, the routing guard, and Google sign-in on the web and on Android.
 > Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterAndroidPwa]] · [[Api]] · [[Frontend]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -99,10 +99,17 @@
   `accounts.google.com/gsi/client` when it registers, before `main`, in every build.
   `web/index.html` holds that script element back (an inline `Node.prototype.appendChild`
   guard placed before `flutter_bootstrap.js`) until `window.zapzapLoadGoogleScript()`,
-  which `PluginGoogleSignInService` calls on first use (`google_sign_in_script_web.dart`).
+  which `PluginGoogleSignInService` calls on first use (`google_sign_in_script_web.dart`)
+  and which puts the browser's own `appendChild` back (unless something wrapped it since).
   So a build without a client id never contacts accounts.google.com, and a build with one
   only once the login or register screen shows — not on the home screen, not on a restored
-  session or the game table.
+  session or the game table. The guard only sees `appendChild`, which the resolved
+  `google_identity_services_web` loader (`loadWebSdk`) uses: `test/gis_script_guard_test.dart`
+  compiles that loader to JavaScript (`test/gis_guard/load_gis.dart`) and runs it under
+  the guard, as `index.html` has it, in headless Chrome (`CHROME_EXECUTABLE`, else
+  `google-chrome` on the PATH), no host resolvable — so a plugin version that inserts the
+  script any other way fails the test; it also checks `google_sign_in_web` loads GIS only
+  through `loadWebSdk`.
 - **The section falls back when Google is not ready**: it waits for
   `GoogleSignInService.ready()` (the plugin's initialisation) up to
   `GoogleSignInSection.readyTimeout`, 8 s; on a timeout (GIS blocked by an ad blocker or
@@ -110,8 +117,17 @@
   stays) or a failed initialisation it collapses — button, "ou" rule and spacing —, with
   no banner, and the next screen starts without it. If Google gets ready later after all,
   the section comes back. A failed initialisation is not also put on `idTokens`.
-- **Logout signs out of Google** (`signOut`, a no-op when Google was never initialised),
-  so on a shared device the next person is not offered the previous account.
+- **Logout signs out of Google**, so on a shared device the next person is not offered the
+  previous account — also after a restored session, the usual logout, where Google was not
+  used in this run. On **Android** `signOut` then initialises the plugin first and signs
+  out (Credential Manager's `clearCredentialState`), whatever the session's kind: the
+  credential state belongs to the device, and the call is local. On the **web** it stays a
+  no-op until GIS is loaded in this run (`GoogleSignInConfig.usesGis`): GIS's sign-out,
+  `disableAutoSelect`, only stops One Tap's automatic sign-in, which the app never asks for
+  (no `attemptLightweightAuthentication`); the "Continue as …" of Google's button comes
+  from Google's own cookies, which no client call clears. Loading GIS at logout would
+  contact accounts.google.com for nothing (`test/google_sign_in_plugin_test.dart`, group
+  `signOut before any use in this run`).
 - **Tests** fake Google (`FakeGoogleSignIn` in `test/google_fakes.dart`, passed as
   `ZapZapApp(googleSignIn:)`); the real flow needs an authorised origin or a registered
   signing key, so it is checked by hand ([[FlutterAndroidPwa]]).
@@ -150,6 +166,21 @@
   no request to accounts.google.com, with it none on the home screen and GIS plus its
   button iframe once the login screen shows; with accounts.google.com blocked the section
   collapses after 8 s.
+- **Logout after a restored session, and the guard's release (2026-09-28,
+  `fix/flutter-google-signout`).** `signOut` returned when Google was not initialised in
+  this run, so the logout of a restored session — the usual one — never reached Credential
+  Manager. Android now initialises to sign out, for every session rather than only a
+  stored Google one (`User.isGoogleUser`): nothing to store, and a password session after
+  a Google one that never signed out is covered too. The web keeps the no-request goal
+  of #112: nothing GIS undoes applies to this app. The guard's `appendChild` stayed
+  replaced all session and was pinned by the text of `index.html` only; it is now handed
+  back on release, and the plugin's loader is run under it for real. `flutter test
+  --platform chrome` was the other way, but its server serves only `test/` and packages,
+  not `web/index.html`; a VM test driving `dart compile js` and headless Chrome takes
+  about 3 s. Checked in headless Chromium on both builds (`flutter build web --base-href
+  /app/`): without the id no request to accounts.google.com on `/app/`, `/app/login`,
+  `/app/register`; with one, none on `/app/`, GIS on login and register with the
+  browser's own `appendChild` afterwards.
 - **Deleting one's own account (2026-09-25, `feat/delete-own-account`).** Google Play wants
   an app that creates accounts to delete them from inside it: the entry sits in the app-bar
   menu of every signed-in screen, not on a profile screen the app does not have. The

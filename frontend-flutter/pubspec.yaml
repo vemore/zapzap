@@ -43,6 +43,9 @@ dev_dependencies:
   # A fake Google platform under PluginGoogleSignInService
   # (test/google_sign_in_plugin_test.dart).
   google_sign_in_platform_interface: ^3.1.0
+  # Its GIS loader, run under web/index.html's guard in headless Chrome
+  # (test/gis_script_guard_test.dart): google_sign_in_web's own dependency.
+  google_identity_services_web: ^0.3.3+1
 
 flutter:
   uses-material-design: true

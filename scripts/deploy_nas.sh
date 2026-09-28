@@ -28,6 +28,10 @@
 # only once it succeeded the new compose file, `up -d`, and a health wait that does not
 # call a deploy done until the site answers.
 #
+# Compose on the NAS: the v2 plugin (`docker compose`) since 2026-09-28, the v1 binary
+# (`docker-compose`) before. The remote part picks one in its preflight — `docker compose`
+# when it answers, else `docker-compose` — and every compose call goes through it.
+#
 # Exit status: 0 deployed, every container healthy; 1 refused (nothing stopped) or an
 # outage (the message says which); 2 deployed and serving, but a non-essential service —
 # frontend-flutter — is not healthy.
@@ -84,16 +88,32 @@ seconds_of() { printf '%d.%ds' "$(( $1 / 1000 ))" "$(( ($1 % 1000) / 100 ))"; }
 
 is_essential() { case " $ESSENTIAL_SERVICES " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-dc() { docker-compose -f compose.yaml "$@"; }
+# The Compose the NAS has, chosen once by pick_compose: `docker compose` (the v2 plugin),
+# else `docker-compose` (v1). Every compose call goes through `compose`, or `dc` for the
+# running compose.yaml.
+COMPOSE=()
+pick_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE=(docker compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE=(docker-compose)
+    else
+        return 1
+    fi
+}
+compose() { "${COMPOSE[@]}" "$@"; }
+dc() { compose -f compose.yaml "$@"; }
 
 # The image references of a compose file, one per line.
 images_of() { sed -nE 's/^[[:space:]]*image:[[:space:]]*([^[:space:]]+).*/\1/p' "$1"; }
 
 # Echoes "<service>(<state>)" for every service of $1 that is not healthy or running.
+# `ps -a`: Compose v2 lists only running containers without it, so a proxy left in Created
+# by a failed dependency would read as "no container" instead of "created".
 not_healthy() {
     local service cid state out=""
     for service in $1; do
-        cid=$(dc ps -q "$service" 2>/dev/null | head -1)
+        cid=$(dc ps -a -q "$service" 2>/dev/null | head -1)
         if [ -z "$cid" ]; then
             out="$out $service(no container)"
             continue
@@ -138,7 +158,10 @@ remote_preflight() {
             "    docker run --rm -v \"$PWD/data:/data\" alpine sh -c \\" \
             "      \"chown $DATA_UID:$DATA_UID /data && chown -R $DATA_UID:$DATA_UID /data/bot-strategies /data/zapzap.db*\""
     fi
-    command -v docker-compose >/dev/null 2>&1 || die "✗ REFUSING TO DEPLOY: docker-compose is not on PATH."
+    pick_compose || die "✗ REFUSING TO DEPLOY: no Compose on the NAS: neither \`docker compose\` (the v2 plugin)" \
+        "  answers \`docker compose version\`, nor is docker-compose (v1) on PATH ($PATH)." \
+        "  Nothing was pulled or stopped."
+    echo "🐳 Compose: ${COMPOSE[*]} $(compose version --short 2>/dev/null || echo '(version unknown)')"
     command -v python3 >/dev/null 2>&1 || die "✗ REFUSING TO DEPLOY: python3 is not on PATH (the database backup needs it)."
 }
 
@@ -161,9 +184,10 @@ PY
 
 remote() {  # mode, deploy dir, [tag]
     local mode="$1" dir="$2" tag="${3:-}"
-    export PATH="$PATH:/usr/local/bin"
     # The project the clone ran as (its directory was named zapzap): the first deploy from
-    # the deploy directory then replaces those containers instead of clashing with them.
+    # the deploy directory then replaced those containers instead of clashing with them. It
+    # is also why Compose v2 manages the containers v1 created: same project label, same
+    # container_name values, same network (zapzap_zapzap-network).
     export COMPOSE_PROJECT_NAME=zapzap
     cd "$dir" 2>/dev/null || die "✗ REFUSING TO DEPLOY: no deploy directory $dir on the NAS."
 
@@ -203,11 +227,11 @@ remote() {  # mode, deploy dir, [tag]
             "  Nothing was pulled or stopped."
     fi
 
-    # A compose file docker-compose cannot read — a .env without JWT_SECRET, which the Rust
+    # A compose file Compose cannot read — a .env without JWT_SECRET, which the Rust
     # backend has no default for — or one missing an essential service is refused here.
     local declared service
-    if ! declared=$(docker-compose -f compose.yaml.next config --services); then
-        die "" "✗ REFUSING TO DEPLOY: docker-compose cannot read the compose file — its reason is above." \
+    if ! declared=$(compose -f compose.yaml.next config --services); then
+        die "" "✗ REFUSING TO DEPLOY: ${COMPOSE[*]} cannot read the compose file — its reason is above." \
             "  Nothing was pulled or stopped. The usual cause: a variable the compose file" \
             "  requires is missing from .env — JWT_SECRET. Fix .env (never print it), then retry."
     fi
@@ -236,7 +260,7 @@ remote() {  # mode, deploy dir, [tag]
         echo "✓ Every $tag image is already on the NAS: no pull"
     else
         echo "📥 Pulling the $tag images (production is still serving the old ones)..."
-        if ! docker-compose -f compose.yaml.next pull; then
+        if ! compose -f compose.yaml.next pull; then
             die "" "✗ PULL FAILED — nothing was stopped; production still serves what it served." \
                 "  compose.yaml is unchanged. Usual causes: the tag $tag was never pushed (a rollback" \
                 "  to a commit no deploy built), the NAS is not logged in to the registry" \
@@ -271,13 +295,13 @@ remote() {  # mode, deploy dir, [tag]
     # the compose file that is running, and the new one is swapped in only once it has
     # succeeded: a failed `down` then restarts what ran before, never the unchecked images.
     # --remove-orphans: a container the compose file no longer declares otherwise survives
-    # the `down`, which then fails to remove the network; docker-compose v1 only warns.
+    # the `down`, which then fails to remove the network (v2); docker-compose v1 only warned.
     echo "🛑 Stopping containers (downtime starts now)..."
     local downtime_start_ms
     downtime_start_ms=$(now_ms)
-    if ! docker-compose -f "$current" down --remove-orphans; then
+    if ! compose -f "$current" down --remove-orphans; then
         echo "" >&2
-        echo "✗ \`docker-compose down\` FAILED — the stack may be half stopped, so" >&2
+        echo "✗ \`${COMPOSE[*]} down\` FAILED — the stack may be half stopped, so" >&2
         echo "  production may be DOWN." >&2
         if [ "$current" = compose.yaml ]; then
             echo "  Starting what ran before (compose.yaml, unchanged) again immediately..." >&2
@@ -300,7 +324,17 @@ remote() {  # mode, deploy dir, [tag]
     echo "📝 compose.yaml now pins $tag${previous:+ (it pinned $previous: the rollback target)}"
 
     echo "🚀 Starting containers..."
+    # Compose v2 honours the proxy's `depends_on: condition: service_healthy`: `up -d` waits
+    # for backend and frontend, and fails when one turns unhealthy, leaving zapzap-proxy in
+    # Created. Which container, in which state, and its logs, are then what to act on.
     if ! dc up -d; then
+        local failed
+        failed=$(not_healthy "$ESSENTIAL_SERVICES")
+        if [ -n "$failed" ]; then
+            echo "" >&2
+            echo "  containers not healthy:$failed" >&2
+            log_tails "$failed" >&2
+        fi
         die "" "✗ START FAILED — production is DOWN. Act now:" \
             "  - \`docker ps -a\`: if zapzap-proxy sits in Created, \`docker start zapzap-proxy\`" \
             "    restores / and /api/ at once." \

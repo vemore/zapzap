@@ -83,11 +83,18 @@ SAME_AS_ENGLISH_OK = {
     "gameRoundEndColumnTotal": {"fr", "es", "pt", "id"},  # "Total"
     "menuTutorial": {"de", "es", "pt", "id"},  # "Tutorial"
     "tutorialTitle": {"de", "es", "pt", "id"},  # "Tutorial"
-    "partyStatusLabel": {"de", "pt", "id"},  # "Status"
     "gameRoundOverHandLabel": {"de"},  # "Hand", the glossary's German term
     # SI unit symbols, written the same in Latin-script languages.
     "turnTimerSeconds": {"fr", "de", "es", "pt"},  # "{seconds} s"
     "turnTimerMinutes": {"fr", "de", "es", "pt"},  # "{minutes} min"
+    # "Lobby" is a naturalised gaming loanword in German and Brazilian Portuguese: both
+    # files already compound it untranslated elsewhere (playerStatusParty: "Partie-Lobby",
+    # "Lobby da partida").
+    "partyLobbyButton": {"de", "pt"},  # "Lobby"
+    "playerStatusLobby": {"de", "pt"},  # "Lobby"
+    # "online" is a standard German word (Duden), unchanged from English spelling and used
+    # untranslated for presence status in German apps generally.
+    "lobbySeatOnline": {"de"},  # "online"
 }
 
 _EXEMPT_PREFIXES = {k[:-1]: v for k, v in SAME_AS_ENGLISH_OK.items() if k.endswith("*")}

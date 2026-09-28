@@ -3,7 +3,7 @@
 > Scope: the Flutter client's localisation: the ten ARB files, the glossary, the l10n tests,
 > generated code, and the "tu" voice.
 > Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterGameBoard]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -44,7 +44,10 @@
   the keys of `SAME_AS_ENGLISH_OK`: brand, bot names, loanwords), `--unused` the template
   keys no `.dart` file reads. A report the skill runs, not a gate; `scripts/test_arb_keys.py`
   runs in the CI `hooks` job. On 2026-09-27 `--values` reported 20 values in de, es, hi,
-  id, pt, ru ("Lobby", "online", "pts", "DRL (Deep RL)", "Hard Vince"…).
+  id, pt, ru ("Lobby", "online", "pts", "DRL (Deep RL)", "Hard Vince"…); translated
+  2026-09-28 (`chore/l10n-cleanup`), leaving `partyLobbyButton`/`playerStatusLobby`
+  (German and Brazilian Portuguese gaming "Lobby") and German `lobbySeatOnline`
+  ("online", Duden-listed) as the only `SAME_AS_ENGLISH_OK` values, each commented.
 - **Translated ARB files are not counted in a pull request's size** (`ship-parallel` §3.1:
   every `lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`).
 - **No user-facing string literal outside `lib/l10n/`**: every text goes through
@@ -64,6 +67,17 @@
 
 ## Decisions & History
 
+- **`--values` cleared, `partyStatusLabel` removed, `=0` plurals added (2026-09-28,
+  `chore/l10n-cleanup`).** Translated the 20 values `--values` reported still-English in de,
+  es, hi, id, pt, ru (`difficultyDrl`, `historyWinnerWithScore`, `points`,
+  `botDifficultyHardVince`/`difficultyHardVince`); kept only "Lobby" (de, pt) and German
+  "online" as loanwords, each with a comment. Removed the dead `partyStatusLabel` key from
+  all ten files and its exemption. Added the missing `=0` case to `gameSuggestSequence`,
+  `gameTableTakeHint` and `gameZapZapSheetTitle` in es, pt, de, ru, hi, id (some already had
+  it); swapped `one` for `=1` in pt and hi, whose CLDR `one` category also matches 0 — ICU's
+  explicit-case precedence already fixed the rendering, the swap documents it the way
+  en/de/fr already do. `test/l10n_plural_zero_test.dart` renders all three at 0 in all six
+  languages.
 - **The i18n-add-string skill and `arb_keys.py` (2026-09-27, `chore/i18n-add-string-skill`).**
   Every Flutter entry adds strings and each agent rediscovered the procedure; nothing caught
   a value left in English. Ported from countscore without its hook pair (a PostToolUse

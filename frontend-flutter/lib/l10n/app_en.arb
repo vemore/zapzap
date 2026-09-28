@@ -74,7 +74,6 @@
   "partiesEmptyBody": "Create the first game and start playing!",
   "partyPlayersLabel": "Players",
   "partyPlayersCount": "{count} / {max}",
-  "partyStatusLabel": "Status",
   "partyStatusWaiting": "Waiting",
   "partyStatusPlaying": "Playing",
   "partyStatusFinished": "Finished",

@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -45,8 +45,8 @@ marker) and its `--deploy` links and `scripts/generate_keystore.sh` (stub `keyto
 `umask 077`, mode 600, refuses to overwrite, refuses a path inside a repository; `$HOME`
 itself passes only when a dotfiles repository there ignores the keystore); it is the `hooks` CI
 job. The same job runs
-`scripts/deploy_nas_selftest.sh`, the production deploy's own table (158 cases, `ssh`,
-`docker`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
+`scripts/deploy_nas_selftest.sh`, the production deploy's own table (196 cases, `ssh`,
+`docker`, `docker compose`, `docker-compose` and `curl` stubbed: the step order that makes a failed deploy a
 no-op rather than an outage, the health wait, every refusal, `--rollback` — [[Deployment]]).
 `scripts/ci_scope.sh` classifies both scripts, `docker-compose.prod.yml` and
 `scripts/deploy.env.example` as `hooks`, so a change to them runs that job.

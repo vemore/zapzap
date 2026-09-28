@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
+import 'package:zapzap/providers/auth_provider.dart';
+import 'package:zapzap/repositories/auth_repository.dart';
 import 'package:zapzap/services/google_sign_in_service.dart';
+
+import 'auth_helpers.dart';
 
 /// The Android side of `google_sign_in`, replaced: [authenticate] answers
 /// [result] or throws [error]; [init] throws [initError].
@@ -141,16 +145,94 @@ void main() {
     expect(platform.signOuts, 1);
   });
 
-  test('signOut before any use does not initialise Google', () async {
-    await subscription?.cancel();
-    subscription = null;
-    platform = _FakePlatform();
-    GoogleSignInPlatform.instance = platform;
-    final unused = PluginGoogleSignInService(
-      const GoogleSignInConfig(serverClientId: webId),
+  group('signOut before any use in this run (a restored session)', () {
+    setUp(() async {
+      await subscription?.cancel();
+      subscription = null;
+      platform = _FakePlatform();
+      GoogleSignInPlatform.instance = platform;
+    });
+
+    test('Android initialises Google, then signs it out', () async {
+      final unused = PluginGoogleSignInService(
+        const GoogleSignInConfig(serverClientId: webId),
+      );
+      await unused.signOut();
+      expect(platform.initParams?.serverClientId, webId);
+      expect(platform.signOuts, 1);
+    });
+
+    test('the web neither loads GIS nor signs out: nothing to undo', () async {
+      final unused = PluginGoogleSignInService(
+        const GoogleSignInConfig(clientId: webId),
+      );
+      await unused.signOut();
+      expect(platform.initParams, isNull);
+      expect(platform.signOuts, 0);
+    });
+
+    test('the web signs out once GIS is loaded in this run', () async {
+      final used = PluginGoogleSignInService(
+        const GoogleSignInConfig(clientId: webId),
+      );
+      await used.ready();
+      await used.signOut();
+      expect(platform.signOuts, 1);
+    });
+
+    test('an Android initialisation that fails is thrown by signOut, which '
+        'the logout only logs', () async {
+      platform.initError = StateError('no Play services');
+      final unused = PluginGoogleSignInService(
+        const GoogleSignInConfig(serverClientId: webId),
+      );
+      await expectLater(unused.signOut(), throwsStateError);
+      expect(platform.signOuts, 0);
+    });
+
+    AuthProvider restoredWith(GoogleSignInService google) {
+      final api = unusedApi();
+      return AuthProvider(
+        repository: AuthRepository(api),
+        apiClient: api,
+        storage: storedSession(validToken),
+        google: google,
+      );
+    }
+
+    test('logout after a restored session reaches the platform\'s signOut on '
+        'Android', () async {
+      final auth = restoredWith(
+        PluginGoogleSignInService(
+          const GoogleSignInConfig(serverClientId: webId),
+        ),
+      );
+      await auth.restore();
+      expect(auth.isAuthenticated, isTrue);
+      expect(platform.initParams, isNull);
+
+      await auth.logout();
+      await pumpEventQueue();
+
+      expect(platform.initParams?.serverClientId, webId);
+      expect(platform.signOuts, 1);
+    });
+
+    test(
+      'logout after a restored session leaves Google alone on the web',
+      () async {
+        final auth = restoredWith(
+          PluginGoogleSignInService(const GoogleSignInConfig(clientId: webId)),
+        );
+        await auth.restore();
+
+        await auth.logout();
+        await pumpEventQueue();
+
+        expect(auth.isAuthenticated, isFalse);
+        expect(platform.initParams, isNull);
+        expect(platform.signOuts, 0);
+      },
     );
-    await unused.signOut();
-    expect(platform.initParams, isNull);
-    expect(platform.signOuts, 0);
   });
 }
