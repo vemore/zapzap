@@ -1,5 +1,6 @@
-//! The results of a finished game: the final ranking and what `save_game_results` writes.
-//! One builder for the three ways a game ends — a zapzap (`call_zapzap.rs`), the
+//! The results of a finished game: the final ranking and what `write_game_results` writes.
+//! One builder, run by `write_game_results` (`party_repo.rs`) inside the transaction that
+//! ends the game, for the three ways a game ends — a zapzap (`call_zapzap.rs`), the
 //! `nextRound` recovery of a zapzap stopped half-way (`next_round.rs`) and a forfeit that
 //! leaves one seat (`user_repo.rs`) — and the ranking of the players the turn timer
 //! ejects, which an ejection writes at once (`rank_ejected`, `replace_player`).
@@ -34,7 +35,7 @@ struct RankedSeat {
 /// state holds eliminated with no such round recorded (a forfeit, or a zapzap stopped
 /// before its round scores were saved) counts as eliminated in the current round.
 /// `ejected` are the players the turn timer ejected, the latest ejected first
-/// (`PartyRepository::get_ejected_players`).
+/// (`ejected_players`, read by `write_game_results` in the same transaction).
 ///
 /// The final ranking (GAME_RULES.md "Final Ranking"): the winner first; then the seats
 /// still in the game, lower total score first; then the eliminated seats, the later

@@ -2,7 +2,8 @@
 //! hands, a card named twice in a play), the bot loop: one at a time per party, one
 //! strategy per bot for the whole game, the next round dealt by the bots once no human is
 //! left in the game, and concurrent writes of a game state: a write based on a stale read
-//! is refused (409 for a human, a retry for the bot loop).
+//! is refused (409 for a human, a retry for the bot loop), and a game use case writes all
+//! it changes, or nothing, in one transaction with its compare-and-swap.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use std::time::Duration;
 
 use axum::{
     body::Body,
+    extract::{Path, State},
     http::{Request, StatusCode},
     Router,
 };
@@ -18,9 +20,16 @@ use serde_json::{json, Value};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tower::{Service, ServiceExt};
 
+mod common;
+
+use common::{After, Interleaved};
 use zapzap_backend::api;
+use zapzap_backend::api::error::ApiError;
 use zapzap_backend::application::bot::{
     run_bot_turns_now, trigger_bot_turns, BotBrain, BotRunner, Roster,
+};
+use zapzap_backend::application::game::{
+    NextRound, NextRoundInput, PlayCards, PlayCardsError, PlayCardsInput,
 };
 use zapzap_backend::domain::entities::{BotDifficulty, PartyStatus, User};
 use zapzap_backend::domain::repositories::{AccountDeletion, PartyRepository, UserRepository};
@@ -1285,4 +1294,192 @@ async fn test_bots_and_an_eliminated_human_dealing_at_once_start_one_round() {
 
     state.db.close().await;
     let _ = std::fs::remove_file(&path);
+}
+
+// ============================================================================
+// A game use case writes all it changes, or nothing, with the compare-and-swap
+// ============================================================================
+
+/// The party's owner and current round, as stored
+async fn owner_and_current_round(state: &AppState, party_id: &str) -> (String, Option<String>) {
+    let party = state
+        .party_repo
+        .find_by_id(party_id)
+        .await
+        .unwrap()
+        .expect("party");
+    (party.owner_id, party.current_round_id)
+}
+
+#[tokio::test]
+async fn test_a_forfeit_between_next_rounds_reads_leaves_the_new_owner_in_place() {
+    let (mut app, state) = test_app().await;
+    let (party_id, _) = started_party(&mut app, &state, "fwdowner", 2, &[]).await;
+    let mut gs = game_state(&state, &party_id).await;
+    gs.current_action = GameAction::Finished;
+    save_game_state(&state, &party_id, &gs).await;
+    let (owner, heir) = (
+        user_at(&state, &party_id, 0).await,
+        user_at(&state, &party_id, 1).await,
+    );
+
+    // nextRound reads the party, owned by seat 0; seat 0 then deletes their account: the
+    // seat is forfeited and the party passes to seat 1; nextRound reads the state after it
+    let deletion = {
+        let (users, owner) = (state.user_repo.clone(), owner.clone());
+        async move {
+            let deletion = users.delete_account(&owner).await.unwrap();
+            assert!(
+                matches!(deletion, AccountDeletion::Deleted { ref forfeits, .. } if forfeits.len() == 1),
+                "{deletion:?}"
+            );
+        }
+    };
+    let repo = Interleaved::new(state.party_repo.clone(), After::PartyRead, deletion);
+    let dealt = NextRound::new(repo.clone())
+        .execute(NextRoundInput {
+            party_id: party_id.clone(),
+            user_id: heir.clone(),
+        })
+        .await
+        .unwrap_or_else(|e| panic!("the next round, dealt on the state after the forfeit: {e}"));
+    assert!(repo.stepped().await);
+    assert!(!dealt.game_finished);
+
+    // The new owner stays; round 2 is the party's current round, seat 0 out of it
+    let (stored_owner, current_round) = owner_and_current_round(&state, &party_id).await;
+    assert_eq!(stored_owner, heir);
+    assert_eq!(current_round, dealt.round.map(|round| round.id));
+    assert_eq!(round_numbers(&state, &party_id).await, [1, 2]);
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(gs.round_number, 2);
+    assert!(gs.is_eliminated(0));
+    assert_eq!(party_status(&state, &party_id).await, PartyStatus::Playing);
+}
+
+/// The admin's stop of `party_id`, as `POST /api/admin/parties/:id/stop` runs it
+async fn admin_stop(state: Arc<AppState>, party_id: String) {
+    let stopped = api::routes::admin::stop_party(State(state), Path(party_id))
+        .await
+        .map_err(|(status, _)| status)
+        .expect("the admin stop");
+    assert!(stopped.stopped);
+}
+
+#[tokio::test]
+async fn test_an_admin_stop_between_a_moves_read_and_its_write_makes_the_move_fail() {
+    // The stop lands after the play read the state, or after it read the party (still
+    // playing) and before it read the state
+    for (prefix, after) in [
+        ("stopstate", After::StateRead),
+        ("stopparty", After::PartyRead),
+    ] {
+        let (mut app, state) = test_app().await;
+        let (party_id, _) = started_party(&mut app, &state, prefix, 2, &[]).await;
+        seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+        let player = user_at(&state, &party_id, 0).await;
+
+        let stop = admin_stop(state.clone(), party_id.clone());
+        let repo = Interleaved::new(state.party_repo.clone(), after, stop);
+        let err = PlayCards::new(repo.clone())
+            .execute(PlayCardsInput {
+                party_id: party_id.clone(),
+                user_id: player,
+                card_ids: vec![0],
+            })
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{after:?}: the play went through a stopped party"));
+        assert!(repo.stepped().await);
+        assert!(
+            matches!(&err, PlayCardsError::Repository(e) if e.is_conflict()),
+            "{after:?}: {err}"
+        );
+        assert_eq!(ApiError::from(err).status, StatusCode::CONFLICT);
+
+        // The party stays stopped, the card in the hand
+        assert_eq!(party_status(&state, &party_id).await, PartyStatus::Finished);
+        let gs = game_state(&state, &party_id).await;
+        assert_eq!(gs.hands[0].as_slice(), &[0, 1, 2], "{after:?}");
+        assert_eq!(gs.current_action, GameAction::Play);
+    }
+}
+
+#[tokio::test]
+async fn test_a_failed_round_row_write_leaves_the_state_at_round_n() {
+    let (mut app, state) = test_app().await;
+    let (party_id, tokens) = started_party(&mut app, &state, "roundrow", 2, &[]).await;
+    let mut gs = game_state(&state, &party_id).await;
+    gs.current_action = GameAction::Finished;
+    save_game_state(&state, &party_id, &gs).await;
+    let version = stored_version(&state, &party_id).await;
+    let (_, round_one) = owner_and_current_round(&state, &party_id).await;
+
+    // A row already holds round 2: UNIQUE(party_id, round_number) refuses the new one
+    sqlx::query(
+        "INSERT INTO rounds (id, party_id, round_number, status, current_turn, \
+         current_action, created_at) VALUES ('squatter', ?, 2, 'active', 0, 'draw', 0)",
+    )
+    .bind(&party_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let path = format!("/api/game/{party_id}/nextRound");
+    let (status, body) = send(&mut app, "POST", &path, json!({}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+
+    // Nothing of the next round was written: the state is round 1's end, same version
+    let gs = game_state(&state, &party_id).await;
+    assert_eq!(
+        (gs.round_number, gs.current_action),
+        (1, GameAction::Finished)
+    );
+    assert_eq!(stored_version(&state, &party_id).await, version);
+    assert_eq!(
+        owner_and_current_round(&state, &party_id).await.1,
+        round_one
+    );
+
+    // The row gone, the same call deals round 2
+    sqlx::query("DELETE FROM rounds WHERE id = 'squatter'")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let (status, body) = send(&mut app, "POST", &path, json!({}), &tokens[0]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(game_state(&state, &party_id).await.round_number, 2);
+    assert_eq!(round_numbers(&state, &party_id).await, [1, 2]);
+}
+
+#[tokio::test]
+async fn test_a_move_on_a_game_deleted_meanwhile_is_404() {
+    let (mut app, state) = test_app().await;
+    let (party_id, _) = started_party(&mut app, &state, "gonegame", 2, &[]).await;
+    seat_zero_to_play(&state, &party_id, &[&[0, 1, 2], &[13, 14], &[26, 27]]).await;
+    let player = user_at(&state, &party_id, 0).await;
+
+    // The party is deleted after the play read the state
+    let delete = {
+        let (repo, party_id) = (state.party_repo.clone(), party_id.clone());
+        async move { repo.delete(&party_id).await.unwrap() }
+    };
+    let repo = Interleaved::new(state.party_repo.clone(), After::StateRead, delete);
+    let err = PlayCards::new(repo)
+        .execute(PlayCardsInput {
+            party_id: party_id.clone(),
+            user_id: player,
+            card_ids: vec![0],
+        })
+        .await
+        .err()
+        .expect("a play on a deleted game");
+    assert!(
+        matches!(&err, PlayCardsError::Repository(e) if e.is_not_found()),
+        "{err}"
+    );
+    let answer = ApiError::from(err);
+    assert_eq!(
+        (answer.status, answer.code),
+        (StatusCode::NOT_FOUND, "PARTY_NOT_FOUND")
+    );
 }

@@ -145,8 +145,9 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
             .await;
         match replaced {
             Ok(()) => {}
-            // The human moved in time after all, or the seat changed hands meanwhile
-            Err(e) if e.is_conflict() => return Ok(None),
+            // The human moved in time after all, the seat changed hands meanwhile, or the
+            // party was deleted
+            Err(e) if e.is_conflict() || e.is_not_found() => return Ok(None),
             Err(e) => return Err(e),
         }
 
@@ -285,7 +286,7 @@ pub async fn extend_turn_deadlines_after_downtime(state: &Arc<AppState>) -> usiz
             .await
         {
             Ok(()) => extended += 1,
-            Err(e) if e.is_conflict() => {}
+            Err(e) if e.is_conflict() || e.is_not_found() => {}
             Err(e) => tracing::error!("Turn timer: party {} at startup: {}", party_id, e),
         }
     }

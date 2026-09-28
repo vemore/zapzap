@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::domain::entities::{Party, PartyPlayer, PartyStatus, Round, User};
 use crate::domain::repositories::RepositoryError;
+use crate::domain::services::GameResults;
 use crate::domain::value_objects::GameState;
 
 /// Party with player count (optimized for listing)
@@ -159,12 +160,15 @@ pub trait PartyRepository: Send + Sync {
     ) -> Result<(), RepositoryError>;
 
     /// Write a game state read at `expected_version` (compare-and-swap), as the next
-    /// version. `RepositoryError::Conflict`, with nothing written, when another write
-    /// (a move, a bot move, a forfeit, an ejection) came in since the read, or the state
-    /// is gone.
+    /// version, and nothing else: a write of the state alone (a bot's turn handed on, a
+    /// deadline extended). `RepositoryError::Conflict`, with nothing written, when another
+    /// write (a move, a bot move, a forfeit, an ejection, an admin stop) came in since the
+    /// read, or the party is no longer playing; `NotFound` when the state is gone (the
+    /// party deleted).
     ///
-    /// Both writes stamp the turn's deadline (`GameState::stamp_turn_deadline`) with the
-    /// repository's clock, so every turn that begins gets its deadline as it is stored.
+    /// Every game-state write stamps the turn's deadline (`GameState::stamp_turn_deadline`)
+    /// with the repository's clock, so every turn that begins gets its deadline as it is
+    /// stored.
     async fn update_game_state(
         &self,
         party_id: &str,
@@ -172,18 +176,18 @@ pub trait PartyRepository: Send + Sync {
         expected_version: i64,
     ) -> Result<(), RepositoryError>;
 
-    /// `update_game_state` for a player's move: written only while `user_id` still holds
-    /// seat `player_index`, checked in the same statement as the version. `Conflict`, with
-    /// nothing written, when the seat changed hands since the move read it (the turn
-    /// timer gave it to a bot) as well as when the state moved on.
-    async fn update_game_state_for_player(
+    /// Write what a game use case changed, all of it or nothing, in one transaction that
+    /// begins with the compare-and-swap of `update_game_state` (same `Conflict` and
+    /// `NotFound`): the game state, the round rows (`RoundWrite`), and at the game's end
+    /// the party finished and the game's results, built from the seats, the recorded
+    /// eliminations and the players the turn timer ejected as the transaction reads them
+    /// (`build_game_results`). Party fields are written one by one, never the whole row,
+    /// so no write of the party read before the state is undone. Returns those results
+    /// when `write.winner` ended the game.
+    async fn write_game(
         &self,
-        party_id: &str,
-        state: &GameState,
-        expected_version: i64,
-        player_index: u8,
-        user_id: &str,
-    ) -> Result<(), RepositoryError>;
+        write: &GameWrite<'_>,
+    ) -> Result<Option<GameResults>, RepositoryError>;
 
     /// The playing parties whose seat on turn went past its turn deadline at `now` (Unix
     /// milliseconds)
@@ -200,43 +204,6 @@ pub trait PartyRepository: Send + Sync {
         party_id: &str,
         round_number: u32,
     ) -> Result<Vec<GameAction>, RepositoryError>;
-
-    // ========== Round scores ==========
-
-    /// Save round scores when a round finishes
-    async fn save_round_scores(
-        &self,
-        party_id: &str,
-        round_number: u32,
-        scores: Vec<RoundScoreEntry>,
-    ) -> Result<(), RepositoryError>;
-
-    /// Get elimination order for players (returns Vec of (user_id, elimination_round))
-    /// First eliminated = lowest round number, never eliminated = None
-    async fn get_elimination_order(
-        &self,
-        party_id: &str,
-    ) -> Result<Vec<(String, Option<u32>)>, RepositoryError>;
-
-    /// The players the turn timer ejected from the party, the latest ejected first: the
-    /// results of users no longer seated, each written at its ejection (`replace_player`)
-    async fn get_ejected_players(
-        &self,
-        party_id: &str,
-    ) -> Result<Vec<EjectedPlayer>, RepositoryError>;
-
-    // ========== Game results ==========
-
-    /// Save game results when game finishes
-    async fn save_game_results(
-        &self,
-        party_id: &str,
-        winner_user_id: &str,
-        winner_score: u16,
-        total_rounds: u32,
-        was_golden_score: bool,
-        player_results: Vec<PlayerGameResult>,
-    ) -> Result<(), RepositoryError>;
 }
 
 /// A game state and the version it was read at: the token `update_game_state` compares,
@@ -245,6 +212,39 @@ pub trait PartyRepository: Send + Sync {
 pub struct VersionedGameState {
     pub state: GameState,
     pub version: i64,
+}
+
+/// What a game use case writes: `PartyRepository::write_game`
+#[derive(Debug, Clone)]
+pub struct GameWrite<'a> {
+    pub party_id: &'a str,
+    /// The game state to write
+    pub state: &'a GameState,
+    /// The version `state` was read at
+    pub expected_version: i64,
+    /// A player's move: `(seat, user)`, written only while that user still holds that
+    /// seat, checked in the same statement as the version (the turn timer may have given
+    /// it to a bot since the move checked it)
+    pub seat_holder: Option<(u8, &'a str)>,
+    /// What becomes of the round rows
+    pub round: RoundWrite<'a>,
+    /// The seat that won the game `state` ends: the party is finished and the game's
+    /// results written
+    pub winner: Option<u8>,
+}
+
+/// The round rows a game use case writes: the round a row stands for is the state's
+/// `round_number`, whatever `parties.current_round_id` said when the use case read it
+#[derive(Debug, Clone)]
+pub enum RoundWrite<'a> {
+    /// No round row changes
+    Unchanged,
+    /// The round under way takes the state's turn and action (a move)
+    Progress,
+    /// The round under way is over: finished, with each seat's score (a ZapZap)
+    Finish(&'a [RoundScoreEntry]),
+    /// A round begins: its row is inserted and becomes the party's current round
+    Start(&'a Round),
 }
 
 /// A late human's seat given to a bot: what `PartyRepository::replace_player` writes
