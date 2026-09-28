@@ -48,12 +48,6 @@ proxies `/api/` and `/suscribeupdate` to `backend:9999`, and `scripts/deploy_nas
 `ESSENTIAL_SERVICES` names it. Its environment (`docker-compose.prod.yml`, the same in the
 root `docker-compose.yml`):
 
-`/suscribeupdate` carries its session JWT as `?token=` (EventSource cannot set headers,
-[[Architecture]] "Real-time updates"): the token stays in the URL, but not in nginx's logs.
-`nginx/nginx.conf` defines a `log_format sse_no_token` using `$uri` (no query string) in
-place of `$request`, and only `location /suscribeupdate` overrides `access_log` to use it;
-every other location keeps the default combined format, query string included.
-
 | Variable | Value | Why |
 |---|---|---|
 | `PORT` | `9999` | the nginx upstream |
@@ -65,6 +59,14 @@ every other location keeps the default combined format, query string included.
 | `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | the pause between two bot actions, read by `action_delay_from` (`zapzap-rust/src/application/bot/runner.rs`, default 1000 ms, `0` means no pause); production's `.env` sets `2000` |
 | `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
 | `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
+
+`/suscribeupdate` carries its session JWT as `?token=` (EventSource cannot set headers,
+[[Architecture]] "Real-time updates"): the token stays in the URL, but not in nginx's access
+log. `nginx/nginx.conf` defines a `log_format sse_no_token` using `$uri` (no query string) in
+place of `$request`, and only `location /suscribeupdate` overrides `access_log` to use it;
+every other location keeps the default combined format, query string included. nginx's
+error log still records the full request line, token included, on an upstream error (a
+backend restart closes every open stream).
 
 Production's `.env` holds none of the keys only the removed Node backend read — `NODE_ENV`,
 `ALLOWED_ORIGINS`, `LOG_LEVEL`, `LOG_DIR` — nor `DB_PATH`, which the backend reads only when
