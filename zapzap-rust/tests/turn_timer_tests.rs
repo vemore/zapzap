@@ -283,10 +283,28 @@ async fn read_sse_until(body: &mut Body, sentinel: &str) -> String {
     text
 }
 
-/// Wait (at most `within`) for `party_id` to be finished
+/// Every seat of `party_id` has its game result written
+async fn results_written(state: &AppState, party_id: &str) -> bool {
+    let (seats, results): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM party_players WHERE party_id = ?1), \
+                (SELECT COUNT(*) FROM player_game_results pgr JOIN party_players pp \
+                 ON pp.party_id = pgr.party_id AND pp.user_id = pgr.user_id \
+                 WHERE pgr.party_id = ?1)",
+    )
+    .bind(party_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    results == seats
+}
+
+/// Wait (at most `within`) for `party_id` to be finished and its results written (the
+/// party is finished first, the results just after)
 async fn wait_finished(state: &AppState, party_id: &str, within: Duration) {
     let deadline = tokio::time::Instant::now() + within;
-    while party_status(state, party_id).await != PartyStatus::Finished {
+    while party_status(state, party_id).await != PartyStatus::Finished
+        || !results_written(state, party_id).await
+    {
         assert!(
             tokio::time::Instant::now() < deadline,
             "the game did not end: {:?}",
@@ -447,7 +465,7 @@ async fn test_a_late_human_is_replaced_by_a_bot_and_the_game_plays_to_its_end() 
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert_eq!(party_status(&state, &party_id).await, PartyStatus::Finished);
+    wait_finished(&state, &party_id, Duration::from_secs(10)).await;
     // Three seats ranked 1-3; the ejected owner after them, a loss
     let (position, is_winner, _, _) = result_of(&state, &party_id, owner_id).await.unwrap();
     assert_eq!((position, is_winner), (4, 0));
@@ -455,7 +473,57 @@ async fn test_a_late_human_is_replaced_by_a_bot_and_the_game_plays_to_its_end() 
 }
 
 #[tokio::test]
-async fn test_an_ejected_human_can_no_longer_play_and_the_game_counts_as_a_loss() {
+async fn test_an_ejected_human_can_no_longer_play() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, humans) =
+        timed_party(&mut app, &state, "barred", 1, &[BotDifficulty::Hard], 60).await;
+    let (owner, bea) = (&humans.tokens[0], &humans.tokens[1]);
+
+    // The owner played and is to draw; then comes Bea, a human: the game waits on her
+    let mut gs = stored_state(&state, &party_id).await;
+    gs.current_action = GameAction::Draw;
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+    clock.advance(Duration::from_secs(60));
+    assert_eq!(enforce_turn_deadlines(&state).await.len(), 1);
+    // The bot draws in the owner's place
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while stored_state(&state, &party_id).await.current_turn != 1 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the bot did not draw"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // Every move of the ejected owner is refused, and so is the state
+    let (status, body) = get_state(&mut app, &party_id, owner).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["code"], "NOT_IN_PARTY");
+    for (route, body) in [
+        ("selectHandSize", json!({"handSize": 5})),
+        ("play", json!({"cardIds": [0]})),
+        ("draw", json!({"source": "deck"})),
+        ("zapzap", json!({})),
+        ("nextRound", json!({})),
+    ] {
+        let (status, answer) = post(&mut app, &party_id, route, body, owner).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{route}: {answer}");
+        assert_eq!(answer["code"], "NOT_IN_PARTY", "{route}: {answer}");
+    }
+    // Bea plays on
+    let (status, body) = get_state(&mut app, &party_id, bea).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["gameState"]["currentTurn"], 1);
+    assert_eq!(body["party"]["status"], "playing");
+}
+
+#[tokio::test]
+async fn test_an_ejected_humans_game_is_a_loss_whatever_the_bot_does() {
     let clock = Arc::new(ManualClock::new());
     let (mut app, state) = test_app(&clock).await;
     let (party_id, humans) =
@@ -482,18 +550,7 @@ async fn test_an_ejected_human_can_no_longer_play_and_the_game_counts_as_a_loss(
     let stand_in = seat_user(&state, &party_id, 0).await;
     assert_eq!(stand_in.bot_difficulty, Some(BotDifficulty::Medium));
 
-    // Every move of the ejected owner is refused, and so is the state
-    let (status, body) = get_state(&mut app, &party_id, owner).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    assert_eq!(body["code"], "NOT_IN_PARTY");
-    let (status, body) = post(&mut app, &party_id, "play", json!({"cardIds": [0]}), owner).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    let (status, _) = post(&mut app, &party_id, "zapzap", json!({}), owner).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _) = post(&mut app, &party_id, "nextRound", json!({}), owner).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-
-    // A loss at once, before the game is over
+    // A loss at once: the game counts before it is over
     let (status, body) = send(&mut app, "GET", "/api/stats/me", Value::Null, Some(owner)).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["stats"]["gamesPlayed"], 1, "{body}");
