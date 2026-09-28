@@ -151,6 +151,18 @@ pub struct GameStateInfo {
     pub game_finished: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub winner: Option<WinnerInfo>,
+    // The turn clock (GAME_RULES.md "Turn Time Limit"), always sent
+    /// Seconds each human has for a turn; 0 when the game runs no clock
+    #[serde(rename = "turnTimeLimit")]
+    pub turn_time_limit: u32,
+    /// Unix milliseconds by which the seat on turn must end its turn, or be replaced by a
+    /// bot; `null` when that seat is not timed, or between two rounds
+    #[serde(rename = "turnDeadline")]
+    pub turn_deadline: Option<u64>,
+    /// The server's time of this answer, in Unix milliseconds: a client counts down
+    /// `turnDeadline - serverTime` rather than trusting its own clock
+    #[serde(rename = "serverTime")]
+    pub server_time: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -367,6 +379,9 @@ pub async fn get_game_state(
                 username: w.username,
                 score: w.score,
             }),
+            turn_time_limit: gs.turn_time_limit,
+            turn_deadline: gs.turn_deadline,
+            server_time: state.clock.now_millis(),
         }
     });
 

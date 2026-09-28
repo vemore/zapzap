@@ -117,6 +117,24 @@ pub struct CardTracker {
     pub taken_count: [u8; MAX_PLAYERS],
 }
 
+/// The turn clock of a game (GAME_RULES.md "Turn Time Limit"). It runs when the party
+/// started with a turn time limit and at least two humans (`StartParty`); otherwise
+/// `limit_secs` is 0 and nothing is timed. A turn is the seat's whole turn: the hand-size
+/// choice when it starts the round, its play and its draw.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TurnClock {
+    /// Seconds a timed seat has for its turn; 0 = no clock
+    pub limit_secs: u32,
+    /// The seats whose turns run against the clock (bit i = seat i): the humans seated at
+    /// the start, less those ejected since
+    pub timed_seats: u8,
+    /// Unix milliseconds by which the seat on turn must have ended its turn; `None` when
+    /// that seat is not timed, and between two rounds
+    pub deadline: Option<u64>,
+    /// The turn `deadline` belongs to, `(round number, seat)`
+    pub deadline_turn: Option<(u16, u8)>,
+}
+
 /// Compact game state for simulation
 #[derive(Debug, Clone)]
 pub struct GameState {
@@ -171,6 +189,9 @@ pub struct GameState {
     pub lowest_hand_player_index: Option<u8>,
     pub was_counter_acted: Option<bool>,
     pub counter_acted_by_player_index: Option<u8>,
+
+    // The turn clock, off unless the party started with one
+    pub turn_clock: TurnClock,
 }
 
 /// The seat holding the lowest hand of a finished round, as `execute_zapzap` decides it
@@ -229,7 +250,59 @@ impl GameState {
             lowest_hand_player_index: None,
             was_counter_acted: None,
             counter_acted_by_player_index: None,
+            turn_clock: TurnClock::default(),
         }
+    }
+
+    /// Whether the turns of `seat` run against the clock
+    pub fn is_timed(&self, seat: u8) -> bool {
+        self.turn_clock.limit_secs > 0
+            && (seat as usize) < MAX_PLAYERS
+            && self.turn_clock.timed_seats & (1 << seat) != 0
+    }
+
+    /// Stop timing `seat` (its human was ejected; a bot plays it now)
+    pub fn untime_seat(&mut self, seat: u8) {
+        if (seat as usize) < MAX_PLAYERS {
+            self.turn_clock.timed_seats &= !(1 << seat);
+        }
+    }
+
+    /// Whether a seat is to move within the round: not between two rounds
+    fn turn_under_way(&self) -> bool {
+        !matches!(
+            self.current_action,
+            GameAction::Finished | GameAction::ZapZap
+        ) && !self.is_eliminated(self.current_turn)
+    }
+
+    /// Set the deadline of the turn under way, as a write of the state is about to store
+    /// it: a turn that just began gets `now` + the limit, the turn already under way keeps
+    /// the deadline it began with (the hand-size choice and the play do not restart it). An
+    /// untimed seat on turn, or no turn between two rounds, has none.
+    pub fn stamp_turn_deadline(&mut self, now: u64) {
+        let turn = (self.round_number, self.current_turn);
+        if !self.turn_under_way() || !self.is_timed(self.current_turn) {
+            self.turn_clock.deadline = None;
+            self.turn_clock.deadline_turn = None;
+            return;
+        }
+        if self.turn_clock.deadline_turn != Some(turn) || self.turn_clock.deadline.is_none() {
+            let limit_ms = u64::from(self.turn_clock.limit_secs) * 1000;
+            self.turn_clock.deadline = Some(now.saturating_add(limit_ms));
+            self.turn_clock.deadline_turn = Some(turn);
+        }
+    }
+
+    /// The timed seat whose turn went past its deadline at `now`, if any
+    pub fn late_seat(&self, now: u64) -> Option<u8> {
+        let clock = &self.turn_clock;
+        let seat = self.current_turn;
+        (self.turn_under_way()
+            && self.is_timed(seat)
+            && clock.deadline_turn == Some((self.round_number, seat))
+            && clock.deadline.is_some_and(|deadline| deadline <= now))
+        .then_some(seat)
     }
 
     /// Track a card taken from played pile by a player
@@ -565,7 +638,11 @@ impl GameState {
             "zapZapCaller": self.zapzap_caller,
             "lowestHandPlayerIndex": self.lowest_hand_player_index,
             "wasCounterActed": self.was_counter_acted,
-            "counterActedByPlayerIndex": self.counter_acted_by_player_index
+            "counterActedByPlayerIndex": self.counter_acted_by_player_index,
+            "turnTimeLimit": self.turn_clock.limit_secs,
+            "timedSeats": self.turn_clock.timed_seats,
+            "turnDeadline": self.turn_clock.deadline,
+            "turnDeadlineTurn": self.turn_clock.deadline_turn.map(|(round, seat)| [round, u16::from(seat)])
         });
 
         json_value.to_string()
@@ -755,6 +832,22 @@ impl GameState {
             .and_then(|c| c.as_u64())
             .map(|c| c as u8);
 
+        // The turn clock; a state written before it had one has none
+        let turn_deadline_turn = v["turnDeadlineTurn"].as_array().and_then(|turn| {
+            let round = turn.first()?.as_u64()?;
+            let seat = turn.get(1)?.as_u64()?;
+            Some((u16::try_from(round).ok()?, u8::try_from(seat).ok()?))
+        });
+        let turn_clock = TurnClock {
+            limit_secs: v["turnTimeLimit"]
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(0),
+            timed_seats: v["timedSeats"].as_u64().map(|m| m as u8).unwrap_or(0),
+            deadline: v["turnDeadline"].as_u64(),
+            deadline_turn: turn_deadline_turn,
+        };
+
         Ok(GameState {
             deck,
             hands,
@@ -776,6 +869,7 @@ impl GameState {
             lowest_hand_player_index,
             was_counter_acted,
             counter_acted_by_player_index,
+            turn_clock,
         })
     }
 }
@@ -974,5 +1068,96 @@ mod tests {
         v["currentAction"] = "play".into();
         let state = GameState::from_json(&v.to_string()).unwrap();
         assert_eq!(state.lowest_hand_player_index, None);
+    }
+
+    /// Three seats, seats 0 and 1 timed at 30 s, seat 0 to choose the hand size
+    fn timed_state() -> GameState {
+        let mut state = GameState::new(3);
+        state.turn_clock.limit_secs = 30;
+        state.turn_clock.timed_seats = 0b011;
+        state
+    }
+
+    #[test]
+    fn a_turn_keeps_its_deadline_until_the_next_seat_is_on_turn() {
+        let mut state = timed_state();
+        state.stamp_turn_deadline(1_000);
+        assert_eq!(state.turn_clock.deadline, Some(31_000));
+
+        // The hand-size choice and the play are the same turn: the deadline stands
+        state.current_action = GameAction::Play;
+        state.stamp_turn_deadline(20_000);
+        state.current_action = GameAction::Draw;
+        state.stamp_turn_deadline(25_000);
+        assert_eq!(state.turn_clock.deadline, Some(31_000));
+        assert_eq!(state.late_seat(30_999), None);
+        assert_eq!(state.late_seat(31_000), Some(0));
+
+        // The draw hands the turn on: the next seat gets its own 30 s
+        state.current_action = GameAction::Play;
+        state.current_turn = 1;
+        state.stamp_turn_deadline(26_000);
+        assert_eq!(state.turn_clock.deadline, Some(56_000));
+        assert_eq!(state.late_seat(40_000), None);
+
+        // A bot's seat is not timed; neither is the time between two rounds
+        state.current_turn = 2;
+        state.stamp_turn_deadline(30_000);
+        assert_eq!(state.turn_clock.deadline, None);
+        assert_eq!(state.late_seat(u64::MAX), None);
+        state.current_turn = 0;
+        state.current_action = GameAction::Finished;
+        state.stamp_turn_deadline(30_000);
+        assert_eq!(state.turn_clock.deadline, None);
+
+        // Seat 0 starting the next round has a fresh turn, though it played last round
+        state.round_number = 2;
+        state.current_action = GameAction::SelectHandSize;
+        state.stamp_turn_deadline(40_000);
+        assert_eq!(state.turn_clock.deadline, Some(70_000));
+    }
+
+    #[test]
+    fn no_clock_and_untimed_seats_have_no_deadline() {
+        let mut state = GameState::new(3);
+        state.stamp_turn_deadline(1_000);
+        assert_eq!(state.turn_clock.deadline, None);
+
+        let mut state = timed_state();
+        state.untime_seat(0);
+        state.stamp_turn_deadline(1_000);
+        assert_eq!(state.turn_clock.deadline, None);
+        assert!(state.is_timed(1) && !state.is_timed(0));
+
+        // A deadline stamped for another turn does not make the seat on turn late
+        let mut state = timed_state();
+        state.stamp_turn_deadline(1_000);
+        state.current_turn = 1;
+        assert_eq!(state.late_seat(u64::MAX), None);
+    }
+
+    #[test]
+    fn the_turn_clock_survives_the_stored_json() {
+        let mut state = timed_state();
+        state.stamp_turn_deadline(1_758_000_000_000);
+        let json = state.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["turnTimeLimit"], 30);
+        assert_eq!(v["turnDeadline"], 1_758_000_030_000u64);
+        let read = GameState::from_json(&json).unwrap();
+        assert_eq!(read.turn_clock, state.turn_clock);
+
+        // A state stored before the clock existed has none
+        let mut v = v;
+        for key in [
+            "turnTimeLimit",
+            "timedSeats",
+            "turnDeadline",
+            "turnDeadlineTurn",
+        ] {
+            v.as_object_mut().unwrap().remove(key);
+        }
+        let read = GameState::from_json(&v.to_string()).unwrap();
+        assert_eq!(read.turn_clock, TurnClock::default());
     }
 }

@@ -12,8 +12,8 @@ use crate::infrastructure::bot::llm_memory::LlmBotMemory;
 use crate::infrastructure::cors::AllowedOrigins;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
 use crate::infrastructure::services::{
-    probe_within, GoogleOAuthService, LlmService, OllamaConfig, OllamaService, SessionManager,
-    STARTUP_PROBE_TIMEOUT,
+    probe_within, Clock, GoogleOAuthService, LlmService, OllamaConfig, OllamaService,
+    SessionManager, SystemClock, STARTUP_PROBE_TIMEOUT,
 };
 #[cfg(feature = "bedrock")]
 use crate::infrastructure::services::{BedrockConfig, BedrockService};
@@ -82,6 +82,9 @@ pub struct AppState {
     pub google_oauth: Option<Arc<GoogleOAuthService>>,
     /// The origins CORS answers (`ALLOWED_ORIGINS`), read by `api::build_app`
     pub allowed_origins: AllowedOrigins,
+    /// The time of the turn clock: the repositories stamp turn deadlines with it, the turn
+    /// timer compares them with it (`use_clock` sets both)
+    pub clock: Arc<dyn Clock>,
 }
 
 impl AppState {
@@ -205,7 +208,22 @@ impl AppState {
             bot_runner: Arc::new(BotRunner::from_env()),
             google_oauth,
             allowed_origins,
+            clock: Arc::new(SystemClock),
         })
+    }
+
+    /// Read the time from `clock` (a test's `ManualClock`): the state's clock and the
+    /// repositories' clock, which stamps the turn deadlines, are then the same
+    pub fn use_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.user_repo = Arc::new(SqliteUserRepository::with_clock(
+            self.db.clone(),
+            clock.clone(),
+        ));
+        self.party_repo = Arc::new(SqlitePartyRepository::with_clock(
+            self.db.clone(),
+            clock.clone(),
+        ));
+        self.clock = clock;
     }
 
     /// Get or create LLM bot memory for a specific bot
