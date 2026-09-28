@@ -17,6 +17,7 @@ import 'package:zapzap/widgets/game_player_table.dart';
 import 'package:zapzap/widgets/game_round_end.dart';
 import 'package:zapzap/widgets/game_table_area.dart';
 import 'package:zapzap/widgets/playing_card.dart';
+import 'package:zapzap/widgets/turn_countdown.dart';
 
 import 'auth_helpers.dart';
 import 'game_helpers.dart';
@@ -732,6 +733,294 @@ void main() {
 
       expect(find.byType(GamePlayerTable), findsNothing);
       expect(find.text('Parties'), findsWidgets);
+    });
+  });
+
+  group('the turn clock', () {
+    /// Two humans and a bot: the clock runs (`GAME_RULES.md`, "Turn Time
+    /// Limit").
+    const twoHumans = [
+      {'playerIndex': 0, 'userId': 'u1', 'username': 'Vincent'},
+      {'playerIndex': 1, 'userId': 'u2', 'username': 'Alice'},
+      {'playerIndex': 2, 'userId': 'b2', 'username': 'MediumBot1'},
+    ];
+
+    /// [left] ms before the deadline, on the server's clock, when it answers.
+    JsonMap timedState({
+      required int currentTurn,
+      String currentAction = 'play',
+      int limit = 30,
+      int? left = 25000,
+      int serverTime = defaultServerTime,
+    }) => gameSnapshotJson(
+      players: twoHumans,
+      gameState: gameStateJson(
+        currentTurn: currentTurn,
+        currentAction: currentAction,
+        turnTimeLimit: limit,
+        turnDeadline: left == null ? null : serverTime + left,
+        serverTime: serverTime,
+      ),
+    );
+
+    Finder countdownOf(int playerIndex) => find.descendant(
+      of: find.byKey(GamePlayerTable.seatKey(playerIndex)),
+      matching: find.byKey(TurnCountdown.countdownKey),
+    );
+
+    String clockText(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(TurnCountdown.countdownKey),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+
+    testWidgets('another player\'s turn counts down on their line, from the '
+        'server\'s deadline and its time — not the device\'s clock', (
+      tester,
+    ) async {
+      // The server's time is 2001: read against the device clock, the
+      // deadline would be long gone.
+      await pumpGame(
+        tester,
+        FakeGameBackend(state: timedState(currentTurn: 1)),
+      );
+
+      expect(find.byKey(TurnCountdown.countdownKey), findsOneWidget);
+      expect(countdownOf(1), findsOneWidget);
+      expect(clockText(tester), '0:25');
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(clockText(tester), '0:24');
+      await tester.pump(const Duration(seconds: 14));
+      expect(clockText(tester), '0:10');
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: countdownOf(1), matching: find.byType(Text)),
+            )
+            .style!
+            .color,
+        AppColors.error,
+      );
+      // It stops at 0:00: the server ejects, and its event redraws the table
+      await tester.pump(const Duration(seconds: 30));
+      expect(clockText(tester), '0:00');
+    });
+
+    testWidgets('my own turn counts down too, the hand-size choice '
+        'included', (tester) async {
+      await pumpGame(
+        tester,
+        FakeGameBackend(
+          state: timedState(
+            currentTurn: 0,
+            currentAction: 'selectHandSize',
+            limit: 120,
+            left: 95400,
+          ),
+        ),
+      );
+      expect(countdownOf(0), findsOneWidget);
+      expect(clockText(tester), '1:36');
+      expect(
+        tester.getSemantics(find.byKey(TurnCountdown.countdownKey)).label,
+        contains('Temps restant pour ce tour : 1:36'),
+      );
+    });
+
+    testWidgets('no clock, no countdown: a game without a limit, and a '
+        'seat not timed (a bot on turn)', (tester) async {
+      final backend = FakeGameBackend(
+        state: timedState(currentTurn: 1, limit: 0),
+      );
+      final transport = await pumpGame(tester, backend);
+      expect(find.byKey(GamePlayerTable.seatKey(1)), findsOneWidget);
+      expect(find.byKey(TurnCountdown.countdownKey), findsNothing);
+
+      backend.state = timedState(currentTurn: 2, left: null);
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'draw',
+        'type': 'gameUpdate',
+      });
+      expect(find.byKey(TurnCountdown.countdownKey), findsNothing);
+    });
+
+    testWidgets('each answer restarts it from its own figure: the next '
+        'turn, and a refetch of the same one', (tester) async {
+      final backend = FakeGameBackend(state: timedState(currentTurn: 1));
+      final transport = await pumpGame(tester, backend);
+      await tester.pump(const Duration(seconds: 5));
+      expect(clockText(tester), '0:20');
+
+      // My turn now, the whole limit ahead
+      backend.state = timedState(
+        currentTurn: 0,
+        left: 30000,
+        serverTime: defaultServerTime + 6000,
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'draw',
+        'type': 'gameUpdate',
+      });
+      expect(countdownOf(1), findsNothing);
+      expect(countdownOf(0), findsOneWidget);
+      expect(clockText(tester), '0:30');
+
+      // A refetch within the turn reads the server's figure again
+      backend.state = timedState(
+        currentTurn: 0,
+        left: 21000,
+        serverTime: defaultServerTime + 15000,
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'play',
+        'type': 'gameUpdate',
+      });
+      expect(clockText(tester), '0:21');
+    });
+
+    for (final scale in [1.0, 1.5, 2.0]) {
+      testWidgets('the countdown fits a 360x740 phone at a $scale text '
+          'scale, beside a long name', (tester) async {
+        await pumpGame(
+          tester,
+          FakeGameBackend(
+            state: gameSnapshotJson(
+              players: [
+                twoHumans[0],
+                {
+                  'playerIndex': 1,
+                  'userId': 'u2',
+                  'username': 'Alexandrine-Joséphine du Val',
+                },
+                twoHumans[2],
+              ],
+              gameState: gameStateJson(
+                currentTurn: 1,
+                currentAction: 'play',
+                turnTimeLimit: 60,
+                turnDeadline: defaultServerTime + 59000,
+              ),
+            ),
+          ),
+          size: const Size(360, 740),
+          textScale: scale,
+        );
+        expect(countdownOf(1), findsOneWidget);
+        expect(clockText(tester), '0:59');
+      });
+    }
+  });
+
+  group('ejected by the turn clock', () {
+    /// `gameUpdate` `playerReplaced`, as the turn timer sends it: in the
+    /// ejected human's name, the data flattened into the event.
+    JsonMap replaced(String userId, int playerIndex) => {
+      'type': 'gameUpdate',
+      'partyId': 'p1',
+      'userId': userId,
+      'action': 'playerReplaced',
+      'playerIndex': playerIndex,
+      'replacedUserId': userId,
+      'replacedUsername': 'Someone',
+      'botId': 'bot-9',
+      'botUsername': 'StandInBot-1234abcd',
+      'newOwnerId': null,
+      'timestamp': 1790094234000,
+    };
+
+    testWidgets('me: the message, and back to the parties list', (
+      tester,
+    ) async {
+      final backend = playing();
+      final transport = await pumpGame(tester, backend);
+      final calls = backend.stateCalls;
+
+      await broadcast(tester, transport, replaced('u1', 0));
+
+      expect(find.byType(GamePlayerTable), findsNothing);
+      expect(find.text('Parties'), findsWidgets);
+      expect(find.byKey(const Key('gameEjected')), findsOneWidget);
+      expect(
+        find.text('Tu as été retiré de la partie (temps dépassé)'),
+        findsOneWidget,
+      );
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      expect(router.state.uri.path, AppRoutes.parties);
+      // Nothing asks for a table the backend now refuses (403 NOT_IN_PARTY)
+      expect(backend.stateCalls, calls);
+    });
+
+    testWidgets('in English too', (tester) async {
+      final backend = playing();
+      final transport = FakeSseTransport();
+      tester.view.physicalSize = const Size(1100, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ZapZapApp(
+          apiConfig: testConfig,
+          locale: const Locale('en'),
+          initialLocation: AppRoutes.gamePath('p1'),
+          apiClient: backend.client(),
+          tokenStorage: storedSession(validToken),
+          sseTransport: transport,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await broadcast(tester, transport, replaced('u1', 0));
+      expect(
+        find.text('You were removed from the game (time ran out)'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('another player: the board reloads and the seat shows the '
+        'bot', (tester) async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          players: const [
+            {'playerIndex': 0, 'userId': 'u1', 'username': 'Vincent'},
+            {'playerIndex': 1, 'userId': 'u2', 'username': 'Alice'},
+            {'playerIndex': 2, 'userId': 'b2', 'username': 'MediumBot1'},
+          ],
+          gameState: gameStateJson(currentTurn: 1, currentAction: 'play'),
+        ),
+      );
+      final transport = await pumpGame(tester, backend);
+      expect(find.text('Alice'), findsOneWidget);
+
+      backend.state = gameSnapshotJson(
+        players: const [
+          {'playerIndex': 0, 'userId': 'u1', 'username': 'Vincent'},
+          {
+            'playerIndex': 1,
+            'userId': 'bot-9',
+            'username': 'StandInBot-1234abcd',
+          },
+          {'playerIndex': 2, 'userId': 'b2', 'username': 'MediumBot1'},
+        ],
+        gameState: gameStateJson(currentTurn: 1, currentAction: 'play'),
+      );
+      await broadcast(tester, transport, replaced('u2', 1));
+
+      expectBoardStanding(tester);
+      expect(find.byKey(const Key('gameEjected')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(GamePlayerTable.seatKey(1)),
+          matching: find.text('StandInBot-1234abcd'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Alice'), findsNothing);
     });
   });
 

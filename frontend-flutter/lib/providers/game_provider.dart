@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/card.dart';
 import '../models/game_state.dart';
+import '../models/json.dart';
 import '../models/party.dart';
 import '../models/sse_event.dart';
 import '../repositories/game_repository.dart';
@@ -30,6 +31,10 @@ abstract final class GameErrorCode {
 enum GameOutcome {
   /// The party was deleted while the game was open: go back to the list.
   closed,
+
+  /// The turn clock ran out on this player: a bot took their seat for good
+  /// (`GAME_RULES.md`, "Turn Time Limit"). Say so, and go back to the list.
+  ejected,
 }
 
 /// The hand sizes the starting player may pick (`GAME_RULES.md`): 4-7, and
@@ -121,6 +126,9 @@ class GameProvider extends ChangeNotifier {
   List<int> get cardsPlayed => game?.cardsPlayed ?? const [];
   List<int> get lastCardsPlayed => game?.lastCardsPlayed ?? const [];
   LastAction? get lastAction => game?.lastAction;
+
+  /// The clock of the turn under way, `null` when none runs.
+  TurnClock? get turnClock => game?.turnClock;
 
   /// The caller's seat, or `null` for a spectator.
   int? get myPlayerIndex {
@@ -378,7 +386,10 @@ class GameProvider extends ChangeNotifier {
   /// Every client gets every broadcast: only this party's matter
   /// (`GameBoard.jsx:108-142`). `partyStarted` brings a client that opened
   /// the board before the owner started from the "not started" page onto
-  /// the table, with no reload.
+  /// the table, with no reload. `playerReplaced` is the turn clock giving a
+  /// late human's seat to a bot: this player's own ends the board (every
+  /// game route answers them 403 `NOT_IN_PARTY` from then on); anyone
+  /// else's reloads it, so the seat shows the bot.
   void _onEvent(SseEvent event) {
     if (event.partyId != partyId || _outcome != null) return;
     switch (event.action) {
@@ -391,6 +402,14 @@ class GameProvider extends ChangeNotifier {
       case 'partyStarted':
       case 'playerForfeited':
         load(showSpinner: false);
+      case 'playerReplaced':
+        final replaced = Json.stringOrNull(event.data, 'replacedUserId');
+        if (currentUserId != null && replaced == currentUserId) {
+          _outcome = GameOutcome.ejected;
+          _notify();
+        } else {
+          load(showSpinner: false);
+        }
       case 'partyDeleted':
         _outcome = GameOutcome.closed;
         _notify();

@@ -4,7 +4,7 @@
 > ZapZap, felt, pile and deck, opponents), board motion and reduced motion, and the card
 > model, play rules and card widgets.
 > Related: [[FrontendFlutter]] · [[FlutterGameBoard]] · [[GameRules]] · [[Frontend]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -143,9 +143,10 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
 - **Compact opponents** (J6, `GamePlayerTable`): one line per player in turn order from the
   round's starting player (`orderedPlayers`), each a small card back and the count
   instead of a row of backs, a bar of the total towards 100 (red above 80, full once out)
-  and the total; the player to move on an amber edge. Every line has the same height
+  and the total; the player to move on an amber edge, and their turn's countdown when the
+  game runs a clock (`TurnCountdown`, [[FlutterGameBoard]] § The turn clock). Every line has the same height
   (`GamePlayerTable.rowHeight`, from the text scale), whatever it holds — a "Toi" badge,
-  a card back or "Éliminé".
+  a card back, a countdown or "Éliminé".
 - **The folded table** (`GamePlayerTable.onToggle`): on the phone board the table shows
   one line, the player to move's (the first in turn order when nobody is,
   `GamePlayerTable.foldedSeat`), and a chevron at its end (`toggleKey`, labelled "Voir tous

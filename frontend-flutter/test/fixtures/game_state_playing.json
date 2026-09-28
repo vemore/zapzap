@@ -68,6 +68,9 @@
     "counterActedByPlayerIndex": null,
     "roundScores": null,
     "gameFinished": false,
-    "winner": null
+    "winner": null,
+    "turnTimeLimit": 60,
+    "turnDeadline": 1790094234000,
+    "serverTime": 1790094191500
   }
 }

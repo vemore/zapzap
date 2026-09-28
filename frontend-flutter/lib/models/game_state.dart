@@ -79,6 +79,34 @@ class LastAction {
   final DateTime? timestamp;
 }
 
+/// The turn's deadline as one answer of `/state` gave it: both instants on
+/// the server's clock, so the time left is [left] at the moment the answer
+/// arrived, and counts down from there — never against the device's clock,
+/// which may be minutes off. Two answers are the same clock only when both
+/// instants match: a refetch restarts the countdown from its own figure.
+class TurnClock {
+  const TurnClock({required this.deadline, required this.serverTime});
+
+  /// Unix milliseconds by which the turn must end.
+  final int deadline;
+
+  /// Unix milliseconds of the answer.
+  final int serverTime;
+
+  /// What was left of the turn when the server answered, never negative.
+  Duration get left =>
+      Duration(milliseconds: deadline > serverTime ? deadline - serverTime : 0);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TurnClock &&
+      other.deadline == deadline &&
+      other.serverTime == serverTime;
+
+  @override
+  int get hashCode => Object.hash(deadline, serverTime);
+}
+
 /// The winner of a finished game: `{userId, playerIndex, username, score}`.
 class GameWinner {
   const GameWinner({
@@ -141,6 +169,9 @@ class GameState {
     this.roundScores,
     this.gameFinished = false,
     this.winner,
+    this.turnTimeLimit = 0,
+    this.turnDeadline,
+    this.serverTime,
   });
 
   factory GameState.fromJson(JsonMap json) {
@@ -171,6 +202,9 @@ class GameState {
       roundScores: Json.intMapOrNull(json['roundScores']),
       gameFinished: Json.boolean(json, 'gameFinished'),
       winner: GameWinner.fromJsonOrNull(json['winner']),
+      turnTimeLimit: Json.intOrNull(json['turnTimeLimit']) ?? 0,
+      turnDeadline: Json.intOrNull(json['turnDeadline']),
+      serverTime: Json.intOrNull(json['serverTime']),
     );
   }
 
@@ -214,6 +248,29 @@ class GameState {
   /// The whole game is over, not only the round.
   final bool gameFinished;
   final GameWinner? winner;
+
+  /// Seconds each human has for a turn; 0 when this game runs no clock
+  /// (`GAME_RULES.md`, "Turn Time Limit": set at creation, enforced only when
+  /// the game started with two humans or more).
+  final int turnTimeLimit;
+
+  /// Unix milliseconds, on the server's clock, by which the seat on turn
+  /// must end its turn or be replaced by a bot; `null` when that seat is not
+  /// timed (a bot), or between two rounds.
+  final int? turnDeadline;
+
+  /// The server's Unix milliseconds when it answered: the deadline is read
+  /// against it, never against the device's clock.
+  final int? serverTime;
+
+  /// The clock of the turn under way, or `null` when none runs: no limit
+  /// in this game, a bot on turn, or between two rounds.
+  TurnClock? get turnClock {
+    final deadline = turnDeadline;
+    final now = serverTime;
+    if (turnTimeLimit <= 0 || deadline == null || now == null) return null;
+    return TurnClock(deadline: deadline, serverTime: now);
+  }
 
   bool get isRoundFinished => currentAction == GameAction.finished;
 }

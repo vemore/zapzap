@@ -126,19 +126,19 @@ void main() {
     expect(await party.connectedPlayers(), isEmpty);
   });
 
-  test('party: create sends {playerCount, allowSpectators, roundTimeLimit}, '
+  test('party: create sends {playerCount, allowSpectators, turnTimeLimit}, '
       'never handSize or maxScore', () async {
     final backend = FakeBackend({'POST /api/party': 'party_create'});
     await PartyRepository(backend.api).create(
       name: 'Friday',
       playerCount: 5,
-      settings: const PartySettings(allowSpectators: false, roundTimeLimit: 0),
+      settings: const PartySettings(allowSpectators: false, turnTimeLimit: 60),
     );
     final settings = (backend.lastBody! as Map)['settings'] as Map;
     expect(settings, {
       'playerCount': 5,
       'allowSpectators': false,
-      'roundTimeLimit': 0,
+      'turnTimeLimit': 60,
     });
     for (final key in [
       'handSize',

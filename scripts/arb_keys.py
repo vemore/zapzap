@@ -85,6 +85,9 @@ SAME_AS_ENGLISH_OK = {
     "tutorialTitle": {"de", "es", "pt", "id"},  # "Tutorial"
     "partyStatusLabel": {"de", "pt", "id"},  # "Status"
     "gameRoundOverHandLabel": {"de"},  # "Hand", the glossary's German term
+    # SI unit symbols, written the same in Latin-script languages.
+    "turnTimerSeconds": {"fr", "de", "es", "pt"},  # "{seconds} s"
+    "turnTimerMinutes": {"fr", "de", "es", "pt"},  # "{minutes} min"
 }
 
 _EXEMPT_PREFIXES = {k[:-1]: v for k, v in SAME_AS_ENGLISH_OK.items() if k.endswith("*")}
