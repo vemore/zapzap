@@ -353,10 +353,6 @@
       }
     }
   },
-  "partyStatusLabel": "Statut",
-  "@partyStatusLabel": {
-    "description": "Label of a party's status"
-  },
   "partyStatusWaiting": "En attente",
   "@partyStatusWaiting": {
     "description": "Party status: waiting for players"

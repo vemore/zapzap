@@ -38,7 +38,10 @@
     registers, before the app's main, in every build, with or without a client id. It is
     appended only when the app first uses Google sign-in (zapzapLoadGoogleScript, called by
     lib/services/google_sign_in_script_web.dart), so a build without GOOGLE_CLIENT_ID, or a
-    signed-in session, never contacts accounts.google.com. .llmwiki/FrontendFlutter.md
+    signed-in session, never contacts accounts.google.com. Released, the page gets the
+    browser's own appendChild back. The plugin appends the script with appendChild:
+    test/gis_script_guard_test.dart runs this guard over the resolved plugin's loader in
+    headless Chrome and fails if it stops doing so. .llmwiki/FlutterAuth.md
   -->
   <script>
     (function () {
@@ -46,16 +49,22 @@
       var appendChild = Node.prototype.appendChild;
       var held = [];
       var released = false;
-      Node.prototype.appendChild = function (child) {
+      function guard(child) {
         if (!released && child instanceof HTMLScriptElement &&
             String(child.src).indexOf(GIS) === 0) {
           held.push([this, child]);
           return child;
         }
         return appendChild.call(this, child);
-      };
+      }
+      Node.prototype.appendChild = guard;
       window.zapzapLoadGoogleScript = function () {
         released = true;
+        // Unless something wrapped it since: that wrapper still calls the guard,
+        // which now lets everything through.
+        if (Node.prototype.appendChild === guard) {
+          Node.prototype.appendChild = appendChild;
+        }
         held.splice(0).forEach(function (entry) {
           appendChild.call(entry[0], entry[1]);
         });

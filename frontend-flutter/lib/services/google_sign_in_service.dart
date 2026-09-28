@@ -42,6 +42,10 @@ class GoogleSignInConfig {
 
   bool get enabled => clientId != null || serverClientId != null;
 
+  /// The web flow: Google Identity Services, a script loaded from
+  /// accounts.google.com on first use (`web/index.html`).
+  bool get usesGis => clientId != null;
+
   /// The configuration for this build and platform.
   factory GoogleSignInConfig.fromEnvironment() => GoogleSignInConfig.resolve(
     webClientId: definedClientId,
@@ -107,7 +111,8 @@ abstract class GoogleSignInService {
   Future<void> signIn();
 
   /// Forgets the Google account on this device, so the next person is not
-  /// offered it. Called on logout; a no-op when Google was never used.
+  /// offered it. Called on logout, including the logout of a session
+  /// restored at start-up, before any Google use in this run.
   Future<void> signOut();
 }
 
@@ -207,13 +212,16 @@ class PluginGoogleSignInService implements GoogleSignInService {
     }
   }
 
+  /// On Android, initialises Google first if this run has not: after a
+  /// restored session, the usual logout, Credential Manager still holds the
+  /// account (`clearCredentialState`). On the web, GIS not loaded in this run
+  /// means nothing to undo — its `disableAutoSelect` only stops One Tap,
+  /// which this app never asks for; Google's button offers the account from
+  /// Google's own cookies — so nothing is loaded from accounts.google.com.
   @override
   Future<void> signOut() async {
-    // Never initialised: no account to forget (and the web plugin would wait
-    // for an initialisation that never comes).
-    final initialized = _initialized;
-    if (initialized == null) return;
-    await initialized;
+    if (_initialized == null && config.usesGis) return;
+    await _initialize();
     await _google.signOut();
   }
 

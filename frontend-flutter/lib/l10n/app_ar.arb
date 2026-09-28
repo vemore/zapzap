@@ -74,7 +74,6 @@
   "partiesEmptyBody": "أنشئ أول لعبة وابدأ باللعب!",
   "partyPlayersLabel": "اللاعبون",
   "partyPlayersCount": "{count} / {max}",
-  "partyStatusLabel": "الحالة",
   "partyStatusWaiting": "في الانتظار",
   "partyStatusPlaying": "قيد اللعب",
   "partyStatusFinished": "انتهت",
