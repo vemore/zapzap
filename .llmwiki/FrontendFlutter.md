@@ -6,7 +6,7 @@
 > Related: [[FlutterAuth]] · [[FlutterRealtime]] · [[FlutterParties]] · [[FlutterGameBoard]] ·
 > [[FlutterGameUi]] · [[FlutterHistoryAdmin]] · [[FlutterI18n]] · [[FlutterAndroidPwa]] ·
 > [[Architecture]] · [[Frontend]] · [[Api]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -86,7 +86,7 @@
 | `models/card.dart` | `GameCard` (not `Card`: Material has one) — id, suit, rank, value, face asset (below) |
 | `utils/rules.dart` | `analyzePlay` / `isValidPlay` / `playType`, `handValue`, `isZapZapEligible`, `handValueDisplay`, `zapZapProgress`, `hasJoker`, `counteractPenalty`, `sortCards`, `suggestPlays` / `PlaySuggestion` (below) |
 | `utils/card_l10n.dart` | `CardL10n` on `AppLocalizations`: suit and card names, `cardShort` ("7♥"), `playMoveLabel`, `playErrorMessage(PlayError)` |
-| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `google_sign_in_section.dart` (Google sign-in, below); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_slot_selector.dart`, `player_seat_tile.dart`, `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `hand_suggestions.dart`, `game_action_buttons.dart`, `game_zapzap_sheet.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below); `admin_common.dart`, `admin_users.dart`, `admin_parties.dart`, `admin_stats.dart` (Admin, below) |
+| `widgets/` | `playing_card.dart`, `card_back.dart`, `card_fan.dart` (below); `app_logo.dart`; `auth_form.dart` (the card, submit button and switch link shared by login and register, and the error-code → text mapping); `google_sign_in_section.dart` (Google sign-in, below); `connection_indicator.dart` (Wifi icon of `SseProvider.connected`); `zapzap_app_bar.dart`, `connected_players.dart`, `party_card.dart`, `player_seat_tile.dart` (seats, the free seat's « Ajouter un bot », `botDifficultyLabel`), `error_banner.dart` (and `partyErrorText`); `game_player_table.dart`, `game_table_area.dart`, `game_hand.dart`, `hand_suggestions.dart`, `game_action_buttons.dart`, `game_zapzap_sheet.dart`, `game_hand_size_selector.dart`, `game_round_end.dart`, `game_error_text.dart` (the game board, below); `async_section.dart`, `history_*.dart`, `stats_*.dart` (History and statistics, below); `admin_common.dart`, `admin_users.dart`, `admin_parties.dart`, `admin_stats.dart` (Admin, below) |
 | `providers/party_provider.dart`, `create_party_provider.dart`, `connected_players_provider.dart` | the lobby state (below) |
 | `providers/game_provider.dart` | one party's board (below) |
 | `providers/tutorial_game.dart`, `services/tutorial_offer_store.dart`, `widgets/tutorial_offer.dart` | the example game's script and state, the first opening's flag and offer (The example game, below) |
@@ -159,9 +159,11 @@
   become UTC `DateTime`. Ids are strings even when the backend sends an integer (party seat
   `id`). Admin party `settings` arrive as a JSON-encoded string, decoded.
 - **Shapes** (`zapzap-rust/src/api/routes/*.rs`): party settings are `{playerCount,
-  allowSpectators, roundTimeLimit}` since 2026-09-24 — `playerCount` 3-8 is required on
-  create (else 400 `VALIDATION_ERROR`). `PartySettings` reads and sends those three keys
-  only; `PartyRepository.create` always sends `playerCount`. `GET /party/:id` carries
+  allowSpectators, turnTimeLimit}` (0, 30, 60 or 120 s per turn, since 2026-09-28; [[Api]])
+  — `playerCount` 3-8 is required on create (else 400 `VALIDATION_ERROR`). The Flutter
+  `PartySettings` still reads and sends `roundTimeLimit`, the key the backend had before
+  and now ignores, until the client's turn-timer change; `PartyRepository.create` always
+  sends `playerCount`. `GET /party/:id` carries
   `isOwner` and `userPlayerIndex`, which the lobby reads as they are; a `join` answers the
   `playerIndex` taken. The move answers (play, draw, selectHandSize) carry no `gameState`.
 - **Shapes the models read**: `zapzap` answers `scores` (the running totals, an object → `totalScores`),

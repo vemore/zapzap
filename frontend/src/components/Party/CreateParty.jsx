@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Zap, Bot, User } from 'lucide-react';
+import { ArrowLeft, Zap, Bot } from 'lucide-react';
 import { apiClient } from '../../services/api';
+
+// The form asks for the number of seats only: the creator takes the first, and the
+// others wait in the lobby for players, or for bots the host adds there.
 
 function CreateParty() {
   const [name, setName] = useState('');
@@ -9,69 +12,7 @@ function CreateParty() {
   const [visibility, setVisibility] = useState('public');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [availableBots, setAvailableBots] = useState([]);
-  const [playerSlots, setPlayerSlots] = useState([]);
   const navigate = useNavigate();
-
-  // Fetch available bots on component mount
-  useEffect(() => {
-    const fetchBots = async () => {
-      try {
-        const response = await apiClient.get('/bots');
-        setAvailableBots(response.data.bots || []);
-      } catch (err) {
-        console.error('Failed to fetch bots:', err);
-        // Don't show error to user, just won't have bot options
-      }
-    };
-
-    fetchBots();
-  }, []);
-
-  // Initialize player slots when player count changes
-  useEffect(() => {
-    const count = parseInt(playerCount);
-    if (count >= 3 && count <= 8) {
-      // Slot 0 is owner (always human), slots 1+ are configurable
-      const slots = Array.from({ length: count - 1 }, (_, i) => ({
-        index: i + 1,
-        type: 'human', // 'human' or 'bot'
-        botId: null,
-        difficulty: null
-      }));
-      setPlayerSlots(slots);
-    }
-  }, [playerCount]);
-
-  // Handle player slot configuration change
-  const handleSlotChange = (slotIndex, type, difficulty = null) => {
-    setPlayerSlots(prevSlots => {
-      const newSlots = [...prevSlots];
-      const slot = newSlots[slotIndex];
-
-      if (type === 'human') {
-        slot.type = 'human';
-        slot.botId = null;
-        slot.difficulty = null;
-      } else if (type === 'bot' && difficulty) {
-        slot.type = 'bot';
-        slot.difficulty = difficulty;
-        // Find first available bot of this difficulty that isn't already used
-        const usedBotIds = new Set(newSlots.filter((s, i) => i !== slotIndex && s.type === 'bot').map(s => s.botId));
-        const botsOfDifficulty = availableBots.filter(b => b.botDifficulty === difficulty && !usedBotIds.has(b.id));
-        if (botsOfDifficulty.length > 0) {
-          slot.botId = botsOfDifficulty[0].id;
-        } else {
-          // No available bot of this difficulty, fallback to human
-          slot.type = 'human';
-          slot.botId = null;
-          slot.difficulty = null;
-        }
-      }
-
-      return newSlots;
-    });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -95,18 +36,12 @@ function CreateParty() {
     setLoading(true);
 
     try {
-      // Extract bot IDs from player slots
-      const botIds = playerSlots
-        .filter(slot => slot.type === 'bot' && slot.botId)
-        .map(slot => slot.botId);
-
       const response = await apiClient.post('/party', {
         name: name.trim(),
         visibility,
         settings: {
           playerCount: parseInt(playerCount),
         },
-        botIds
       });
 
       const partyId = response.data.party.id;
@@ -190,117 +125,11 @@ function CreateParty() {
               </select>
             </div>
 
-            {/* Player Slots Configuration */}
-            {playerSlots.length > 0 && (
-              <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Configure Player Slots
-                </label>
-
-                {/* Owner slot (always human) */}
-                <div className="mb-3 p-3 bg-slate-800 rounded-lg border border-amber-400/30">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <User className="w-4 h-4 text-amber-400 mr-2" />
-                      <span className="text-white font-medium">Player 1 (You)</span>
-                    </div>
-                    <span className="text-xs text-gray-400 bg-amber-400/20 px-2 py-1 rounded">Owner</span>
-                  </div>
-                </div>
-
-                {/* Configurable slots */}
-                <div className="space-y-2">
-                  {playerSlots.map((slot, index) => {
-                    // Calculate available bots per difficulty, excluding bots already used in other slots
-                    const usedBotIds = new Set(
-                      playerSlots
-                        .filter((s, i) => i !== index && s.type === 'bot')
-                        .map(s => s.botId)
-                    );
-
-                    const getAvailableCount = (difficulty) => {
-                      return availableBots.filter(b =>
-                        b.botDifficulty === difficulty && !usedBotIds.has(b.id)
-                      ).length;
-                    };
-
-                    // For current slot, if it's using a bot of a certain difficulty, that bot is still "available" for this slot
-                    const getAvailableCountForSlot = (difficulty) => {
-                      const baseCount = getAvailableCount(difficulty);
-                      // If this slot is already using a bot of this difficulty, it's available for this slot
-                      if (slot.type === 'bot' && slot.difficulty === difficulty) {
-                        return baseCount + 1;
-                      }
-                      return baseCount;
-                    };
-
-                    const easyCount = getAvailableCountForSlot('easy');
-                    const mediumCount = getAvailableCountForSlot('medium');
-                    const hardCount = getAvailableCountForSlot('hard');
-                    const hardVinceCount = getAvailableCountForSlot('hard_vince');
-                    const llmCount = getAvailableCountForSlot('llm');
-                    const thibotCount = getAvailableCountForSlot('thibot');
-
-                    return (
-                      <div key={slot.index} className="p-3 bg-slate-800 rounded-lg border border-slate-600">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            {slot.type === 'bot' ? (
-                              <Bot className="w-4 h-4 text-purple-400 mr-2" />
-                            ) : (
-                              <User className="w-4 h-4 text-gray-400 mr-2" />
-                            )}
-                            <span className="text-white text-sm">Player {slot.index + 1}</span>
-                          </div>
-                          <select
-                            value={slot.type === 'bot' ? `bot-${slot.difficulty}` : 'human'}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === 'human') {
-                                handleSlotChange(index, 'human');
-                              } else {
-                                const difficulty = value.replace('bot-', '');
-                                handleSlotChange(index, 'bot', difficulty);
-                              }
-                            }}
-                            disabled={loading}
-                            className="px-3 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-amber-400 transition-colors disabled:opacity-60"
-                          >
-                            <option value="human">Waiting for Human</option>
-                            <option value="bot-easy" disabled={easyCount === 0}>
-                              Bot - Easy {easyCount === 0 && '(None available)'}
-                            </option>
-                            <option value="bot-medium" disabled={mediumCount === 0}>
-                              Bot - Medium {mediumCount === 0 && '(None available)'}
-                            </option>
-                            <option value="bot-hard" disabled={hardCount === 0}>
-                              Bot - Hard {hardCount === 0 && '(None available)'}
-                            </option>
-                            <option value="bot-hard_vince" disabled={hardVinceCount === 0}>
-                              Bot - Hard Vince {hardVinceCount === 0 && '(None available)'}
-                            </option>
-                            <option value="bot-llm" disabled={llmCount === 0}>
-                              Bot - LLM (Llama 3.3) {llmCount === 0 && '(None available)'}
-                            </option>
-                            <option value="bot-thibot" disabled={thibotCount === 0}>
-                              Bot - Thibot {thibotCount === 0 && '(None available)'}
-                            </option>
-                          </select>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Summary */}
-                <div className="mt-3 pt-3 border-t border-slate-600">
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>Humans: {playerSlots.filter(s => s.type === 'human').length + 1}</span>
-                    <span>Bots: {playerSlots.filter(s => s.type === 'bot').length}</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* The free seats are filled in the lobby */}
+            <p className="flex items-start text-sm text-gray-400" data-testid="seats-hint">
+              <Bot className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-amber-400" />
+              Once the party is created, you can add bots to the free seats in the lobby, or wait for other players.
+            </p>
 
             {/* Error Message */}
             {error && (

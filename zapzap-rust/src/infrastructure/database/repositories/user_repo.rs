@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sqlx::{SqliteConnection, SqlitePool};
 
@@ -10,6 +12,7 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{build_game_results, forfeit_seat};
 use crate::domain::value_objects::GameState;
+use crate::infrastructure::services::{Clock, SystemClock};
 
 /// The columns that name a user in a game, each handed to the anonymous user when an
 /// account is deleted (`delete_account`)
@@ -31,10 +34,12 @@ fn db_err(e: sqlx::Error) -> RepositoryError {
 /// with fewer than two seats left it is over, and finished as a zapzap would finish it;
 /// with no other human at the table (the anonymous users of accounts deleted before do
 /// not count) the party is deleted, as when the last human leaves a waiting party. A
-/// party the user owns goes to the first other human by seat.
+/// party the user owns goes to the first other human by seat. A turn the forfeit hands on
+/// gets its deadline from `now_ms` (`stamp_turn_deadline`), as a move's write gives it.
 async fn forfeit_playing_seats(
     conn: &mut SqliteConnection,
     user_id: &str,
+    now_ms: u64,
 ) -> Result<Vec<SeatForfeit>, RepositoryError> {
     let seats: Vec<(String, i64, String, String, String)> = sqlx::query_as(
         "SELECT p.id, pp.player_index, p.owner_id, p.name, p.visibility FROM party_players pp \
@@ -105,6 +110,7 @@ async fn forfeit_playing_seats(
         let mut outcome = ForfeitOutcome::Continues;
         if let Some(mut state) = state {
             let winner = forfeit_seat(&mut state, player_index);
+            state.stamp_turn_deadline(now_ms);
             // Read and written under the transaction's write lock; the new version refuses
             // a move that read the state before it (`update_game_state`)
             sqlx::query("UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 WHERE party_id = ?")
@@ -191,11 +197,18 @@ async fn finish_forfeited_game(
 /// SQLite implementation of UserRepository
 pub struct SqliteUserRepository {
     pool: SqlitePool,
+    /// The time a forfeit's game-state write stamps the turn deadline with
+    clock: Arc<dyn Clock>,
 }
 
 impl SqliteUserRepository {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self::with_clock(pool, Arc::new(SystemClock))
+    }
+
+    /// A repository whose game-state writes read `clock` (a test's `ManualClock`)
+    pub fn with_clock(pool: SqlitePool, clock: Arc<dyn Clock>) -> Self {
+        Self { pool, clock }
     }
 
     fn row_to_user(row: &sqlx::sqlite::SqliteRow) -> User {
@@ -409,7 +422,7 @@ impl UserRepository for SqliteUserRepository {
         }
 
         // A game in progress cannot be left, and may never finish: the seat is forfeited
-        let forfeits = forfeit_playing_seats(&mut tx, id).await?;
+        let forfeits = forfeit_playing_seats(&mut tx, id, self.clock.now_millis()).await?;
 
         let mut referenced = false;
         for (table, column) in USER_REFERENCES {

@@ -48,6 +48,24 @@ function mockPartyResponse({ ownerId = 'user-1', players = [], settings, status 
   });
 }
 
+/** GET /party/:id as mockPartyResponse, and GET /bots listing `bots` */
+function mockPartyAndBots({ players = [], bots = [] } = {}) {
+  const party = {
+    id: 'party-123',
+    name: 'Test Party',
+    ownerId: 'user-1',
+    status: 'waiting',
+    settings: { playerCount: 4 },
+  };
+  apiClient.get = vi.fn((url) =>
+    Promise.resolve({
+      data: url === '/bots' ? { success: true, bots } : { success: true, party, players },
+    })
+  );
+}
+
+const bot = (id, username, botDifficulty) => ({ id, username, userType: 'bot', botDifficulty });
+
 function renderLobby() {
   return render(
     <BrowserRouter>
@@ -129,7 +147,7 @@ describe('Phase 3: PartyLobby Component Tests', () => {
       renderLobby();
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /start/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /start game/i })).toBeInTheDocument();
       });
     });
 
@@ -149,7 +167,7 @@ describe('Phase 3: PartyLobby Component Tests', () => {
       await waitFor(() => {
         expect(screen.getByText('Test Party')).toBeInTheDocument();
       });
-      expect(screen.queryByRole('button', { name: /start/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start game/i })).not.toBeInTheDocument();
     });
 
     it('should disable start button if less than 3 players (game rule)', async () => {
@@ -163,7 +181,7 @@ describe('Phase 3: PartyLobby Component Tests', () => {
       renderLobby();
 
       await waitFor(() => {
-        const startButton = screen.getByRole('button', { name: /start/i });
+        const startButton = screen.getByRole('button', { name: /start game/i });
         expect(startButton).toBeDisabled();
       });
       expect(screen.getByText(/need 1 more player to start/i)).toBeInTheDocument();
@@ -181,9 +199,99 @@ describe('Phase 3: PartyLobby Component Tests', () => {
       renderLobby();
 
       await waitFor(() => {
-        const startButton = screen.getByRole('button', { name: /start/i });
+        const startButton = screen.getByRole('button', { name: /start game/i });
         expect(startButton).not.toBeDisabled();
       });
+    });
+  });
+
+  describe('Bots in free seats', () => {
+    const owner = { userId: 'user-1', username: 'Owner' };
+    const seatedEasy = { userId: 'b1', username: 'EasyBot1', userType: 'bot', botDifficulty: 'easy' };
+
+    it('the owner adds a bot of a level to a free seat, which the seat list then shows', async () => {
+      mockPartyAndBots({
+        players: [owner, seatedEasy],
+        bots: [bot('b1', 'EasyBot1', 'easy'), bot('b2', 'EasyBot2', 'easy'), bot('m1', 'MediumBot1', 'medium')],
+      });
+      apiClient.post = vi.fn().mockResolvedValue({ data: { success: true } });
+
+      renderLobby();
+
+      const select = await screen.findByLabelText('Add a bot to free seat 1');
+      // EasyBot1 already sits here: one easy left; no hard bot at all
+      expect(screen.getAllByRole('option', { name: 'Hard (none available)' })[0]).toBeDisabled();
+      fireEvent.change(select, { target: { value: 'easy' } });
+
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/party/party-123/bots', { botId: 'b2' });
+      });
+      // The details are read again at once, not only on the event
+      await waitFor(() => {
+        expect(apiClient.get.mock.calls.filter(([url]) => url === '/party/party-123').length).toBe(2);
+      });
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('a guest sees no add-bot menu and no fill button', async () => {
+      authState.user = { id: 'user-2', username: 'Guest' };
+      mockPartyAndBots({ players: [owner, { userId: 'user-2', username: 'Guest' }] });
+
+      renderLobby();
+
+      await screen.findByText('Test Party');
+      expect(screen.queryByLabelText(/add a bot/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /fill with bots/i })).not.toBeInTheDocument();
+    });
+
+    it('fill with bots and start: the dialog picks a level, then the game opens', async () => {
+      mockPartyAndBots({ players: [owner] });
+      apiClient.post = vi.fn().mockResolvedValue({ data: { success: true } });
+
+      renderLobby();
+
+      fireEvent.click(await screen.findByRole('button', { name: /fill with bots and start/i }));
+      const dialog = screen.getByRole('dialog', { name: 'Fill with bots' });
+      expect(dialog).toBeInTheDocument();
+      for (const level of ['Easy', 'Medium', 'Hard']) {
+        expect(screen.getByLabelText(level)).toBeInTheDocument();
+      }
+      fireEvent.click(screen.getByLabelText('Hard'));
+      fireEvent.click(screen.getByRole('button', { name: /^start$/i }));
+
+      await waitFor(() => {
+        expect(apiClient.post).toHaveBeenCalledWith('/party/party-123/fill-and-start', { difficulty: 'hard' });
+        expect(mockNavigate).toHaveBeenCalledWith('/game/party-123');
+      });
+    });
+
+    it('a fill refused for want of bots says so and stays', async () => {
+      mockPartyAndBots({ players: [owner] });
+      apiClient.post = vi.fn().mockRejectedValue({
+        response: { status: 409, data: { error: 'Not enough bots', code: 'NOT_ENOUGH_BOTS' } },
+      });
+
+      renderLobby();
+
+      fireEvent.click(await screen.findByRole('button', { name: /fill with bots and start/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^start$/i }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not enough bots available to fill the table.');
+      expect(apiClient.post).toHaveBeenCalledWith('/party/party-123/fill-and-start', { difficulty: 'medium' });
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('cancelling the dialog seats nobody', async () => {
+      mockPartyAndBots({ players: [owner] });
+      apiClient.post = vi.fn();
+
+      renderLobby();
+
+      fireEvent.click(await screen.findByRole('button', { name: /fill with bots and start/i }));
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(apiClient.post).not.toHaveBeenCalled();
     });
   });
 
@@ -222,7 +330,7 @@ describe('Phase 3: PartyLobby Component Tests', () => {
 
       renderLobby();
 
-      const startButton = await screen.findByRole('button', { name: /start/i });
+      const startButton = await screen.findByRole('button', { name: /start game/i });
       fireEvent.click(startButton);
 
       await waitFor(() => {

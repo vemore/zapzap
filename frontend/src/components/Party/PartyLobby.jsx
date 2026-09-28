@@ -2,6 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Zap, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import {
+  BOT_DIFFICULTIES,
+  FILL_DIFFICULTIES,
+  addBotToParty,
+  fillAndStart,
+  listBots,
+} from '../../services/party';
 import { useAuth } from '../../contexts/AuthContext';
 import useSSE from '../../hooks/useSSE';
 import { sseUrl } from '../../services/sse';
@@ -11,6 +18,11 @@ function PartyLobby() {
   const [party, setParty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [bots, setBots] = useState([]);
+  const [busy, setBusy] = useState(false);
+  // The fill-with-bots dialog: closed, or open on the level it will seat
+  const [fillOpen, setFillOpen] = useState(false);
+  const [fillLevel, setFillLevel] = useState('medium');
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
@@ -46,6 +58,11 @@ function PartyLobby() {
   useEffect(() => {
     fetchPartyDetails();
   }, [partyId]);
+
+  // The bot accounts a free seat can take
+  useEffect(() => {
+    listBots().then(setBots);
+  }, []);
 
   const fetchPartyDetails = async () => {
     try {
@@ -91,6 +108,41 @@ function PartyLobby() {
       navigate(`/game/${partyId}`);
     } catch {
       setError('Failed to start game');
+    }
+  };
+
+  // The owner seats the first bot of `difficulty` not at the table yet. Only on
+  // request: nothing is filled or started by itself.
+  const handleAddBot = async (difficulty) => {
+    const seated = new Set((party?.players || []).map(p => p.userId));
+    const bot = bots.find(b => b.botDifficulty === difficulty && !seated.has(b.id));
+    if (!bot) return;
+    setBusy(true);
+    try {
+      await addBotToParty(partyId, bot.id);
+      await fetchPartyDetails();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to add a bot');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleFillAndStart = async () => {
+    setBusy(true);
+    try {
+      await fillAndStart(partyId, fillLevel);
+      setFillOpen(false);
+      navigate(`/game/${partyId}`);
+    } catch (err) {
+      setFillOpen(false);
+      setError(
+        err.response?.data?.code === 'NOT_ENOUGH_BOTS'
+          ? 'Not enough bots available to fill the table.'
+          : err.response?.data?.error || 'Failed to fill the party and start'
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -140,6 +192,13 @@ function PartyLobby() {
 
   // User can delete if they are owner OR the only human player
   const canDelete = isOwner || isOnlyHuman;
+
+  // The owner seats bots in a waiting party with a free seat
+  const freeSeats = Math.max(0, maxPlayers - playerCount);
+  const canAddBots = isOwner && party.status === 'waiting' && freeSeats > 0;
+  const seatedIds = new Set((party.players || []).map(p => p.userId));
+  const availableBots = (difficulty) =>
+    bots.filter(b => b.botDifficulty === difficulty && !seatedIds.has(b.id)).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -267,15 +326,43 @@ function PartyLobby() {
               ))}
 
               {/* Empty player slots */}
-              {Array.from({ length: maxPlayers - playerCount }).map((_, index) => (
+              {Array.from({ length: freeSeats }).map((_, index) => (
                 <div
                   key={`empty-${index}`}
-                  className="bg-slate-700/30 rounded-lg p-4 border border-slate-600 border-dashed"
+                  data-testid={`empty-seat-${index}`}
+                  className="bg-slate-700/30 rounded-lg p-4 border border-slate-600 border-dashed flex items-center justify-between gap-2"
                 >
-                  <span className="text-gray-500 font-medium">Waiting for player...</span>
+                  <span className="text-gray-500 font-medium whitespace-nowrap">Waiting for player...</span>
+                  {canAddBots && (
+                    <select
+                      aria-label={`Add a bot to free seat ${index + 1}`}
+                      value=""
+                      disabled={busy}
+                      onChange={(e) => e.target.value && handleAddBot(e.target.value)}
+                      className="min-w-0 px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-amber-400 focus:outline-none focus:border-amber-400 disabled:opacity-60"
+                    >
+                      <option value="">Add a bot…</option>
+                      {BOT_DIFFICULTIES.map(({ value, label }) => (
+                        <option key={value} value={value} disabled={availableBots(value) === 0}>
+                          {label}{availableBots(value) === 0 ? ' (none available)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               ))}
             </div>
+
+            {canAddBots && (
+              <button
+                onClick={() => setFillOpen(true)}
+                disabled={busy}
+                className="mt-4 w-full flex items-center justify-center px-6 py-3 bg-slate-700 hover:bg-slate-600 border border-amber-400/40 text-amber-400 font-semibold rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Bot className="w-5 h-5 mr-2" />
+                Fill with bots and start
+              </button>
+            )}
           </div>
 
           {/* Error message */}
@@ -321,6 +408,58 @@ function PartyLobby() {
           </div>
         </div>
       </div>
+
+      {/* Fill with bots and start: one level for every free seat */}
+      {fillOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fill-dialog-title"
+            className="bg-slate-800 rounded-lg shadow-2xl p-6 border border-slate-700 w-full max-w-sm"
+          >
+            <h3 id="fill-dialog-title" className="text-xl font-bold text-white mb-2">
+              Fill with bots
+            </h3>
+            <p className="text-gray-300 text-sm mb-4">
+              The free seats go to bots of this level, or of the next one when there are not
+              enough, then the game starts.
+            </p>
+            <fieldset className="space-y-2 mb-6">
+              <legend className="sr-only">Bot level</legend>
+              {FILL_DIFFICULTIES.map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-3 p-2 rounded bg-slate-700 text-white cursor-pointer">
+                  <input
+                    type="radio"
+                    name="fill-level"
+                    value={value}
+                    checked={fillLevel === value}
+                    onChange={() => setFillLevel(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setFillOpen(false)}
+                disabled={busy}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFillAndStart}
+                disabled={busy}
+                className="flex-1 flex items-center justify-center px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-60"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Start
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

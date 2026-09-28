@@ -16,8 +16,8 @@ use crate::application::game::{
     SelectHandSizeError,
 };
 use crate::application::party::{
-    AddBotToPartyError, CreatePartyError, DeletePartyError, GetPartyDetailsError, JoinPartyError,
-    LeavePartyError, ListPartiesError, StartPartyError,
+    AddBotToPartyError, CreatePartyError, DeletePartyError, FillAndStartError,
+    GetPartyDetailsError, JoinPartyError, LeavePartyError, ListPartiesError, StartPartyError,
 };
 use crate::domain::repositories::RepositoryError;
 
@@ -284,6 +284,29 @@ impl From<DeletePartyError> for ApiError {
             }
             DeletePartyError::Repository(e) => {
                 Self::internal("DELETE_PARTY_ERROR", "Failed to delete party", e)
+            }
+        }
+    }
+}
+
+impl From<FillAndStartError> for ApiError {
+    fn from(e: FillAndStartError) -> Self {
+        match e {
+            FillAndStartError::PartyNotFound => Self::party_not_found(),
+            FillAndStartError::NotOwner => {
+                Self::forbidden("NOT_OWNER", "Only the party owner can start the game")
+            }
+            FillAndStartError::PartyNotWaiting => {
+                Self::conflict("PARTY_STARTED", "Party has already started")
+            }
+            FillAndStartError::NotEnoughBots { free, available } => Self::conflict(
+                "NOT_ENOUGH_BOTS",
+                format!("Not enough bots to fill {free} seats: {available} available"),
+            ),
+            // A start refused after the seats were filled answers as start does
+            FillAndStartError::Start(e) => e.into(),
+            FillAndStartError::Repository(e) => {
+                Self::internal("FILL_AND_START_ERROR", "Failed to fill and start party", e)
             }
         }
     }

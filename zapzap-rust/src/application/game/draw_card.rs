@@ -95,9 +95,16 @@ impl<P: PartyRepository> DrawCard<P> {
             .map_err(|e| DrawCardError::GameError(e.to_string()))?;
 
         // Save game state, unless another write came in since the read (a forfeit, a
-        // second request): `Conflict`, and nothing below runs
+        // second request), or the seat is no longer this player's (an ejection by the turn
+        // timer after the seat was read): `Conflict`, and nothing below runs
         self.party_repo
-            .update_game_state(&input.party_id, &game_state, version)
+            .update_game_state_for_player(
+                &input.party_id,
+                &game_state,
+                version,
+                player_index,
+                &input.user_id,
+            )
             .await?;
 
         // Update round

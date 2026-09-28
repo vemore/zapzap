@@ -2,7 +2,7 @@
 
 > Scope: bot players in the Rust backend (`zapzap-rust/src/infrastructure/bot/`): difficulties, strategies, parameter provenance, LLM bot (Ollama / Bedrock) and its memory, how bot turns are triggered. Short pointer to the training-only strategies in `native/`.
 > Related: [[Backend]] · [[Api]] · [[GameRules]] · [[NativeEngine]] · [[Architecture]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -11,7 +11,7 @@
 - `BotDifficulty` string values: `easy`, `medium`, `hard`, `hard_vince`, `thibot`, `drl`, `llm`, `ml` (`zapzap-rust/src/domain/entities/user.rs:44-66`).
 - `GET /api/bots?difficulty=` accepts exactly those 8 values (lower-cased), else 400 "Invalid difficulty filter" (`zapzap-rust/src/api/routes/bots.rs:57-82`); lists via `user_repo.find_all_bots` (`bots.rs:89-91`). See [[Api]].
 - Admins create and delete bots with `POST /api/bots` and `DELETE /api/bots/:botId` (since 2026-09-24, [[Api]]); `thibot` cannot be created that way (`zapzap-rust/src/application/bot/create_bot.rs`). Bot users are otherwise seeded by `zapzap-backend seed` (EasyBot1/2, MediumBot1/2, HardBot1/2, Thibot1/2, `SEED_BOTS` in `zapzap-rust/src/infrastructure/database/seed.rs`; [[Backend]] § Seeding); VinceBot and LlamaBot exist in the local DB but not in that list (created elsewhere in the Node era, commit 0185eb0 "create VinceBot").
-- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs:33`, `:291`), or later one at a time: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (`party.rs:572`, use case `zapzap-rust/src/application/party/add_bot_to_party.rs`; see [[Api]]).
+- Bots join a party through `botIds` on party creation (`zapzap-rust/src/api/routes/party.rs`; no client sends any since 2026-09-28), or in the lobby: the owner of a waiting party fills a free seat with `POST /api/party/:partyId/bots {botId}` (use case `zapzap-rust/src/application/party/add_bot_to_party.rs`), or every free seat at once as the party starts with `POST /api/party/:partyId/fill-and-start {difficulty}` (`fill_and_start.rs`, its level ladder in [[Api]]).
 
 ### Strategy trait
 - `BotStrategy` (sync): `select_hand_size`, `decide_action`, `select_cards`, `decide_draw_source`, `should_call_zapzap` (`zapzap-rust/src/infrastructure/bot/strategies/mod.rs:25-40`). `DrawSource::{Deck, Discard(card)}` (`mod.rs:51-54`).

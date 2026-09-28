@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/bot.dart';
 import '../models/party.dart';
 import '../models/sse_event.dart';
 import '../repositories/party_repository.dart';
@@ -23,6 +24,10 @@ abstract final class PartyErrorCode {
   /// Leave (and start, on Rust) by someone without a seat: another client
   /// already took them out.
   static const notInParty = 'NOT_IN_PARTY';
+
+  /// `POST /party/:id/fill-and-start` found fewer free bots than free seats:
+  /// nothing was seated.
+  static const notEnoughBots = 'NOT_ENOUGH_BOTS';
 }
 
 /// A rummy hand is dealt to 3 players at least and 8 at most
@@ -196,6 +201,10 @@ enum LobbyOutcome {
 /// `partyId` is this party's: `playerJoined` and `playerLeft` reload the
 /// seats, `partyStarted` and `partyDeleted` set [outcome] and the screen
 /// navigates (`PartyLobby.jsx:21-37`).
+///
+/// The host fills free seats with bots: one at a time ([addBot], the first
+/// bot of a difficulty not seated yet), or all at once as the party starts
+/// ([fillAndStart]). Only when asked: nothing fills or starts by itself.
 class PartyLobbyProvider extends ChangeNotifier {
   PartyLobbyProvider(
     this._repository, {
@@ -215,6 +224,7 @@ class PartyLobbyProvider extends ChangeNotifier {
   late final StreamSubscription<SseEvent> _subscription;
 
   PartyDetails? _details;
+  List<Bot> _bots = const [];
   bool _loading = true;
   Object? _error;
   LobbyOutcome? _outcome;
@@ -237,6 +247,10 @@ class PartyLobbyProvider extends ChangeNotifier {
   List<PartyPlayer> get players => _details?.players ?? const [];
   int get playerCount => players.length;
 
+  /// Every bot account the backend offers (`GET /bots`, [loadBots]); empty
+  /// when it failed, which only means no bot can be added one by one.
+  List<Bot> get bots => _bots;
+
   int get maxPlayers =>
       _details?.party.settings.playerCount ?? defaultPartyPlayers;
 
@@ -257,6 +271,26 @@ class PartyLobbyProvider extends ChangeNotifier {
       isOwner && playerCount >= minPartyPlayers && !_busy && _details != null;
 
   bool get canDelete => _details != null && (isOwner || isOnlyHuman);
+
+  /// Seats nobody holds yet.
+  int get freeSeats {
+    final free = maxPlayers - playerCount;
+    return free > 0 ? free : 0;
+  }
+
+  /// The host may seat bots: in a waiting party with a free seat.
+  bool get canAddBots =>
+      isOwner && _details?.party.status == PartyStatus.waiting && freeSeats > 0;
+
+  /// How many bots of [difficulty] are not seated at this table.
+  int availableBots(String difficulty) {
+    final seated = {for (final player in players) player.userId};
+    return _bots
+        .where(
+          (bot) => bot.difficulty == difficulty && !seated.contains(bot.id),
+        )
+        .length;
+  }
 
   /// How many players are still missing before the game can start, 0 once
   /// there are enough.
@@ -297,6 +331,39 @@ class PartyLobbyProvider extends ChangeNotifier {
     _loading = false;
     _notify();
   }
+
+  /// Loads the bot accounts [addBot] picks from. A failure is swallowed.
+  Future<void> loadBots() async {
+    try {
+      _bots = await _repository.bots();
+    } catch (error) {
+      _bots = const [];
+      debugPrint('Bots not loaded: $error');
+    }
+    _notify();
+  }
+
+  /// Owner only: seats the first bot of [difficulty] not at the table yet on
+  /// the lowest free seat, then shows it without waiting for the event.
+  Future<void> addBot(String difficulty) => _act(() async {
+    final seated = {for (final player in players) player.userId};
+    final bot = _bots
+        .where(
+          (bot) => bot.difficulty == difficulty && !seated.contains(bot.id),
+        )
+        .firstOrNull;
+    if (bot == null) return;
+    await _repository.addBot(partyId, bot.id);
+    await load(showSpinner: false);
+  });
+
+  /// Owner only: every free seat gets a bot of [difficulty] (one of
+  /// [fillDifficulties]; the backend takes the next levels when it runs
+  /// out), then the party starts — one call, so a refusal seats nobody.
+  Future<void> fillAndStart(String difficulty) => _act(() async {
+    await _repository.fillAndStart(partyId, difficulty);
+    _outcome = LobbyOutcome.started;
+  });
 
   /// Owner only, 3 players at least. The event stream tells the others.
   Future<void> start() => _act(() async {

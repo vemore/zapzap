@@ -11,6 +11,7 @@ import 'package:zapzap/providers/create_party_provider.dart';
 import 'package:zapzap/providers/party_provider.dart';
 import 'package:zapzap/repositories/party_repository.dart';
 import 'package:zapzap/services/api_client.dart';
+import 'package:zapzap/services/api_exception.dart';
 
 import 'auth_helpers.dart';
 
@@ -21,100 +22,33 @@ void main() {
       PartyRepository(backend.client());
 
   group('CreatePartyProvider', () {
-    Future<CreatePartyProvider> loaded(FakeLobbyBackend backend) async {
-      final create = CreatePartyProvider(repositoryOf(backend));
-      await create.loadBots();
-      return create;
-    }
-
-    test('a difficulty asked twice seats two different bots', () async {
-      final create = await loaded(FakeLobbyBackend());
-      create
-        ..setSlotBot(0, 'easy')
-        ..setSlotBot(1, 'easy');
-
-      expect(create.slots[0].botId, 'bot-easy-1');
-      expect(create.slots[1].botId, 'bot-easy-2');
-      expect(create.botCount, 2);
-      expect(create.humanCount, 3);
-    });
-
-    test('a difficulty with no bot left leaves the seat human', () async {
-      final create = await loaded(FakeLobbyBackend());
-      create
-        ..setSlotBot(0, 'easy')
-        ..setSlotBot(1, 'easy')
-        ..setSlotBot(2, 'easy');
-
-      expect(create.slots[2].isBot, isFalse);
-      expect(create.slots[2].difficulty, isNull);
-      expect(create.availableBots(2, 'easy'), 0);
-      // the seat that already holds one still counts it as its own
-      expect(create.availableBots(0, 'easy'), 1);
-    });
-
-    test('freeing a seat gives its bot back', () async {
-      final create = await loaded(FakeLobbyBackend());
-      create
-        ..setSlotBot(0, 'easy')
-        ..setSlotBot(1, 'easy')
-        ..setSlotHuman(0)
-        ..setSlotBot(2, 'easy');
-
-      expect(create.slots[2].botId, 'bot-easy-1');
-      expect(
-        create.slots.where((slot) => slot.isBot).map((slot) => slot.botId),
-        ['bot-easy-2', 'bot-easy-1'],
-      );
-    });
-
-    test('no bot account at all leaves every seat human', () async {
-      final create = await loaded(FakeLobbyBackend(bots: const []));
-      create.setSlotBot(0, 'easy');
-      expect(create.slots[0].isBot, isFalse);
-      expect(create.botCount, 0);
-    });
-
-    test('changing the seat count keeps what was configured', () async {
-      final create = await loaded(FakeLobbyBackend());
-      create
-        ..setSlotBot(0, 'medium')
-        ..setPlayerCount(8);
-
-      expect(create.slots, hasLength(7));
-      expect(create.slots[0].botId, 'bot-medium-1');
-      expect(create.slots.last.isBot, isFalse);
-
-      create.setPlayerCount(3);
-      expect(create.slots, hasLength(2));
-      expect(create.slots[0].botId, 'bot-medium-1');
-    });
-
-    test('the seat count stays between 3 and 8', () async {
-      final create = await loaded(FakeLobbyBackend());
+    test('the seat count stays between 3 and 8', () {
+      final create = CreatePartyProvider(repositoryOf(FakeLobbyBackend()));
+      expect(create.playerCount, defaultPartyPlayers);
       create.setPlayerCount(99);
       expect(create.playerCount, maxPartyPlayers);
       create.setPlayerCount(0);
       expect(create.playerCount, minPartyPlayers);
-      expect(create.slots, hasLength(minPartyPlayers - 1));
     });
 
-    test('submitting sends the name, the seats and the bots', () async {
+    test('submitting sends the name, the seats and no bot', () async {
       final backend = FakeLobbyBackend(createdPartyId: 'p7');
-      final create = await loaded(backend);
-      create
+      final create = CreatePartyProvider(repositoryOf(backend))
         ..setPlayerCount(4)
-        ..setVisibility('private')
-        ..setSlotBot(0, 'easy')
-        ..setSlotBot(1, 'medium');
+        ..setVisibility('private');
 
       expect(await create.submit('  Soirée  '), 'p7');
       final body = backend.bodyOf('POST', '/api/party');
       expect(body['name'], 'Soirée');
       expect(body['visibility'], 'private');
-      expect((body['settings']! as Map)['playerCount'], 4);
-      expect(body['botIds'], ['bot-easy-1', 'bot-medium-1']);
+      expect(body['settings'], {'playerCount': 4});
+      expect(body['botIds'], isEmpty);
       expect(create.error, isNull);
+      // The form asks for no bot: it never lists them
+      expect(
+        backend.requests.where((request) => request.url.path == '/api/bots'),
+        isEmpty,
+      );
     });
 
     test('a refused create keeps the form and says why', () async {
@@ -123,22 +57,10 @@ void main() {
         status: 500,
         body: {'error': 'Failed', 'code': 'CREATE_PARTY_ERROR'},
       );
-      final create = await loaded(backend);
+      final create = CreatePartyProvider(repositoryOf(backend));
       expect(await create.submit('Soirée'), isNull);
       expect(create.error, isNotNull);
       expect(create.busy, isFalse);
-    });
-
-    test('bots that cannot be loaded only mean no bot can be seated', () async {
-      final backend = FakeLobbyBackend();
-      backend.failures['GET /api/bots'] = (
-        status: 500,
-        body: {'error': 'boom'},
-      );
-      final create = await loaded(backend);
-      expect(create.bots, isEmpty);
-      create.setSlotBot(0, 'easy');
-      expect(create.slots[0].isBot, isFalse);
     });
   });
 
@@ -460,6 +382,116 @@ void main() {
       expect(lobby.error, isNotNull);
       expect(lobby.canDelete, isFalse);
       lobby.dispose();
+    });
+  });
+
+  group('PartyLobbyProvider bots', () {
+    final vincent = partyPlayerJson(
+      userId: 'u1',
+      username: 'Vincent',
+      playerIndex: 0,
+    );
+    final seatedEasy = partyPlayerJson(
+      userId: 'bot-easy-1',
+      username: 'EasyBot1',
+      playerIndex: 1,
+      userType: 'bot',
+      botDifficulty: 'easy',
+    );
+
+    Future<PartyLobbyProvider> lobbyOf(FakeLobbyBackend backend) async {
+      final events = StreamController<SseEvent>.broadcast();
+      addTearDown(events.close);
+      final lobby = PartyLobbyProvider(
+        repositoryOf(backend),
+        partyId: 'p1',
+        events: events.stream,
+        currentUserId: 'u1',
+      );
+      addTearDown(lobby.dispose);
+      await lobby.load();
+      await lobby.loadBots();
+      return lobby;
+    }
+
+    test('a bot already at the table is not offered again', () async {
+      final backend = FakeLobbyBackend(
+        details: partyDetailsJson(id: 'p1', players: [vincent, seatedEasy]),
+      );
+      final lobby = await lobbyOf(backend);
+
+      expect(lobby.canAddBots, isTrue);
+      expect(lobby.freeSeats, 3);
+      expect(lobby.availableBots('easy'), 1);
+      expect(lobby.availableBots('medium'), 2);
+      expect(lobby.availableBots('hard'), 0);
+
+      await lobby.addBot('easy');
+      expect(backend.bodyOf('POST', '/api/party/p1/bots'), {
+        'botId': 'bot-easy-2',
+      });
+      // Shown at once, without waiting for the event
+      expect(lobby.playerCount, 3);
+      expect(lobby.availableBots('easy'), 0);
+      expect(lobby.error, isNull);
+    });
+
+    test('a guest cannot add bots, nor can anyone at a full table', () async {
+      final guest = await lobbyOf(
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            ownerId: 'someone-else',
+            players: [vincent],
+          ),
+        ),
+      );
+      expect(guest.canAddBots, isFalse);
+
+      final full = await lobbyOf(
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            playerCount: 3,
+            players: [
+              vincent,
+              seatedEasy,
+              partyPlayerJson(userId: 'u2', username: 'Alice', playerIndex: 2),
+            ],
+          ),
+        ),
+      );
+      expect(full.freeSeats, 0);
+      expect(full.canAddBots, isFalse);
+    });
+
+    test('fill-and-start sends the level and goes to the game', () async {
+      final backend = FakeLobbyBackend(
+        details: partyDetailsJson(id: 'p1', players: [vincent]),
+      );
+      final lobby = await lobbyOf(backend);
+
+      await lobby.fillAndStart('hard');
+      expect(backend.bodyOf('POST', '/api/party/p1/fill-and-start'), {
+        'difficulty': 'hard',
+      });
+      expect(lobby.outcome, LobbyOutcome.started);
+    });
+
+    test('a refused fill stays in the lobby and says why', () async {
+      final backend = FakeLobbyBackend(
+        details: partyDetailsJson(id: 'p1', players: [vincent]),
+      );
+      backend.failures['POST /api/party/p1/fill-and-start'] = (
+        status: 409,
+        body: {'error': 'Not enough bots', 'code': 'NOT_ENOUGH_BOTS'},
+      );
+      final lobby = await lobbyOf(backend);
+
+      await lobby.fillAndStart('easy');
+      expect(lobby.outcome, isNull);
+      expect(lobby.busy, isFalse);
+      expect((lobby.error! as ApiException).code, PartyErrorCode.notEnoughBots);
     });
   });
 

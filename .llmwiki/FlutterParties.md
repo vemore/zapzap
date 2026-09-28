@@ -3,7 +3,7 @@
 > Scope: the Flutter parties list, create-party form and lobby, back navigation, presence in the
 > app bar, and the app-bar menu (rules sheet, confirmed sign-out, account deletion).
 > Related: [[FrontendFlutter]] · [[FlutterRealtime]] · [[FlutterGameBoard]] · [[FlutterAuth]] · [[Api]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -64,14 +64,12 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   as rows of one to three (`_cards`, by width), not as a `SliverGrid`: a grid tile's height
   is decided before the card is laid out, and any fixed one overflows at a large system
   font size.
-- **`CreatePartyProvider`** (`providers/create_party_provider.dart`): the form. Seat 0 is
-  the creator and always human; every other seat is human or a bot of a difficulty
-  (`botDifficulties`: `easy`, `medium`, `hard`, `hard_vince`, `llm`, `thibot` — the six
-  React offers, not the backend's `ml`/`drl`). **A bot account can only sit once at a
-  table**: choosing a difficulty takes the first bot of it no other seat holds, and when
-  there is none left the seat stays human and the option shows "none available"
-  (`CreateParty.jsx:47-74`). Changing the seat count keeps what was already configured
-  (React resets). `POST /party` sends `{name, visibility, settings.playerCount, botIds}`.
+- **`CreatePartyProvider`** (`providers/create_party_provider.dart`): the form — the seat
+  count (3–8, clamped), the visibility, the name. **No human or bot per seat** (since
+  2026-09-28): the creator takes seat 0, the others are filled in the lobby, by players or
+  by the host's bots; a line under the settings says so (`create-seats-hint`,
+  `createPartySeatsHint`). `POST /party` sends `{name, visibility, settings.playerCount,
+  botIds: []}` and the form never calls `GET /bots`.
   The name is 3 to 50 characters once trimmed (`partyNameMinLength`/`MaxLength`), as the
   backend requires: Create stays active, and a name
   too short shows its reason once the field was edited and left or Create tapped
@@ -82,7 +80,14 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   `.closed`) and the screen navigates to `/game/:id` or `/parties`. A party already
   `playing` when it loads sets `started` too, so returning to it goes straight to the game.
   `isOwner` comes from the answer, as it is; `canStart` needs the owner and 3
-  players; `canDelete` is the owner **or** the only human at the table
+  players; `canAddBots` the owner, a waiting party and a free seat (`freeSeats`). The
+  host's bots: `loadBots` (`GET /bots`, a failure only empties the menu), `availableBots`
+  (a difficulty's bots not at the table), `addBot` (the first of them, `POST
+  /party/:id/bots`, then a reload without waiting for the event) and `fillAndStart`
+  (`POST /party/:id/fill-and-start {difficulty}`, then `outcome = started`; a refusal —
+  409 `NOT_ENOUGH_BOTS`, `errorNotEnoughBots` — stays in the lobby). Only on a tap: nothing
+  fills or starts after a delay. `botDifficulties` (the six the add-bot menu offers) and
+  `fillDifficulties` (`easy`, `medium`, `hard`) are in `models/bot.dart`; `canDelete` is the owner **or** the only human at the table
   (`PartyLobby.jsx:140-144`). Delete asks first, in an `AlertDialog`. Its loads are
   sequenced as the board's are (`_loadGeneration`, [[FlutterGameBoard]]): two players joining a moment
   apart start two reloads, and an older answer arriving last is dropped.
@@ -96,9 +101,15 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   status (no hand size: the starting player picks it each round, `GAME_RULES.md`). A seat (`PlayerSeatTile`) shows a green "online" dot for a human the session
   knows is connected — the signed-in player, or one in `ConnectedPlayersProvider`, which
   holds five at most, so no dot means "not known", never "offline" —, a bot's level as an
-  amber chip, the owner's crown. A free seat is text only, the first one pointing at the
-  invite code: the backend cannot seat a bot in an existing party, so there is no "add a
-  bot". Under the list, pinned: the reason Start is or is not active (players missing,
+  amber chip, the owner's crown. A free seat (`EmptySeatTile`) is text, the first one
+  pointing at the invite code; for the host it also carries « Ajouter un bot »
+  (`empty-seat-<n>-add-bot`) at its right edge, a menu of the six levels (`add-bot-<level>`,
+  one whose bots all sit here disabled, `lobbyAddBotUnavailable`). Under the seats, for the
+  host while a seat is free: « Compléter avec des bots et commencer » (`fill-and-start`),
+  a dialog (`fill-dialog`) with Facile / Moyen / Difficile (`fill-level-<level>`, Moyen
+  picked) and Commencer (`fill-confirm`), which leads to the game. It sits in the list, not
+  pinned with Start: at a 2.0 text scale on 360×740 a fourth pinned button left the seats
+  161 px. Under the list, pinned: the reason Start is or is not active (players missing,
   "can start", or "the host can start" for a guest), Start named with the player count,
   then Leave. **Delete is in the ⋮ menu** (`AppBarMenuAction`, key `delete-party`), no
   longer a red button next to Leave; it still confirms.
@@ -229,3 +240,14 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   The player count is an icon rather than the word, so the line fits beside the button on
   a phone; the P1–P4 tests load Roboto, as the felt test does, because the test font's
   square glyphs wrap every compact line.
+- **The host fills the table with bots (2026-09-28, `feat/lobby-fill-with-bots`).** Few
+  players are online at once, and a seat left "human" at creation waited for someone who
+  might never come: the host could only wait or delete. The per-seat human/bot selectors
+  left the form (`widgets/player_slot_selector.dart` deleted, its `botDifficultyLabel` moved
+  to `player_seat_tile.dart`; eight `createPartySlot*`/`createPartySummary` keys dropped,
+  `createPartySlotBotUnavailable` became `lobbyAddBotUnavailable`), and the lobby gained
+  what the 2026-09-24 study had dropped for want of a route: « Ajouter un bot » per free
+  seat, and one fill-and-start for all ([[Api]]). A menu of the six levels per seat, like
+  the old selector, but only three levels in the fill dialog, as asked; its fallback to
+  the next level is the backend's. The end-to-end test (`integration_test/play_round_test.dart`)
+  seats one bot by hand and fills the last seat.
