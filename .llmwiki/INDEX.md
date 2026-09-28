@@ -34,7 +34,7 @@ Load this file first. Then read only the pages your task touches.
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-28 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, the turn timer (creation, countdown, ejection), Google OAuth, build and tests | 2026-09-28 |
 | [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-28 |
-| [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-27 |
+| [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-28 |
 | [[FlutterRealtime]] | Flutter real-time channel (SSE): parser, two transports, reconnecting `SseClient`, `SseProvider` following the session, presence | 2026-09-28 |
 | [[FlutterParties]] | Flutter parties list, create-party, lobby and its bots, back navigation, the app-bar menu (rules sheet, confirmed sign-out, account deletion) | 2026-09-28 |
 | [[FlutterGameBoard]] | Flutter game board: `GameProvider`, modes, errors, phone layout, the turn clock and ejection, end of round and game, the offline example game (`/tutorial`) | 2026-09-28 |
