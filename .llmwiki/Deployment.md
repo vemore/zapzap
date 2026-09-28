@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built, shipped through the registry and started,
 > where its data and secrets live, the Rust backend service, and the rollback.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -47,6 +47,12 @@ The service and container keep the names `backend` and `zapzap-backend`: `nginx/
 proxies `/api/` and `/suscribeupdate` to `backend:9999`, and `scripts/deploy_nas.sh`'s
 `ESSENTIAL_SERVICES` names it. Its environment (`docker-compose.prod.yml`, the same in the
 root `docker-compose.yml`):
+
+`/suscribeupdate` carries its session JWT as `?token=` (EventSource cannot set headers,
+[[Architecture]] "Real-time updates"): the token stays in the URL, but not in nginx's logs.
+`nginx/nginx.conf` defines a `log_format sse_no_token` using `$uri` (no query string) in
+place of `$request`, and only `location /suscribeupdate` overrides `access_log` to use it;
+every other location keeps the default combined format, query string included.
 
 | Variable | Value | Why |
 |---|---|---|
