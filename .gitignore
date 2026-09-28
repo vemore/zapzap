@@ -161,3 +161,6 @@ client_secret_*.json
 # Python bytecode and pytest caches (scripts/test_*.py)
 __pycache__/
 .pytest_cache/
+
+# code-graph-mcp plugin index (local, rebuilt from the sources)
+.code-graph/

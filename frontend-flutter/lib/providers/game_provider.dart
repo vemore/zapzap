@@ -8,6 +8,7 @@ import '../models/json.dart';
 import '../models/party.dart';
 import '../models/sse_event.dart';
 import '../repositories/game_repository.dart';
+import '../services/api_exception.dart';
 import '../utils/rules.dart';
 
 /// The game error codes the board reacts to, on top of `ApiErrorCode` —
@@ -22,8 +23,15 @@ abstract final class GameErrorCode {
   static const invalidHandSize = 'INVALID_HAND_SIZE';
   static const roundNotFinished = 'ROUND_NOT_FINISHED';
 
-  /// The caller has no seat at this table.
+  /// The caller has no seat at this table. Once a game has been shown it
+  /// means the turn clock gave the seat to a bot (the only way out of a game
+  /// under way): [GameOutcome.ejected], even with its event missed.
   static const notInParty = 'NOT_IN_PARTY';
+
+  /// The move lost a race with another write of the game state — a bot's
+  /// move, a forfeit, the same request sent twice, an ejection: nothing was
+  /// played, and the table on screen is stale. The board reloads it.
+  static const gameStateConflict = 'GAME_STATE_CONFLICT';
 }
 
 /// What ends the board: the screen watches [GameProvider.outcome] and
@@ -53,6 +61,12 @@ const int maxGoldenHandSize = 10;
 /// a **load with nothing to show** fills [error]. The React board has one
 /// `error` for all three and draws an error page instead of the table
 /// (`GameBoard.jsx:220-235`).
+///
+/// Two answers are not errors to show as they are: a move refused with 409
+/// `GAME_STATE_CONFLICT` reloads the table before [actionError] says so,
+/// and a 403 `NOT_IN_PARTY` — to a load or a move — once a game has been
+/// shown is the ejection whose `playerReplaced` was missed
+/// ([GameOutcome.ejected]), as React's `isNotInParty` reads it.
 class GameProvider extends ChangeNotifier {
   GameProvider(
     this._repository, {
@@ -269,7 +283,9 @@ class GameProvider extends ChangeNotifier {
       // A table already on screen is never taken away by a *refresh* that
       // fails: the move went through, only the refetch did not. The error
       // screen is for a load with nothing to show.
-      if (_snapshot == null) {
+      if (_isMissedEjection(error)) {
+        _outcome = GameOutcome.ejected;
+      } else if (_snapshot == null) {
         _error = error;
       } else {
         _refreshError = error;
@@ -356,6 +372,11 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Runs a move, then refetches the table: no answer carries it.
+  ///
+  /// A move that lost a race (409 `GAME_STATE_CONFLICT`) played nothing on
+  /// a table that has changed since: the table is reloaded first, so the
+  /// refusal is read over the new one — unless that reload finds the player
+  /// ejected, which says it all.
   Future<void> _act(Future<void> Function() action) async {
     if (_busy) return;
     _busy = true;
@@ -366,11 +387,31 @@ class GameProvider extends ChangeNotifier {
       _selectedDiscardCard = null;
       await load(showSpinner: false);
     } catch (error) {
-      _actionError = error;
+      if (_isMissedEjection(error)) {
+        _outcome = GameOutcome.ejected;
+      } else if (_hasCode(error, GameErrorCode.gameStateConflict)) {
+        await load(showSpinner: false);
+        if (_outcome == null) _actionError = error;
+      } else {
+        _actionError = error;
+      }
     }
     _busy = false;
     _notify();
   }
+
+  static bool _hasCode(Object error, String code) =>
+      error is ApiException && error.code == code;
+
+  /// A 403 `NOT_IN_PARTY` once a game has been shown: the turn clock gave
+  /// the seat to a bot and its `playerReplaced` was missed (the stream down,
+  /// the app in the background). On a first load, or over the "not started
+  /// yet" page, it stays an error.
+  bool _isMissedEjection(Object error) =>
+      isStarted &&
+      error is ApiException &&
+      error.status == 403 &&
+      error.code == GameErrorCode.notInParty;
 
   /// Every hand change drops the selection: the ids meant a hand that is
   /// gone (`PlayerHand.jsx:447-449`, which only watches the length).

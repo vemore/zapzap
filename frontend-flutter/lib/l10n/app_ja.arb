@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "ラウンドがまだ終了していません。",
   "gameRefreshFailed": "ボードが古い可能性があります：更新に失敗しました",
   "errorNotInParty": "このテーブルに席がありません。",
+  "errorGameStateConflict": "その間にテーブルが変わりました。もう一度お試しください。",
   "gameRoundOverZapZapSuccess": "{player} の ZapZap が成功しました！",
   "gameRoundOverCounteractedCall": "{player} が ZapZap を宣言しましたが、阻止されました！",
   "gameRoundOverPenalty": "ペナルティ：{hand} + ({players} − 1) × 5 = {score} 点",

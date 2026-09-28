@@ -219,6 +219,50 @@ describe('Phase 5: GameBoard Component Tests', () => {
 
       expect(await screen.findByText('Not your turn')).toBeInTheDocument();
     });
+
+    it('reloads the table when a play lost a race (409 GAME_STATE_CONFLICT), and says so', async () => {
+      serveState({ myHand: [0, 13, 28] }); // A♠ A♥ 3♣
+      apiClient.post = vi.fn().mockRejectedValue({
+        response: {
+          status: 409,
+          data: { code: 'GAME_STATE_CONFLICT', error: 'The game changed meanwhile: reload it and try again' },
+        },
+      });
+
+      renderBoard();
+      await screen.findByText('Alice');
+      expect(apiClient.get).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Card As' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Card Ah' }));
+      fireEvent.click(playButton());
+
+      // handlePlay's catch calls fetchGameState: a second GET of the state
+      await waitFor(() => expect(apiClient.get).toHaveBeenCalledTimes(2));
+      expect(apiClient.get).toHaveBeenLastCalledWith('/game/party1/state');
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'The table changed meanwhile: try again.'
+      );
+      // The board stays: no error page, not the backend's own text
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.queryByText(/reload it and try again/)).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('keeps the error page for another 409, with no reload', async () => {
+      serveState({ currentAction: 'draw' });
+      apiClient.post = vi.fn().mockRejectedValue({
+        response: { status: 409, data: { code: 'SOMETHING_ELSE', error: 'Something else' } },
+      });
+
+      renderBoard();
+      await screen.findByText('Alice');
+      fireEvent.click(drawButton());
+
+      expect(await screen.findByText('Something else')).toBeInTheDocument();
+      expect(apiClient.get).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('The table changed meanwhile: try again.')).not.toBeInTheDocument();
+    });
   });
 
   describe('Turn State Management', () => {

@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "The round is not over.",
   "gameRefreshFailed": "The board may be out of date: the refresh failed",
   "errorNotInParty": "You have no seat at this table.",
+  "errorGameStateConflict": "The table changed meanwhile: try again.",
   "gameRoundOverZapZapSuccess": "{player} successfully called ZapZap!",
   "gameRoundOverCounteractedCall": "{player} called ZapZap but was counteracted!",
   "gameRoundOverPenalty": "Penalty: {hand} + ({players} − 1) × 5 = {score} points",

@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "राउंड अभी खत्म नहीं हुआ।",
   "gameRefreshFailed": "बोर्ड शायद पुराना है: रीफ्रेश नहीं हो सका",
   "errorNotInParty": "इस टेबल पर आपकी कोई सीट नहीं है।",
+  "errorGameStateConflict": "इस बीच टेबल बदल गई: फिर से कोशिश करें।",
   "gameRoundOverZapZapSuccess": "{player} ने सफल ZapZap बोला!",
   "gameRoundOverCounteractedCall": "{player} ने ZapZap बोला, लेकिन वह निरस्त हो गया!",
   "gameRoundOverPenalty": "पेनल्टी: {hand} + ({players} − 1) × 5 = {score} अंक",
