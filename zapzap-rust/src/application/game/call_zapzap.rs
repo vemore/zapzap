@@ -188,10 +188,12 @@ impl<P: PartyRepository> CallZapZap<P> {
                 .party_repo
                 .get_elimination_order(&input.party_id)
                 .await?;
+            let ejected = self.party_repo.get_ejected_players(&input.party_id).await?;
             let results = build_game_results(
                 &game_state,
                 players.iter().map(|p| (p.player_index, p.user_id.clone())),
                 &elimination_order,
+                &ejected,
                 winner_idx,
             );
             self.party_repo

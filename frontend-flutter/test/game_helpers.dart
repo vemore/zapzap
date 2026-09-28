@@ -38,6 +38,9 @@ JsonMap gameStateJson({
   Map<String, int>? roundScores,
   bool gameFinished = false,
   JsonMap? winner,
+  int turnTimeLimit = 0,
+  int? turnDeadline,
+  int serverTime = defaultServerTime,
 }) => {
   'currentTurn': currentTurn,
   'currentAction': currentAction,
@@ -60,7 +63,14 @@ JsonMap gameStateJson({
   'roundScores': roundScores,
   'gameFinished': gameFinished,
   'winner': winner,
+  'turnTimeLimit': turnTimeLimit,
+  'turnDeadline': turnDeadline,
+  'serverTime': serverTime,
 };
+
+/// The server's time of an answer, Unix ms: 2001-09-09, far from the
+/// device's, so a countdown read against the device clock shows.
+const int defaultServerTime = 1000000000000;
 
 /// The whole answer of `GET /game/:id/state`. A `null` [gameState] is a
 /// party that has not dealt yet.

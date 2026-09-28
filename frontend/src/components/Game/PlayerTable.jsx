@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, User, Play, Skull } from 'lucide-react';
 import { motion } from 'framer-motion';
 import CardBack from './CardBack';
+import TurnTimer from './TurnTimer';
 
 /**
  * PlayerTable component - displays all players in vertical rows
@@ -11,8 +12,9 @@ import CardBack from './CardBack';
  * @param {number} currentTurn - Index of player whose turn it is
  * @param {string} currentUserId - ID of the current user
  * @param {number} startingPlayer - Index of the player who started this round
+ * @param {Object|null} turnClock - The current turn's clock (turnClockOf), shown on its row
  */
-function PlayerTable({ players = [], currentTurn, currentUserId, startingPlayer = 0 }) {
+function PlayerTable({ players = [], currentTurn, currentUserId, startingPlayer = 0, turnClock = null }) {
   if (players.length === 0) {
     return (
       <div className="bg-slate-800 rounded-lg shadow-xl p-4 sm:p-8 border border-slate-700 text-center">
@@ -42,6 +44,7 @@ function PlayerTable({ players = [], currentTurn, currentUserId, startingPlayer 
             isCurrentUser={player.userId === currentUserId}
             isCurrentTurn={player.playerIndex === currentTurn && !player.isEliminated}
             isEliminated={player.isEliminated}
+            turnClock={turnClock}
           />
         ))}
       </div>
@@ -53,7 +56,7 @@ function PlayerTable({ players = [], currentTurn, currentUserId, startingPlayer 
  * PlayerRow component - displays a single player in a horizontal row
  * Format: [PlayIcon] <Name> [You] - <Score> : <CardBacks> (<count>)
  */
-function PlayerRow({ player, isCurrentUser, isCurrentTurn, isEliminated = false }) {
+function PlayerRow({ player, isCurrentUser, isCurrentTurn, isEliminated = false, turnClock = null }) {
   const cardCount = player.cardCount || 0;
 
   // Build row classes based on state
@@ -112,6 +115,9 @@ function PlayerRow({ player, isCurrentUser, isCurrentTurn, isEliminated = false 
             You
           </span>
         )}
+
+        {/* Time left on this turn, when the game runs a clock */}
+        {isCurrentTurn && <TurnTimer clock={turnClock} className="ml-1 sm:ml-1.5" />}
       </div>
 
       {/* Separator */}

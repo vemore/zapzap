@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Zap, Loader, Wifi, WifiOff } from 'lucide-react';
 import { apiClient } from '../../services/api';
@@ -12,9 +12,15 @@ import DeckPile from './DeckPile';
 import TableArea from './TableArea';
 import RoundEnd from './RoundEnd';
 import HandSizeSelector from './HandSizeSelector';
+import TurnTimer from './TurnTimer';
+import { turnClockOf, monotonicNow } from '../../hooks/useTurnCountdown';
 import { isValidPlay, analyzePlay } from '../../utils/validation';
 // Note: DiscardPile is now integrated into TableArea
 import { isZapZapEligible } from '../../utils/scoring';
+
+/** A game route's answer once the user is no longer a player of the party */
+const isNotInParty = (err) =>
+  err?.response?.status === 403 && err.response.data?.code === 'NOT_IN_PARTY';
 
 /**
  * GameBoard component - main game interface
@@ -28,6 +34,14 @@ function GameBoard() {
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Whether a state of this game was shown: from then on, NOT_IN_PARTY means the user
+  // was ejected (the only way out of a game under way), even if its event was missed
+  const gameShownRef = useRef(false);
+
+  // The turn timer gave the user's seat to a bot: back to the party list, which says why
+  const leaveEjected = useCallback(() => {
+    navigate('/parties', { replace: true, state: { ejected: true } });
+  }, [navigate]);
 
   // Fetch game state function wrapped in useCallback for SSE handler
   const fetchGameState = useCallback(async () => {
@@ -39,6 +53,7 @@ function GameBoard() {
       }
 
       const response = await apiClient.get(`/game/${partyId}/state`);
+      const receivedAt = monotonicNow();
       const data = response.data;
 
       // Check if game has started
@@ -91,17 +106,24 @@ function GameBoard() {
         // Game end data
         gameFinished: data.gameState.gameFinished || false,
         winner: data.gameState.winner || null,
+        // The current turn's clock, counted from this response (null: not timed)
+        turnClock: turnClockOf(data.gameState, receivedAt),
       };
 
+      gameShownRef.current = true;
       setGameData(transformedData);
       setError('');
     } catch (err) {
+      if (gameShownRef.current && isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to load game state:', err);
       setError('Failed to load game state');
     } finally {
       setLoading(false);
     }
-  }, [partyId, user]);
+  }, [partyId, user, leaveEjected]);
 
   // Handle SSE messages for real-time game updates
   const handleSSEMessage = useCallback((data) => {
@@ -131,6 +153,15 @@ function GameBoard() {
         // Game ended, navigate to results or lobby
         fetchGameState();
         break;
+      case 'playerReplaced':
+        // The turn timer gave a late human's seat to a bot: the user's own, or another's
+        // whose seat now shows the bot
+        if (user && String(data.replacedUserId) === String(user.id)) {
+          leaveEjected();
+        } else {
+          fetchGameState();
+        }
+        break;
       case 'partyDeleted':
         // Party was deleted, go back to parties list
         navigate('/parties');
@@ -138,7 +169,7 @@ function GameBoard() {
       default:
         break;
     }
-  }, [partyId, fetchGameState, navigate]);
+  }, [partyId, fetchGameState, navigate, user, leaveEjected]);
 
   // Set up SSE connection for real-time updates (the stream carries the user's token)
   const { connected: sseConnected } = useSSE(sseUrl(), {
@@ -158,6 +189,10 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/play`, { cardIds: cards });
       await fetchGameState();
     } catch (err) {
+      if (isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to play cards:', err);
       setError(err.response?.data?.error || 'Failed to play cards');
     }
@@ -174,6 +209,10 @@ function GameBoard() {
       setSelectedDiscardCard(null);
       await fetchGameState();
     } catch (err) {
+      if (isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to draw card:', err);
       setError(err.response?.data?.error || 'Failed to draw card');
     }
@@ -185,6 +224,10 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/zapzap`);
       await fetchGameState();
     } catch (err) {
+      if (isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to call ZapZap:', err);
       setError(err.response?.data?.error || 'Failed to call ZapZap');
     }
@@ -196,6 +239,10 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/selectHandSize`, { handSize });
       await fetchGameState();
     } catch (err) {
+      if (isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to select hand size:', err);
       setError(err.response?.data?.error || 'Failed to select hand size');
       throw err;
@@ -288,6 +335,10 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/nextRound`);
       await fetchGameState();
     } catch (err) {
+      if (isNotInParty(err)) {
+        leaveEjected();
+        return;
+      }
       console.error('Failed to start next round:', err);
       setError(err.response?.data?.error || 'Failed to start next round');
     }
@@ -339,6 +390,8 @@ function GameBoard() {
             <p className="text-gray-400 text-lg">
               Round {gameData.round?.roundNumber || 1} - Starting
             </p>
+            {/* The clock covers the hand size choice too */}
+            <TurnTimer clock={gameData.turnClock} large className="mt-2" />
           </div>
           <HandSizeSelector
             isMyTurn={isMyTurn}
@@ -477,6 +530,7 @@ function GameBoard() {
             currentUserId={myUserId}
             isGoldenScore={isGoldenScore}
             startingPlayer={startingPlayer}
+            turnClock={gameData.turnClock}
           />
         </section>
 

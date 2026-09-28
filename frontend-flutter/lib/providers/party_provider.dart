@@ -63,10 +63,15 @@ class PartyListProvider extends ChangeNotifier {
   final Duration refreshDelay;
 
   /// The actions that change a row: its seats, its status, or its being
-  /// there at all.
+  /// there at all. `playerReplaced` (the turn clock) and `playerForfeited`
+  /// (an account deleted mid-game) give a human's seat to a bot: the row's
+  /// `isMember` changes for that human, whose list is still in memory when
+  /// the game screen pops back to it.
   static const refreshingActions = {
     'playerJoined',
     'playerLeft',
+    'playerReplaced',
+    'playerForfeited',
     'partyStarted',
     'partyDeleted',
     'gameFinished',

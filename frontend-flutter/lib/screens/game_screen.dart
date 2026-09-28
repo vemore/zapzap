@@ -72,8 +72,10 @@ class _GameScreenState extends State<GameScreen> {
     super.dispose();
   }
 
-  /// A refused move is shown once, as a snack bar over the board; the party
-  /// being deleted is the one thing that leaves the screen.
+  /// A refused move is shown once, as a snack bar over the board. Two
+  /// things leave the screen: the party being deleted, and this player
+  /// ejected by the turn clock — told why in a snack bar that stays over the
+  /// list.
   void _onChanged() {
     if (!mounted) return;
     final error = _game.consumeActionError();
@@ -89,8 +91,20 @@ class _GameScreenState extends State<GameScreen> {
           ),
         );
     }
-    if (_game.outcome == GameOutcome.closed && !_left) {
+    final outcome = _game.outcome;
+    if (outcome != null && !_left) {
       _left = true;
+      if (outcome == GameOutcome.ejected) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              key: const Key('gameEjected'),
+              content: Text(AppLocalizations.of(context).gameEjectedMessage),
+              backgroundColor: AppColors.error,
+            ),
+          );
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) context.popOrGo(AppRoutes.parties);
       });
@@ -289,6 +303,9 @@ class _GameScreenState extends State<GameScreen> {
             player.playerIndex == _game.currentTurn &&
             !_game.isEliminated(player.playerIndex),
         isEliminated: _game.isEliminated(player.playerIndex),
+        turnClock: player.playerIndex == _game.currentTurn
+            ? _game.turnClock
+            : null,
       ),
   ];
 

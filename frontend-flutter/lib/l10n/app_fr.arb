@@ -470,6 +470,36 @@
   "@createPartySeatsHint": {
     "description": "Under the seat count of the create form: the free seats are filled in the lobby, with bots or players"
   },
+  "createPartyTurnTimerLabel": "Temps par tour",
+  "@createPartyTurnTimerLabel": {
+    "description": "Label of the create form's time-per-turn field (GAME_RULES.md, Turn Time Limit)"
+  },
+  "createPartyTurnTimerHelper": "Compté seulement si au moins deux joueurs humains commencent la partie. Qui dépasse son temps est remplacé par un bot.",
+  "@createPartyTurnTimerHelper": {
+    "description": "Under the time-per-turn field: the clock only runs with two humans or more at the start; a late player is replaced by a bot"
+  },
+  "turnTimerOff": "Sans limite",
+  "@turnTimerOff": {
+    "description": "Time-per-turn option: no clock (the default)"
+  },
+  "turnTimerSeconds": "{seconds} s",
+  "@turnTimerSeconds": {
+    "description": "A time per turn under a minute, abbreviated: 30 s",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "turnTimerMinutes": "{minutes} min",
+  "@turnTimerMinutes": {
+    "description": "A time per turn in whole minutes, abbreviated: 1 min, 2 min",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "createPartySubmit": "Créer la partie",
   "@createPartySubmit": {
     "description": "Create-party submit button"
@@ -583,6 +613,15 @@
   "lobbyYouHostChip": "Tu es l'hôte",
   "@lobbyYouHostChip": {
     "description": "Settings chip shown to the party's owner"
+  },
+  "lobbyTurnTimerChip": "{limit} par tour",
+  "@lobbyTurnTimerChip": {
+    "description": "Lobby settings chip when the party has a time per turn; limit is turnTimerSeconds or turnTimerMinutes",
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
   },
   "lobbySeatOnline": "en ligne",
   "@lobbySeatOnline": {
@@ -1576,6 +1615,19 @@
   "@gameYouBadge": {
     "description": "Badge marking the caller's own row in the player table"
   },
+  "gameTurnTimeLeft": "Temps restant pour ce tour : {time}",
+  "@gameTurnTimeLeft": {
+    "description": "Screen-reader label of the countdown on the line of the player to move; time is a clock, 0:42",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "gameEjectedMessage": "Tu as été retiré de la partie (temps dépassé)",
+  "@gameEjectedMessage": {
+    "description": "Snack bar over the parties list when the turn clock ran out on this player and a bot took their seat"
+  },
   "gameEliminatedMark": "Éliminé",
   "@gameEliminatedMark": {
     "description": "Shown instead of the card backs of an eliminated player"
@@ -2326,6 +2378,14 @@
   "rulesTurnBody": "① Joue une ou plusieurs cartes, puis ② pioche une carte : dans la pioche, ou l'une des cartes que le joueur précédent vient de jouer.",
   "@rulesTurnBody": {
     "description": "Rules sheet: play then draw, from the deck or the cards last played (GAME_RULES.md, Turn Flow); ① and ② as in the step chips"
+  },
+  "rulesTurnTimerTitle": "Temps par tour",
+  "@rulesTurnTimerTitle": {
+    "description": "Rules sheet: title of the time-per-turn section (GAME_RULES.md, Turn Time Limit)"
+  },
+  "rulesTurnTimerBody": "À la création, une partie peut limiter chaque tour à 30 s, 1 min ou 2 min. La limite ne compte que si la partie commence avec au moins deux joueurs humains ; les bots ne sont jamais chronométrés. Le temps couvre tout le tour, choix du nombre de cartes compris. Qui dépasse son temps est retiré de la partie pour de bon : un bot prend sa place, avec sa main et son score, et la partie compte comme perdue pour lui.",
+  "@rulesTurnTimerBody": {
+    "description": "Rules sheet: the turn time limit — 30 s, 1 min or 2 min, two humans or more at the start, the whole turn, a late player ejected for good, a bot on their seat, a loss for them"
   },
   "rulesPlaysTitle": "Combinaisons valides",
   "@rulesPlaysTitle": {

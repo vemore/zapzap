@@ -254,6 +254,19 @@ void main() {
       expect(text('Above 100 points'), contains('eliminated'));
       expect(text('If another player'), contains('plus 5 for each other'));
       expect(text('Ace 1'), allOf(contains('0 to call'), contains('25')));
+      // Turn Time Limit
+      expect(find.text('Time per turn'), findsOneWidget);
+      expect(
+        text('When a game is created, each turn'),
+        allOf(
+          contains('30 s, 1 min or 2 min'),
+          contains('at least two human players'),
+          contains('bots are never timed'),
+          contains('choosing the number of cards included'),
+          contains('a bot takes their seat'),
+          contains('a loss for them'),
+        ),
+      );
     });
 
     testWidgets('the game screen opens them, the table still behind', (

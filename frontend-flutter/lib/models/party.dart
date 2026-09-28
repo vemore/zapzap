@@ -13,7 +13,12 @@ abstract final class PartyStatus {
   static const finished = 'finished';
 }
 
-/// A party's settings, `{playerCount, allowSpectators, roundTimeLimit}`
+/// The turn time limits a party may be created with, in seconds per turn
+/// (`GAME_RULES.md`, "Turn Time Limit"): 0 is no clock. The backend refuses
+/// any other value (400 `VALIDATION_ERROR`).
+const List<int> turnTimeLimits = [0, 30, 60, 120];
+
+/// A party's settings, `{playerCount, allowSpectators, turnTimeLimit}`
 /// (`PartySettings`, `zapzap-rust/src/domain/value_objects/party_settings.rs`).
 /// `playerCount` (3-8, the seats) is required on create, else 400
 /// `VALIDATION_ERROR`. A field missing from an unreadable answer is `null`.
@@ -21,7 +26,7 @@ class PartySettings {
   const PartySettings({
     this.playerCount,
     this.allowSpectators,
-    this.roundTimeLimit,
+    this.turnTimeLimit,
   });
 
   /// Accepts an object or a JSON-encoded string (`GET /admin/parties`).
@@ -38,20 +43,23 @@ class PartySettings {
     return PartySettings(
       playerCount: Json.intOrNull(json['playerCount']),
       allowSpectators: Json.boolOrNull(json, 'allowSpectators'),
-      roundTimeLimit: Json.intOrNull(json['roundTimeLimit']),
+      turnTimeLimit: Json.intOrNull(json['turnTimeLimit']),
     );
   }
 
   final int? playerCount;
   final bool? allowSpectators;
 
-  /// Seconds per round, 0 for none (stored, not enforced).
-  final int? roundTimeLimit;
+  /// Seconds per turn, one of [turnTimeLimits]; 0 for none. Enforced only
+  /// when the game starts with two humans or more. `null` when the answer
+  /// does not carry it (the admin list's raw settings of a party stored
+  /// before 2026-09-28 hold `roundTimeLimit` instead, which is ignored).
+  final int? turnTimeLimit;
 
   JsonMap toJson() => {
     'playerCount': ?playerCount,
     'allowSpectators': ?allowSpectators,
-    'roundTimeLimit': ?roundTimeLimit,
+    'turnTimeLimit': ?turnTimeLimit,
   };
 }
 

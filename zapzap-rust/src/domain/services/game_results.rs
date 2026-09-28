@@ -1,14 +1,16 @@
 //! The results of a finished game: the final ranking and what `save_game_results` writes.
 //! One builder for the three ways a game ends — a zapzap (`call_zapzap.rs`), the
 //! `nextRound` recovery of a zapzap stopped half-way (`next_round.rs`) and a forfeit that
-//! leaves one seat (`user_repo.rs`).
+//! leaves one seat (`user_repo.rs`) — and the ranking of the players the turn timer
+//! ejects, which an ejection writes at once (`rank_ejected`, `replace_player`).
 
 use std::collections::HashMap;
 
-use crate::domain::repositories::PlayerGameResult;
+use crate::domain::repositories::{EjectedPlayer, PlayerGameResult};
 use crate::domain::value_objects::GameState;
 
-/// A finished game's results, the winner's first and then in finish order
+/// A finished game's results, the winner's first and then in finish order, the players
+/// the turn timer ejected last: `players` is every player of the game
 #[derive(Debug, Clone)]
 pub struct GameResults {
     pub winner_user_id: String,
@@ -31,15 +33,19 @@ struct RankedSeat {
 /// round its `round_scores` rows mark it eliminated in (`elimination_order`). A seat the
 /// state holds eliminated with no such round recorded (a forfeit, or a zapzap stopped
 /// before its round scores were saved) counts as eliminated in the current round.
+/// `ejected` are the players the turn timer ejected, the latest ejected first
+/// (`PartyRepository::get_ejected_players`).
 ///
 /// The final ranking (GAME_RULES.md "Final Ranking"): the winner first; then the seats
 /// still in the game, lower total score first; then the eliminated seats, the later
 /// eliminated first. Seats left level (same score, or out in the same round, a forfeit
-/// and a score past 100 alike) rank by seat index.
+/// and a score past 100 alike) rank by seat index. The ejected players come after every
+/// seat (`rank_ejected`).
 pub fn build_game_results(
     state: &GameState,
     seats: impl IntoIterator<Item = (u8, String)>,
     recorded_eliminations: &[(String, Option<u32>)],
+    ejected: &[EjectedPlayer],
     winner: u8,
 ) -> GameResults {
     let total_rounds = u32::from(state.round_number);
@@ -77,7 +83,8 @@ pub fn build_game_results(
         .find(|seat| seat.player_index == winner)
         .map(|seat| seat.user_id.clone())
         .unwrap_or_default();
-    let players = ranking
+    let seat_count = ranking.len();
+    let mut players: Vec<PlayerGameResult> = ranking
         .into_iter()
         .enumerate()
         .map(|(position, seat)| PlayerGameResult {
@@ -88,6 +95,7 @@ pub fn build_game_results(
             rounds_played: total_rounds,
         })
         .collect();
+    players.extend(rank_ejected(seat_count, ejected));
     GameResults {
         winner_user_id,
         winner_score: state.get_score(winner),
@@ -95,6 +103,25 @@ pub fn build_game_results(
         was_golden_score: state.is_golden_score,
         players,
     }
+}
+
+/// The results of the players the turn timer ejected from a game of `seat_count` seats,
+/// `ejected` listed the latest ejected first (GAME_RULES.md "Final Ranking" item 5): after
+/// every seat, positions `seat_count + 1` on, the latest ejected first, each with the
+/// score and round they left with, and a loss. An ejection writes them at once
+/// (`replace_player`), the game's end again (`build_game_results`): the same positions.
+pub fn rank_ejected(seat_count: usize, ejected: &[EjectedPlayer]) -> Vec<PlayerGameResult> {
+    ejected
+        .iter()
+        .enumerate()
+        .map(|(i, player)| PlayerGameResult {
+            user_id: player.user_id.clone(),
+            final_score: player.final_score,
+            finish_position: (seat_count + i + 1) as u8,
+            rounds_played: player.rounds_played,
+            is_winner: false,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -134,7 +161,7 @@ mod tests {
             ("u3".to_string(), None),
             ("u4".to_string(), None),
         ];
-        let results = build_game_results(&state, seats(&[0, 1, 2, 3, 4]), &recorded, 4);
+        let results = build_game_results(&state, seats(&[0, 1, 2, 3, 4]), &recorded, &[], 4);
         let order: Vec<&str> = results.players.iter().map(|p| p.user_id.as_str()).collect();
         assert_eq!(order, ["u4", "u3", "u1", "u2", "u0"]);
         assert_eq!(results.winner_user_id, "u4");
@@ -159,7 +186,7 @@ mod tests {
             ("u2".to_string(), None),
         ];
         for order in [[0, 1, 2], [2, 1, 0], [1, 2, 0]] {
-            let results = build_game_results(&state, seats(&order), &recorded, 0);
+            let results = build_game_results(&state, seats(&order), &recorded, &[], 0);
             assert_eq!(
                 positions(&results),
                 [("u0".into(), 1), ("u1".into(), 2), ("u2".into(), 3)],
@@ -175,7 +202,7 @@ mod tests {
             ("u2".to_string(), Some(3)),
         ];
         for order in [[0, 1, 2], [2, 1, 0]] {
-            let results = build_game_results(&state, seats(&order), &recorded, 0);
+            let results = build_game_results(&state, seats(&order), &recorded, &[], 0);
             assert_eq!(
                 positions(&results),
                 [("u0".into(), 1), ("u1".into(), 2), ("u2".into(), 3)],
@@ -189,7 +216,7 @@ mod tests {
         // Seat 3 was out in round 2; seat 1 forfeits in round 4
         let state = state(&[50, 70, 20, 115], &[1, 3], 4);
         let recorded = [("u3".to_string(), Some(2))];
-        let results = build_game_results(&state, seats(&[3, 2, 1, 0]), &recorded, 2);
+        let results = build_game_results(&state, seats(&[3, 2, 1, 0]), &recorded, &[], 2);
         assert_eq!(
             positions(&results),
             [
@@ -204,7 +231,7 @@ mod tests {
     #[test]
     fn test_level_survivors_rank_by_seat() {
         let state = state(&[30, 30, 10, 30], &[], 2);
-        let results = build_game_results(&state, seats(&[3, 1, 0, 2]), &[], 2);
+        let results = build_game_results(&state, seats(&[3, 1, 0, 2]), &[], &[], 2);
         let order: Vec<&str> = results.players.iter().map(|p| p.user_id.as_str()).collect();
         assert_eq!(order, ["u2", "u0", "u1", "u3"]);
     }
@@ -215,8 +242,82 @@ mod tests {
         // eliminated, the recorded rounds say which went first
         let state = state(&[10, 105, 101], &[1, 2], 3);
         let recorded = [("u1".to_string(), Some(1)), ("u2".to_string(), Some(3))];
-        let results = build_game_results(&state, seats(&[0, 1, 2]), &recorded, 0);
+        let results = build_game_results(&state, seats(&[0, 1, 2]), &recorded, &[], 0);
         let order: Vec<&str> = results.players.iter().map(|p| p.user_id.as_str()).collect();
         assert_eq!(order, ["u0", "u2", "u1"]);
+    }
+
+    fn ejected(user_id: &str, final_score: u16, rounds_played: u32) -> EjectedPlayer {
+        EjectedPlayer {
+            user_id: user_id.to_string(),
+            final_score,
+            rounds_played,
+        }
+    }
+
+    #[test]
+    fn test_an_ejection_ranks_after_every_seat_the_latest_ejected_first() {
+        // 3 seats: the first ejected is 4th, then 5th once another is ejected after them
+        let first = ejected("a", 40, 2);
+        let second = ejected("b", 70, 3);
+        let at_first = rank_ejected(3, std::slice::from_ref(&first));
+        assert_eq!(at_first.len(), 1);
+        assert_eq!(
+            (at_first[0].user_id.as_str(), at_first[0].finish_position),
+            ("a", 4)
+        );
+        let at_second = rank_ejected(3, &[second.clone(), first.clone()]);
+        let ranked: Vec<(&str, u8, u16, u32, bool)> = at_second
+            .iter()
+            .map(|p| {
+                (
+                    p.user_id.as_str(),
+                    p.finish_position,
+                    p.final_score,
+                    p.rounds_played,
+                    p.is_winner,
+                )
+            })
+            .collect();
+        assert_eq!(ranked, [("b", 4, 70, 3, false), ("a", 5, 40, 2, false)]);
+        assert!(rank_ejected(3, &[]).is_empty());
+    }
+
+    #[test]
+    fn test_the_games_end_ranks_the_ejected_where_their_ejection_did() {
+        // Two of three seats were taken over by bots, the humans ejected; the game ends
+        let state = state(&[10, 105, 60], &[1], 4);
+        let recorded = [("u1".to_string(), Some(4))];
+        let ejected = [ejected("late", 60, 3), ejected("early", 20, 1)];
+        let results = build_game_results(&state, seats(&[0, 1, 2]), &recorded, &ejected, 0);
+        assert_eq!(
+            positions(&results),
+            [
+                ("u0".into(), 1),
+                ("u2".into(), 2),
+                ("u1".into(), 3),
+                ("late".into(), 4),
+                ("early".into(), 5)
+            ]
+        );
+        // Every player of the game, each position once
+        assert_eq!(results.players.len(), 5);
+        // The ejected keep the loss, the score and the round they left with
+        let tail: Vec<(u16, u32, bool)> = results.players[3..]
+            .iter()
+            .map(|p| (p.final_score, p.rounds_played, p.is_winner))
+            .collect();
+        assert_eq!(tail, [(60, 3, false), (20, 1, false)]);
+        // The positions the ejections wrote are the ones the end writes
+        let at_ejection = rank_ejected(3, &ejected);
+        let at_end: Vec<(String, u8)> = results.players[3..]
+            .iter()
+            .map(|p| (p.user_id.clone(), p.finish_position))
+            .collect();
+        let written: Vec<(String, u8)> = at_ejection
+            .iter()
+            .map(|p| (p.user_id.clone(), p.finish_position))
+            .collect();
+        assert_eq!(at_end, written);
     }
 }

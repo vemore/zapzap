@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import GameBoard from '../GameBoard';
 import { apiClient } from '../../../services/api';
@@ -15,10 +15,13 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 
-const sseHook = vi.hoisted(() => ({ urls: [] }));
+// The hook records the URL each render opens and the latest message handler, which a
+// test calls to deliver an SSE event
+const sseHook = vi.hoisted(() => ({ urls: [], onMessage: null }));
 vi.mock('../../../hooks/useSSE', () => ({
-  default: (url) => {
+  default: (url, options) => {
     sseHook.urls.push(url);
+    sseHook.onMessage = options?.onMessage;
     return { connected: true };
   },
 }));
@@ -298,6 +301,131 @@ describe('Phase 5: GameBoard Component Tests', () => {
       renderBoard();
 
       expect(await screen.findByText(/no cards in hand/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Turn timer', () => {
+    // The server's clock is an hour ahead of the browser's: the countdown must not care
+    const SERVER_NOW = Date.now() + 3_600_000;
+    const timedState = (options = {}, secondsLeft = 25) => ({
+      ...options,
+      extra: {
+        turnTimeLimit: 30,
+        turnDeadline: SERVER_NOW + secondsLeft * 1000,
+        serverTime: SERVER_NOW,
+        ...options.extra,
+      },
+    });
+    const rowOf = (name) => screen.getByText(name).closest('.border-l-4');
+
+    it('counts down on the current turn from the server deadline, for every player', async () => {
+      // Bob's turn, seen by Alice
+      serveState(timedState({ currentTurn: 1 }));
+
+      renderBoard();
+      await screen.findByText('Alice');
+
+      const timer = screen.getByRole('timer');
+      expect(timer).toHaveTextContent('0:25');
+      expect(rowOf('Bob')).toContainElement(timer);
+      expect(rowOf('Alice')).not.toContainElement(timer);
+    });
+
+    it('shows it on the hand size choice too, which the clock covers', async () => {
+      serveState(timedState({ currentAction: 'selectHandSize', myHand: [] }, 12));
+
+      renderBoard();
+
+      expect(await screen.findByRole('timer')).toHaveTextContent('0:12');
+    });
+
+    it('shows no countdown when the game runs no clock', async () => {
+      serveState({ extra: { turnTimeLimit: 0, turnDeadline: null, serverTime: SERVER_NOW } });
+
+      renderBoard();
+      await screen.findByText('Alice');
+
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument();
+    });
+
+    it("shows no countdown when the seat on turn is not timed (a bot's turn)", async () => {
+      serveState(timedState({ currentTurn: 1, extra: { turnDeadline: null } }));
+
+      renderBoard();
+      await screen.findByText('Alice');
+
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument();
+    });
+
+    it("reloads the state when another player's seat goes to a bot", async () => {
+      serveState(timedState({ currentTurn: 1 }));
+      renderBoard();
+      await screen.findByText('Bob');
+
+      // The stand-in bot now holds Bob's seat
+      serveState({ usernames: ['Alice', 'MediumBot1'], currentTurn: 1 });
+      act(() => {
+        sseHook.onMessage({
+          type: 'gameUpdate',
+          partyId: 'party1',
+          userId: userIdOfSeat(1),
+          action: 'playerReplaced',
+          playerIndex: 1,
+          replacedUserId: userIdOfSeat(1),
+          botId: 'bot-1',
+        });
+      });
+
+      expect(await screen.findByText('MediumBot1')).toBeInTheDocument();
+      expect(screen.queryByText('Bob')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it("sends the user back to the party list when their own seat goes to a bot", async () => {
+      serveState(timedState());
+      renderBoard();
+      await screen.findByText('Alice');
+
+      act(() => {
+        sseHook.onMessage({
+          type: 'gameUpdate',
+          partyId: 'party1',
+          userId: userIdOfSeat(0),
+          action: 'playerReplaced',
+          playerIndex: 0,
+          replacedUserId: userIdOfSeat(0),
+          botId: 'bot-1',
+        });
+      });
+
+      expect(mockNavigate).toHaveBeenCalledWith('/parties', { replace: true, state: { ejected: true } });
+    });
+
+    it('treats NOT_IN_PARTY on a move as the ejection whose event was missed', async () => {
+      serveState(timedState({ currentAction: 'draw' }));
+      apiClient.post = vi.fn().mockRejectedValue({
+        response: { status: 403, data: { code: 'NOT_IN_PARTY', error: 'User is not in this party' } },
+      });
+
+      renderBoard();
+      await screen.findByText('Alice');
+      fireEvent.click(drawButton());
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/parties', { replace: true, state: { ejected: true } });
+      });
+      expect(screen.queryByText('User is not in this party')).not.toBeInTheDocument();
+    });
+
+    it('does not take NOT_IN_PARTY on the first load for an ejection', async () => {
+      apiClient.get = vi.fn().mockRejectedValue({
+        response: { status: 403, data: { code: 'NOT_IN_PARTY' } },
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText(/failed to load game state/i)).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 

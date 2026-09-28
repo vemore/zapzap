@@ -41,7 +41,7 @@ void main() {
       final body = backend.bodyOf('POST', '/api/party');
       expect(body['name'], 'Soirée');
       expect(body['visibility'], 'private');
-      expect(body['settings'], {'playerCount': 4});
+      expect(body['settings'], {'playerCount': 4, 'turnTimeLimit': 0});
       expect(body['botIds'], isEmpty);
       expect(create.error, isNull);
       // The form asks for no bot: it never lists them
@@ -49,6 +49,26 @@ void main() {
         backend.requests.where((request) => request.url.path == '/api/bots'),
         isEmpty,
       );
+    });
+
+    test('the time per turn is off by default, one of 0/30/60/120, and sent '
+        'as settings.turnTimeLimit', () async {
+      final backend = FakeLobbyBackend(createdPartyId: 'p7');
+      final create = CreatePartyProvider(repositoryOf(backend));
+      expect(create.turnTimeLimit, 0);
+      // The backend refuses anything else with 400 VALIDATION_ERROR.
+      create.setTurnTimeLimit(45);
+      expect(create.turnTimeLimit, 0);
+      create.setTurnTimeLimit(120);
+      expect(create.turnTimeLimit, 120);
+
+      await create.submit('Soirée');
+      final settings = backend.bodyOf('POST', '/api/party')['settings'];
+      expect(settings, {
+        'playerCount': defaultPartyPlayers,
+        'turnTimeLimit': 120,
+      });
+      expect((settings as Map).containsKey('roundTimeLimit'), isFalse);
     });
 
     test('a refused create keeps the form and says why', () async {
@@ -161,6 +181,14 @@ void main() {
           list.dispose();
           events.close();
         });
+      }
+    });
+
+    test('a seat given to a bot reloads, so an ejected player is no longer a member', () {
+      // The game screen pops back to a list loaded before the ejection: without
+      // a reload its row keeps isMember and offers "Resume" to a seat that is gone
+      for (final action in ['playerReplaced', 'playerForfeited']) {
+        expect(PartyListProvider.refreshingActions, contains(action));
       }
     });
 

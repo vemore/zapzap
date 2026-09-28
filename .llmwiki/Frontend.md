@@ -32,10 +32,12 @@
 | `services/api.js` | axios instance + token helpers |
 | `services/auth.js` | login/register/Google login, `deleteAccount` (DELETE `/auth/me`, then the session is cleared; a refusal throws an Error carrying the backend's `code`), client-side validation |
 | `services/sse.js` | `sseUrl()`: the `/suscribeupdate?token=` URL every SSE stream opens |
+| `services/party.js` | bot levels, `/bots`, add-bot and fill-and-start calls; `TURN_TIME_LIMITS`, `turnTimeLimitLabel`, `EJECTED_MESSAGE` (§ Turn timer) |
 | `hooks/useSSE.js` | EventSource hook |
+| `hooks/useTurnCountdown.js` | the turn clock of a game state and its ticking countdown (§ Turn timer) |
 | `components/Auth/` | Login, Register, ProtectedRoute, GoogleLoginButton, DeleteAccount |
 | `components/Party/` | PartyList, CreateParty, PartyLobby, ConnectedPlayers |
-| `components/Game/` | GameBoard (535 lines) and card/table widgets, HandSizeSelector, RoundEnd |
+| `components/Game/` | GameBoard (583 lines) and card/table widgets, HandSizeSelector, RoundEnd, TurnTimer |
 | `components/History/`, `components/Stats/` | game history, statistics/leaderboard |
 | `components/Admin/` | AdminRoute, AdminLayout (renders `<Outlet />`, `AdminLayout.jsx:69`), users/parties/statistics |
 | `utils/` | `cards.js`, `scoring.js`, `validation.js` (client-side copies of the rules), `cardAdapter.js`, `playerName.js` (« Joueur supprimé » for a `deleted-` user id, used by GameHistory and GameDetails) |
@@ -66,8 +68,16 @@
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
 - **Create and lobby** (2026-09-28): `CreateParty.jsx` asks for the name, the seat count (3-8) and the visibility — no human or bot per seat, no `botIds`, no `/bots` call. In `PartyLobby.jsx` the owner of a waiting party gets, on each free seat, an « Add a bot… » `<select>` of the six levels (a level whose bots all sit at the table is disabled, "none available"), which seats the first free bot of it and reloads the seats; and « Fill with bots and start », a dialog (`role="dialog"`, Easy / Medium / Hard, Medium checked) that calls fill-and-start and opens `/game/:id`, or shows why it was refused (`NOT_ENOUGH_BOTS`). Nothing fills or starts by itself. Tests: `__tests__/CreateParty.test.jsx`, `__tests__/PartyLobby.test.jsx` (« Bots in free seats »).
 - GameBoard, PartyLobby and ConnectedPlayers all open `sseUrl()` (`services/sse.js`): `${VITE_API_URL without /api || window.location.origin}/suscribeupdate?token=<URL-encoded localStorage token>`, or no stream (`null`) without a token. The token matters on Rust: `/suscribeupdate` delivers a game's moves and a private party's events only to streams whose token names a player of that party, and registers the session for `/api/players/connected` (`zapzap-rust/src/api/sse.rs`, `should_deliver`; [[Api]]). EventSource cannot send an `Authorization` header, hence the query string.
-- GameBoard reacts to `action` values `play`, `draw`, `selectHandSize`, `playerForfeited`, `zapzap`, `roundStarted`, `gameFinished`, `partyDeleted` by refetching state or navigating (`GameBoard.jsx`, `handleSSEMessage`).
+- GameBoard reacts to `action` values `play`, `draw`, `selectHandSize`, `playerForfeited`, `playerReplaced`, `zapzap`, `roundStarted`, `gameFinished`, `partyDeleted` by refetching state or navigating (`GameBoard.jsx`, `handleSSEMessage`; `playerReplaced`: § Turn timer).
 - The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/api/mod.rs:24`) and the proxy — do not "fix" the spelling on one side only.
+
+### Turn timer (2026-09-28)
+- The rule: `GAME_RULES.md` "Turn Time Limit"; the contract: [[Api]] (`settings.turnTimeLimit`, the state's `turnTimeLimit`/`turnDeadline`/`serverTime`) and [[Backend]] § Turn timer (`playerReplaced`, then 403 `NOT_IN_PARTY`).
+- **Creation**: `CreateParty.jsx` offers « Turn timer » as four radios, Off / 30 s / 60 s / 2 min (`TURN_TIME_LIMITS`, `services/party.js`), Off checked, at every seat count — who is human is known only at the start, and the server runs the clock only with two humans or more, as the hint under it says. It always sends `settings.turnTimeLimit` (0 when off).
+- **Lobby**: `PartyLobby.jsx` adds « Turn timer: 30 s per turn » to the game settings when `settings.turnTimeLimit` is not 0 (`data-testid="turn-timer-setting"`).
+- **Countdown**: `fetchGameState` stamps `performance.now()` when the state arrives and keeps `turnClockOf(gameState, receivedAt)` (`hooks/useTurnCountdown.js`): `turnDeadline − serverTime` minus the time elapsed here since, so neither the browser's clock nor its offset from the server's counts; each refetch resynchronises it. `TurnTimer.jsx` (`role="timer"`, m:ss, red under 10 s) sits on the current turn's row of `PlayerTable`, for every player, and under the round heading of the hand-size screen, which the clock covers too. No clock (`turnTimeLimit` 0, `turnDeadline` null: a bot's turn, between rounds, a game with one human): nothing shown.
+- **Ejection**: on `playerReplaced` whose `replacedUserId` is the user, GameBoard navigates to `/parties` with `state.ejected` (`replace`), and PartyList shows « Vous avez été retiré de la partie (temps dépassé) » (`EJECTED_MESSAGE`, `role="status"`); for another player it refetches the state, and the seat shows the bot. A 403 `NOT_IN_PARTY` on a move or a refetch, once a state of the game was shown, is taken for an ejection whose event was missed (a reconnecting stream) and does the same; on the first load it stays « Failed to load game state ».
+- Tests: `components/Party/__tests__/CreateParty.test.jsx` and `PartyLobby.test.jsx` (« Turn timer »), `components/Game/__tests__/TurnTimer.test.jsx` (the countdown under fake timers), `GameBoard.test.jsx` (« Turn timer »), `__tests__/integration/TurnTimerEjection.test.jsx` (the real router, board to party list).
 
 ### Google OAuth
 - Client id from `import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID` (build-time) — `App.jsx:22`, `components/Auth/Login.jsx:9`, `Register.jsx:9`. When empty, `GoogleOAuthProvider` is not mounted (`App.jsx:121-129`) and the button is hidden (`Login.jsx:56`).
@@ -88,7 +98,7 @@
 - Config lives in `vite.config.js:19-30`: `globals: true`, `environment: 'happy-dom'`, setup `./src/test/setup.js`.
 - `src/test/setup.js` mocks `EventSource` (`setup.js:11-23`) and `localStorage` (`setup.js:26+`), and calls `cleanup()` after each test.
 - Test files: component tests under `components/*/__tests__/`, `hooks/__tests__/useSSE.test.js`, `services/__tests__/`, `utils/__tests__/`, `__tests__/integration/GameFlow.test.jsx` (the real `GameBoard` driven through a scripted sequence of API states), and `__tests__/compliance/README.compliance.test.js` (asserts rules "specified in README.md (lines 315-428)"). `src/test/gameState.js` builds the game-state body those tests serve.
-- State (2026-09-23): `npx vitest run` → 21 files, 294 tests, all green; `npm run lint` → 0 errors, 9 `react-hooks/exhaustive-deps` warnings. Both run in the `frontend` CI job, lint in the commit hook too; see [[Testing]].
+- State (2026-09-28): `npx vitest run` → 26 files, 342 tests, all green; `npm run lint` → 0 errors, 9 `react-hooks/exhaustive-deps` warnings. Both run in the `frontend` CI job, lint in the commit hook too; see [[Testing]].
 
 ### Docker image and nginx
 - `frontend/Dockerfile`: stage 1 `node:20-alpine`, `npm ci`, `npm run build` (`Dockerfile:4-26`); stage 2 `nginx:alpine` serving `/usr/share/nginx/html` on port 80 with a `wget` healthcheck (`Dockerfile:29-45`).
@@ -97,6 +107,7 @@
 - CI builds the image (`docker build -t zapzap-frontend:ci frontend`, `image` job of `.github/workflows/ci.yml`) and runs `npm run build` on Node 24 (`frontend` job) — the Dockerfile uses Node 20.
 
 ## Decisions & History
+- 2026-09-28 (feat/turn-timer-react): the turn timer reached the React client (§ Turn timer). Chosen: radios rather than a `<select>` at creation, four short values seen at once; the choice offered always (user decision of 2026-09-28, the server decides at the start); the countdown from `performance.now()` since the response rather than `Date.now()` against the deadline, which a browser clock off by a minute would break; the ejection message carried to the party list in the navigation state, as DeleteAccount carries its own to Login, rather than a dialog on a board the user no longer plays; a 403 `NOT_IN_PARTY` after the game was shown taken for the ejection, the only way out of a game under way, so a missed `playerReplaced` still ends on the message rather than on an error screen.
 - The frontend was rewritten from vanilla JS/EJS (`views/`, `public/` at the root, legacy) to React + Vite; the root docs were never updated.
 - Google OAuth was added in commit 6cca2b1 ("add Google OAuth authentication support") against the Node backend; the Rust rewrite (e4f83da) did not port the route. A local wip entry about Google sign-up asks to check what works end to end.
 - `VITE_API_URL` is optional by design: "In production (no VITE_API_URL), the app will use window.location.origin" (`frontend/Dockerfile:8-9,25`).

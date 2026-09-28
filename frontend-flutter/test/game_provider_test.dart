@@ -634,6 +634,85 @@ void main() {
 
       expect(game.outcome, GameOutcome.closed);
     });
+
+    /// The turn clock gave [replacedUserId]'s seat to a bot
+    /// (`zapzap-rust/src/application/game/turn_timer.rs`): sent in the
+    /// ejected human's name, the data flattened into the event.
+    SseEvent replaced(String replacedUserId) => SseEvent({
+      'type': 'gameUpdate',
+      'partyId': 'p1',
+      'userId': replacedUserId,
+      'action': 'playerReplaced',
+      'playerIndex': 1,
+      'replacedUserId': replacedUserId,
+      'replacedUsername': 'Alice',
+      'botId': 'bot-9',
+      'botUsername': 'StandInBot-1234abcd',
+      'newOwnerId': null,
+    });
+
+    test('this player ejected by the turn clock ends the board, with no '
+        'reload: every game route refuses them now', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'play'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      final before = backend.stateCalls;
+
+      events.add(replaced('u1'));
+      await pumpEventQueue();
+
+      expect(game.outcome, GameOutcome.ejected);
+      expect(backend.stateCalls, before);
+
+      // Nothing after it moves the board any more
+      events.add(event('play'));
+      await pumpEventQueue();
+      expect(backend.stateCalls, before);
+    });
+
+    test('another player ejected reloads the table, so the seat shows the '
+        'bot', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 1, currentAction: 'play'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      final before = backend.stateCalls;
+
+      events.add(replaced('u2'));
+      await pumpEventQueue();
+
+      expect(game.outcome, isNull);
+      expect(backend.stateCalls, before + 1);
+    });
+  });
+
+  test('the turn clock is the answer\'s, read on the server\'s time', () async {
+    final backend = FakeGameBackend(
+      state: gameSnapshotJson(
+        gameState: gameStateJson(
+          currentTurn: 1,
+          currentAction: 'draw',
+          turnTimeLimit: 30,
+          turnDeadline: defaultServerTime + 12000,
+        ),
+      ),
+    );
+    final game = provider(backend);
+    await game.load();
+    expect(game.turnClock!.left, const Duration(seconds: 12));
+
+    backend.state = gameSnapshotJson(
+      gameState: gameStateJson(currentTurn: 1, currentAction: 'draw'),
+    );
+    await game.load(showSpinner: false);
+    expect(game.turnClock, isNull);
   });
 
   test('a finished round exposes what the round-end screen needs', () async {

@@ -13,7 +13,7 @@
 | Rust backend API tests (`zapzap-rust/tests/api_tests.rs`, 98 tests on 2026-09-25) | `cargo test --test api_tests` | green | yes |
 | Rust backend schema tests (`zapzap-rust/tests/schema_tests.rs`, 5 tests on 2026-09-27) | `cargo test --test schema_tests` | green | yes |
 | Rust backend rules and bots tests (`zapzap-rust/tests/rules_and_bots_tests.rs`, 16 tests on 2026-09-27: eliminated starter, starter wrap, tied lowest hands, repeated card, hand size with 8 players, concurrent bot triggers, a trigger during a manual loop, one strategy per bot, concurrent game-state writes) | `cargo test --test rules_and_bots_tests` | green | yes |
-| Rust backend turn timer tests (`zapzap-rust/tests/turn_timer_tests.rs`, 13 tests on 2026-09-28: the turn time limit, ejection, `playerReplaced`, the loss, one human runs no clock, the deadline in the state, the ejection's compare-and-swap, a restart's downtime, the last human's party; a `ManualClock`, no waiting) | `cargo test --test turn_timer_tests` | green | yes |
+| Rust backend turn timer tests (`zapzap-rust/tests/turn_timer_tests.rs`, 16 tests on 2026-09-28: the turn time limit, ejection, `playerReplaced`, the loss, the ejected players' ranking, one human runs no clock, the deadline in the state, the ejection's compare-and-swap, a restart's downtime, the last human's party; a `ManualClock`, no waiting) | `cargo test --test turn_timer_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
 | Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |

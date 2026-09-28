@@ -282,10 +282,66 @@ void main() {
       final body = backend.bodyOf('POST', '/api/party');
       expect(body['name'], 'Soirée');
       expect(body['visibility'], 'public');
-      expect(body['settings'], {'playerCount': 4});
+      expect(body['settings'], {'playerCount': 4, 'turnTimeLimit': 0});
       expect(body['botIds'], isEmpty);
       // and it lands on the new party's lobby
       expect(find.text('Joueurs (0/4)'), findsOneWidget);
+    });
+
+    testWidgets('the form always offers a time per turn — off, 30 s, 1 min, '
+        '2 min — sends the one chosen, and the lobby shows it', (tester) async {
+      final backend = FakeLobbyBackend(
+        createdPartyId: 'p9',
+        details: partyDetailsJson(id: 'p9', turnTimeLimit: 60),
+      );
+      await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
+
+      // Offered on a form that knows nothing of who will sit at the table:
+      // the backend runs the clock only with two humans at the start, which
+      // the helper says.
+      final field = find.byKey(const Key('turn-time-limit'));
+      expect(field, findsOneWidget);
+      expect(
+        find.descendant(of: field, matching: find.text('Sans limite')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('au moins deux joueurs humains'),
+        findsOneWidget,
+      );
+
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      for (final seconds in [0, 30, 60, 120]) {
+        expect(
+          find.byKey(Key('turn-time-limit-$seconds')),
+          findsWidgets,
+          reason: '$seconds s',
+        );
+      }
+      expect(find.text('30 s'), findsWidgets);
+      expect(find.text('2 min'), findsWidgets);
+      await tester.tap(find.text('1 min').last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('party-name')), 'Soirée');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('create-submit')));
+      await tester.pumpAndSettle();
+
+      expect(backend.bodyOf('POST', '/api/party')['settings'], {
+        'playerCount': 5,
+        'turnTimeLimit': 60,
+      });
+      // The lobby of the new party carries it as a chip
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('lobby-turn-timer')),
+          matching: find.text('1 min par tour'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a refusal is shown and the form stays', (tester) async {
@@ -334,6 +390,44 @@ void main() {
       username: 'Alice',
       playerIndex: 2,
     );
+
+    for (final (limit, chip) in [
+      (30, '30 s par tour'),
+      (120, '2 min par tour'),
+    ]) {
+      testWidgets('a time per turn of $limit s is the settings chip "$chip"', (
+        tester,
+      ) async {
+        await pumpApp(
+          tester,
+          FakeLobbyBackend(
+            details: partyDetailsJson(
+              id: 'p1',
+              turnTimeLimit: limit,
+              players: [vincent],
+            ),
+          ),
+          initialLocation: AppRoutes.partyPath('p1'),
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('lobby-settings')),
+            matching: find.text(chip),
+          ),
+          findsOneWidget,
+        );
+      });
+    }
+
+    testWidgets('no time per turn, no chip', (tester) async {
+      await pumpApp(
+        tester,
+        backendWith([vincent]),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      expect(find.byKey(const Key('lobby-settings')), findsOneWidget);
+      expect(find.byKey(const Key('lobby-turn-timer')), findsNothing);
+    });
 
     testWidgets('start stays disabled below three players and the empty '
         'seats are shown', (tester) async {

@@ -54,6 +54,7 @@ JsonMap partyDetailsJson({
   String ownerId = 'u1',
   String status = 'waiting',
   int playerCount = 5,
+  int turnTimeLimit = 0,
   List<JsonMap> players = const [],
   String currentUserId = 'u1',
 }) => {
@@ -68,7 +69,7 @@ JsonMap partyDetailsJson({
     'settings': {
       'playerCount': playerCount,
       'allowSpectators': false,
-      'roundTimeLimit': 0,
+      'turnTimeLimit': turnTimeLimit,
     },
     'currentRoundId': null,
     'createdAt': 1790094174,

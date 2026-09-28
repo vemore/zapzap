@@ -107,7 +107,7 @@ void main() {
       expect(result.party.visibility, 'public');
       expect(result.party.settings.playerCount, 3);
       expect(result.party.settings.allowSpectators, isFalse);
-      expect(result.party.settings.roundTimeLimit, 0);
+      expect(result.party.settings.turnTimeLimit, 0);
     });
 
     test('details: players with userType and botDifficulty', () {
@@ -145,7 +145,7 @@ void main() {
           'settings': {
             'playerCount': 6,
             'allowSpectators': true,
-            'roundTimeLimit': 120,
+            'turnTimeLimit': 120,
           },
           'currentRoundId': 'r1',
           'createdAt': '2026-09-22T16:22:54+00:00',
@@ -169,7 +169,7 @@ void main() {
       expect(details.userPlayerIndex, isNull);
       expect(details.party.settings.playerCount, 6);
       expect(details.party.settings.allowSpectators, isTrue);
-      expect(details.party.settings.roundTimeLimit, 120);
+      expect(details.party.settings.turnTimeLimit, 120);
       expect(details.party.createdAt, DateTime.utc(2026, 9, 22, 16, 22, 54));
       expect(details.party.updatedAt, utc(1790094174));
       expect(details.players.single.id, '12');
@@ -201,29 +201,29 @@ void main() {
       expect(player.connectedAt, DateTime.utc(2026, 9, 22, 16, 23, 17, 863));
     });
 
-    test('settings: {playerCount, allowSpectators, roundTimeLimit}', () {
+    test('settings: {playerCount, allowSpectators, turnTimeLimit}', () {
       final settings = PartySettings.fromJson({
         'playerCount': 5,
         'allowSpectators': true,
-        'roundTimeLimit': 90,
+        'turnTimeLimit': 90,
       });
       expect(settings.playerCount, 5);
       expect(settings.allowSpectators, isTrue);
-      expect(settings.roundTimeLimit, 90);
+      expect(settings.turnTimeLimit, 90);
       expect(settings.toJson(), {
         'playerCount': 5,
         'allowSpectators': true,
-        'roundTimeLimit': 90,
+        'turnTimeLimit': 90,
       });
     });
 
     test('settings as a JSON string (admin), and toJson', () {
       final settings = PartySettings.fromJson(
-        '{"playerCount":5,"allowSpectators":false,"roundTimeLimit":0}',
+        '{"playerCount":5,"allowSpectators":false,"turnTimeLimit":30}',
       );
       expect(settings.playerCount, 5);
       expect(settings.allowSpectators, isFalse);
-      expect(settings.roundTimeLimit, 0);
+      expect(settings.turnTimeLimit, 30);
       expect(const PartySettings(playerCount: 4).toJson(), {'playerCount': 4});
     });
 
@@ -234,7 +234,11 @@ void main() {
         'maxScore': 100,
         'enableGoldenScore': true,
         'goldenScoreThreshold': 100,
+        // Per round, stored and never enforced; the backend ignores it
+        // since 2026-09-28 (`turnTimeLimit` replaced it).
+        'roundTimeLimit': 90,
       });
+      expect(settings.turnTimeLimit, isNull);
       expect(settings.toJson(), {'playerCount': 3});
     });
   });
@@ -285,6 +289,47 @@ void main() {
       expect(state.roundScores, isNull);
       expect(state.gameFinished, isFalse);
       expect(state.winner, isNull);
+      expect(state.turnTimeLimit, 60);
+      expect(state.turnDeadline, 1790094234000);
+      expect(state.serverTime, 1790094191500);
+      // Read against the server's time of the answer, not the device's.
+      expect(state.turnClock!.left, const Duration(milliseconds: 42500));
+    });
+
+    test('the turn clock: none without a limit, a deadline or a server '
+        'time; never negative; one clock per answer', () {
+      JsonMap state(Object? limit, Object? deadline, Object? now) => {
+        'currentTurn': 0,
+        'currentAction': 'play',
+        'deckSize': 30,
+        'turnTimeLimit': limit,
+        'turnDeadline': deadline,
+        'serverTime': now,
+      };
+      // A backend before 2026-09-28 sends none of the three.
+      final old = GameState.fromJson({
+        'currentTurn': 0,
+        'currentAction': 'play',
+        'deckSize': 30,
+      });
+      expect(old.turnTimeLimit, 0);
+      expect(old.turnClock, isNull);
+      expect(GameState.fromJson(state(0, 5000, 1000)).turnClock, isNull);
+      // A bot on turn, or between two rounds.
+      expect(GameState.fromJson(state(30, null, 1000)).turnClock, isNull);
+      expect(GameState.fromJson(state(30, 5000, null)).turnClock, isNull);
+      expect(
+        GameState.fromJson(state(30, 5000, 9000)).turnClock!.left,
+        Duration.zero,
+      );
+      expect(
+        GameState.fromJson(state(30, 5000, 1000)).turnClock,
+        const TurnClock(deadline: 5000, serverTime: 1000),
+      );
+      expect(
+        GameState.fromJson(state(30, 5000, 1000)).turnClock,
+        isNot(const TurnClock(deadline: 5000, serverTime: 1200)),
+      );
     });
 
     test('a finished round reveals every hand', () {

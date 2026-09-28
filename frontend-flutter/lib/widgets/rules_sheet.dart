@@ -28,6 +28,7 @@ class RulesSheet extends StatelessWidget {
       (l10n.rulesRoundTitle, l10n.rulesRoundBody),
       (l10n.rulesCardsTitle, l10n.rulesCardsBody),
       (l10n.rulesTurnTitle, l10n.rulesTurnBody),
+      (l10n.rulesTurnTimerTitle, l10n.rulesTurnTimerBody),
       (l10n.rulesPlaysTitle, l10n.rulesPlaysBody),
       (l10n.rulesZapZapTitle, l10n.rulesZapZapBody),
       (l10n.rulesCounteractTitle, l10n.rulesCounteractBody),
