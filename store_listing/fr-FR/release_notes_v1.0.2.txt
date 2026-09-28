@@ -1,0 +1,5 @@
+• Nouveau : l'hôte peut limiter la durée de chaque tour ; un joueur trop lent est remplacé par un bot.
+• L'hôte complète les places libres avec des bots, ou remplit la table et lance la partie d'un geste.
+• La table se recharge d'elle-même si ton coup arrive trop tard.
+• Se déconnecter après une session Google restaurée déconnecte vraiment.
+• Traductions complétées et plusieurs corrections.
