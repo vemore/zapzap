@@ -4,7 +4,7 @@
 > risk, the model per pull request, serial squash merges, deploy after each merge, local
 > cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -193,6 +193,26 @@ tokens raw, 300 M weighted; 124 h of agent time active, 46 h waiting on the user
 - **By skill:** `ship-parallel` 35 %, `deploy` 16 %, `code-review` 4 %; 41 % under no skill.
 - **Time:** `sleep` is 17.6 % of tool time and waiting on CI (`gh pr checks`) 15.0 %; hooks
   that leave a record total about 12 min.
+
+Pruning pass for 1.0.2, measured 2026-09-28 on `origin/master` at `6e02fc8`, since the
+1.0.1+2 tag's date (the window starts 09-27 00:00, so it overlaps the baseline's second
+window, and its changes of 09-28 have not had their 48 h — rework and CFR are floors):
+
+| Window | Changes | `fix:` | Rework | Deploys | CFR | 1st-run green | Size p50 / p90 / max |
+|---|---|---|---|---|---|---|---|
+| 2026-09-27..09-29 | 47 | 18 (38.3 %) | 40.4 % | 26 | 61.5 % | 91.5 % | 54 / 831 / 1181 |
+
+`wip/` on 2026-09-28: `todo` 1 open (max 1 d), `todo_nr` 62 (median 1 d, max 6 d); 62
+closed in the window, median age at close 1 d, max 5 d.
+
+Cost, `--since 2026-09-27` (11 sessions, 3 947 model calls, 111 MB of transcripts): 511 M
+tokens raw, 79 M weighted; 36.2 h active, 8.4 h waiting on the user.
+- Cache reads 62 %, cache writes 34 %, output 4 %. `implementer-complex` 36 %,
+  `general-purpose` 35 %, main 22 %, `implementer-simple` 7 %.
+- **By skill:** `ship-parallel` 44 %, `deploy` 16 %, `code-review` 5 %, `wip-refine` 3 %;
+  31 % under no skill.
+- **Time:** `gh pr checks` 26.1 % of tool time, `sleep` 17.0 %; hooks that leave a record
+  about 4 min.
 
 ## Decisions & History
 

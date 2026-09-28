@@ -4,7 +4,7 @@
 > agent configuration changes — what a case is, how a run is isolated, how to run a case
 > for real, when, and what it costs.
 > Related: [[Hooks]] · [[Documentation]] · [[ParallelDelivery]] · [[Testing]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -107,6 +107,9 @@ wiki pages, the React selector and the ten ARB files, and the setup is a full
 | 2026-09-27 | `origin/master` (`c77c16b`) | `docs-only-wiki-fact` | —, — | 0.28 | fail: INDEX.md's Bots row not re-dated (and the `wip/` watch, below) |
 | 2026-09-27 | `origin/master` (`c77c16b`) | `out-of-scope-finding` | 16, 70 s | 0.34 | fail: the entry is not headed `### todo_nr/<date>-<slug>.md` and has no `Area` |
 | 2026-09-27 | `origin/master` (`c77c16b`) | `rule-change-golden-hand-size` | 123, 315 s | 1.83 | pass on the task (11 checks); fail on the `wip/` watch only |
+| 2026-09-28 | `origin/master` (`6e02fc8`) | `docs-only-wiki-fact` | 13, 26 s | 0.28 | fail: INDEX.md's Bots row not re-dated |
+| 2026-09-28 | `origin/master` (`6e02fc8`) | `out-of-scope-finding` | 15, 47 s | 0.32 | fail: the entry is headed in bold, not `### todo_nr/<date>-<slug>.md`, so no entry body is read |
+| 2026-09-28 | `origin/master` (`6e02fc8`) | `rule-change-golden-hand-size` | 105, 254 s | 1.42 | pass (11 checks) |
 
 The three runs also failed "main checkout's `wip/` untouched": the orchestrator of the same
 session was editing `wip/` while they ran, so that check cannot tell an agent's write from
