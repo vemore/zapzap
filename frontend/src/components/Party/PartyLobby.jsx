@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Zap, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { Zap, LogOut, Play, ArrowLeft, Users, Loader, Crown, Settings, Bot, Trash2, Wifi, WifiOff, Timer } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import {
   BOT_DIFFICULTIES,
@@ -8,6 +8,7 @@ import {
   addBotToParty,
   fillAndStart,
   listBots,
+  turnTimeLimitLabel,
 } from '../../services/party';
 import { useAuth } from '../../contexts/AuthContext';
 import useSSE from '../../hooks/useSSE';
@@ -185,6 +186,7 @@ function PartyLobby() {
   const playerCount = party.players?.length || 0;
   const minPlayers = 3; // Game rule from README line 89
   const maxPlayers = party.settings?.playerCount || 5;
+  const turnTimer = turnTimeLimitLabel(party.settings?.turnTimeLimit);
 
   // Check if user is the only human player (all others are bots)
   const humanPlayers = party.players?.filter(p => p.userType !== 'bot') || [];
@@ -284,6 +286,19 @@ function PartyLobby() {
                   {party.status === 'playing' ? 'Playing' : 'Waiting'}
                 </span>
               </div>
+              {turnTimer && (
+                <div
+                  className="flex items-center justify-between"
+                  data-testid="turn-timer-setting"
+                  title="A player whose turn runs out is replaced by a bot; only when the game starts with at least two human players"
+                >
+                  <span className="flex items-center text-gray-400">
+                    <Timer className="w-4 h-4 mr-1 text-amber-400" />
+                    Turn timer:
+                  </span>
+                  <span className="text-white font-medium">{turnTimer} per turn</span>
+                </div>
+              )}
             </div>
           </div>
 
