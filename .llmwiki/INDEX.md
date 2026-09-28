@@ -32,7 +32,7 @@ Load this file first. Then read only the pages your task touches.
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE, bots trigger, turn timer, versioned game-state writes, schema and migrations, `seed` and `reset-password` | 2026-09-28 |
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-28 |
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-28 |
-| [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-28 |
+| [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, the turn timer (creation, countdown, ejection), Google OAuth, build and tests | 2026-09-28 |
 | [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-28 |
 | [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-27 |
 | [[FlutterRealtime]] | Flutter real-time channel (SSE): parser, two transports, reconnecting `SseClient`, `SseProvider` following the session, presence | 2026-09-27 |

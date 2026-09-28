@@ -65,6 +65,58 @@ describe('Phase 3: CreateParty Component Tests', () => {
     });
   });
 
+  describe('Turn timer', () => {
+    const timerChoice = (name) => screen.getByRole('radio', { name });
+    const createdSettings = () => apiClient.post.mock.calls[0][1].settings;
+
+    beforeEach(() => {
+      apiClient.post = vi.fn().mockResolvedValue({ data: { party: { id: '1' } } });
+    });
+
+    it('offers off, 30 s, 60 s and 2 min whatever the seat count, off by default', () => {
+      renderCreateParty();
+
+      expect(screen.getByRole('group', { name: /turn timer/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('radio', { name: /^(off|30 s|60 s|2 min)$/i })).toHaveLength(4);
+      expect(timerChoice('Off')).toBeChecked();
+      expect(screen.getByTestId('turn-timer-hint')).toHaveTextContent(/at least two human players/i);
+
+      // Creation does not know who will be human: the choice stays at every seat count
+      fillForm({ playerCount: '3' });
+      expect(timerChoice('2 min')).toBeInTheDocument();
+    });
+
+    it('sends the chosen limit in seconds', async () => {
+      renderCreateParty();
+      fillForm();
+      fireEvent.click(timerChoice('30 s'));
+      expect(timerChoice('30 s')).toBeChecked();
+      fireEvent.click(createButton());
+
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+      expect(createdSettings()).toEqual({ playerCount: 5, turnTimeLimit: 30 });
+    });
+
+    it('sends 0 when the timer is left off', async () => {
+      renderCreateParty();
+      fillForm();
+      fireEvent.click(createButton());
+
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+      expect(createdSettings().turnTimeLimit).toBe(0);
+    });
+
+    it('sends 120 for two minutes', async () => {
+      renderCreateParty();
+      fillForm();
+      fireEvent.click(timerChoice('2 min'));
+      fireEvent.click(createButton());
+
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+      expect(createdSettings().turnTimeLimit).toBe(120);
+    });
+  });
+
   describe('Player Count Validation (README compliance)', () => {
     it('should validate player count is between 3-8 (game rule)', async () => {
       apiClient.post = vi.fn();

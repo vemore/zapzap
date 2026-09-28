@@ -131,6 +131,23 @@ describe('Phase 3: PartyLobby Component Tests', () => {
         expect(screen.getByText('7 cards')).toBeInTheDocument();
       });
     });
+
+    it('shows the turn timer when the party was created with one', async () => {
+      mockPartyResponse({ settings: { playerCount: 4, turnTimeLimit: 30 } });
+
+      renderLobby();
+
+      expect(await screen.findByTestId('turn-timer-setting')).toHaveTextContent(/turn timer:\s*30 s per turn/i);
+    });
+
+    it('shows no turn timer when it is off', async () => {
+      mockPartyResponse({ settings: { playerCount: 4, turnTimeLimit: 0 } });
+
+      renderLobby();
+
+      expect(await screen.findByText('4 players')).toBeInTheDocument();
+      expect(screen.queryByTestId('turn-timer-setting')).not.toBeInTheDocument();
+    });
   });
 
   describe('Start Button (Game Rule Compliance)', () => {
