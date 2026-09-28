@@ -2159,6 +2159,10 @@
   "@errorNotInParty": {
     "description": "Refused move: NOT_IN_PARTY"
   },
+  "errorGameStateConflict": "La table a changé entre-temps : réessaie.",
+  "@errorGameStateConflict": {
+    "description": "Refused move: GAME_STATE_CONFLICT (another write came first); the table has just been reloaded"
+  },
   "gameRoundOverZapZapSuccess": "{player} a réussi son ZapZap !",
   "@gameRoundOverZapZapSuccess": {
     "description": "The ZapZap call held: nobody had a hand as low",

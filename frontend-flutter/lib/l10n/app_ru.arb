@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "Раунд ещё не завершён.",
   "gameRefreshFailed": "Возможно, стол устарел: не удалось обновить",
   "errorNotInParty": "Ты не участвуешь в этой партии.",
+  "errorGameStateConflict": "Стол тем временем изменился: попробуй ещё раз.",
   "gameRoundOverZapZapSuccess": "{player} успешно объявил ZapZap!",
   "gameRoundOverCounteractedCall": "{player} объявил ZapZap, но был перебит!",
   "gameRoundOverPenalty": "Штраф: {hand} + ({players} − 1) × 5 = {score} оч.",

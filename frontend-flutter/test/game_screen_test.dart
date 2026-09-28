@@ -368,20 +368,31 @@ void main() {
       expectBoardStanding(tester);
     });
 
-    testWidgets('a move refused with NOT_IN_PARTY says so', (tester) async {
+    testWidgets('a move that lost a race reloads the table and says so', (
+      tester,
+    ) async {
       final backend = playing(playerHand: [0, 13, 26]);
-      backend.failures['POST /api/game/p1/play'] = (
-        status: 403,
-        body: {'error': 'not in party', 'code': GameErrorCode.notInParty},
-      );
       await pumpGame(tester, backend);
+      backend.failures['POST /api/game/p1/play'] = (
+        status: 409,
+        body: {
+          'error': 'The game changed meanwhile: reload it and try again',
+          'code': GameErrorCode.gameStateConflict,
+        },
+      );
+      final calls = backend.stateCalls;
 
       selectCard(tester, 0);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('play-cards')));
       await tester.pumpAndSettle();
 
-      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
+      expect(backend.stateCalls, calls + 1);
+      expect(find.byKey(const Key('gameActionError')), findsOneWidget);
+      expect(
+        find.text('La table a changé entre-temps : réessaie.'),
+        findsOneWidget,
+      );
       expectBoardStanding(tester);
     });
 
@@ -955,6 +966,72 @@ void main() {
       expect(router.state.uri.path, AppRoutes.parties);
       // Nothing asks for a table the backend now refuses (403 NOT_IN_PARTY)
       expect(backend.stateCalls, calls);
+    });
+
+    testWidgets('me, the event missed: the next load answering NOT_IN_PARTY '
+        'is the message and the parties list', (tester) async {
+      final backend = playing(currentTurn: 1);
+      final transport = await pumpGame(tester, backend);
+      expectBoardStanding(tester);
+
+      // `playerReplaced` went out while the stream was down; the next
+      // event's refetch is the first to hear of it
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': GameErrorCode.notInParty},
+      );
+      await broadcast(tester, transport, {
+        'partyId': 'p1',
+        'action': 'play',
+        'type': 'gameAction',
+      });
+
+      expect(find.byType(GamePlayerTable), findsNothing);
+      expect(find.byKey(const Key('gameStaleBanner')), findsNothing);
+      expect(find.byKey(const Key('gameEjected')), findsOneWidget);
+      expect(
+        find.text('Tu as été retiré de la partie (temps dépassé)'),
+        findsOneWidget,
+      );
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      expect(router.state.uri.path, AppRoutes.parties);
+    });
+
+    testWidgets('me, the event missed: a move answering NOT_IN_PARTY is the '
+        'message and the parties list', (tester) async {
+      final backend = playing(playerHand: [0, 13, 26]);
+      backend.failures['POST /api/game/p1/play'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': GameErrorCode.notInParty},
+      );
+      await pumpGame(tester, backend);
+
+      selectCard(tester, 0);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('play-cards')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('gameActionError')), findsNothing);
+      expect(find.byKey(const Key('gameEjected')), findsOneWidget);
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      expect(router.state.uri.path, AppRoutes.parties);
+    });
+
+    testWidgets('a first load answering NOT_IN_PARTY is still an error', (
+      tester,
+    ) async {
+      final backend = playing();
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': GameErrorCode.notInParty},
+      );
+      await pumpGame(tester, backend);
+
+      expect(find.text('Partie indisponible'), findsOneWidget);
+      expect(find.text("Tu n'as pas de place à cette table."), findsOneWidget);
+      expect(find.byKey(const Key('gameEjected')), findsNothing);
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      expect(router.state.uri.path, AppRoutes.gamePath('p1'));
     });
 
     testWidgets('in English too', (tester) async {

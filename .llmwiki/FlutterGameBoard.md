@@ -21,7 +21,11 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   `GameOutcome.ejected`, with no refetch — every game route answers them 403 `NOT_IN_PARTY`
   from then on —, and the screen shows « Tu as été retiré de la partie (temps dépassé) »
   (`gameEjectedMessage`, snack bar `gameEjected`, on the app's messenger, so it stays over
-  the list) and goes back to the list. Nothing after an outcome moves the board.
+  the list) and goes back to the list. A 403 `NOT_IN_PARTY` answering a load or a move once
+  a game has been shown (`isStarted`) is that same ejection with its event missed — the
+  stream down, the app in the background — and ends the board the same way
+  (`_isMissedEjection`, as React's `isNotInParty`); on a first load, or over the "not
+  started yet" page, it stays an error. Nothing after an outcome moves the board.
   `partyStarted` is what takes a client that opened `/game/:id` before the owner started
   off the "not started yet" page and onto the table with no reload; that page also has a
   Retry (`Key('retry-game')`) for an event missed while the channel was down. No move's answer
@@ -35,7 +39,12 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   board stays under a banner with a Retry (`Key('gameStaleBanner')`), cleared by the next
   answer; only a **load with nothing to fall back on** fills `error` and draws the error
   page. Text comes from `ApiException.code` through `gameErrorText`
-  (`widgets/game_error_text.dart`, `GameErrorCode` in the provider). The React board sets
+  (`widgets/game_error_text.dart`, `GameErrorCode` in the provider). A move refused with
+  409 `GAME_STATE_CONFLICT` (it lost a race with another write, nothing played, [[Api]])
+  reloads the table first (`load(showSpinner: false)`), then fills `actionError`: the snack
+  bar reads « La table a changé entre-temps : réessaie. » (`errorGameStateConflict`) over
+  the new table — unless that reload found the player ejected, which alone is shown. Any
+  other refusal, other 409s included, is a snack bar with no reload. The React board sets
   one `error` for all three and draws an error page instead of the table
   (`GameBoard.jsx:220-235`) — including after a move that actually landed.
 - **Loads are sequenced** (`_loadGeneration`, the guard of `services/sse_client.dart`):
@@ -135,8 +144,12 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   down on their line from a server time in 2001, red at 0:10, stopping at 0:00; my own in
   the hand-size choice and its label; none without a limit or on a bot's turn; each answer
   restarting it; 360×740 at 1.0, 1.5, 2.0 beside a long name — `ejected by the turn clock`:
-  mine, the message and `/parties` with no refetch, in English too; another player's, the
-  seat showing the bot), `test/game_provider_test.dart`, `test/models_test.dart`.
+  mine, the message and `/parties` with no refetch, in English too; mine with the event
+  missed, from a refetch or a move answering `NOT_IN_PARTY`; a first load answering it
+  still the error page; another player's, the seat showing the bot),
+  `test/game_provider_test.dart` (the same, the "not started yet" page included, and a
+  lost race: the reload, the conflict's `actionError`, another 409 with no reload, a race
+  lost to one's own ejection), `test/models_test.dart`.
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 
@@ -315,5 +328,16 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   refetch — the backend answers 403 `NOT_IN_PARTY` from then on, and a refetch would only
   put the error page up behind the snack bar. The French message is the entry's, in the
   "tu" voice: « Tu as été retiré », not « Vous avez été retiré » (`test/l10n_test.dart`).
-  A move that races the ejection answers 409 `GAME_STATE_CONFLICT`, still shown as a
-  refusal in a snack bar (wip entry 2026-09-27-clients-reload-on-game-state-conflict).
+  A move that races the ejection answers 409 `GAME_STATE_CONFLICT`, then shown as a
+  refusal in a snack bar (until `fix/client-game-errors`, below).
+- **A lost race reloads, a missed ejection ends the board (2026-09-28,
+  `fix/client-game-errors`).** A 409 `GAME_STATE_CONFLICT` means the table on screen is
+  stale; it used to be a plain refusal, the SSE event of the write that won being the only
+  reload. Now the move reloads, then says so in the snack bar — a snack bar, not the stale
+  banner, since the table is fresh once reloaded. The reload comes before the message so
+  that a race lost to one's own ejection ends on the ejection alone. A 403 `NOT_IN_PARTY`
+  after a game was shown is taken for the ejection, as React has done since #164: a
+  player cannot leave a game under way, so the turn clock is the only way to lose the
+  seat. "Shown" means `isStarted`, not a snapshot: the "not started yet" page is a
+  waiting party, which a player can leave from another device. The code stays in
+  `GameErrorCode`, not `ApiErrorCode`: the backend sends it, and only the board reads it.

@@ -23,6 +23,17 @@ const isNotInParty = (err) =>
   err?.response?.status === 403 && err.response.data?.code === 'NOT_IN_PARTY';
 
 /**
+ * A move that lost a race with another write of the game state (a bot's move, a forfeit,
+ * the same request sent twice): nothing was played, and the table shown is stale
+ */
+const isGameStateConflict = (err) =>
+  err?.response?.status === 409 && err.response.data?.code === 'GAME_STATE_CONFLICT';
+
+/** What the board says over the table it reloaded after a lost race */
+const CONFLICT_MESSAGE = 'The table changed meanwhile: try again.';
+const NOTICE_DURATION_MS = 4000;
+
+/**
  * GameBoard component - main game interface
  */
 function GameBoard() {
@@ -34,6 +45,8 @@ function GameBoard() {
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // A short message over the table, which stays (CONFLICT_MESSAGE)
+  const [notice, setNotice] = useState('');
   // Whether a state of this game was shown: from then on, NOT_IN_PARTY means the user
   // was ejected (the only way out of a game under way), even if its event was missed
   const gameShownRef = useRef(false);
@@ -183,18 +196,41 @@ function GameBoard() {
     }
   }, [user, fetchGameState]);
 
+  // The notice goes after a few seconds; the table under it never moved
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => setNotice(''), NOTICE_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  /**
+   * A move the API refused. Returns true when the refusal is handled without an error
+   * page: the ejection whose event was missed leaves the board, and a lost race
+   * (409 GAME_STATE_CONFLICT) reloads the table under a short notice. Anything else
+   * replaces the board with the error page, as before.
+   */
+  const handleMoveError = async (err, failure) => {
+    if (isNotInParty(err)) {
+      leaveEjected();
+      return true;
+    }
+    if (isGameStateConflict(err)) {
+      setNotice(CONFLICT_MESSAGE);
+      await fetchGameState();
+      return true;
+    }
+    console.error(`${failure}:`, err);
+    setError(err.response?.data?.error || failure);
+    return false;
+  };
+
   // Handle play cards
   const handlePlay = async (cards) => {
     try {
       await apiClient.post(`/game/${partyId}/play`, { cardIds: cards });
       await fetchGameState();
     } catch (err) {
-      if (isNotInParty(err)) {
-        leaveEjected();
-        return;
-      }
-      console.error('Failed to play cards:', err);
-      setError(err.response?.data?.error || 'Failed to play cards');
+      await handleMoveError(err, 'Failed to play cards');
     }
   };
 
@@ -209,12 +245,7 @@ function GameBoard() {
       setSelectedDiscardCard(null);
       await fetchGameState();
     } catch (err) {
-      if (isNotInParty(err)) {
-        leaveEjected();
-        return;
-      }
-      console.error('Failed to draw card:', err);
-      setError(err.response?.data?.error || 'Failed to draw card');
+      await handleMoveError(err, 'Failed to draw card');
     }
   };
 
@@ -224,12 +255,7 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/zapzap`);
       await fetchGameState();
     } catch (err) {
-      if (isNotInParty(err)) {
-        leaveEjected();
-        return;
-      }
-      console.error('Failed to call ZapZap:', err);
-      setError(err.response?.data?.error || 'Failed to call ZapZap');
+      await handleMoveError(err, 'Failed to call ZapZap');
     }
   };
 
@@ -239,13 +265,7 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/selectHandSize`, { handSize });
       await fetchGameState();
     } catch (err) {
-      if (isNotInParty(err)) {
-        leaveEjected();
-        return;
-      }
-      console.error('Failed to select hand size:', err);
-      setError(err.response?.data?.error || 'Failed to select hand size');
-      throw err;
+      if (!(await handleMoveError(err, 'Failed to select hand size'))) throw err;
     }
   };
 
@@ -276,6 +296,17 @@ function GameBoard() {
       </div>
     );
   }
+
+  // Over whichever phase is shown, without taking the table away
+  const noticeBanner = notice ? (
+    <div
+      role="status"
+      data-testid="game-notice"
+      className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-amber-500/90 text-slate-900 font-semibold text-sm sm:text-base px-4 py-2 rounded-lg shadow-lg"
+    >
+      {notice}
+    </div>
+  ) : null;
 
   const {
     partyName,
@@ -335,12 +366,7 @@ function GameBoard() {
       await apiClient.post(`/game/${partyId}/nextRound`);
       await fetchGameState();
     } catch (err) {
-      if (isNotInParty(err)) {
-        leaveEjected();
-        return;
-      }
-      console.error('Failed to start next round:', err);
-      setError(err.response?.data?.error || 'Failed to start next round');
+      await handleMoveError(err, 'Failed to start next round');
     }
   };
 
@@ -355,6 +381,7 @@ function GameBoard() {
   if (isSelectHandSizePhase) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {noticeBanner}
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
@@ -448,6 +475,7 @@ function GameBoard() {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {noticeBanner}
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
@@ -486,6 +514,7 @@ function GameBoard() {
 
   return (
     <div className="min-h-screen sm:h-auto flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 mobile-game-container">
+      {noticeBanner}
       {/* Header - compact on mobile */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 shadow-lg flex-shrink-0">
         <div className="max-w-7xl mx-auto px-2 py-2 sm:px-4 sm:py-3">
