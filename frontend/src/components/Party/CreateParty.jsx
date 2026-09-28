@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Zap, Bot } from 'lucide-react';
+import { ArrowLeft, Zap, Bot, Timer } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import { TURN_TIME_LIMITS } from '../../services/party';
 
 // The form asks for the number of seats only: the creator takes the first, and the
-// others wait in the lobby for players, or for bots the host adds there.
+// others wait in the lobby for players, or for bots the host adds there. The turn timer
+// is offered always: who is human is known only when the game starts, and the server
+// runs the clock only with two humans or more.
 
 function CreateParty() {
   const [name, setName] = useState('');
   const [playerCount, setPlayerCount] = useState(5);
   const [visibility, setVisibility] = useState('public');
+  const [turnTimeLimit, setTurnTimeLimit] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -41,6 +45,7 @@ function CreateParty() {
         visibility,
         settings: {
           playerCount: parseInt(playerCount),
+          turnTimeLimit,
         },
       });
 
@@ -124,6 +129,41 @@ function CreateParty() {
                 <option value="private">Private - Invite code required</option>
               </select>
             </div>
+
+            {/* Turn timer: offered whatever the seats, the server decides at the start */}
+            <fieldset>
+              <legend className="flex items-center text-sm font-medium text-gray-300 mb-2">
+                <Timer className="w-4 h-4 mr-2 text-amber-400" />
+                Turn timer
+              </legend>
+              <div className="grid grid-cols-4 gap-2">
+                {TURN_TIME_LIMITS.map(({ value, label }) => (
+                  <label
+                    key={value}
+                    className={`flex items-center justify-center px-2 py-2 rounded-lg border text-sm cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-amber-400 ${
+                      turnTimeLimit === value
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                        : 'bg-slate-700 border-slate-600 text-white hover:border-amber-400/60'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="turn-time-limit"
+                      value={value}
+                      checked={turnTimeLimit === value}
+                      onChange={() => setTurnTimeLimit(value)}
+                      disabled={loading}
+                      className="sr-only"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-400" data-testid="turn-timer-hint">
+                A player whose turn runs out is replaced by a bot. The timer applies only when
+                the game starts with at least two human players.
+              </p>
+            </fieldset>
 
             {/* The free seats are filled in the lobby */}
             <p className="flex items-start text-sm text-gray-400" data-testid="seats-hint">

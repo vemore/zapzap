@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield, UserX } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Zap, LogOut, Plus, Loader, Users, History, BarChart3, Shield, UserX, Timer } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectedPlayers from './ConnectedPlayers';
+import { EJECTED_MESSAGE } from '../../services/party';
 
 function PartyList() {
   const [parties, setParties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
 
   useEffect(() => {
@@ -131,6 +133,17 @@ function PartyList() {
 
       {/* Main content */}
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Sent back here by the turn timer (GameBoard, playerReplaced) */}
+        {location.state?.ejected && (
+          <div
+            role="status"
+            className="flex items-center bg-amber-900/40 border border-amber-500/50 text-amber-200 px-4 py-3 rounded-lg mb-6"
+          >
+            <Timer className="w-5 h-5 mr-2 flex-shrink-0 text-amber-400" />
+            {EJECTED_MESSAGE}
+          </div>
+        )}
+
         {/* Page header with Create button */}
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-3xl font-bold text-white">Available Parties</h2>
