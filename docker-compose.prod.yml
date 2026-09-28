@@ -7,8 +7,10 @@
 # Nothing is built here: every image is built on the dev machine and pulled from the LAN
 # registry. The root docker-compose.yml, which builds, stays for local use and CI.
 #
-# The NAS runs docker-compose 1.29.2 (v1): no top-level `name:`, and the project name comes
-# from COMPOSE_PROJECT_NAME=zapzap, which deploy_nas.sh exports.
+# The NAS runs Compose v2 (`docker compose`, 5.5.1) since 2026-09-28, and deploy_nas.sh
+# falls back to docker-compose v1. No top-level `name:`: the project
+# name comes from COMPOSE_PROJECT_NAME=zapzap, which deploy_nas.sh exports. Every service
+# sets container_name, so v2 keeps the zapzap-* names v1 gave the running containers.
 #
 # Service names are load-bearing: nginx/nginx.conf proxies to `backend`, `frontend` and
 # `frontend-flutter`, and ESSENTIAL_SERVICES / PROXY_SERVICE in scripts/deploy_nas.sh name

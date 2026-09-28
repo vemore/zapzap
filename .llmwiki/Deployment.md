@@ -15,7 +15,7 @@
 | Public URL | `https://zapzap.ombivince.synology.me/` | old `CLAUDE.md` |
 | Deploy directory | `/home/vemore/docker/zapzap` (`NAS_DEPLOY_DIR`): `compose.yaml`, `.env`, `data/` — no git clone | decided 2026-09-25 |
 | Registry | `192.168.1.25:5050`, authenticated, plain HTTP (`insecure-registries` on both ends) | `scripts/deploy.env.example` |
-| Docker | `/usr/local/bin/docker`, `docker-compose` **1.29.2** — the v1 Python CLI, not `docker compose`; the host runs Ubuntu, bash 5.2, `curl`, `jq`, `python3` | on the NAS, 2026-09-23 and 2026-09-25 |
+| Docker | `/usr/bin/docker`, Compose **v2** as the plugin `docker compose` (**5.5.1**, `/usr/libexec/docker/cli-plugins/docker-compose`); no `docker-compose` binary any more (v1.29.2 until 2026-09-28). The ssh PATH already holds `/usr/local/bin`: no `export PATH` prefix. The host runs Ubuntu, bash 5.2, `curl`, `jq`, `python3` | on the NAS, 2026-09-28 |
 | Secrets | the deploy directory's `.env` (JWT, Google, AWS Bedrock) — never printed, never copied off the NAS | `docker-compose.prod.yml`, service `backend` |
 
 `192.168.1.25` is the registry host only (the user-level `deploy-nas` skill's; it refuses
@@ -52,12 +52,12 @@ root `docker-compose.yml`):
 |---|---|---|
 | `PORT` | `9999` | the nginx upstream |
 | `DATABASE_URL` | `sqlite:/app/data/zapzap.db` | the bind-mounted file; no `mode=rwc`, so a missing file stops the backend instead of starting it on an empty database |
-| `JWT_SECRET` | `${JWT_SECRET:?...}` | no default: `docker-compose` refuses the file without it, and the binary refuses a blank or published placeholder ([[Backend]]). Production's `.env` has a private 44-character one (checked 2026-09-24) |
+| `JWT_SECRET` | `${JWT_SECRET:?...}` | no default: Compose refuses the file without it, and the binary refuses a blank or published placeholder ([[Backend]]). Production's `.env` has a private 44-character one (checked 2026-09-24) |
 | `RUST_LOG` | `${RUST_LOG:-info}` | stdout only: the Rust backend writes no log file, so there is no `logs/` mount |
 | `GOOGLE_OAUTH_CLIENT_ID` | from `.env` | Google login |
 | `ALLOWED_ORIGINS` | `${ALLOWED_ORIGINS:-https://zapzap.ombivince.synology.me}` | the only origin CORS grants (below); a default in the compose file, so no deploy runs permissive for want of a `.env` line. Production's `.env` has no such line (checked 2026-09-27): the default applies. The root and `zapzap-rust/` compose files pass it bare, only when set |
 | `BOT_ACTION_DELAY_MS` | `${BOT_ACTION_DELAY_MS:-1000}` | the pause between two bot actions, read by `action_delay_from` (`zapzap-rust/src/application/bot/runner.rs`, default 1000 ms, `0` means no pause); production's `.env` sets `2000` |
-| `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). `docker-compose` 1.29.2 — the NAS's — resolves bare keys from `.env` too (checked locally with 1.29.2, 2026-09-24) |
+| `AWS_BEDROCK_ENABLED`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | bare keys: passed only when `.env` sets them | a present `AWS_BEDROCK_ENABLED` decides alone, and an empty `AWS_BEDROCK_REGION` would replace the `us-east-1` default ([[Backend]], `llm_enabled`). Compose v2 — the NAS's — resolves bare keys from `.env`, and leaves one `.env` does not set out (`docker compose config`, 5.5.1, 2026-09-28); v1.29.2 did the same (checked 2026-09-24) |
 | `BOT_STRATEGIES_DIR` | `/app/data/bot-strategies` | the LLM bots' memory, on the mount |
 
 `/suscribeupdate` carries its session JWT as `?token=` (EventSource cannot set headers,
@@ -208,9 +208,9 @@ configured by the untracked `scripts/deploy.env` (`REGISTRY`, `NAS_SSH`, `NAS_DE
    both tags (`--build-only` stops here, never contacting the NAS);
 4. pipe `docker-compose.prod.yml` over ssh to `compose.yaml.next`, with the registry and the
    sha written in (no scp);
-5. on the NAS — the same file, sent over ssh and run as `--remote deploy`: `docker-compose
-   config` (a `.env` without `JWT_SECRET`, or a compose file missing an essential service,
-   is refused with compose's reason), `docker-compose pull` — **the old containers still
+5. on the NAS — the same file, sent over ssh and run as `--remote deploy`: the Compose it
+   has (below), `config` (a `.env` without `JWT_SECRET`, or a compose file missing an
+   essential service, is refused with compose's reason), `pull` — **the old containers still
    serving** —, the database backup `data/zapzap.db.bak-<YYYY-MM-DD-HHMMSS>-<tag>` by SQLite's
    online backup API (python3 on the NAS: a file copy could catch a write half-way), checked
    with `integrity_check`, refused rather than written over an existing file;
@@ -222,16 +222,40 @@ configured by the untracked `scripts/deploy.env` (`REGISTRY`, `NAS_SSH`, `NAS_DE
    then a 60 s grace for the other services, `ps` and the health payload.
 
 `compose.yaml` on the NAS therefore always names exactly the images that run, and
-`compose.yaml.prev` those of the deploy before — the rollback target. Every docker-compose
-call runs with `COMPOSE_PROJECT_NAME=zapzap`: the project name the clone had (its directory
-was `zapzap`), so the deploy directory takes over the clone's containers on the first deploy.
+`compose.yaml.prev` those of the deploy before — the rollback target. Every compose call
+runs with `COMPOSE_PROJECT_NAME=zapzap`: the project name the clone had (its directory was
+`zapzap`), so the deploy directory takes over the clone's containers on the first deploy.
+
+### Which Compose
+
+The remote preflight picks it once (`pick_compose`, `scripts/deploy_nas.sh`): `docker
+compose` when `docker compose version` answers, else `docker-compose` on PATH, else a refusal
+before anything is built. It prints `🐳 Compose: docker compose 5.5.1`, and every call —
+`config`, `pull`, `down`, `up -d`, `ps`, `port`, `logs`, deploy and rollback alike — goes
+through it. The NAS answers v2 since 2026-09-28; v1 stays a fallback.
+
+**v2 manages the containers v1 created**: both select them by the label
+`com.docker.compose.project=zapzap`, and every service sets `container_name`, so v2's
+`<project>-<service>-1` naming never applies; the network is `zapzap_zapzap-network` under
+both, with the labels v2 checks. On the NAS, 2026-09-28, before any v2 deploy, `docker compose
+-p zapzap -f compose.yaml ps` listed the four v1 containers (label `version=1.29.2`) healthy,
+and `port nginx 80` answered one line, `0.0.0.0:8092`. What v2 changes:
+
+- **`depends_on: condition: service_healthy` holds `up -d`** until `backend` and `frontend`
+  are healthy; if one turns unhealthy, `up -d` exits 1 (`dependency failed to start`) and
+  leaves `zapzap-proxy` in `Created` (checked locally, 5.5.1). `START FAILED` then names each
+  essential container not healthy, its state and last 30 log lines. (The 2026-09-23 entry
+  recorded v1.29.2 as ignoring the condition.)
+- **`ps` lists running containers only** unless `-a`: the health checks call `ps -a -q`, so
+  the proxy reads `nginx(created)`, not `nginx(no container)`.
+- **Orphans** fail a `down` on the network where v1 only warned: `--remove-orphans`, below.
 
 ### What the script calls essential, and what it does not
 
 `ESSENTIAL_SERVICES` is `backend frontend nginx` — the proxy plus the two services its
 `depends_on: condition: service_healthy` waits on, which are what `nginx/nginx.conf` proxies
 `/`, `/api/` and `/suscribeupdate` to. `PROXY_SERVICE` is `nginx`, and the published port
-comes from `docker-compose port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
+comes from `port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
 Both names live in one place in the script, with a comment tying them to the two other files.
 
 **`frontend-flutter` is deliberately outside that set.** nginx resolves it per request
@@ -271,12 +295,14 @@ leave nothing running.
 
 `--remove-orphans` is on every `down`: a container the compose file no longer declares
 otherwise survives, and the `down` then reports `Network ... Resource is still in use` —
-reproduced locally on `docker-compose` v2, and v1 1.29.2 (what the NAS runs) only warns.
+reproduced locally on Compose v2, what the NAS runs since 2026-09-28; v1 1.29.2 only warned.
 
-`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 158 cases): a
+`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 196 cases): a
 sandbox repository and deploy directory, `ssh` stubbed to run the remote half locally, and
-`docker`, `docker-compose`, `curl`, `jq` and `sleep` stubbed, the `docker` stub answering a
-state per service. It asserts each refusal and that it builds, pulls and stops nothing, the
+`docker`, `curl`, `jq` and `sleep` stubbed, the `docker` stub answering a state per service.
+Compose is one stub behind `docker compose` (v2, its `ps` hiding a `Created` container
+without `-a`) and `docker-compose` (v1), the host's own kept off PATH: the suite runs on v2
+alone, asserting no call reached v1; then v1 alone, both (v2 wins) and neither (refused). It asserts each refusal and that it builds, pulls and stops nothing, the
 order `pull`, `down --remove-orphans`, `up -d`, the online backup and its naming, the pinned
 and stored `compose.yaml`, that a failed `down` restarts the old file, the `wget` refusal,
 `--build-only`, the split health verdict (exit 1 / 2), and `--rollback` (stored compose,
@@ -397,4 +423,10 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   (34918bab08a6) came up healthy with 25 users and 29 parties before and after; the user deleted
   the clone and its `zapzap_*` images the same day instead of waiting a week, and the Node-only
   keys left the `.env`. The step-by-step switch left the `deploy` skill.
+- **Compose v2 on the NAS (2026-09-28, fix/deploy-compose-v2).** Between two deploys that
+  day the NAS lost `docker-compose` 1.29.2 and gained the v2 plugin (5.5.1); the preflight
+  refused and #172 waited. The 2026-09-23 constraint "compose stays at v1.29.2" no longer
+  holds. The script probes for v2 and falls back to v1 rather than switching outright, so
+  either NAS deploys; `COMPOSE_PROJECT_NAME=zapzap` stays, the running containers' label. The
+  `export PATH=$PATH:/usr/local/bin` prefix went: the NAS's ssh PATH already holds it.
 - 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.

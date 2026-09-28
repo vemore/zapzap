@@ -14,7 +14,7 @@ NAS pulls.
 
 | | |
 |---|---|
-| NAS | `ssh vemore@192.168.1.147`; Docker in `/usr/local/bin` (remote commands start with `export PATH=$PATH:/usr/local/bin;`), `docker-compose` **1.29.2** (v1) |
+| NAS | `ssh vemore@192.168.1.147`; `/usr/bin/docker` and Compose **v2** as `docker compose` (**5.5.1**) since 2026-09-28 — there is no `docker-compose` binary any more, and the ssh PATH needs no prefix. What v2 changes: `.llmwiki/Deployment.md` § Which Compose |
 | Deploy directory | `/home/vemore/docker/zapzap`: `compose.yaml` (written by the script), `.env` (the secrets — **never print it, never copy it off the NAS**), `data/` (`zapzap.db`, `bot-strategies/`, backups) |
 | Registry | `192.168.1.25:5050`, authenticated; images `zapzap-backend`, `zapzap-frontend`, `zapzap-frontend-flutter`, `zapzap-proxy`, each tagged with the first 12 characters of the sha and `latest` |
 | Configuration | `scripts/deploy.env` (gitignored; from `scripts/deploy.env.example`): `REGISTRY`, `NAS_SSH`, `NAS_DEPLOY_DIR`, `PUBLIC_URL`; the Google client id comes from the repository's `.env` |
@@ -22,7 +22,7 @@ NAS pulls.
 Every command on the NAS by hand uses the project name the script uses:
 
 ```bash
-ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin COMPOSE_PROJECT_NAME=zapzap; cd /home/vemore/docker/zapzap && docker-compose -f compose.yaml ps'
+ssh vemore@192.168.1.147 'cd /home/vemore/docker/zapzap && docker compose -p zapzap -f compose.yaml ps'
 ```
 
 ## 0. Once per machine
@@ -91,8 +91,9 @@ In order, stopping at the first failure:
    (its health check); four pushes of each tag;
 4. `docker-compose.prod.yml` sent to the NAS as `compose.yaml.next`, the registry and the tag
    written in;
-5. on the NAS: `docker-compose config` (a `.env` without `JWT_SECRET`, or a compose file
-   missing an essential service, is refused), `docker-compose pull` — **the old containers
+5. on the NAS: the Compose it has — `docker compose`, else `docker-compose`, printed as
+   `🐳 Compose: …`, refused when neither answers —, `config` (a `.env` without `JWT_SECRET`,
+   or a compose file missing an essential service, is refused), `pull` — **the old containers
    still serving** —, the database backup `data/zapzap.db.bak-<YYYY-MM-DD-HHMMSS>-<tag>` by
    SQLite's online backup (python3), checked with `integrity_check`, never over an existing
    file;
@@ -120,7 +121,9 @@ never contacts the NAS.
   — downtime was 3.4s` is measured from just before the `down` to the first 200.
 - **A failing `down`, a failing `up -d`, or an essential service not healthy in 90 s are
   outages**, and the script says so: it names each container with its state, prints its
-  last 30 log lines, and names the rollback command with the previous tag. A failing `down`
+  last 30 log lines, and names the rollback command with the previous tag. With Compose v2
+  an unhealthy `backend` or `frontend` fails `up -d` itself (the proxy's `depends_on` health
+  condition), leaving `zapzap-proxy` in `Created`: the same report, under `START FAILED`. A failing `down`
   immediately restarts the compose file that was running — never the new, unchecked images. `up -d` returning 0 is not success: a container crash-looping
   under `restart: unless-stopped` satisfies it.
 - **`frontend-flutter` is deliberately not essential**: nginx resolves it per request, so an
@@ -143,8 +146,8 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/
 curl -fsS https://zapzap.ombivince.synology.me/app/ | grep -o '<base href="/app/">'
 curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/app/parties
 curl -fsS https://zapzap.ombivince.synology.me/app/manifest.json | head -6
-ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep zapzap'
-ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker logs --tail 50 zapzap-backend'
+ssh vemore@192.168.1.147 'docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep zapzap'
+ssh vemore@192.168.1.147 'docker logs --tail 50 zapzap-backend'
 ```
 
 The four containers run `192.168.1.25:5050/zapzap-*:<the sha deployed>` and are `healthy`.
@@ -155,7 +158,7 @@ on 0.0.0.0:9999` line, and `AWS Bedrock LLM service initialized` when the LLM bo
 data**, from your own machine:
 
 ```bash
-ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker inspect -f "{{.Config.Image}} {{index .Config.Labels \"org.opencontainers.image.revision\"}} {{.Created}}" zapzap-backend; docker logs zapzap-backend 2>&1 | grep -m1 "Starting ZapZap backend"'
+ssh vemore@192.168.1.147 'docker inspect -f "{{.Config.Image}} {{index .Config.Labels \"org.opencontainers.image.revision\"}} {{.Created}}" zapzap-backend; docker logs zapzap-backend 2>&1 | grep -m1 "Starting ZapZap backend"'
 # A password login through the public URL. The operator types the account and password;
 # nothing is echoed, stored or put on a command line. A dedicated test account keeps a
 # player's password out of it, but any account works.
@@ -179,7 +182,7 @@ the Bedrock TLS handshake from the production image, so prove it: in a browser, 
 party with an `llm` bot among the players, play until the bot has played a turn, then
 
 ```bash
-ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin; docker logs --since 15m zapzap-backend 2>&1 | grep -E "LLM (selected play|draw decision|play selection failed|draw decision failed|ZapZap decision failed)"'
+ssh vemore@192.168.1.147 'docker logs --since 15m zapzap-backend 2>&1 | grep -E "LLM (selected play|draw decision|play selection failed|draw decision failed|ZapZap decision failed)"'
 ```
 
 `LLM selected play` / `LLM draw decision` lines are a Bedrock round trip that worked
@@ -224,8 +227,7 @@ A deploy that passed §3 closes an open `wip/todo/*-merged-not-deployed.md` whos
 deployed `master` contains (`ship-parallel` §4): `mv` it to `wip/done/`, naming that sha.
 The fix of whatever broke is a new pull request (`ship-parallel` §6), never a hand edit on
 the NAS. A `.env` change alone needs no deploy: edit it on the NAS (never print it), then
-`docker-compose -f compose.yaml up -d` in the deploy directory with
-`COMPOSE_PROJECT_NAME=zapzap`, and §3.
+`docker compose -p zapzap -f compose.yaml up -d` in the deploy directory, and §3.
 
 ## 6. Reset a user's password
 
@@ -237,7 +239,7 @@ disables the pseudo-tty so the piped stdin reaches the binary rather than a term
 
 ```bash
 read -rsp 'new password: ' PW; echo
-printf '%s' "$PW" | ssh vemore@192.168.1.147 'export PATH=$PATH:/usr/local/bin COMPOSE_PROJECT_NAME=zapzap; cd /home/vemore/docker/zapzap && docker-compose -f compose.yaml exec -T backend /app/zapzap-backend reset-password <username>'
+printf '%s' "$PW" | ssh vemore@192.168.1.147 'cd /home/vemore/docker/zapzap && docker compose -p zapzap -f compose.yaml exec -T backend /app/zapzap-backend reset-password <username>'
 unset PW
 ```
 
