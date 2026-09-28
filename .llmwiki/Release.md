@@ -5,14 +5,14 @@
 > The procedure is the `release-android` skill (its §3b, the pruning pass of the process, runs
 > before each build); testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
 ### The app
 
 - Package `com.zapzap.app` (`frontend-flutter/android/app/build.gradle.kts`), label `ZapZap`.
-- Version `frontend-flutter/pubspec.yaml` `version: 1.0.0+1`: the part after `+` is the
+- Version `frontend-flutter/pubspec.yaml` `version: 1.0.2+3`: the part after `+` is the
   `versionCode`, which must rise above every version code on every Play track.
 - `targetSdk` is `flutter.targetSdkVersion`, 36 with Flutter 3.47.2 — Play refuses an update
   below 36 since 2026-08-31. `scripts/verify_aab.sh` checks it on every bundle.
@@ -91,6 +91,7 @@ Both recorded 2026-09-25; the app signing key's SHA-1 corrected 2026-09-27.
 |---|---|---|---|
 | 1.0.0 (1) | internal, closed (`alpha`) | 2026-09-26 | not yet |
 | 1.0.1 (2) | closed (`alpha`) | 2026-09-27 | `1.0.1+2` |
+| 1.0.2 (3) | closed (`alpha`) | 2026-09-28 | `1.0.2+3` |
 
 ## Decisions & History
 
