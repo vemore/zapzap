@@ -1,0 +1,5 @@
+• New: the host can set a time limit per turn; a player who runs out of time is replaced by a bot.
+• The host fills empty seats with bots, or fills the table and starts in one step.
+• The table reloads by itself when your move arrives too late.
+• Signing out after a restored Google session now really signs you out.
+• Translations completed, and several fixes.
