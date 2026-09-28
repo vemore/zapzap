@@ -167,7 +167,7 @@ impl<P: PartyRepository> NextRound<P> {
 
         // Initialize new round
         let new_round_number = game_state.round_number + 1;
-        let new_game_state = initialize_round(
+        let mut new_game_state = initialize_round(
             players.len() as u8,
             crate::domain::value_objects::PROVISIONAL_HAND_SIZE,
             &scores,
@@ -176,6 +176,8 @@ impl<P: PartyRepository> NextRound<P> {
             next_starting_player,
             None,
         );
+        // The turn clock runs on, for the same seats; the starter's turn begins now
+        new_game_state.turn_clock = game_state.turn_clock.clone();
 
         // Create round record
         let round_id = Uuid::new_v4().to_string();

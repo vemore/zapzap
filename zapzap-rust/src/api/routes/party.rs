@@ -58,8 +58,8 @@ pub struct PartySettingsDto {
     pub player_count: Option<f64>,
     #[serde(rename = "allowSpectators")]
     pub allow_spectators: Option<bool>,
-    #[serde(rename = "roundTimeLimit")]
-    pub round_time_limit: Option<u32>,
+    #[serde(rename = "turnTimeLimit")]
+    pub turn_time_limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,7 +277,7 @@ pub async fn create_party(
                 .and_then(PartySettings::player_count_from)
                 .map_err(|message| ApiError::bad_request("VALIDATION_ERROR", message))?,
             allow_spectators: s.allow_spectators.unwrap_or(false),
-            round_time_limit: s.round_time_limit.unwrap_or(0),
+            turn_time_limit: s.turn_time_limit.unwrap_or(0),
         },
     };
 

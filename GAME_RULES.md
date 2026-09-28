@@ -74,6 +74,25 @@ Each player's turn consists of **two mandatory phases** in sequence:
 - You **must** draw to end your turn
 - You can call **ZapZap** during the play phase (instead of playing cards)
 
+### Turn Time Limit
+
+A party can be created with a **turn time limit**: off (the default), **30 s**, **1 min**
+or **2 min**.
+
+- The limit applies only when the party **starts with at least two human players**. A
+  party that starts with one human (the other seats bots) has no clock, whatever limit
+  was set.
+- The clock covers a player's **whole turn**: choosing the hand size when they start a
+  round, their play and their draw. It starts when their turn begins and does not restart
+  within the turn; the next player's turn has its own. Nobody is timed between two
+  rounds, and bots are never timed.
+- A human whose turn runs out is **ejected from the game for good**: a bot takes their
+  seat, with their hand and their score, and the game goes on at once. The ejected player
+  can no longer play in that game, and it counts as a **loss** for them, whatever the bot
+  does with the seat. If they owned the party, it passes to the next human by seat.
+- The deadline is the server's: refreshing or reconnecting does not reset it, and the
+  game state tells every player when the turn runs out.
+
 ### Round Start
 
 #### First Round
@@ -192,6 +211,9 @@ history shows):
    the game, otherwise in the next round played.
 4. Players still level — the same total score, or eliminated in the same round, a player
    who left and a player past 100 alike — rank in seat order, the first seat first.
+5. Players ejected for running out of time come after every seat (the bot that took over
+   their seat ranks in their place), the latest ejected first, with the score they had
+   when they left. Their game is never a win.
 
 ### Golden Score Rules
 

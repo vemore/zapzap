@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sqlx::{SqliteConnection, SqlitePool};
 
@@ -5,18 +7,27 @@ use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
 };
 use crate::domain::repositories::{
-    GameAction, PartyRepository, PlayerGameResult, RepositoryError, VersionedGameState,
+    GameAction, PartyRepository, PlayerGameResult, RepositoryError, SeatReplacement,
+    VersionedGameState,
 };
 use crate::domain::value_objects::{GameState, PartySettings};
+use crate::infrastructure::services::{Clock, SystemClock};
 
 /// SQLite implementation of PartyRepository
 pub struct SqlitePartyRepository {
     pool: SqlitePool,
+    /// The time a game-state write stamps the turn deadline with
+    clock: Arc<dyn Clock>,
 }
 
 impl SqlitePartyRepository {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self::with_clock(pool, Arc::new(SystemClock))
+    }
+
+    /// A repository whose game-state writes read `clock` (a test's `ManualClock`)
+    pub fn with_clock(pool: SqlitePool, clock: Arc<dyn Clock>) -> Self {
+        Self { pool, clock }
     }
 
     /// Get a reference to the database pool for direct queries
@@ -434,6 +445,111 @@ impl PartyRepository for SqlitePartyRepository {
         Ok(result.map(|i| i as u8))
     }
 
+    async fn human_seats(&self, party_id: &str) -> Result<Vec<u8>, RepositoryError> {
+        let seats: Vec<i64> = sqlx::query_scalar(
+            "SELECT pp.player_index FROM party_players pp JOIN users u ON u.id = pp.user_id \
+             WHERE pp.party_id = ? AND u.user_type = 'human' ORDER BY pp.player_index",
+        )
+        .bind(party_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(seats.into_iter().map(|seat| seat as u8).collect())
+    }
+
+    async fn replace_player(
+        &self,
+        replacement: &SeatReplacement<'_>,
+    ) -> Result<(), RepositoryError> {
+        let now = chrono::Utc::now().timestamp();
+        let party_id = replacement.party_id;
+        // The write lock up front, as `delete_account` takes it: a concurrent write waits
+        // out the busy timeout rather than failing on a read-to-write upgrade
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(db_err)?;
+
+        // The compare-and-swap every move goes through: a move that came first wins, and
+        // the transaction rolls back when it returns
+        write_game_state_if_unchanged(
+            &mut tx,
+            party_id,
+            replacement.state,
+            replacement.expected_version,
+            self.clock.now_millis(),
+        )
+        .await?;
+
+        let moved = sqlx::query(
+            "UPDATE party_players SET user_id = ? \
+             WHERE party_id = ? AND player_index = ? AND user_id = ?",
+        )
+        .bind(replacement.bot_id)
+        .bind(party_id)
+        .bind(replacement.player_index as i32)
+        .bind(replacement.human_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        if moved.rows_affected() == 0 {
+            return Err(RepositoryError::Conflict(format!(
+                "seat {} of party {party_id} is no longer {}'s",
+                replacement.player_index, replacement.human_id
+            )));
+        }
+
+        if let Some(owner) = replacement.new_owner_id {
+            sqlx::query(
+                "UPDATE parties SET owner_id = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
+            )
+            .bind(owner)
+            .bind(now)
+            .bind(party_id)
+            .bind(replacement.human_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        }
+
+        // The human's game is a loss, whatever the bot does with the seat. The seats take
+        // positions 1..=seat_count when the game ends; the players ejected before rank
+        // after every seat, the latest ejected first, so the earlier ones move down one.
+        let seat_count = i32::from(replacement.seat_count);
+        sqlx::query(
+            "UPDATE player_game_results SET finish_position = finish_position + 1 \
+             WHERE party_id = ? AND finish_position > ?",
+        )
+        .bind(party_id)
+        .bind(seat_count)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        let state = replacement.state;
+        sqlx::query(
+            "INSERT INTO player_game_results \
+             (party_id, user_id, final_score, finish_position, rounds_played, is_winner, created_at) \
+             VALUES (?, ?, ?, ?, ?, 0, ?) \
+             ON CONFLICT(party_id, user_id) DO UPDATE SET \
+                final_score = excluded.final_score, \
+                finish_position = excluded.finish_position, \
+                rounds_played = excluded.rounds_played, \
+                is_winner = 0",
+        )
+        .bind(party_id)
+        .bind(replacement.human_id)
+        .bind(i32::from(state.get_score(replacement.player_index)))
+        .bind(seat_count + 1)
+        .bind(i32::from(state.round_number))
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+
+        tx.commit().await.map_err(db_err)
+    }
+
     async fn get_round_by_id(&self, id: &str) -> Result<Option<Round>, RepositoryError> {
         let row = sqlx::query("SELECT * FROM rounds WHERE id = ?")
             .bind(id)
@@ -535,7 +651,9 @@ impl PartyRepository for SqlitePartyRepository {
     ) -> Result<(), RepositoryError> {
         let now = chrono::Utc::now().timestamp();
 
-        // Serialize GameState to JSON
+        // Serialize GameState to JSON, the deadline of the turn under way stamped
+        let mut state = state.clone();
+        state.stamp_turn_deadline(self.clock.now_millis());
         let state_json = state.to_json();
 
         // A new version even when it replaces a state: a write based on the old one is
@@ -566,27 +684,27 @@ impl PartyRepository for SqlitePartyRepository {
         state: &GameState,
         expected_version: i64,
     ) -> Result<(), RepositoryError> {
-        let now = chrono::Utc::now().timestamp();
-
-        // One statement, so SQLite checks the version and writes atomically
-        let written = sqlx::query(
-            "UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 \
-             WHERE party_id = ? AND version = ?",
+        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        write_game_state_if_unchanged(
+            &mut conn,
+            party_id,
+            state,
+            expected_version,
+            self.clock.now_millis(),
         )
-        .bind(state.to_json())
-        .bind(now)
-        .bind(party_id)
-        .bind(expected_version)
-        .execute(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+    }
 
-        if written.rows_affected() == 0 {
-            return Err(RepositoryError::Conflict(format!(
-                "game state of party {party_id} changed since version {expected_version}"
-            )));
-        }
-        Ok(())
+    async fn parties_past_turn_deadline(&self, now: u64) -> Result<Vec<String>, RepositoryError> {
+        // `turnDeadline` is null unless a timed seat is on turn (`stamp_turn_deadline`)
+        sqlx::query_scalar(
+            "SELECT g.party_id FROM game_state g JOIN parties p ON p.id = g.party_id \
+             WHERE p.status = 'playing' AND json_extract(g.state_json, '$.turnDeadline') <= ?",
+        )
+        .bind(i64::try_from(now).unwrap_or(i64::MAX))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)
     }
 
     async fn save_game_action(&self, action: &GameAction) -> Result<(), RepositoryError> {
@@ -755,6 +873,40 @@ impl PartyRepository for SqlitePartyRepository {
 
 fn db_err(e: sqlx::Error) -> RepositoryError {
     RepositoryError::Database(e.to_string())
+}
+
+/// Write a game state read at `expected_version`, as the next version, the deadline of the
+/// turn under way stamped at `now_ms`: the compare-and-swap of every move
+/// (`update_game_state`) and of an ejection (`replace_player`). One statement, so SQLite
+/// checks the version and writes atomically; `Conflict`, with nothing written, when the
+/// version moved on or the state is gone.
+async fn write_game_state_if_unchanged(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+    state: &GameState,
+    expected_version: i64,
+    now_ms: u64,
+) -> Result<(), RepositoryError> {
+    let mut state = state.clone();
+    state.stamp_turn_deadline(now_ms);
+    let written = sqlx::query(
+        "UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 \
+         WHERE party_id = ? AND version = ?",
+    )
+    .bind(state.to_json())
+    .bind(chrono::Utc::now().timestamp())
+    .bind(party_id)
+    .bind(expected_version)
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    if written.rows_affected() == 0 {
+        return Err(RepositoryError::Conflict(format!(
+            "game state of party {party_id} changed since version {expected_version}"
+        )));
+    }
+    Ok(())
 }
 
 /// Each player of the party with the first round they were eliminated in, by seat: the

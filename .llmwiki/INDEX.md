@@ -28,12 +28,12 @@ Load this file first. Then read only the pages your task touches.
 | Page | Summary | Updated |
 |---|---|---|
 | [[Architecture]] | The four code bases (Rust backend in production, React frontend, Flutter client, native engine), runtime topology, SSE, `data/`, the compose files | 2026-09-27 |
-| [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented | 2026-09-27 |
-| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE broadcaster, bots trigger, versioned game-state writes, the schema and its migrations, the `seed` and `reset-password` commands | 2026-09-27 |
-| [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-27 |
+| [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented, the turn time limit included | 2026-09-28 |
+| [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth, SSE, bots trigger, turn timer, versioned game-state writes, schema and migrations, `seed` and `reset-password` | 2026-09-28 |
+| [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-28 |
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-27 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, Google OAuth, build and tests | 2026-09-27 |
-| [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-27 |
+| [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-28 |
 | [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-27 |
 | [[FlutterRealtime]] | Flutter real-time channel (SSE): parser, two transports, reconnecting `SseClient`, `SseProvider` following the session, presence | 2026-09-27 |
 | [[FlutterParties]] | Flutter parties list, create-party, lobby, back navigation, the app-bar menu (rules sheet, confirmed sign-out, account deletion) | 2026-09-27 |
@@ -49,7 +49,7 @@ Load this file first. Then read only the pages your task touches.
 | Page | Summary | Updated |
 |---|---|---|
 | [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, the four containers, their environment and `data/`, `scripts/deploy_nas.sh`, `--rollback <sha>` | 2026-09-27 |
-| [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-27 |
+| [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-28 |
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-27 |
 | [[ParallelDelivery]] | `master` protection, worktrees, shared browser, scratch directory and `gh` pitfalls, lanes A–D, size count, model routing, merged-not-deployed, cleanup, `wip/`, metrics | 2026-09-27 |
 | [[Release]] | Google Play: package `com.zapzap.app`, the keys' fingerprints, `scripts/verify_aab.sh` and `scripts/play_publish.py` (androidpublisher v3, from this machine only), the service account, versions shipped | 2026-09-27 |

@@ -106,6 +106,21 @@ pub trait PartyRepository: Send + Sync {
         user_id: &str,
     ) -> Result<Option<u8>, RepositoryError>;
 
+    /// The seats of the party's human players, in seat order
+    async fn human_seats(&self, party_id: &str) -> Result<Vec<u8>, RepositoryError>;
+
+    /// Give a late human's seat to a bot (GAME_RULES.md "Turn Time Limit"), in one
+    /// transaction: the game state read at `expected_version` is written as the next
+    /// version by the compare-and-swap of `update_game_state`; the seat changes hands; the
+    /// party's ownership passes on when the human owned it; and the human's result, a
+    /// loss ranked after every seat, is written. `Conflict`, with nothing written, when
+    /// another write of the game state (a move) came in since the read, or the seat is no
+    /// longer the human's.
+    async fn replace_player(
+        &self,
+        replacement: &SeatReplacement<'_>,
+    ) -> Result<(), RepositoryError>;
+
     // ========== Round operations ==========
 
     /// Get round by ID
@@ -144,13 +159,21 @@ pub trait PartyRepository: Send + Sync {
 
     /// Write a game state read at `expected_version` (compare-and-swap), as the next
     /// version. `RepositoryError::Conflict`, with nothing written, when another write
-    /// (a move, a bot move, a forfeit) came in since the read, or the state is gone.
+    /// (a move, a bot move, a forfeit, an ejection) came in since the read, or the state
+    /// is gone.
+    ///
+    /// Both writes stamp the turn's deadline (`GameState::stamp_turn_deadline`) with the
+    /// repository's clock, so every turn that begins gets its deadline as it is stored.
     async fn update_game_state(
         &self,
         party_id: &str,
         state: &GameState,
         expected_version: i64,
     ) -> Result<(), RepositoryError>;
+
+    /// The playing parties whose seat on turn went past its turn deadline at `now` (Unix
+    /// milliseconds)
+    async fn parties_past_turn_deadline(&self, now: u64) -> Result<Vec<String>, RepositoryError>;
 
     // ========== Game action logging ==========
 
@@ -201,6 +224,25 @@ pub trait PartyRepository: Send + Sync {
 pub struct VersionedGameState {
     pub state: GameState,
     pub version: i64,
+}
+
+/// A late human's seat given to a bot: what `PartyRepository::replace_player` writes
+#[derive(Debug, Clone)]
+pub struct SeatReplacement<'a> {
+    pub party_id: &'a str,
+    pub player_index: u8,
+    /// The human who held the seat
+    pub human_id: &'a str,
+    /// The bot who takes it, with its hand and score
+    pub bot_id: &'a str,
+    /// The party's new owner, when the human owned it
+    pub new_owner_id: Option<&'a str>,
+    /// The game state to write: the seat no longer timed
+    pub state: &'a GameState,
+    /// The version `state` was read at
+    pub expected_version: i64,
+    /// The seats of the game: the human ranks after all of them
+    pub seat_count: u8,
 }
 
 /// Round score entry for saving

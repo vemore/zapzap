@@ -65,6 +65,10 @@ pub struct GameStateView {
     // Game end data
     pub game_finished: bool,
     pub winner: Option<WinnerInfoView>,
+    // The turn clock: seconds per turn (0 = no clock), and the deadline of the turn under
+    // way in Unix milliseconds, when the seat on turn is timed
+    pub turn_time_limit: u32,
+    pub turn_deadline: Option<u64>,
 }
 
 /// Get game state use case
@@ -258,6 +262,8 @@ impl<U: UserRepository, P: PartyRepository> GetGameState<U, P> {
                 round_scores: round_scores_map,
                 game_finished,
                 winner,
+                turn_time_limit: gs.turn_clock.limit_secs,
+                turn_deadline: gs.turn_clock.deadline,
             }
         });
 
