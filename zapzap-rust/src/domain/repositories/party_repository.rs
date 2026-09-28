@@ -291,6 +291,8 @@ pub struct PlayerGameResult {
     pub user_id: String,
     pub final_score: u16,
     pub finish_position: u8,
+    /// The rounds the player took part in: up to and including the round they were
+    /// eliminated or ejected in, every round of the game otherwise (`build_game_results`)
     pub rounds_played: u32,
     pub is_winner: bool,
 }

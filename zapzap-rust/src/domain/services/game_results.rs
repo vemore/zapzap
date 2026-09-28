@@ -42,6 +42,10 @@ struct RankedSeat {
 /// eliminated first. Seats left level (same score, or out in the same round, a forfeit
 /// and a score past 100 alike) rank by seat index. The ejected players come after every
 /// seat (`rank_ejected`).
+///
+/// `rounds_played` is the rounds the player took part in: every round of the game for a
+/// seat still in it, up to and including its elimination round for an eliminated seat,
+/// up to and including the round of their ejection for an ejected player.
 pub fn build_game_results(
     state: &GameState,
     seats: impl IntoIterator<Item = (u8, String)>,
@@ -93,7 +97,9 @@ pub fn build_game_results(
             user_id: seat.user_id,
             final_score: seat.score,
             finish_position: (position + 1) as u8,
-            rounds_played: total_rounds,
+            rounds_played: seat
+                .eliminated_in
+                .map_or(total_rounds, |round| round.min(total_rounds)),
         })
         .collect();
     players.extend(rank_ejected(seat_count, ejected));
@@ -170,7 +176,8 @@ mod tests {
         assert_eq!(results.total_rounds, 5);
         assert!(results.players[0].is_winner);
         assert!(results.players[1..].iter().all(|p| !p.is_winner));
-        assert!(results.players.iter().all(|p| p.rounds_played == 5));
+        let rounds: Vec<u32> = results.players.iter().map(|p| p.rounds_played).collect();
+        assert_eq!(rounds, [5, 5, 5, 4, 2]);
         let finals: Vec<u16> = results.players.iter().map(|p| p.final_score).collect();
         assert_eq!(finals, [30, 20, 40, 110, 120]);
     }
@@ -227,6 +234,29 @@ mod tests {
                 ("u3".into(), 4)
             ]
         );
+    }
+
+    #[test]
+    fn test_rounds_played_stop_at_the_round_a_seat_was_eliminated_in() {
+        // A game of 5 rounds: seat 1 went past 100 in round 2, seat 3 in round 4, seat 2
+        // forfeited in the last round (nothing recorded: the current round)
+        let state = state(&[30, 104, 70, 112, 60], &[1, 2, 3], 5);
+        let recorded = [
+            ("u1".to_string(), Some(2)),
+            ("u3".to_string(), Some(4)),
+            ("u2".to_string(), None),
+        ];
+        let results = build_game_results(&state, seats(&[0, 1, 2, 3, 4]), &recorded, &[], 0);
+        let rounds: HashMap<&str, u32> = results
+            .players
+            .iter()
+            .map(|p| (p.user_id.as_str(), p.rounds_played))
+            .collect();
+        assert_eq!(results.total_rounds, 5);
+        // The winner and the survivor played every round
+        assert_eq!((rounds["u0"], rounds["u4"]), (5, 5));
+        // Each eliminated seat, the rounds up to and including its elimination
+        assert_eq!((rounds["u1"], rounds["u3"], rounds["u2"]), (2, 4, 5));
     }
 
     #[test]
