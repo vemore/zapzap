@@ -456,7 +456,7 @@ printf '%s' 'the-new-password' | (cd zapzap-rust && cargo run -- reset-password 
 The new password is read from one line of stdin — never a command-line argument, so it
 never lands in argv, a shell history or a process list — and bcrypt-hashed the way
 registration hashes it. `no such user: <username>` (exit 1) for an unknown username, the
-database untouched. In production: `docker-compose exec -T backend /app/zapzap-backend reset-password <username>` (`.claude/skills/deploy/SKILL.md`).
+database untouched. In production: `docker compose exec -T backend /app/zapzap-backend reset-password <username>` (`.claude/skills/deploy/SKILL.md`).
 
 ### Environment Variables
 

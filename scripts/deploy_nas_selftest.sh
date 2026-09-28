@@ -9,6 +9,11 @@
 # directory holding a real SQLite database, against stubbed `docker`, `docker-compose`,
 # `curl`, `jq` and `sleep` that log their arguments. The logs' order is the assertion.
 #
+# Compose is stubbed twice over one implementation: `docker compose` (v2, what the NAS runs
+# since 2026-09-28) and `docker-compose` (v1). compose_mode picks which of them exist; the
+# host's own docker-compose is kept off PATH, so the stubs are the only Compose there is.
+# The suite runs with v2 alone, then the compose sections run v1 alone, both, and neither.
+#
 # Usage: scripts/deploy_nas_selftest.sh     (exit 0 = every case behaves; the hooks CI job)
 
 set -uo pipefail
@@ -38,6 +43,9 @@ REPO="$SANDBOX/repo"         # the dev machine's checkout
 NAS="$SANDBOX/nas/zapzap"    # the deploy directory
 TOOLS="$SANDBOX/tools"
 LOG="$SANDBOX/calls.log"     # every docker, docker-compose and ssh call, in order
+BINS="$SANDBOX/bins.log"     # every Compose call of a run, as "<v1|v2> <subcommand>"
+ALLBINS="$SANDBOX/allbins.log" # the same, over every run of the suite
+MODE="$SANDBOX/compose.mode" # which Compose exists: v2, v1, both or none (compose_mode)
 STATES="$SANDBOX/states"     # one file per service, holding its container state
 SERVICES="$SANDBOX/services" # what `docker-compose config --services` answers
 FAILS="$SANDBOX/fails"       # one file per failing step: build, push, pull, down, up, config,
@@ -88,13 +96,25 @@ case "\$1" in
         for a in "\$@"; do last=\$a; done
         svc=\${last#cid-}
         if [ -f "$STATES/\$svc" ]; then cat "$STATES/\$svc"; else echo healthy; fi ;;
+    compose)                                # the v2 plugin, when compose_mode has it
+        case "\$(cat "$MODE")" in
+            v2|both) shift; exec "$SANDBOX/compose-stub" v2 "\$@" ;;
+        esac
+        echo "docker: 'compose' is not a docker command." >&2
+        exit 1 ;;
 esac
 exit 0
 EOF
-cat > "$TOOLS/docker-compose" <<EOF
+# Compose, v1 or v2 (\$1). v2 lists only running containers unless \`ps -a\`, as the real one
+# does: a Created or Exited container is invisible to a plain \`ps -q\`.
+cat > "$SANDBOX/compose-stub" <<EOF
 #!/bin/sh
+bin=\$1; shift
+file=
 [ "\$1" = -f ] && { file=\$2; shift 2; }
+echo "\$bin \$1" >> "$BINS"
 case "\$1" in
+    version) if [ "\$bin" = v2 ]; then echo 5.5.1; else echo 1.29.2; fi ;;
     pull|down|up) echo "compose[\$file] \$*" >> "$LOG"
                   [ -f "$FAILS/\$1" ] && exit 1 ;;
     config)
@@ -104,10 +124,23 @@ case "\$1" in
         fi
         cat "$SERVICES" ;;
     port) echo 0.0.0.0:80 ;;
-    ps)   [ "\$2" = -q ] && echo "cid-\$3" ;;
+    ps)
+        shift
+        all=0 quiet=0 svc=
+        for a in "\$@"; do
+            case "\$a" in -a|--all) all=1 ;; -q|--quiet) quiet=1 ;; *) svc=\$a ;; esac
+        done
+        [ "\$quiet" = 1 ] || exit 0
+        state=healthy
+        [ -f "$STATES/\$svc" ] && state=\$(cat "$STATES/\$svc")
+        if [ "\$bin" = v2 ] && [ "\$all" = 0 ]; then
+            case "\$state" in created|exited|dead) exit 0 ;; esac
+        fi
+        echo "cid-\$svc" ;;
 esac
 exit 0
 EOF
+chmod +x "$SANDBOX/compose-stub"
 cat > "$TOOLS/python3" <<EOF
 #!/bin/sh
 if [ -f "$FAILS/backup" ]; then echo "sqlite3.OperationalError: database is locked" >&2; exit 1; fi
@@ -128,6 +161,32 @@ printf '#!/bin/sh\nexit 0\n' > "$TOOLS/sleep"
 printf '#!/bin/sh\ncat >/dev/null 2>&1 || true\nexit 0\n' > "$TOOLS/jq"
 chmod +x "$TOOLS"/*
 
+# Which Compose the NAS has: v2 (\`docker compose\`), v1 (\`docker-compose\`), both, none.
+compose_mode() {
+    echo "$1" > "$MODE"
+    rm -f "$TOOLS/docker-compose"
+    case "$1" in
+        v1|both) printf '#!/bin/sh\nexec "%s" v1 "$@"\n' "$SANDBOX/compose-stub" > "$TOOLS/docker-compose"
+                 chmod +x "$TOOLS/docker-compose" ;;
+    esac
+}
+compose_mode v2
+# The caller's PATH, each directory holding a docker-compose replaced by a copy of it
+# without one (symbolic links): only compose_mode decides whether docker-compose exists.
+RUNPATH=""
+n=0
+IFS=: read -ra path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do
+    [ -n "$d" ] && [ -d "$d" ] || continue
+    if [ -e "$d/docker-compose" ]; then
+        n=$((n + 1))
+        mkdir -p "$SANDBOX/path/$n"
+        ln -s "$d"/* "$SANDBOX/path/$n/" 2>/dev/null
+        rm -f "$SANDBOX/path/$n/docker-compose"
+        d="$SANDBOX/path/$n"
+    fi
+    RUNPATH="$RUNPATH${RUNPATH:+:}$d"
+done
 services() { printf '%s\n' "$@" > "$SERVICES"; }
 unhealthy() { rm -f "$STATES"/*; [ $# -eq 0 ] || echo "$2" > "$STATES/$1"; }
 site() { printf '#!/bin/sh\nexit %s\n' "$1" > "$TOOLS/curl"; chmod +x "$TOOLS/curl"; }
@@ -143,10 +202,13 @@ run() {  # [NAME=value ...] [-- script arguments]
         vars+=("$1"); shift
     done
     : > "$LOG"
+    : > "$BINS"
     out=$(cd "$REPO" && env -u REGISTRY -u NAS_SSH -u NAS_DEPLOY_DIR -u PUBLIC_URL \
-        -u VITE_GOOGLE_OAUTH_CLIENT_ID PATH="$TOOLS:$PATH" DEPLOY_DATA_UID="$(id -u)" \
+        -u VITE_GOOGLE_OAUTH_CLIENT_ID PATH="$TOOLS:$RUNPATH" DEPLOY_DATA_UID="$(id -u)" \
         "${vars[@]}" scripts/deploy_nas.sh "${args[@]}" 2>&1)
-    return $?
+    local rc=$?
+    cat "$BINS" >> "$ALLBINS"
+    return $rc
 }
 CONF=(REGISTRY=reg.test:5050 NAS_SSH=nas NAS_DEPLOY_DIR="$NAS" VITE_GOOGLE_OAUTH_CLIENT_ID=client-id)
 deploy() { run "${CONF[@]}" "$@"; }
@@ -157,6 +219,9 @@ builds() { grep -c '^docker build' "$LOG"; }
 pushes() { grep -c '^docker push' "$LOG"; }
 image_tags() { sed -nE 's#^[[:space:]]*image:[[:space:]]*(.*)$#\1#p' "$NAS/compose.yaml" | tr '\n' ' ' | sed 's/ $//'; }
 backups() { find "$NAS/data" -name 'zapzap.db.bak-*' | wc -l | tr -d ' '; }
+# Which Compose the last run called (\"v2\", \"v1\", \"v1 v2\"), and its subcommands.
+bins() { cut -d' ' -f1 "$BINS" | sort -u | tr '\n' ' ' | sed 's/ $//'; }
+verbs() { cut -d' ' -f2 "${1:-$BINS}" | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 pinned() { printf 'reg.test:5050/zapzap-backend:%s reg.test:5050/zapzap-frontend:%s reg.test:5050/zapzap-frontend-flutter:%s reg.test:5050/zapzap-proxy:%s' "$1" "$1" "$1" "$1"; }
 commit_compose() {  # message, marker: a commit whose docker-compose.prod.yml carries the marker
     sed -i '/^# marker-/d' "$REPO/docker-compose.prod.yml"
@@ -355,6 +420,15 @@ failing up
 deploy; rc=$?
 report "a failing up exits 1"                   1 "$rc"
 has "saying production is down"                 "production is DOWN"
+# Compose v2 fails `up -d` on an unhealthy depends_on and leaves the proxy in Created,
+# which its plain `ps` does not list.
+unhealthy nginx created
+deploy; rc=$?
+report "an up -d that leaves the proxy in Created exits 1" 1 "$rc"
+has "naming the proxy in its state, not 'no container'" "nginx(created)"
+has "with its logs"                             "last 30 lines of nginx"
+has "and the way back"                          "docker start zapzap-proxy"
+unhealthy
 failing
 unhealthy backend restarting
 deploy; rc=$?
@@ -466,6 +540,70 @@ report "a deploy with many stored composes"     0 "$rc"
 report "keeps the last 10"                      10 "$(find "$NAS/composes" -name 'compose.*.yaml' | wc -l | tr -d ' ')"
 report "the one just deployed among them"       kept "$([ -e "$NAS/composes/compose.$(tag_of).yaml" ] && echo kept || echo gone)"
 report "and drops the oldest"                   gone "$([ -e "$NAS/composes/compose.old1.yaml" ] && echo kept || echo gone)"
+
+echo "== compose v2: every call of the suite above ==================="
+report "went through docker compose, never docker-compose" 0 "$(grep -c '^v1 ' "$ALLBINS")"
+report "config, down, logs, port, ps, pull, up and version among them" \
+    "config down logs port ps pull up version" "$(verbs "$ALLBINS")"
+failing
+deploy; rc=$?
+report "a v2 deploy exits 0"                    0 "$rc"
+has "naming the Compose it uses"                "Compose: docker compose 5.5.1"
+report "and calls only it"                      v2 "$(bins)"
+rollback "$TAG_A"; rc=$?
+report "a v2 rollback exits 0"                  0 "$rc"
+report "pulls, then down, then up"              "pull|down --remove-orphans|up -d" "$(steps)"
+report "through docker compose only"            v2 "$(bins)"
+
+echo "== compose v1 (docker-compose only) ============================"
+compose_mode v1
+git -C "$REPO" commit -q --allow-empty -m v1
+deploy; rc=$?
+report "a deploy with docker-compose alone exits 0" 0 "$rc"
+has "naming the Compose it uses"                "Compose: docker-compose 1.29.2"
+report "pulls, then down, then up"              "pull|down --remove-orphans|up -d" "$(steps)"
+report "every compose call through docker-compose" v1 "$(bins)"
+report "config, down, port, ps, pull, up and version" "config down port ps pull up version" "$(verbs)"
+failing config
+deploy; rc=$?
+report "a compose file docker-compose cannot read is refused" 1 "$rc"
+has "naming docker-compose"                     "docker-compose cannot read the compose file"
+failing
+unhealthy backend restarting
+deploy; rc=$?
+report "the v1 health wait still names an unhealthy backend" 1 "$rc"
+has "in its state"                              "backend(restarting)"
+report "its ps and logs through docker-compose" v1 "$(bins)"
+unhealthy
+git -C "$REPO" commit -q --allow-empty -m v1-down
+failing down
+deploy; rc=$?
+report "a failing v1 down exits 1"              1 "$rc"
+has "naming the command that failed"            "\`docker-compose down\` FAILED"
+report "and restarts the running file"          "pull|down --remove-orphans|up -d" "$(steps)"
+report "through docker-compose"                 v1 "$(bins)"
+failing
+rollback "$TAG_B"; rc=$?
+report "a v1 rollback exits 0"                  0 "$rc"
+report "every image pinned to B"                "$(pinned "$TAG_B")" "$(image_tags)"
+report "through docker-compose only"            v1 "$(bins)"
+
+echo "== compose: both, neither ====================================="
+compose_mode both
+deploy; rc=$?
+report "with both, a deploy exits 0"            0 "$rc"
+report "and calls docker compose only"          v2 "$(bins)"
+has "saying so"                                 "Compose: docker compose 5.5.1"
+compose_mode none
+deploy; rc=$?
+report "with no Compose on the NAS, a deploy is refused" 1 "$rc"
+has "naming both"                               "neither \`docker compose\`"
+report "before anything is built"               0 "$(builds)"
+report "or stopped"                             "" "$(steps)"
+rollback "$TAG_A"; rc=$?
+report "and a rollback too"                     1 "$rc"
+report "stopping nothing"                       "" "$(steps)"
+compose_mode v2
 
 echo "== wiring ====================================================="
 report "deploy_nas.sh is executable"            yes "$([ -x "$ROOT/scripts/deploy_nas.sh" ] && echo yes || echo no)"
