@@ -122,6 +122,13 @@ fn create_party_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
                 auth_middleware,
             )),
         )
+        .route(
+            "/:partyId/fill-and-start",
+            post(party::fill_and_start).layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            )),
+        )
         .with_state(state)
 }
 

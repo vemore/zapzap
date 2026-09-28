@@ -2,8 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/party.dart';
+import '../models/bot.dart';
 import '../utils/app_theme.dart';
-import 'player_slot_selector.dart';
+
+/// A bot difficulty, localised; an unknown one (`ml`, `drl`) shows the
+/// backend's own word.
+String botDifficultyLabel(AppLocalizations l10n, String difficulty) =>
+    switch (difficulty) {
+      'easy' => l10n.botDifficultyEasy,
+      'medium' => l10n.botDifficultyMedium,
+      'hard' => l10n.botDifficultyHard,
+      'hard_vince' => l10n.botDifficultyHardVince,
+      'llm' => l10n.botDifficultyLlm,
+      'thibot' => l10n.botDifficultyThibot,
+      _ => difficulty,
+    };
 
 /// The green of "online" and of a waiting party, as the parties list's
 /// "Joined" (`PartyCard.joined`).
@@ -156,20 +169,41 @@ class PlayerSeatTile extends StatelessWidget {
   }
 }
 
-/// A seat nobody holds yet. There is no "add a bot" here: neither backend
-/// can seat a bot in a party that exists, so [showInviteHint] points at the
-/// invite code above instead.
+/// A seat nobody holds yet. For the host ([onAddBot] given) it carries « Ajouter
+/// un bot », a menu of [botDifficulties]: one whose bots all sit elsewhere
+/// ([availableBots] 0) is shown disabled, "none available". [showInviteHint]
+/// points at the invite code above.
 class EmptySeatTile extends StatelessWidget {
-  const EmptySeatTile({super.key, this.showInviteHint = false});
+  const EmptySeatTile({
+    super.key,
+    this.showInviteHint = false,
+    this.onAddBot,
+    this.availableBots,
+    this.enabled = true,
+    this.addBotKey,
+  });
 
   final bool showInviteHint;
+
+  /// Seats a bot of the difficulty picked; `null` hides the button.
+  final void Function(String difficulty)? onAddBot;
+
+  /// How many bots of a difficulty are free to sit here.
+  final int Function(String difficulty)? availableBots;
+
+  /// `false` while another lobby action runs.
+  final bool enabled;
+
+  /// The key of the « Ajouter un bot » button.
+  final Key? addBotKey;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final onAddBot = this.onAddBot;
     return Container(
       constraints: const BoxConstraints(minHeight: 44),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         border: Border.all(color: AppColors.slate600),
         borderRadius: BorderRadius.circular(12),
@@ -179,26 +213,91 @@ class EmptySeatTile extends StatelessWidget {
           const Icon(Icons.person_outline, size: 18, color: AppColors.slate400),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.lobbyEmptySlot,
-                  style: const TextStyle(color: AppColors.slate400),
-                ),
-                if (showInviteHint)
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    l10n.lobbyEmptySlotHint,
-                    style: const TextStyle(
-                      color: AppColors.slate400,
-                      fontSize: 12,
-                    ),
+                    l10n.lobbyEmptySlot,
+                    style: const TextStyle(color: AppColors.slate400),
                   ),
-              ],
+                  if (showInviteHint)
+                    Text(
+                      l10n.lobbyEmptySlotHint,
+                      style: const TextStyle(
+                        color: AppColors.slate400,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
+          if (onAddBot != null)
+            Flexible(
+              // At the seat's right edge, however narrow the button is
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: PopupMenuButton<String>(
+                  key: addBotKey,
+                  enabled: enabled,
+                  tooltip: l10n.lobbyAddBot,
+                  onSelected: onAddBot,
+                  itemBuilder: (context) => [
+                    for (final difficulty in botDifficulties)
+                      _difficultyItem(l10n, difficulty),
+                  ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.smart_toy_outlined,
+                          size: 18,
+                          color: enabled
+                              ? AppColors.amber400
+                              : AppColors.slate600,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            l10n.lobbyAddBot,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: enabled
+                                  ? AppColors.amber400
+                                  : AppColors.slate600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  PopupMenuItem<String> _difficultyItem(
+    AppLocalizations l10n,
+    String difficulty,
+  ) {
+    final free = (availableBots?.call(difficulty) ?? 0) > 0;
+    final label = botDifficultyLabel(l10n, difficulty);
+    return PopupMenuItem(
+      key: Key('add-bot-$difficulty'),
+      value: difficulty,
+      enabled: free,
+      child: Text(free ? label : l10n.lobbyAddBotUnavailable(label)),
     );
   }
 }

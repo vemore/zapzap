@@ -70,6 +70,26 @@ class PartyRepository {
   Future<StartPartyResult> start(String partyId) async =>
       StartPartyResult.fromJson(await _api.post('/party/$partyId/start'));
 
+  /// `POST /party/:id/bots` (owner only, waiting): seats [botId] on the
+  /// lowest free seat → 409 `PARTY_FULL`, 409 `ALREADY_IN_PARTY`.
+  Future<void> addBot(String partyId, String botId) async {
+    await _api.post('/party/$partyId/bots', body: {'botId': botId});
+  }
+
+  /// `POST /party/:id/fill-and-start` (owner only, waiting): every free seat
+  /// gets a bot of [difficulty] (one of [fillDifficulties]; the next levels
+  /// when it runs out), then the party starts → 409 `NOT_ENOUGH_BOTS`, 409
+  /// `PARTY_STARTED`.
+  Future<StartPartyResult> fillAndStart(
+    String partyId,
+    String difficulty,
+  ) async => StartPartyResult.fromJson(
+    await _api.post(
+      '/party/$partyId/fill-and-start',
+      body: {'difficulty': difficulty},
+    ),
+  );
+
   /// `DELETE /party/:id` → 403 `NOT_AUTHORIZED`.
   Future<void> delete(String partyId) async {
     await _api.delete('/party/$partyId');

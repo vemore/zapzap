@@ -11,12 +11,11 @@ import '../utils/app_theme.dart';
 import '../utils/field_touch.dart';
 import '../utils/navigation.dart';
 import '../widgets/error_banner.dart';
-import '../widgets/player_slot_selector.dart';
 import '../widgets/zapzap_app_bar.dart';
 
-/// The create-party form (`CreateParty.jsx`): a name, the number of seats,
-/// the visibility, and one selector per seat — a human, or a bot of a
-/// difficulty. The creator always holds the first seat. The name shows its
+/// The create-party form (`CreateParty.jsx`): a name, the number of seats
+/// and the visibility. The creator holds the first seat; the others wait in
+/// the lobby for players, or for bots the host adds there. The name shows its
 /// refusal once edited and left, or on submit ([FieldTouch]), never on a
 /// form that just opened; Create stays active and says what is missing.
 class CreatePartyScreen extends StatefulWidget {
@@ -36,7 +35,7 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
   @override
   void initState() {
     super.initState();
-    _create = CreatePartyProvider(context.read<PartyRepository>())..loadBots();
+    _create = CreatePartyProvider(context.read<PartyRepository>());
     _name.addListener(() => setState(() {}));
   }
 
@@ -172,42 +171,24 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            Text(
-              l10n.createPartySlotsTitle,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Card(
-              color: AppColors.slate700,
-              margin: const EdgeInsets.only(bottom: 8),
-              shape: RoundedRectangleBorder(
-                side: const BorderSide(color: AppColors.amber400),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.person, color: AppColors.amber400),
-                title: Text(l10n.createPartySlotOwner),
-                trailing: Text(
-                  l10n.createPartyOwnerBadge,
-                  style: const TextStyle(color: AppColors.amber400),
+            const SizedBox(height: 16),
+            Row(
+              key: const Key('create-seats-hint'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.smart_toy_outlined,
+                  size: 18,
+                  color: AppColors.slate400,
                 ),
-              ),
-            ),
-            for (var index = 0; index < _create.slots.length; index++)
-              PlayerSlotSelector(
-                index: index,
-                slot: _create.slots[index],
-                enabled: !_create.busy,
-                availableBots: (difficulty) =>
-                    _create.availableBots(index, difficulty),
-                onHuman: () => _create.setSlotHuman(index),
-                onBot: (difficulty) => _create.setSlotBot(index, difficulty),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              l10n.createPartySummary(_create.humanCount, _create.botCount),
-              style: const TextStyle(color: AppColors.slate400),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n.createPartySeatsHint,
+                    style: const TextStyle(color: AppColors.slate400),
+                  ),
+                ),
+              ],
             ),
             if (_create.error != null) ...[
               const SizedBox(height: 16),

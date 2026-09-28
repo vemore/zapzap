@@ -198,7 +198,36 @@ class FakeLobbyBackend {
       }
       return _json(details!);
     }
-    if (path.endsWith('/start')) {
+    // Add-bot seats the bot on the lowest free seat of [details], so the
+    // reload that follows shows it, as the backend's would.
+    if (RegExp(r'^/api/party/[^/]+/bots$').hasMatch(path) &&
+        request.method == 'POST') {
+      final botId = (jsonDecode(request.body) as Map)['botId'];
+      final bot = bots.firstWhere((bot) => bot['id'] == botId);
+      final players = [...(details!['players'] as List).cast<JsonMap>()];
+      final taken = {for (final player in players) player['playerIndex']};
+      var seat = 0;
+      while (taken.contains(seat)) {
+        seat++;
+      }
+      players.add(
+        partyPlayerJson(
+          userId: botId as String,
+          username: bot['username'] as String,
+          playerIndex: seat,
+          userType: 'bot',
+          botDifficulty: bot['botDifficulty'] as String,
+        ),
+      );
+      details = {...details!, 'players': players};
+      return _json({
+        'success': true,
+        'party': {'id': 'p1', 'name': 'Fixture party', 'status': 'waiting'},
+        'bot': bot,
+        'playerIndex': seat,
+      }, 201);
+    }
+    if (path.endsWith('/start') || path.endsWith('/fill-and-start')) {
       return _json({
         'success': true,
         'party': {'id': createdPartyId, 'status': 'playing'},

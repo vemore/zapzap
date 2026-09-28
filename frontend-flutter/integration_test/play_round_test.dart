@@ -1,7 +1,8 @@
 // End to end: the real client against a live backend — no fake, no fixture.
 //
-// Registers a fresh user, creates a party of three with two easy bots, starts
-// it and plays until the round ends — four cards when the hand size is this
+// Registers a fresh user, creates a party of three, seats an easy bot by hand
+// and fills the last seat as the game starts (« Compléter avec des bots et
+// commencer »), then plays until the round ends — four cards when the hand size is this
 // player's to pick, the suggestion that takes the most points off the hand, a
 // draw from the deck, ZapZap as soon as the hand allows it — then checks the
 // end-of-round screen. Shedding the most points each turn brings the hand to
@@ -71,22 +72,10 @@ void main() {
     await pumpUntil(tester, find.byKey(const Key('create-party')));
     log('registered $username');
 
-    // Create a party of three: this player and two easy bots.
+    // Create a party of three: the form asks for the seats only.
     await tap(tester, find.byKey(const Key('create-party')));
     await pumpUntil(tester, find.byKey(const Key('party-name')));
     await chooseOption(tester, find.byKey(const Key('player-count')), '3');
-    await pumpUntil(tester, find.byKey(const Key('slot-1')));
-    await chooseOption(
-      tester,
-      find.byKey(const Key('slot-0-type')),
-      'Bot — Facile',
-    );
-    await chooseOption(
-      tester,
-      find.byKey(const Key('slot-1-type')),
-      'Bot — Facile',
-    );
-    expect(find.text('Humains : 1 · Bots : 2'), findsOneWidget);
     // The name last: on the web, a focused text field swallows the next tap,
     // and a dropdown tapped then never opens.
     await tester.enterText(
@@ -97,12 +86,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tap(tester, find.byKey(const Key('create-submit')));
 
-    // The lobby: the bots are seated, the owner starts.
-    final start = find.byKey(const Key('start-party'));
-    await pumpUntil(tester, start);
-    await pumpUntilTrue(tester, () => isEnabled(tester, start));
-    log('lobby full, starting');
-    await tap(tester, start);
+    // The lobby: one easy bot seated by hand, on the first free seat.
+    final addBot = find.byKey(const Key('empty-seat-0-add-bot'));
+    await pumpUntil(tester, addBot);
+    await tap(tester, addBot);
+    await pumpUntil(tester, find.byKey(const Key('add-bot-easy')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tap(tester, find.byKey(const Key('add-bot-easy')));
+    await pumpUntil(tester, find.text('Joueurs (2/3)'));
+    log('one bot seated');
+
+    // Then the last seat filled with an easy bot as the game starts.
+    await tap(tester, find.byKey(const Key('fill-and-start')));
+    await pumpUntil(tester, find.byKey(const Key('fill-level-easy')));
+    await tap(tester, find.byKey(const Key('fill-level-easy')));
+    await tap(tester, find.byKey(const Key('fill-confirm')));
+    log('filled and started');
 
     // The board.
     await pumpUntil(

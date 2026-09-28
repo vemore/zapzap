@@ -2763,6 +2763,247 @@ async fn test_add_bot_past_player_count_is_409_party_full() {
     assert_error(status, &body, StatusCode::CONFLICT, "PARTY_FULL");
 }
 
+/// Save a bot of `difficulty` straight into the repository; returns its id
+async fn create_bot_of(state: &AppState, username: &str, difficulty: BotDifficulty) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let bot = User::new_bot(id.clone(), username.to_string(), difficulty);
+    state.user_repo.save(&bot).await.unwrap();
+    id
+}
+
+/// The seats of a party as `GET /party/:id` lists them: (user id, player index)
+async fn seats_of(app: &mut Router, party_id: &str, token: &str) -> Vec<(String, u64)> {
+    let (status, details) = get_auth(app, &format!("/api/party/{party_id}"), token).await;
+    assert_eq!(status, StatusCode::OK, "{details}");
+    details["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["userId"].as_str().unwrap().to_string(),
+                p["playerIndex"].as_u64().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn test_fill_and_start_seats_distinct_bots_then_starts() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, owner_id) = register(&mut app, "fill_owner").await;
+    let (guest, guest_id) = register(&mut app, "fill_guest").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Fill me", 6).await;
+    let (status, _) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &guest,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // Two medium bots, one of them already seated: the three other seats take the
+    // other medium, then the next level up (hard), then the one after (thibot)
+    let seated_medium = create_bot_of(&state, "fill_medium_a", BotDifficulty::Medium).await;
+    let free_medium = create_bot_of(&state, "fill_medium_b", BotDifficulty::Medium).await;
+    let hard = create_bot_of(&state, "fill_hard", BotDifficulty::Hard).await;
+    let thibot = create_bot_of(&state, "fill_thibot", BotDifficulty::Thibot).await;
+    let easy = create_bot_of(&state, "fill_easy", BotDifficulty::Easy).await;
+    let (status, _) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/bots"),
+        json!({"botId": seated_medium}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mut receiver = state.event_sender.new_receiver();
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/fill-and-start"),
+        json!({"difficulty": "medium"}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["success"], true);
+    assert_eq!(body["party"]["status"], "playing");
+    assert_eq!(body["round"]["roundNumber"], 1);
+    let filled: Vec<&str> = body["bots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        filled,
+        vec![free_medium.as_str(), hard.as_str(), thibot.as_str()]
+    );
+
+    // Every seat taken, nobody twice, seats 0..n-1; the easy bot was not needed
+    let seats = seats_of(&mut app, &party_id, &owner).await;
+    assert_eq!(seats.len(), 6);
+    let mut users: Vec<&str> = seats.iter().map(|(u, _)| u.as_str()).collect();
+    users.sort();
+    users.dedup();
+    assert_eq!(users.len(), 6, "a user seated twice: {seats:?}");
+    for id in [
+        &owner_id,
+        &guest_id,
+        &seated_medium,
+        &free_medium,
+        &hard,
+        &thibot,
+    ] {
+        assert!(users.contains(&id.as_str()), "{id} not seated");
+    }
+    assert!(!users.contains(&easy.as_str()));
+    let mut indexes: Vec<u64> = seats.iter().map(|(_, i)| *i).collect();
+    indexes.sort();
+    assert_eq!(indexes, (0..6).collect::<Vec<u64>>());
+
+    // The game is dealt for six
+    let (status, game) = get_auth(&mut app, &format!("/api/game/{party_id}/state"), &owner).await;
+    assert_eq!(status, StatusCode::OK, "{game}");
+    assert_eq!(game["players"].as_array().unwrap().len(), 6);
+
+    // One playerJoined per seated bot, then partyStarted
+    let mut actions = Vec::new();
+    while let Ok(event) = receiver.try_recv() {
+        if event.party_id.as_deref() == Some(party_id.as_str()) {
+            actions.push(event.action.unwrap_or_default());
+        }
+    }
+    assert_eq!(
+        actions,
+        vec![
+            "playerJoined",
+            "playerJoined",
+            "playerJoined",
+            "partyStarted"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn test_fill_and_start_falls_back_downwards_from_the_top() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "fillhard_owner").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Fill hard", 3).await;
+    // No hard bot at all, no stronger one: the fill goes down to medium, then easy
+    let medium = create_bot_of(&state, "fillhard_medium", BotDifficulty::Medium).await;
+    let easy = create_bot_of(&state, "fillhard_easy", BotDifficulty::Easy).await;
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/fill-and-start"),
+        json!({"difficulty": "hard"}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["bots"][0]["id"], medium.as_str());
+    assert_eq!(body["bots"][1]["id"], easy.as_str());
+    assert_eq!(body["bots"][1]["botDifficulty"], "easy");
+}
+
+#[tokio::test]
+async fn test_fill_and_start_refusals_change_nothing() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "fillno_owner").await;
+    let (member, _) = register(&mut app, "fillno_member").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Fill refused", 5).await;
+    post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &member,
+    )
+    .await;
+    let path = format!("/api/party/{party_id}/fill-and-start");
+    for i in 0..2 {
+        create_bot_of(&state, &format!("fillno_easy_{i}"), BotDifficulty::Easy).await;
+    }
+
+    // An unknown or missing level
+    for body in [
+        json!({}),
+        json!({"difficulty": "thibot"}),
+        json!({"difficulty": 3}),
+    ] {
+        let (status, answer) = post_json_auth(&mut app, &path, body, &owner).await;
+        assert_error(
+            status,
+            &answer,
+            StatusCode::BAD_REQUEST,
+            "INVALID_DIFFICULTY",
+        );
+    }
+
+    // Not the owner
+    let (status, body) =
+        post_json_auth(&mut app, &path, json!({"difficulty": "easy"}), &member).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "NOT_OWNER");
+
+    // Three free seats, two bots in the whole database: nothing is seated
+    let (status, body) =
+        post_json_auth(&mut app, &path, json!({"difficulty": "easy"}), &owner).await;
+    assert_error(status, &body, StatusCode::CONFLICT, "NOT_ENOUGH_BOTS");
+    assert_eq!(seats_of(&mut app, &party_id, &owner).await.len(), 2);
+
+    let (status, body) = post_json_auth(
+        &mut app,
+        "/api/party/nope/fill-and-start",
+        json!({"difficulty": "easy"}),
+        &owner,
+    )
+    .await;
+    assert_error(status, &body, StatusCode::NOT_FOUND, "PARTY_NOT_FOUND");
+
+    // A started party
+    let (started_id, tokens) = started_party(&mut app, "fillno_started").await;
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{started_id}/fill-and-start"),
+        json!({"difficulty": "easy"}),
+        &tokens[0],
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "PARTY_STARTED");
+
+    // Without a token
+    let (status, _) = post_json(&mut app, &path, json!({"difficulty": "easy"})).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_fill_and_start_on_a_full_table_only_starts() {
+    let (mut app, _state) = create_test_app_with_state().await;
+    let (owner, _) = register(&mut app, "fillfull_owner").await;
+    let party_id = create_party_with_seats(&mut app, &owner, "Full already", 3).await;
+    for name in ["fillfull_b", "fillfull_c"] {
+        let (token, _) = register(&mut app, name).await;
+        post_json_auth(
+            &mut app,
+            &format!("/api/party/{party_id}/join"),
+            json!({}),
+            &token,
+        )
+        .await;
+    }
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/fill-and-start"),
+        json!({"difficulty": "easy"}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["bots"], json!([]));
+    assert_eq!(body["party"]["status"], "playing");
+}
+
 #[tokio::test]
 async fn test_create_party_player_count_validation() {
     let mut app = create_test_app().await;
