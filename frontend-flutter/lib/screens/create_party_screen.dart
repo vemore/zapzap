@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import '../models/party.dart';
 import '../providers/create_party_provider.dart';
 import '../providers/party_provider.dart';
 import '../repositories/party_repository.dart';
@@ -10,11 +11,12 @@ import '../router.dart';
 import '../utils/app_theme.dart';
 import '../utils/field_touch.dart';
 import '../utils/navigation.dart';
+import '../utils/turn_timer.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/zapzap_app_bar.dart';
 
-/// The create-party form (`CreateParty.jsx`): a name, the number of seats
-/// and the visibility. The creator holds the first seat; the others wait in
+/// The create-party form (`CreateParty.jsx`): a name, the number of seats,
+/// the visibility and the time per turn. The creator holds the first seat; the others wait in
 /// the lobby for players, or for bots the host adds there. The name shows its
 /// refusal once edited and left, or on submit ([FieldTouch]), never on a
 /// form that just opened; Create stays active and says what is missing.
@@ -169,6 +171,34 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
                   l10n.createPartyVisibilityPrivate,
                   overflow: TextOverflow.ellipsis,
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Always offered: who will be human is only known in the lobby.
+            // The backend runs the clock only for a game that starts with
+            // two humans or more, which the helper says.
+            DropdownButtonFormField<int>(
+              key: const Key('turn-time-limit'),
+              initialValue: _create.turnTimeLimit,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: l10n.createPartyTurnTimerLabel,
+                helperText: l10n.createPartyTurnTimerHelper,
+                helperMaxLines: 4,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: _create.busy
+                  ? null
+                  : (value) {
+                      if (value != null) _create.setTurnTimeLimit(value);
+                    },
+              items: [
+                for (final seconds in turnTimeLimits)
+                  DropdownMenuItem(
+                    key: Key('turn-time-limit-$seconds'),
+                    value: seconds,
+                    child: Text(l10n.turnTimeLimitText(seconds)),
+                  ),
               ],
             ),
             const SizedBox(height: 16),

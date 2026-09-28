@@ -68,8 +68,13 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   count (3–8, clamped), the visibility, the name. **No human or bot per seat** (since
   2026-09-28): the creator takes seat 0, the others are filled in the lobby, by players or
   by the host's bots; a line under the settings says so (`create-seats-hint`,
-  `createPartySeatsHint`). `POST /party` sends `{name, visibility, settings.playerCount,
-  botIds: []}` and the form never calls `GET /bots`.
+  `createPartySeatsHint`). **The time per turn** (`turn-time-limit`, items
+  `turn-time-limit-<s>`): « Sans limite » (the default), 30 s, 1 min, 2 min
+  (`turnTimeLimits`; `TurnTimerL10n.turnTimeLimitText`, `utils/turn_timer.dart`), offered
+  on every form — creation does not know who will be human — with a helper saying the
+  clock counts only when two humans or more start the game and a late player is replaced by
+  a bot (`GAME_RULES.md` "Turn Time Limit"). `POST /party` sends `{name, visibility,
+  settings: {playerCount, turnTimeLimit}, botIds: []}` and the form never calls `GET /bots`.
   The name is 3 to 50 characters once trimmed (`partyNameMinLength`/`MaxLength`), as the
   backend requires: Create stays active, and a name
   too short shows its reason once the field was edited and left or Create tapped
@@ -97,7 +102,8 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
 - **The lobby screen** (`screens/party_lobby_screen.dart`, S1–S4 of the UX study) opens on
   the invite code (`party.inviteCode`), 26 px mono amber with a
   Copy button (clipboard, then a snack bar); then the settings as one `Wrap` of chips
-  (`InfoChip`, `widgets/player_seat_tile.dart`): seats, "you host", the
+  (`InfoChip`, `widgets/player_seat_tile.dart`): seats, the time per turn when one is set
+  (`lobby-turn-timer`, « 30 s par tour »; none when off), "you host", the
   status (no hand size: the starting player picks it each round, `GAME_RULES.md`). A seat (`PlayerSeatTile`) shows a green "online" dot for a human the session
   knows is connected — the signed-in player, or one in `ConnectedPlayersProvider`, which
   holds five at most, so no dot means "not known", never "offline" —, a bot's level as an
@@ -138,7 +144,7 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   (`showRulesSheet`, `RulesSheet`, key `rules-sheet`) — a modal bottom sheet over the
   current screen, at 60 % of its height (dragged up to 90 %), so the table stays in sight;
   a short summary of `GAME_RULES.md` in the `rules*` ARB strings (goal, the round, card
-  values, the turn, valid plays, ZapZap at 5 points or less, the counteract penalty,
+  values, the turn, the time per turn, valid plays, ZapZap at 5 points or less, the counteract penalty,
   elimination above 100 points, the Golden Score): **a rule change updates those strings
   too**. The entries that open something over the screen rather than lead to a route are
   ids in `_NavigationMenu`'s `overlays` map (`rules`, `logout`, `delete-account`); a new
@@ -251,3 +257,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   the old selector, but only three levels in the fill dialog, as asked; its fallback to
   the next level is the backend's. The end-to-end test (`integration_test/play_round_test.dart`)
   seats one bot by hand and fills the last seat.
+- **The time per turn at creation (2026-09-28, `feat/turn-timer-flutter`).** Offered on
+  every form, not only with two human seats as first decided: since the lobby fills seats
+  with bots, creation no longer knows who will be human (user decision, 2026-09-28), and the
+  backend enforces the limit only when two humans or more start. A dropdown like the seat
+  count rather than four chips: it keeps the form one field per setting, and its helper
+  line carries the condition. 60 s reads « 1 min », as `GAME_RULES.md` names it. The rules
+  sheet's section sits after "Ton tour", the rule it limits. `PartySettings` no longer
+  reads nor sends `roundTimeLimit` (#162 made the backend ignore it).

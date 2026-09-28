@@ -13,6 +13,7 @@ import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
 import '../utils/navigation.dart';
+import '../utils/turn_timer.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/party_card.dart';
 import '../widgets/player_seat_tile.dart';
@@ -341,18 +342,26 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
     );
   }
 
-  /// S2: the settings as one line of chips — seats, "you host", the status.
-  /// The hand size is no party setting: the starting player picks it each
-  /// round (`GAME_RULES.md`).
+  /// S2: the settings as one line of chips — seats, the time per turn when
+  /// one is set, "you host", the status. The hand size is no party setting:
+  /// the starting player picks it each round (`GAME_RULES.md`).
   Widget _settings(BuildContext context, PartyDetails details) {
     final l10n = AppLocalizations.of(context);
     final status = details.party.status;
+    final turnTimeLimit = details.party.settings.turnTimeLimit ?? 0;
     return Wrap(
       key: const Key('lobby-settings'),
       spacing: 8,
       runSpacing: 8,
       children: [
         InfoChip(text: l10n.lobbySeatsChip(_lobby.maxPlayers)),
+        if (turnTimeLimit > 0)
+          InfoChip(
+            key: const Key('lobby-turn-timer'),
+            text: l10n.lobbyTurnTimerChip(
+              l10n.turnTimeLimitText(turnTimeLimit),
+            ),
+          ),
         if (_lobby.isOwner) InfoChip(text: l10n.lobbyYouHostChip),
         InfoChip(
           key: const Key('lobby-status'),

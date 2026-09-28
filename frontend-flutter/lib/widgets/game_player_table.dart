@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../models/game_state.dart';
 import '../utils/app_theme.dart';
 import 'card_back.dart';
+import 'turn_countdown.dart';
 
 /// One seat as the table shows it — plain data, so the widget knows nothing
 /// of the provider.
@@ -17,6 +19,7 @@ class GameSeat {
     this.isMe = false,
     this.isCurrentTurn = false,
     this.isEliminated = false,
+    this.turnClock,
   });
 
   final int playerIndex;
@@ -26,6 +29,10 @@ class GameSeat {
   final bool isMe;
   final bool isCurrentTurn;
   final bool isEliminated;
+
+  /// The clock of this seat's turn, when it is on turn and timed: its line
+  /// then counts the time left down ([TurnCountdown]).
+  final TurnClock? turnClock;
 }
 
 /// The players, one line each, in the order given — turn order, from the
@@ -34,7 +41,8 @@ class GameSeat {
 /// UX study: a small card back and the number of cards instead of a row of
 /// backs, the player to move on an amber edge, and each score's bar towards
 /// 100 — the elimination line — turning red above 80. Every line has the
-/// same height, whatever it holds.
+/// same height, whatever it holds. When the game runs a turn clock, the
+/// line of the player to move counts its time down ([GameSeat.turnClock]).
 ///
 /// Given [onToggle], the table folds: unless [expanded], it shows one line,
 /// the player to move's, and a chevron at the end of its first line unfolds
@@ -214,36 +222,53 @@ class _SeatRow extends StatelessWidget {
             const SizedBox(width: 4),
             Expanded(
               flex: 5,
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      seat.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        decoration: out ? TextDecoration.lineThrough : null,
-                        color: out ? AppColors.slate400 : AppColors.slate100,
-                      ),
-                    ),
-                  ),
-                  if (seat.isMe) ...[
-                    const SizedBox(width: 4),
+              child: LayoutBuilder(
+                builder: (context, constraints) => Row(
+                  children: [
                     Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          l10n.gameYouBadge,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.amber400,
-                          ),
+                      child: Text(
+                        seat.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          decoration: out ? TextDecoration.lineThrough : null,
+                          color: out ? AppColors.slate400 : AppColors.slate100,
                         ),
                       ),
                     ),
+                    if (seat.isMe) ...[
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            l10n.gameYouBadge,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.amber400,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    // Not flexible: the name gives way to the clock, which
+                    // only shrinks past 3/5 of the room — a large system font
+                    // on a phone.
+                    if (seat.turnClock != null) ...[
+                      const SizedBox(width: 6),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth * 0.6,
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: TurnCountdown(clock: seat.turnClock!),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             const SizedBox(width: 6),

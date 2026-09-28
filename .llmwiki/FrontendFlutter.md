@@ -161,9 +161,11 @@
 - **Shapes** (`zapzap-rust/src/api/routes/*.rs`): party settings are `{playerCount,
   allowSpectators, turnTimeLimit}` (0, 30, 60 or 120 s per turn, since 2026-09-28; [[Api]])
   — `playerCount` 3-8 is required on create (else 400 `VALIDATION_ERROR`). The Flutter
-  `PartySettings` still reads and sends `roundTimeLimit`, the key the backend had before
-  and now ignores, until the client's turn-timer change; `PartyRepository.create` always
-  sends `playerCount`. `GET /party/:id` carries
+  `PartySettings` reads and sends `turnTimeLimit` (`turnTimeLimits`, `models/party.dart`;
+  `null` when absent) and no longer `roundTimeLimit`, the key the backend had before and
+  now ignores; `PartyRepository.create` always sends `playerCount`. `GameState` reads the
+  turn clock of `/state` — `turnTimeLimit` (0 when absent), `turnDeadline`, `serverTime` —
+  into `turnClock` (`TurnClock`, `null` when no clock runs; [[FlutterGameBoard]]). `GET /party/:id` carries
   `isOwner` and `userPlayerIndex`, which the lobby reads as they are; a `join` answers the
   `playerIndex` taken. The move answers (play, draw, selectHandSize) carry no `gameState`.
 - **Shapes the models read**: `zapzap` answers `scores` (the running totals, an object → `totalScores`),

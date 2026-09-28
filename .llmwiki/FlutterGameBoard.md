@@ -3,7 +3,7 @@
 > Scope: the Flutter game board (`GameProvider`, modes, errors, layouts), the end of a round and of
 > the game, and the offline example game (`/tutorial`) with its first-opening offer.
 > Related: [[FrontendFlutter]] · [[FlutterGameUi]] · [[FlutterParties]] · [[GameRules]] · [[Api]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -15,7 +15,13 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   `GET /game/:id/state`, then the event stream filtered on `partyId` — `play`, `draw`,
   `selectHandSize`, `zapzap`, `roundStarted`, `gameFinished`, `partyStarted` and
   `playerForfeited` (a deleted account's seat, since #132) refetch without a spinner,
-  `partyDeleted` sets `outcome` and the screen goes back to the list.
+  `partyDeleted` sets `outcome` (`GameOutcome.closed`) and the screen goes back to the list.
+  `playerReplaced` (the turn clock gave a late human's seat to a bot, § The turn clock)
+  refetches too, unless its `replacedUserId` is the signed-in player: then `outcome` is
+  `GameOutcome.ejected`, with no refetch — every game route answers them 403 `NOT_IN_PARTY`
+  from then on —, and the screen shows « Tu as été retiré de la partie (temps dépassé) »
+  (`gameEjectedMessage`, snack bar `gameEjected`, on the app's messenger, so it stays over
+  the list) and goes back to the list. Nothing after an outcome moves the board.
   `partyStarted` is what takes a client that opened `/game/:id` before the owner started
   off the "not started yet" page and onto the table with no reload; that page also has a
   Retry (`Key('retry-game')`) for an event missed while the channel was down. No move's answer
@@ -102,6 +108,35 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   (2026-09-23): a game of Vincent and two bots played to its end over the local backend —
   a successful ZapZap with its standings and revealed hands, three rounds started from the
   client, an eliminated player's badge, and the winner banner with Back to games.
+
+### The turn clock (`widgets/turn_countdown.dart`, `GAME_RULES.md` "Turn Time Limit")
+
+- The rule, its enforcement and the `/state` fields are the backend's ([[GameRules]] § Turn
+  time limit, [[Api]]). `GameState.turnClock` (`TurnClock`: `turnDeadline` and `serverTime`,
+  both the server's Unix ms) is `null` when `turnTimeLimit` is 0 or either instant is
+  missing — a game without a limit, one that started with a single human, a bot on turn,
+  between two rounds.
+- **The countdown sits on the line of the player to move** (`GameSeat.turnClock`, set by
+  `GameScreen._seats` on the `currentTurn` seat only), so every player sees it, in every
+  mode that shows the table: the hand-size choice included (the clock covers it), the phone
+  board's folded table too (its one line is the player to move's). `TurnCountdown`
+  (`countdownKey`): a timer icon and `m:ss`, amber, red from 10 s (`urgent`), a screen
+  reader's label `gameTurnTimeLeft`. It stops at 0:00: the server ejects within its 1 s
+  tick and the `playerReplaced` event redraws the table.
+- **It never reads the device's clock**: it starts from `turnDeadline − serverTime` when
+  the answer is drawn and subtracts a `Timer.periodic`'s `tick` (the whole seconds gone by,
+  missed ticks counted, in the VM and in dart2js alike). A phone whose clock is minutes off
+  still shows the server's time left. A new `TurnClock` (another answer: the next turn, or
+  a refetch of the same one, whose `serverTime` differs) restarts it from its own figure;
+  a rebuild with the same one does not.
+- In the seat line the countdown is not flexible: the name gives way (ellipsis), and the
+  countdown only scales down past 3/5 of the name's room — a 2.0 text scale on 360 px.
+- Tests: `test/game_screen_test.dart` (`the turn clock`: another player's turn counting
+  down on their line from a server time in 2001, red at 0:10, stopping at 0:00; my own in
+  the hand-size choice and its label; none without a limit or on a bot's turn; each answer
+  restarting it; 360×740 at 1.0, 1.5, 2.0 beside a long name — `ejected by the turn clock`:
+  mine, the message and `/parties` with no refetch, in English too; another player's, the
+  seat showing the bot), `test/game_provider_test.dart`, `test/models_test.dart`.
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 
@@ -269,3 +304,16 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   turn the forfeit handed over saw nothing until the next event or a manual refresh
   (`GameBoard.jsx` already handled it). #132 stayed out of `frontend-flutter/` because
   another agent was working there at the time.
+- **The turn clock on the board (2026-09-28, `feat/turn-timer-flutter`).** #162 gave the
+  backend a per-turn limit that ejects a late human. The countdown went on the seat line of
+  the player to move rather than in the action bar (only the player on turn sees that) or
+  in a banner of its own (height the phone board does not have): every player sees who is
+  running out, in every mode, the folded phone table included. It counts from the answer's
+  own two server instants with a periodic timer's `tick`, never `DateTime.now()` against
+  the deadline, so a device clock minutes off changes nothing, and the tests set the server
+  time in 2001 to prove it. An ejection of this player leaves the board at once, with no
+  refetch — the backend answers 403 `NOT_IN_PARTY` from then on, and a refetch would only
+  put the error page up behind the snack bar. The French message is the entry's, in the
+  "tu" voice: « Tu as été retiré », not « Vous avez été retiré » (`test/l10n_test.dart`).
+  A move that races the ejection answers 409 `GAME_STATE_CONFLICT`, still shown as a
+  refusal in a snack bar (wip entry 2026-09-27-clients-reload-on-game-state-conflict).

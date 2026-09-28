@@ -10,7 +10,7 @@
     "settings": {
       "playerCount": 3,
       "allowSpectators": false,
-      "roundTimeLimit": 0
+      "turnTimeLimit": 0
     },
     "createdAt": 1790094174
   },
