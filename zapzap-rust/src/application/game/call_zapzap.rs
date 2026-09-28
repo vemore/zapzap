@@ -2,11 +2,9 @@ use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{
-    PartyRepository, RepositoryError, RoundScoreEntry, VersionedGameState,
+    GameWrite, PartyRepository, RepositoryError, RoundScoreEntry, RoundWrite, VersionedGameState,
 };
-use crate::domain::services::{
-    build_game_results, check_eliminations, execute_zapzap, is_game_over,
-};
+use crate::domain::services::{check_eliminations, execute_zapzap, is_game_over};
 use crate::domain::value_objects::GameAction;
 use crate::infrastructure::bot::card_analyzer;
 
@@ -106,26 +104,9 @@ impl<P: PartyRepository> CallZapZap<P> {
         // Check if game is over
         let winner = is_game_over(&game_state);
 
-        // Save game state, unless another write came in since the read (a forfeit, a
-        // second request), or the seat is no longer this player's (an ejection by the turn
-        // timer after the seat was read): `Conflict`, and nothing below runs
-        self.party_repo
-            .update_game_state_for_player(
-                &input.party_id,
-                &game_state,
-                version,
-                player_index,
-                &input.user_id,
-            )
-            .await?;
-
-        // Update round as finished
-        if let Some(mut round) = self.party_repo.get_current_round(&input.party_id).await? {
-            round.finish();
-            self.party_repo.save_round(&round).await?;
-        }
-
-        // Save round scores for history
+        // Each seat's score for history. The seats are read before the write: a seat that
+        // changed hands since the state was read (an ejection, an account deletion) wrote
+        // a new version, and the write below is then refused
         let players = self.party_repo.get_party_players(&input.party_id).await?;
         let round_scores: Vec<RoundScoreEntry> = players
             .iter()
@@ -158,55 +139,23 @@ impl<P: PartyRepository> CallZapZap<P> {
             })
             .collect();
 
-        self.party_repo
-            .save_round_scores(
-                &input.party_id,
-                game_state.round_number as u32,
-                round_scores,
-            )
+        // Save the game state, finish the round with its scores and, when the game is
+        // over, finish the party with its results, all in one transaction, unless another
+        // write came in since the read (a forfeit, a second request, an admin stop), or the
+        // seat is no longer this player's (an ejection by the turn timer after the seat was
+        // read): `Conflict`, and nothing is written
+        let results = self
+            .party_repo
+            .write_game(&GameWrite {
+                party_id: &input.party_id,
+                state: &game_state,
+                expected_version: version,
+                seat_holder: Some((player_index, &input.user_id)),
+                round: RoundWrite::Finish(&round_scores),
+                winner,
+            })
             .await?;
-
-        let winner_user_id = winner.and_then(|w| {
-            players
-                .iter()
-                .find(|p| p.player_index == w)
-                .map(|p| p.user_id.clone())
-        });
-
-        // If game is over, update party status and save game results
-        if let Some(winner_idx) = winner {
-            // Update party status to Finished
-            let mut party = self
-                .party_repo
-                .find_by_id(&input.party_id)
-                .await?
-                .ok_or(CallZapZapError::PartyNotFound)?;
-            party.finish();
-            self.party_repo.save(&party).await?;
-
-            let elimination_order = self
-                .party_repo
-                .get_elimination_order(&input.party_id)
-                .await?;
-            let ejected = self.party_repo.get_ejected_players(&input.party_id).await?;
-            let results = build_game_results(
-                &game_state,
-                players.iter().map(|p| (p.player_index, p.user_id.clone())),
-                &elimination_order,
-                &ejected,
-                winner_idx,
-            );
-            self.party_repo
-                .save_game_results(
-                    &input.party_id,
-                    &results.winner_user_id,
-                    results.winner_score,
-                    results.total_rounds,
-                    results.was_golden_score,
-                    results.players,
-                )
-                .await?;
-        }
+        let winner_user_id = results.map(|results| results.winner_user_id);
 
         let total_scores = (0..game_state.player_count)
             .map(|i| (i, game_state.get_score(i)))

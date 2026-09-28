@@ -23,6 +23,11 @@ impl RepositoryError {
         matches!(self, RepositoryError::Conflict(_))
     }
 
+    /// The row to write is gone (a game state whose party was deleted)
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, RepositoryError::NotFound(_))
+    }
+
     /// A UNIQUE constraint refused the write (SQLite's message)
     pub fn is_unique_violation(&self) -> bool {
         matches!(self, RepositoryError::Database(m) if m.contains("UNIQUE constraint failed"))
