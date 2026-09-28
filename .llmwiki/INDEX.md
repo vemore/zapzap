@@ -40,7 +40,7 @@ Load this file first. Then read only the pages your task touches.
 | [[FlutterGameBoard]] | Flutter game board: `GameProvider`, modes, errors, phone layout, the turn clock and ejection, end of round and game, the offline example game (`/tutorial`) | 2026-09-28 |
 | [[FlutterGameUi]] | Flutter turn UX (step, named button, suggestions, ZapZap, felt, pile, opponents), board motion and reduced motion, card model, play rules, card widgets | 2026-09-28 |
 | [[FlutterHistoryAdmin]] | Flutter history, game details and statistics screens; the admin screen (users, parties, statistics tabs) | 2026-09-27 |
-| [[FlutterI18n]] | Flutter l10n: ten ARB files, the game-terms glossary, the l10n tests, generated code not committed, the "tu" voice | 2026-09-27 |
+| [[FlutterI18n]] | Flutter l10n: ten ARB files, the game-terms glossary, the l10n tests, generated code not committed, the "tu" voice | 2026-09-28 |
 | [[FlutterAndroidPwa]] | Flutter Android app (CI APK, release signing, keys, OAuth SHA-1s, manifest, icons) and the PWA image (Dockerfile, nginx, manifest) | 2026-09-27 |
 | [[NativeEngine]] | `native/`: headless engine, DRL training, the two Node scripts that drive it (`train-native.js`, `genetic-optimize-thibot.js`) | 2026-09-27 |
 
