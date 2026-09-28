@@ -293,6 +293,10 @@
   "@errorPartyFull": {
     "description": "PARTY_FULL"
   },
+  "errorNotEnoughBots": "Pas assez de bots disponibles pour compléter la table.",
+  "@errorNotEnoughBots": {
+    "description": "Error 409 NOT_ENOUGH_BOTS: the fill found fewer free bots than free seats"
+  },
   "errorPartyStarted": "Cette partie a déjà commencé.",
   "@errorPartyStarted": {
     "description": "PARTY_STARTED and PARTY_ALREADY_PLAYING"
@@ -462,60 +466,9 @@
   "@createPartyVisibilityPrivate": {
     "description": "Visibility option: private"
   },
-  "createPartySlotsTitle": "Places",
-  "@createPartySlotsTitle": {
-    "description": "Title of the per-seat configuration block"
-  },
-  "createPartySlotOwner": "Joueur 1 (toi)",
-  "@createPartySlotOwner": {
-    "description": "The creator's own seat, always the first and always human"
-  },
-  "createPartyOwnerBadge": "Hôte",
-  "@createPartyOwnerBadge": {
-    "description": "Badge marking the party owner"
-  },
-  "createPartySlotLabel": "Joueur {number}",
-  "@createPartySlotLabel": {
-    "description": "A configurable seat, numbered from 2",
-    "placeholders": {
-      "number": {
-        "type": "int"
-      }
-    }
-  },
-  "createPartySlotHuman": "En attente d'un humain",
-  "@createPartySlotHuman": {
-    "description": "Seat option: leave the seat open for a human player"
-  },
-  "createPartySlotBot": "Bot — {difficulty}",
-  "@createPartySlotBot": {
-    "description": "Seat option: seat a bot of this difficulty",
-    "placeholders": {
-      "difficulty": {
-        "type": "String"
-      }
-    }
-  },
-  "createPartySlotBotUnavailable": "Bot — {difficulty} (aucun disponible)",
-  "@createPartySlotBotUnavailable": {
-    "description": "Seat option disabled because every bot of that difficulty is already seated",
-    "placeholders": {
-      "difficulty": {
-        "type": "String"
-      }
-    }
-  },
-  "createPartySummary": "Humains : {humans} · Bots : {bots}",
-  "@createPartySummary": {
-    "description": "Count of human seats (the owner included) and bot seats",
-    "placeholders": {
-      "humans": {
-        "type": "int"
-      },
-      "bots": {
-        "type": "int"
-      }
-    }
+  "createPartySeatsHint": "Une fois la partie créée, tu pourras ajouter des bots aux places libres ou attendre d'autres joueurs.",
+  "@createPartySeatsHint": {
+    "description": "Under the seat count of the create form: the free seats are filled in the lobby, with bots or players"
   },
   "createPartySubmit": "Créer la partie",
   "@createPartySubmit": {
@@ -642,6 +595,35 @@
   "lobbyEmptySlotHint": "Envoie le code d'invitation pour la remplir.",
   "@lobbyEmptySlotHint": {
     "description": "Under an empty seat: how to fill it"
+  },
+  "lobbyAddBot": "Ajouter un bot",
+  "@lobbyAddBot": {
+    "description": "Host-only button on a free lobby seat: opens the list of bot difficulties to seat one there"
+  },
+  "lobbyAddBotUnavailable": "{difficulty} (aucun disponible)",
+  "@lobbyAddBotUnavailable": {
+    "description": "Difficulty in the add-a-bot menu, disabled because every bot of that difficulty is already seated",
+    "placeholders": {
+      "difficulty": {
+        "type": "String"
+      }
+    }
+  },
+  "lobbyFillAndStart": "Compléter avec des bots et commencer",
+  "@lobbyFillAndStart": {
+    "description": "Host-only lobby button: fill every free seat with bots, then start the game (opens a dialog to pick their level)"
+  },
+  "lobbyFillDialogTitle": "Compléter avec des bots",
+  "@lobbyFillDialogTitle": {
+    "description": "Title of the dialog that fills the free seats with bots and starts the game"
+  },
+  "lobbyFillDialogBody": "Choisis leur niveau. Les places libres seront prises par des bots de ce niveau, ou du niveau suivant s'il en manque, puis la partie commencera.",
+  "@lobbyFillDialogBody": {
+    "description": "Body of the fill-with-bots dialog, above the three levels"
+  },
+  "lobbyFillDialogConfirm": "Commencer",
+  "@lobbyFillDialogConfirm": {
+    "description": "Confirm button of the fill-with-bots dialog: fills the seats and starts the game"
   },
   "lobbyStartWithCount": "{count, plural, =1{Lancer la partie (1 joueur)} other{Lancer la partie ({count} joueurs)}}",
   "@lobbyStartWithCount": {

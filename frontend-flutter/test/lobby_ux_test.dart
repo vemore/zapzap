@@ -1,7 +1,7 @@
 // The lobby of the UX study (S1–S4, wip 2026-09-23-flutter-ux-lobby-screen):
 // the invite code big and copyable, the settings as one line of chips,
 // seats that say who is online and each bot's level — a free seat as text
-// pointing at the code, no "add a bot" —, and Start first with the reason
+// pointing at the code, and the host's "add a bot" —, and Start first with the reason
 // it is (or is not) active, Delete in the ⋮ menu — on a 360x740 phone at
 // text scales 1.0 and 1.5.
 //
@@ -172,7 +172,7 @@ void main() {
       });
 
       testWidgets('S3: a green dot for who is online, the bot level as a '
-          'chip, the free seat as text pointing at the invite code', (
+          'chip, the free seat pointing at the invite code and adding a bot', (
         tester,
       ) async {
         await pumpLobby(tester, table(), textScale: scale);
@@ -239,11 +239,17 @@ void main() {
           ),
           findsOneWidget,
         );
-        // No route seats a bot in an existing party: no such button.
-        expect(find.textContaining('Ajouter'), findsNothing);
+        // The host seats a bot there (POST /party/:id/bots), from the
+        // seat's right edge, beside the text.
+        final addBot = find.byKey(const Key('empty-seat-0-add-bot'));
         expect(
-          find.descendant(of: free, matching: find.byType(ButtonStyleButton)),
-          findsNothing,
+          find.descendant(of: addBot, matching: find.text('Ajouter un bot')),
+          findsOneWidget,
+        );
+        // (the tile's 12 px padding inside its 1 px border)
+        expect(
+          tester.getRect(free).right - tester.getRect(addBot).right,
+          lessThanOrEqualTo(13.5),
         );
       });
 

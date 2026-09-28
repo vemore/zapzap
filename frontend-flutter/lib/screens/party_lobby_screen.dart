@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import '../models/bot.dart';
 import '../models/party.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connected_players_provider.dart';
@@ -23,6 +24,11 @@ import '../widgets/zapzap_app_bar.dart';
 /// why Start is or is not active, Start (owner only, 3 players at least) and
 /// Leave. Delete (the owner, or the only human at the table) is in the ⋮
 /// menu.
+///
+/// The host fills free seats with bots, by hand only: « Ajouter un bot » on
+/// a free seat (a difficulty menu), or « Compléter avec des bots et
+/// commencer », a dialog picking one level for every free seat, which then
+/// starts the game.
 ///
 /// The event stream drives it: a player joining or leaving reloads the
 /// seats without a refresh, the party starting goes to the game, the party
@@ -51,6 +57,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
     );
     _lobby.addListener(_followOutcome);
     _lobby.load();
+    _lobby.loadBots();
   }
 
   @override
@@ -102,6 +109,57 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
       ),
     );
     if (confirmed ?? false) await _lobby.delete();
+  }
+
+  /// The level of every bot the fill seats; `medium` is picked to start
+  /// with. Confirming fills the free seats and starts the game.
+  Future<void> _confirmFill() async {
+    final l10n = AppLocalizations.of(context);
+    var level = 'medium';
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          key: const Key('fill-dialog'),
+          title: Text(l10n.lobbyFillDialogTitle),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(l10n.lobbyFillDialogBody),
+                const SizedBox(height: 12),
+                for (final difficulty in fillDifficulties)
+                  ListTile(
+                    key: Key('fill-level-$difficulty'),
+                    contentPadding: EdgeInsets.zero,
+                    selected: level == difficulty,
+                    leading: Icon(
+                      level == difficulty
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                    ),
+                    title: Text(botDifficultyLabel(l10n, difficulty)),
+                    onTap: () => setDialogState(() => level = difficulty),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(l10n.cancelButton),
+            ),
+            FilledButton(
+              key: const Key('fill-confirm'),
+              onPressed: () => Navigator.of(context).pop(level),
+              child: Text(l10n.lobbyFillDialogConfirm),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null) await _lobby.fillAndStart(chosen);
   }
 
   Future<void> _copyInviteCode(String code) async {
@@ -174,6 +232,21 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
                           inviteHint:
                               inviteCode != null && inviteCode.isNotEmpty,
                         ),
+                        // Under the free seats it fills, not pinned with Start
+                        // and Leave: at a large font size the pinned buttons
+                        // would leave the seats no room.
+                        if (_lobby.canAddBots) ...[
+                          const SizedBox(height: 4),
+                          FilledButton.tonalIcon(
+                            key: const Key('fill-and-start'),
+                            onPressed: _lobby.busy ? null : _confirmFill,
+                            icon: const Icon(Icons.smart_toy_outlined),
+                            label: Text(
+                              l10n.lobbyFillAndStart,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -335,6 +408,10 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
           child: EmptySeatTile(
             key: Key('empty-seat-$index'),
             showInviteHint: inviteHint && index == 0,
+            onAddBot: _lobby.canAddBots ? _lobby.addBot : null,
+            availableBots: _lobby.availableBots,
+            enabled: !_lobby.busy,
+            addBotKey: Key('empty-seat-$index-add-bot'),
           ),
         ),
     ];

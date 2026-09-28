@@ -254,41 +254,24 @@ void main() {
   });
 
   group('create party', () {
-    /// Picks [option] in the selector of the configurable seat [index].
-    Future<void> chooseSlot(
-      WidgetTester tester,
-      int index,
-      String option,
+    testWidgets('creation asks for the seats only, no human or bot per seat', (
+      tester,
     ) async {
-      await tester.tap(find.byKey(Key('slot-$index-type')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(option).last);
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('two seats asking for the same difficulty never get the '
-        'same bot, and the difficulty then runs out', (tester) async {
       final backend = FakeLobbyBackend(
         createdPartyId: 'p9',
-        details: partyDetailsJson(id: 'p9'),
+        details: partyDetailsJson(id: 'p9', playerCount: 4),
       );
       await pumpApp(tester, backend, initialLocation: AppRoutes.createParty);
+
+      // No per-seat selector: the seats are filled in the lobby
+      expect(find.byKey(const Key('slot-0')), findsNothing);
+      expect(find.byKey(const Key('slot-0-type')), findsNothing);
+      expect(find.byType(DropdownButton<String>), findsOneWidget); // visibility
+      expect(find.byKey(const Key('create-seats-hint')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('player-count')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('4').last);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('slot-2')), findsOneWidget);
-
-      await chooseSlot(tester, 0, 'Bot — Facile');
-      await chooseSlot(tester, 1, 'Bot — Facile');
-      expect(find.text('Humains : 2 · Bots : 2'), findsOneWidget);
-
-      // Both easy bots are seated: the third seat cannot have one.
-      await tester.tap(find.byKey(const Key('slot-2-type')));
-      await tester.pumpAndSettle();
-      expect(find.text('Bot — Facile (aucun disponible)'), findsOneWidget);
-      await tester.tap(find.text('Bot — Moyen').last);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('party-name')), '  Soirée  ');
@@ -299,13 +282,10 @@ void main() {
       final body = backend.bodyOf('POST', '/api/party');
       expect(body['name'], 'Soirée');
       expect(body['visibility'], 'public');
-      expect((body['settings']! as Map)['playerCount'], 4);
-      final botIds = (body['botIds']! as List).cast<String>();
-      expect(botIds, hasLength(3));
-      expect(botIds.toSet(), hasLength(3));
-      expect(botIds, containsAll(['bot-easy-1', 'bot-easy-2']));
+      expect(body['settings'], {'playerCount': 4});
+      expect(body['botIds'], isEmpty);
       // and it lands on the new party's lobby
-      expect(find.text('Joueurs (0/5)'), findsOneWidget);
+      expect(find.text('Joueurs (0/4)'), findsOneWidget);
     });
 
     testWidgets('a refusal is shown and the form stays', (tester) async {
@@ -440,6 +420,131 @@ void main() {
         contains('/api/party/p1/start'),
       );
       expect(find.byType(GameScreen), findsOneWidget);
+    });
+
+    testWidgets('« Ajouter un bot » on a free seat fills it live', (
+      tester,
+    ) async {
+      final backend = backendWith([vincent, easyBot]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      expect(find.text('Joueurs (2/5)'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('empty-seat-0-add-bot')));
+      await tester.pumpAndSettle();
+      // The six levels; hard has no bot in the fake backend
+      expect(find.byKey(const Key('add-bot-easy')), findsOneWidget);
+      expect(find.text('Difficile (aucun disponible)'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('add-bot-medium')));
+      await tester.pumpAndSettle();
+
+      expect(backend.bodyOf('POST', '/api/party/p1/bots'), {
+        'botId': 'bot-medium-1',
+      });
+      expect(find.text('MediumBot1'), findsOneWidget);
+      expect(find.text('Joueurs (3/5)'), findsOneWidget);
+      expect(find.text('Moyen'), findsOneWidget);
+      expect(enabled(tester, 'start-party'), isTrue);
+      // Nothing started by itself
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+    });
+
+    testWidgets('a guest has no « Ajouter un bot » nor the fill', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        FakeLobbyBackend(
+          details: partyDetailsJson(
+            id: 'p1',
+            ownerId: 'u2',
+            players: [second, vincent],
+          ),
+        ),
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      expect(find.byKey(const Key('empty-seat-0-add-bot')), findsNothing);
+      expect(find.byKey(const Key('fill-and-start')), findsNothing);
+    });
+
+    testWidgets('« Compléter avec des bots et commencer » picks a level and '
+        'leads to the game', (tester) async {
+      final backend = backendWith([vincent]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      expect(enabled(tester, 'start-party'), isFalse);
+
+      await tester.tap(find.byKey(const Key('fill-and-start')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fill-dialog')), findsOneWidget);
+      expect(find.text('Compléter avec des bots'), findsOneWidget);
+      for (final level in ['Facile', 'Moyen', 'Difficile']) {
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('fill-dialog')),
+            matching: find.text(level),
+          ),
+          findsOneWidget,
+        );
+      }
+
+      await tester.tap(find.byKey(const Key('fill-level-hard')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fill-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(backend.bodyOf('POST', '/api/party/p1/fill-and-start'), {
+        'difficulty': 'hard',
+      });
+      expect(find.byType(GameScreen), findsOneWidget);
+    });
+
+    testWidgets('cancelling the fill seats nobody', (tester) async {
+      final backend = backendWith([vincent]);
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      await tester.tap(find.byKey(const Key('fill-and-start')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Annuler'));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests.map((request) => request.url.path),
+        isNot(contains('/api/party/p1/fill-and-start')),
+      );
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+    });
+
+    testWidgets('a fill refused for want of bots says so', (tester) async {
+      final backend = backendWith([vincent]);
+      backend.failures['POST /api/party/p1/fill-and-start'] = (
+        status: 409,
+        body: {'error': 'Not enough bots', 'code': 'NOT_ENOUGH_BOTS'},
+      );
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+      );
+      await tester.tap(find.byKey(const Key('fill-and-start')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fill-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Pas assez de bots disponibles pour compléter la table.'),
+        findsOneWidget,
+      );
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
     });
 
     testWidgets('another client starting the game leads there too', (
@@ -676,7 +781,7 @@ void main() {
         initialLocation: AppRoutes.createParty,
         size: phone,
       );
-      expect(find.byKey(const Key('slot-3')), findsOneWidget);
+      expect(find.byKey(const Key('create-seats-hint')), findsOneWidget);
     });
 
     // A large system font size is the same layout with everything taller
@@ -754,6 +859,16 @@ void main() {
           100,
           scrollable: list,
         );
+        // The host's add-bot buttons and the fill under the free seats
+        expect(find.byKey(const Key('empty-seat-2-add-bot')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('fill-and-start')),
+          100,
+          scrollable: list,
+        );
+        await tester.tap(find.byKey(const Key('fill-and-start')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('fill-level-hard')), findsOneWidget);
       });
 
       testWidgets('the create form fits at a $scale text scale', (
@@ -766,7 +881,7 @@ void main() {
           size: phone,
           textScale: scale,
         );
-        expect(find.byKey(const Key('slot-0')), findsOneWidget);
+        expect(find.byKey(const Key('player-count')), findsOneWidget);
         // The form's ListView builds — and lays out — only what is in
         // view; its text fields are scrollables too.
         await tester.scrollUntilVisible(

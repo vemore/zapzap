@@ -36,7 +36,6 @@ const createButton = () => screen.getByRole('button', { name: /create party/i })
 describe('Phase 3: CreateParty Component Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // On mount the form lists the bots a slot can take
     apiClient.get = vi.fn().mockResolvedValue({ data: { bots: [] } });
   });
 
@@ -53,6 +52,16 @@ describe('Phase 3: CreateParty Component Tests', () => {
       renderCreateParty();
 
       expect(screen.getByLabelText(/visibility/i)).toBeInTheDocument();
+    });
+
+    it('asks for the number of seats only, no human or bot per seat', () => {
+      renderCreateParty();
+
+      // Name, seats, visibility: the free seats are filled in the lobby
+      expect(screen.getAllByRole('combobox')).toHaveLength(1);
+      expect(screen.queryByText(/waiting for human/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('seats-hint')).toHaveTextContent(/add bots to the free seats in the lobby/i);
+      expect(apiClient.get).not.toHaveBeenCalled();
     });
   });
 
@@ -140,9 +149,9 @@ describe('Phase 3: CreateParty Component Tests', () => {
             settings: expect.objectContaining({
               playerCount: 5,
             }),
-            botIds: [],
           })
         );
+        expect(apiClient.post.mock.calls[0][1]).not.toHaveProperty('botIds');
       });
     });
 

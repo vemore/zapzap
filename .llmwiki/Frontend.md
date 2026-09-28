@@ -2,7 +2,7 @@
 
 > Scope: the React + Vite single-page client in `frontend/` — structure, routing, API and SSE clients, Google sign-in, build, tests, image.
 > Related: [[Architecture]] · [[Api]] · [[Backend]] · [[Testing]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -60,10 +60,11 @@
 - axios `baseURL: '/api'`, `timeout: 10000` — `api.js:4-10`. Always relative: works behind the proxy (`nginx/nginx.conf` `/api/`) and in dev via the Vite proxy.
 - Request interceptor adds `Authorization: Bearer <localStorage.token>` — `api.js:13-24`.
 - On 401 it clears `token` and `user`, but the redirect to `/login` is commented out (`api.js:34-38`): the user stays on a page whose calls keep failing until a navigation hits `ProtectedRoute`.
-- Endpoints called (all exist in the Rust router): auth `login`/`register`/`google`, DELETE `/auth/me` with `{password}` or `{credential}` (`services/auth.js`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx:55-92`); `/bots` (`CreateParty.jsx:20`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
+- Endpoints called (all exist in the Rust router): auth `login`/`register`/`google`, DELETE `/auth/me` with `{password}` or `{credential}` (`services/auth.js`); `/party`, `/party/:id{,/join,/leave,/start}`, DELETE `/party/:id` (`PartyList.jsx:21,33`, `PartyLobby.jsx`); `/bots`, POST `/party/:id/bots` and `/party/:id/fill-and-start` (`services/party.js`, from `PartyLobby.jsx`); `/game/:id/{state,play,draw,zapzap,selectHandSize,nextRound}` (`GameBoard.jsx:42-292`); `/history`, `/history/public`, `/history/:id`; `/stats/{me,leaderboard,bots}` (`Statistics.jsx:26-50`); `/players/connected` (`ConnectedPlayers.jsx:38`); `/admin/{users,parties,statistics}` and their mutations (`UserList.jsx:27-66`, `AdminPartyList.jsx:29-63`, `AdminStats.jsx:29`).
 
 ### Real-time (SSE)
 - `useSSE(url, {onMessage, onError, onOpen, reconnectDelay = 3000})` — `hooks/useSSE.js:13-19`. Parses `event.data` as JSON for default messages and for the named `event` type (`useSSE.js:49-96`); on error it closes and reconnects after `reconnectDelay` (`useSSE.js:63-82`).
+- **Create and lobby** (2026-09-28): `CreateParty.jsx` asks for the name, the seat count (3-8) and the visibility — no human or bot per seat, no `botIds`, no `/bots` call. In `PartyLobby.jsx` the owner of a waiting party gets, on each free seat, an « Add a bot… » `<select>` of the six levels (a level whose bots all sit at the table is disabled, "none available"), which seats the first free bot of it and reloads the seats; and « Fill with bots and start », a dialog (`role="dialog"`, Easy / Medium / Hard, Medium checked) that calls fill-and-start and opens `/game/:id`, or shows why it was refused (`NOT_ENOUGH_BOTS`). Nothing fills or starts by itself. Tests: `__tests__/CreateParty.test.jsx`, `__tests__/PartyLobby.test.jsx` (« Bots in free seats »).
 - GameBoard, PartyLobby and ConnectedPlayers all open `sseUrl()` (`services/sse.js`): `${VITE_API_URL without /api || window.location.origin}/suscribeupdate?token=<URL-encoded localStorage token>`, or no stream (`null`) without a token. The token matters on Rust: `/suscribeupdate` delivers a game's moves and a private party's events only to streams whose token names a player of that party, and registers the session for `/api/players/connected` (`zapzap-rust/src/api/sse.rs`, `should_deliver`; [[Api]]). EventSource cannot send an `Authorization` header, hence the query string.
 - GameBoard reacts to `action` values `play`, `draw`, `selectHandSize`, `playerForfeited`, `zapzap`, `roundStarted`, `gameFinished`, `partyDeleted` by refetching state or navigating (`GameBoard.jsx`, `handleSSEMessage`).
 - The endpoint name `suscribeupdate` (sic) is shared with the backend (`zapzap-rust/src/api/mod.rs:24`) and the proxy — do not "fix" the spelling on one side only.

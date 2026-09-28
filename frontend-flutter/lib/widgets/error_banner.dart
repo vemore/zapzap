@@ -21,6 +21,7 @@ String partyErrorText(AppLocalizations l10n, Object error) {
     PartyErrorCode.notAuthorized ||
     ApiErrorCode.forbidden => l10n.errorNotOwner,
     PartyErrorCode.notInParty => l10n.errorNotInParty,
+    PartyErrorCode.notEnoughBots => l10n.errorNotEnoughBots,
     _ => l10n.errorGeneric,
   };
 }

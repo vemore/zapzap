@@ -12,9 +12,10 @@ use crate::api::error::{ApiBody, ApiError, ApiJson};
 use crate::api::middleware::Claims;
 use crate::api::AppState;
 use crate::application::party::{
-    AddBotToParty, AddBotToPartyInput, CreateParty, CreatePartyInput, DeleteParty,
-    DeletePartyInput, GetPartyDetails, GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty,
-    LeavePartyInput, ListPartiesInput, ListPublicParties, StartParty, StartPartyInput,
+    parse_fill_difficulty, AddBotToParty, AddBotToPartyInput, CreateParty, CreatePartyInput,
+    DeleteParty, DeletePartyInput, FillAndStart, FillAndStartInput, GetPartyDetails,
+    GetPartyDetailsInput, JoinParty, JoinPartyInput, LeaveParty, LeavePartyInput, ListPartiesInput,
+    ListPublicParties, StartParty, StartPartyInput,
 };
 use crate::domain::entities::PartyVisibility;
 use crate::domain::value_objects::{player_count_message, PartySettings};
@@ -47,6 +48,16 @@ pub struct AddBotRequest {
 impl ApiBody for AddBotRequest {
     const INVALID_CODE: &'static str = "MISSING_BOT_ID";
     const INVALID_MESSAGE: &'static str = "Bot ID is required";
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FillAndStartRequest {
+    pub difficulty: Option<String>,
+}
+
+impl ApiBody for FillAndStartRequest {
+    const INVALID_CODE: &'static str = "INVALID_DIFFICULTY";
+    const INVALID_MESSAGE: &'static str = "Difficulty must be one of: easy, medium, hard";
 }
 
 /// Node's settings keys; other keys are ignored. `playerCount` is required when
@@ -236,6 +247,23 @@ pub struct AddBotResponse {
 
 #[derive(Debug, Serialize)]
 pub struct AddedBotInfo {
+    pub id: String,
+    pub username: String,
+    #[serde(rename = "botDifficulty")]
+    pub bot_difficulty: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FillAndStartResponse {
+    pub success: bool,
+    pub party: StartPartyInfo,
+    pub round: RoundInfo,
+    /// The bots the fill seated, in seat order before the start renumbered the seats
+    pub bots: Vec<SeatedBotInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SeatedBotInfo {
     pub id: String,
     pub username: String,
     #[serde(rename = "botDifficulty")]
@@ -620,4 +648,80 @@ pub async fn add_bot(
             player_index: result.player_index,
         }),
     ))
+}
+
+/// POST /api/party/:partyId/fill-and-start - The owner fills every free seat with bots
+/// of one level, then starts the party
+pub async fn fill_and_start(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    Path(party_id): Path<String>,
+    ApiJson(body): ApiJson<FillAndStartRequest>,
+) -> Result<Json<FillAndStartResponse>, ApiError> {
+    let difficulty = body
+        .difficulty
+        .as_deref()
+        .and_then(parse_fill_difficulty)
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                FillAndStartRequest::INVALID_CODE,
+                FillAndStartRequest::INVALID_MESSAGE,
+            )
+        })?;
+
+    let use_case = FillAndStart::new(state.user_repo.clone(), state.party_repo.clone());
+    let result = use_case
+        .execute(FillAndStartInput {
+            user_id: claims.user_id.clone(),
+            party_id: party_id.clone(),
+            difficulty,
+        })
+        .await?;
+
+    // The events of an add-bot per seat, then of a start: a client that missed the
+    // response sees the same lobby changes as for the calls one by one
+    for seat in &result.seated {
+        let event = GameEvent::new(
+            "partyUpdate",
+            Some(party_id.clone()),
+            Some(seat.bot.id.clone()),
+        )
+        .with_action("playerJoined")
+        .with_data(serde_json::json!({
+            "username": seat.bot.username,
+            "playerIndex": seat.player_index
+        }));
+        state.broadcast_event(event);
+    }
+    let started = result.started;
+    let event = GameEvent::new("partyUpdate", Some(party_id), Some(claims.user_id.clone()))
+        .with_action("partyStarted")
+        .with_data(serde_json::json!({
+            "roundId": started.round.id,
+            "roundNumber": started.round.round_number
+        }));
+    state.broadcast_event(event);
+
+    Ok(Json(FillAndStartResponse {
+        success: true,
+        party: StartPartyInfo {
+            id: started.party.id,
+            status: started.party.status.as_str().to_string(),
+            current_round_id: started.party.current_round_id,
+        },
+        round: RoundInfo {
+            id: started.round.id,
+            round_number: started.round.round_number,
+            status: started.round.status.as_str().to_string(),
+        },
+        bots: result
+            .seated
+            .into_iter()
+            .map(|seat| SeatedBotInfo {
+                id: seat.bot.id,
+                username: seat.bot.username,
+                bot_difficulty: seat.bot.bot_difficulty.map(|d| d.as_str().to_string()),
+            })
+            .collect(),
+    }))
 }
