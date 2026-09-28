@@ -479,8 +479,25 @@ impl PartyRepository for SqlitePartyRepository {
             replacement.state,
             replacement.expected_version,
             self.clock.now_millis(),
+            None,
         )
         .await?;
+
+        // A stand-in created for this seat exists only if the ejection happens
+        if let Some(bot) = replacement.new_bot {
+            sqlx::query(
+                "INSERT INTO users (id, username, user_type, bot_difficulty, created_at, \
+                 updated_at) VALUES (?, ?, 'bot', ?, ?, ?)",
+            )
+            .bind(&bot.id)
+            .bind(&bot.username)
+            .bind(bot.bot_difficulty.map(|d| d.as_str()))
+            .bind(bot.created_at)
+            .bind(bot.updated_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        }
 
         let moved = sqlx::query(
             "UPDATE party_players SET user_id = ? \
@@ -691,6 +708,27 @@ impl PartyRepository for SqlitePartyRepository {
             state,
             expected_version,
             self.clock.now_millis(),
+            None,
+        )
+        .await
+    }
+
+    async fn update_game_state_for_player(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
+        player_index: u8,
+        user_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        write_game_state_if_unchanged(
+            &mut conn,
+            party_id,
+            state,
+            expected_version,
+            self.clock.now_millis(),
+            Some((player_index, user_id)),
         )
         .await
     }
@@ -877,34 +915,47 @@ fn db_err(e: sqlx::Error) -> RepositoryError {
 
 /// Write a game state read at `expected_version`, as the next version, the deadline of the
 /// turn under way stamped at `now_ms`: the compare-and-swap of every move
-/// (`update_game_state`) and of an ejection (`replace_player`). One statement, so SQLite
-/// checks the version and writes atomically; `Conflict`, with nothing written, when the
-/// version moved on or the state is gone.
+/// (`update_game_state`, `update_game_state_for_player`) and of an ejection
+/// (`replace_player`). With `seat_holder` `(seat, user)`, only while that user still holds
+/// that seat (a player's move). One statement, so SQLite checks the version and the seat
+/// and writes atomically; `Conflict`, with nothing written, when the version moved on, the
+/// state is gone or the seat changed hands.
 async fn write_game_state_if_unchanged(
     conn: &mut SqliteConnection,
     party_id: &str,
     state: &GameState,
     expected_version: i64,
     now_ms: u64,
+    seat_holder: Option<(u8, &str)>,
 ) -> Result<(), RepositoryError> {
     let mut state = state.clone();
     state.stamp_turn_deadline(now_ms);
     let written = sqlx::query(
-        "UPDATE game_state SET state_json = ?, updated_at = ?, version = version + 1 \
-         WHERE party_id = ? AND version = ?",
+        "UPDATE game_state SET state_json = ?1, updated_at = ?2, version = version + 1 \
+         WHERE party_id = ?3 AND version = ?4 AND (?5 IS NULL OR EXISTS ( \
+             SELECT 1 FROM party_players \
+             WHERE party_id = ?3 AND player_index = ?5 AND user_id = ?6))",
     )
     .bind(state.to_json())
     .bind(chrono::Utc::now().timestamp())
     .bind(party_id)
     .bind(expected_version)
+    .bind(seat_holder.map(|(seat, _)| i32::from(seat)))
+    .bind(seat_holder.map(|(_, user)| user))
     .execute(&mut *conn)
     .await
     .map_err(db_err)?;
 
     if written.rows_affected() == 0 {
-        return Err(RepositoryError::Conflict(format!(
-            "game state of party {party_id} changed since version {expected_version}"
-        )));
+        return Err(RepositoryError::Conflict(match seat_holder {
+            Some((seat, user)) => format!(
+                "game state of party {party_id} changed since version {expected_version}, \
+                 or seat {seat} is no longer {user}'s"
+            ),
+            None => {
+                format!("game state of party {party_id} changed since version {expected_version}")
+            }
+        }));
     }
     Ok(())
 }

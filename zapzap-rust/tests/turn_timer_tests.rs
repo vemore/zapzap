@@ -18,12 +18,21 @@ use tower::{Service, ServiceExt};
 
 use zapzap_backend::api;
 use zapzap_backend::application::bot::BotRunner;
-use zapzap_backend::application::game::{enforce_turn_deadlines, spawn_turn_timer};
-use zapzap_backend::domain::entities::{BotDifficulty, PartyStatus, User, UserType};
-use zapzap_backend::domain::repositories::{PartyRepository, SeatReplacement, UserRepository};
+use zapzap_backend::application::game::{
+    enforce_turn_deadlines, extend_turn_deadlines_after_downtime, spawn_turn_timer,
+    EjectLatePlayer, PlayCards, PlayCardsError, PlayCardsInput,
+};
+use zapzap_backend::domain::entities::{
+    BotDifficulty, Party, PartyPlayer, PartyStatus, Round, User, UserType,
+};
+use zapzap_backend::domain::repositories::{
+    PartyRepository, PartyWithPlayerCount, PlayerGameResult, RepositoryError, RoundScoreEntry,
+    SeatReplacement, UserRepository, VersionedGameState,
+};
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
 use zapzap_backend::infrastructure::app_state::AppState;
 use zapzap_backend::infrastructure::bot::card_analyzer::calculate_hand_value;
+use zapzap_backend::infrastructure::database::repositories::SqlitePartyRepository;
 use zapzap_backend::infrastructure::services::{Clock, ManualClock};
 
 /// The application main.rs serves, on a fresh database, its time read from `clock`, and
@@ -780,8 +789,8 @@ async fn test_an_ejection_that_loses_the_race_to_a_move_writes_nothing() {
     let (party_id, humans) =
         timed_party(&mut app, &state, "intime", 1, &[BotDifficulty::Hard], 30).await;
     let (owner, owner_id) = (&humans.tokens[0], &humans.ids[0]);
+    // No bot is free: the ejection would create this one with the seat
     let bot = User::new_bot("standin".into(), "standin".into(), BotDifficulty::Medium);
-    state.user_repo.save(&bot).await.unwrap();
 
     // The ejection read the state; the owner's move came in before it wrote
     let read = state
@@ -808,6 +817,7 @@ async fn test_an_ejection_that_loses_the_race_to_a_move_writes_nothing() {
             player_index: 0,
             human_id: owner_id,
             bot_id: &bot.id,
+            new_bot: Some(&bot),
             new_owner_id: Some(&humans.ids[1]),
             state: &untimed,
             expected_version: read.version,
@@ -817,8 +827,9 @@ async fn test_an_ejection_that_loses_the_race_to_a_move_writes_nothing() {
         .unwrap_err();
     assert!(err.is_conflict(), "{err}");
 
-    // Nothing of it was written: seat, clock, owner, results
+    // Nothing of it was written: seat, clock, owner, results, and no bot was created
     assert_eq!(seat_user(&state, &party_id, 0).await.id, *owner_id);
+    assert!(state.user_repo.find_by_id(&bot.id).await.unwrap().is_none());
     let gs = stored_state(&state, &party_id).await;
     assert!(gs.is_timed(0));
     assert_eq!(gs.current_action, GameAction::Play);
@@ -838,15 +849,398 @@ async fn test_the_turn_timer_task_ejects_on_its_own() {
     let (mut app, state) = test_app(&clock).await;
     let (party_id, humans) =
         timed_party(&mut app, &state, "task", 1, &[BotDifficulty::Hard], 30).await;
-    let timer = spawn_turn_timer(state.clone(), Duration::from_millis(10));
 
-    clock.advance(Duration::from_secs(31));
+    // The server was down ten minutes, past the owner's deadline: once it is up again the
+    // owner has the whole 30 s
+    clock.advance(Duration::from_secs(600));
+    let boot = clock.now_millis();
+    let timer = spawn_turn_timer(state.clone(), Duration::from_millis(10));
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while stored_state(&state, &party_id).await.turn_clock.deadline != Some(boot + 30_000) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the deadline was not moved"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // Ticks go by: nobody is ejected before the whole turn is over
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(seat_user(&state, &party_id, 0).await.id, humans.ids[0]);
+
+    clock.advance(Duration::from_secs(30));
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     while seat_user(&state, &party_id, 0).await.id == humans.ids[0] {
         assert!(tokio::time::Instant::now() < deadline, "nobody was ejected");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     timer.abort();
+    assert_eq!(
+        seat_user(&state, &party_id, 0).await.user_type,
+        UserType::Bot
+    );
+}
+
+#[tokio::test]
+async fn test_a_restart_does_not_count_the_downtime_against_the_player_on_turn() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, humans) =
+        timed_party(&mut app, &state, "reboot", 1, &[BotDifficulty::Hard], 30).await;
+    let (owner, bea) = (&humans.tokens[0], &humans.tokens[1]);
+    // The owner used 20 s of the turn, then the server went down for a minute
+    clock.advance(Duration::from_secs(80));
+    let boot = clock.now_millis();
+
+    assert_eq!(extend_turn_deadlines_after_downtime(&state).await, 1);
+    assert!(enforce_turn_deadlines(&state).await.is_empty());
+    let (_, body) = get_state(&mut app, &party_id, bea).await;
+    assert_eq!(body["gameState"]["turnDeadline"], boot + 30_000, "{body}");
+    // A second start finds the deadline far enough, and leaves it
+    assert_eq!(extend_turn_deadlines_after_downtime(&state).await, 0);
+
+    // The owner's turn is the same turn: the hand-size choice keeps the new deadline
+    clock.advance(Duration::from_secs(29));
+    let (status, _) = post(
+        &mut app,
+        &party_id,
+        "selectHandSize",
+        json!({"handSize": 5}),
+        owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(enforce_turn_deadlines(&state).await.is_empty());
+    clock.advance(Duration::from_secs(1));
+    assert_eq!(enforce_turn_deadlines(&state).await.len(), 1);
+}
+
+#[tokio::test]
+async fn test_the_last_human_ejected_hands_the_party_to_the_bot_on_their_seat() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, humans) =
+        timed_party(&mut app, &state, "lasthuman", 1, &[BotDifficulty::Hard], 30).await;
+    let (owner, owner_id) = (&humans.tokens[0], &humans.ids[0]);
+
+    // Bea deletes her account: her seat is forfeited, the owner is the last human, still
+    // timed; two seats are left, a Golden Score round
+    let (status, body) = send(
+        &mut app,
+        "DELETE",
+        "/api/auth/me",
+        json!({"password": "password123"}),
+        Some(&humans.tokens[1]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(stored_state(&state, &party_id).await.is_timed(0));
+
+    clock.advance(Duration::from_secs(30));
+    let ejections = enforce_turn_deadlines(&state).await;
+    assert_eq!(ejections.len(), 1);
+    // No human left to own the party: the bot on the owner's seat does, a player of it
+    let stand_in = seat_user(&state, &party_id, 0).await;
+    assert_eq!(
+        ejections[0].new_owner_id.as_deref(),
+        Some(stand_in.id.as_str())
+    );
+    let party = state
+        .party_repo
+        .find_by_id(&party_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(party.owner_id, stand_in.id);
+    let (status, _) = get_state(&mut app, &party_id, owner).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // The bots play the game out; the owner's game is a loss after the three seats
+    wait_finished(&state, &party_id, Duration::from_secs(20)).await;
+    assert_eq!(
+        result_of(&state, &party_id, owner_id).await,
+        Some((4, 0, 0, 1))
+    );
+}
+
+/// The party repository of the game, with one step run right after the first
+/// `get_player_index`: between a move's seat check and its write
+struct AfterSeatCheck {
+    inner: Arc<SqlitePartyRepository>,
+    step:
+        tokio::sync::Mutex<Option<std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>>>,
+}
+
+#[async_trait::async_trait]
+impl PartyRepository for AfterSeatCheck {
+    async fn find_by_id(&self, id: &str) -> Result<Option<Party>, RepositoryError> {
+        self.inner.find_by_id(id).await
+    }
+    async fn find_by_invite_code(&self, code: &str) -> Result<Option<Party>, RepositoryError> {
+        self.inner.find_by_invite_code(code).await
+    }
+    async fn find_public_parties(
+        &self,
+        status: Option<PartyStatus>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Party>, RepositoryError> {
+        self.inner.find_public_parties(status, limit, offset).await
+    }
+    async fn find_public_parties_with_counts(
+        &self,
+        status: Option<PartyStatus>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<PartyWithPlayerCount>, RepositoryError> {
+        self.inner
+            .find_public_parties_with_counts(status, limit, offset)
+            .await
+    }
+    async fn find_by_owner(
+        &self,
+        owner_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Party>, RepositoryError> {
+        self.inner.find_by_owner(owner_id, limit, offset).await
+    }
+    async fn find_all_parties(
+        &self,
+        status: Option<PartyStatus>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Party>, RepositoryError> {
+        self.inner.find_all_parties(status, limit, offset).await
+    }
+    async fn save(&self, party: &Party) -> Result<(), RepositoryError> {
+        self.inner.save(party).await
+    }
+    async fn delete(&self, id: &str) -> Result<(), RepositoryError> {
+        self.inner.delete(id).await
+    }
+    async fn update_status(&self, id: &str, status: PartyStatus) -> Result<(), RepositoryError> {
+        self.inner.update_status(id, status).await
+    }
+    async fn get_party_players(&self, party_id: &str) -> Result<Vec<PartyPlayer>, RepositoryError> {
+        self.inner.get_party_players(party_id).await
+    }
+    async fn add_party_player(
+        &self,
+        party_id: &str,
+        user_id: &str,
+        player_index: u8,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .add_party_player(party_id, user_id, player_index)
+            .await
+    }
+    async fn set_player_index(
+        &self,
+        party_id: &str,
+        user_id: &str,
+        player_index: u8,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .set_player_index(party_id, user_id, player_index)
+            .await
+    }
+    async fn remove_party_player(
+        &self,
+        party_id: &str,
+        user_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.inner.remove_party_player(party_id, user_id).await
+    }
+    async fn is_player_in_party(
+        &self,
+        party_id: &str,
+        user_id: &str,
+    ) -> Result<bool, RepositoryError> {
+        self.inner.is_player_in_party(party_id, user_id).await
+    }
+    async fn get_player_index(
+        &self,
+        party_id: &str,
+        user_id: &str,
+    ) -> Result<Option<u8>, RepositoryError> {
+        let seat = self.inner.get_player_index(party_id, user_id).await;
+        let step = self.step.lock().await.take();
+        if let Some(step) = step {
+            step.await;
+        }
+        seat
+    }
+    async fn human_seats(&self, party_id: &str) -> Result<Vec<u8>, RepositoryError> {
+        self.inner.human_seats(party_id).await
+    }
+    async fn replace_player(
+        &self,
+        replacement: &SeatReplacement<'_>,
+    ) -> Result<(), RepositoryError> {
+        self.inner.replace_player(replacement).await
+    }
+    async fn get_round_by_id(&self, id: &str) -> Result<Option<Round>, RepositoryError> {
+        self.inner.get_round_by_id(id).await
+    }
+    async fn save_round(&self, round: &Round) -> Result<(), RepositoryError> {
+        self.inner.save_round(round).await
+    }
+    async fn get_current_round(&self, party_id: &str) -> Result<Option<Round>, RepositoryError> {
+        self.inner.get_current_round(party_id).await
+    }
+    async fn get_versioned_game_state(
+        &self,
+        party_id: &str,
+    ) -> Result<Option<VersionedGameState>, RepositoryError> {
+        self.inner.get_versioned_game_state(party_id).await
+    }
+    async fn save_game_state(
+        &self,
+        party_id: &str,
+        state: &GameState,
+    ) -> Result<(), RepositoryError> {
+        self.inner.save_game_state(party_id, state).await
+    }
+    async fn update_game_state(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .update_game_state(party_id, state, expected_version)
+            .await
+    }
+    async fn update_game_state_for_player(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
+        player_index: u8,
+        user_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .update_game_state_for_player(party_id, state, expected_version, player_index, user_id)
+            .await
+    }
+    async fn parties_past_turn_deadline(&self, now: u64) -> Result<Vec<String>, RepositoryError> {
+        self.inner.parties_past_turn_deadline(now).await
+    }
+    async fn save_game_action(
+        &self,
+        action: &zapzap_backend::domain::repositories::GameAction,
+    ) -> Result<(), RepositoryError> {
+        self.inner.save_game_action(action).await
+    }
+    async fn get_game_actions(
+        &self,
+        party_id: &str,
+        round_number: u32,
+    ) -> Result<Vec<zapzap_backend::domain::repositories::GameAction>, RepositoryError> {
+        self.inner.get_game_actions(party_id, round_number).await
+    }
+    async fn save_round_scores(
+        &self,
+        party_id: &str,
+        round_number: u32,
+        scores: Vec<RoundScoreEntry>,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .save_round_scores(party_id, round_number, scores)
+            .await
+    }
+    async fn get_elimination_order(
+        &self,
+        party_id: &str,
+    ) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
+        self.inner.get_elimination_order(party_id).await
+    }
+    async fn save_game_results(
+        &self,
+        party_id: &str,
+        winner_user_id: &str,
+        winner_score: u16,
+        total_rounds: u32,
+        was_golden_score: bool,
+        player_results: Vec<PlayerGameResult>,
+    ) -> Result<(), RepositoryError> {
+        self.inner
+            .save_game_results(
+                party_id,
+                winner_user_id,
+                winner_score,
+                total_rounds,
+                was_golden_score,
+                player_results,
+            )
+            .await
+    }
+}
+
+#[tokio::test]
+async fn test_a_move_whose_seat_is_given_away_after_its_seat_check_is_refused() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, humans) =
+        timed_party(&mut app, &state, "seatcheck", 1, &[BotDifficulty::Hard], 30).await;
+    let (owner, owner_id) = (&humans.tokens[0], &humans.ids[0]);
+    let (status, _) = post(
+        &mut app,
+        &party_id,
+        "selectHandSize",
+        json!({"handSize": 5}),
+        owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let card = stored_state(&state, &party_id).await.hands[0][0];
+    clock.advance(Duration::from_secs(30));
+
+    // The owner's play has checked the seat, still the owner's; the turn timer then gives
+    // it to a bot (seat and version in one transaction, the turn unchanged); the play goes
+    // on with the state read after that
+    let ejection = {
+        let (user_repo, party_repo, party_id) = (
+            state.user_repo.clone(),
+            state.party_repo.clone(),
+            party_id.clone(),
+        );
+        let now = clock.now_millis();
+        async move {
+            let ejected = EjectLatePlayer::new(user_repo, party_repo)
+                .execute(&party_id, now)
+                .await
+                .unwrap();
+            assert!(ejected.is_some(), "the timer ejected nobody");
+        }
+    };
+    let repo = AfterSeatCheck {
+        inner: state.party_repo.clone(),
+        step: tokio::sync::Mutex::new(Some(Box::pin(ejection))),
+    };
+    let err = PlayCards::new(Arc::new(repo))
+        .execute(PlayCardsInput {
+            party_id: party_id.clone(),
+            user_id: owner_id.clone(),
+            card_ids: vec![card],
+        })
+        .await
+        .err()
+        .expect("the play went through on the bot's seat");
+    assert!(
+        matches!(&err, PlayCardsError::Repository(e) if e.is_conflict()),
+        "{err}"
+    );
+    assert_eq!(
+        zapzap_backend::api::error::ApiError::from(err).status,
+        StatusCode::CONFLICT
+    );
+
+    // Nothing of the play was applied: the card is still in the seat's hand, the bot to play
+    let gs = stored_state(&state, &party_id).await;
+    assert!(gs.hands[0].contains(&card));
+    assert_eq!(gs.current_action, GameAction::Play);
+    assert_eq!(gs.current_turn, 0);
     assert_eq!(
         seat_user(&state, &party_id, 0).await.user_type,
         UserType::Bot

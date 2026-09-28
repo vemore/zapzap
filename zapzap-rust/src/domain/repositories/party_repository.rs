@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::entities::{Party, PartyPlayer, PartyStatus, Round};
+use crate::domain::entities::{Party, PartyPlayer, PartyStatus, Round, User};
 use crate::domain::repositories::RepositoryError;
 use crate::domain::value_objects::GameState;
 
@@ -171,6 +171,19 @@ pub trait PartyRepository: Send + Sync {
         expected_version: i64,
     ) -> Result<(), RepositoryError>;
 
+    /// `update_game_state` for a player's move: written only while `user_id` still holds
+    /// seat `player_index`, checked in the same statement as the version. `Conflict`, with
+    /// nothing written, when the seat changed hands since the move read it (the turn
+    /// timer gave it to a bot) as well as when the state moved on.
+    async fn update_game_state_for_player(
+        &self,
+        party_id: &str,
+        state: &GameState,
+        expected_version: i64,
+        player_index: u8,
+        user_id: &str,
+    ) -> Result<(), RepositoryError>;
+
     /// The playing parties whose seat on turn went past its turn deadline at `now` (Unix
     /// milliseconds)
     async fn parties_past_turn_deadline(&self, now: u64) -> Result<Vec<String>, RepositoryError>;
@@ -235,6 +248,9 @@ pub struct SeatReplacement<'a> {
     pub human_id: &'a str,
     /// The bot who takes it, with its hand and score
     pub bot_id: &'a str,
+    /// The bot to create first, in the same transaction, when no existing bot was free
+    /// (`bot_id` is its id): an ejection that loses its race creates no bot
+    pub new_bot: Option<&'a User>,
     /// The party's new owner, when the human owned it
     pub new_owner_id: Option<&'a str>,
     /// The game state to write: the seat no longer timed

@@ -91,7 +91,9 @@ or **2 min**.
   can no longer play in that game, and it counts as a **loss** for them, whatever the bot
   does with the seat. If they owned the party, it passes to the next human by seat.
 - The deadline is the server's: refreshing or reconnecting does not reset it, and the
-  game state tells every player when the turn runs out.
+  game state tells every player when the turn runs out. Time the server is down (a
+  restart) does not count: when it is back, the player on turn has at least the whole
+  limit again.
 
 ### Round Start
 

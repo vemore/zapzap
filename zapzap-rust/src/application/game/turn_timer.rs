@@ -16,6 +16,7 @@ use crate::domain::entities::{BotDifficulty, PartyStatus, User, UserType, DELETE
 use crate::domain::repositories::{
     PartyRepository, RepositoryError, SeatReplacement, UserRepository, VersionedGameState,
 };
+use crate::domain::value_objects::TURN_TIME_LIMITS;
 use crate::infrastructure::app_state::{AppState, GameEvent};
 
 /// How often the turn timer looks for a late seat
@@ -96,9 +97,11 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
             return Ok(None);
         }
 
-        let bot = self.stand_in(&players).await?;
+        let (bot, created) = self.stand_in(&players).await?;
 
-        // The party passes to the first other human by seat, as on a forfeit
+        // The party passes to the first other human by seat, as on a forfeit; with no
+        // other human, to the bot on the late human's seat, so that the owner is always a
+        // player of the party (the bots play the game out)
         let new_owner_id = if party.owner_id == human.id {
             let mut others = players
                 .iter()
@@ -107,16 +110,19 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
             others.sort_by_key(|p| p.player_index);
             let ids: Vec<String> = others.iter().map(|p| p.user_id.clone()).collect();
             let users = self.user_repo.find_by_ids(&ids).await?;
-            others.iter().find_map(|p| {
-                users
-                    .iter()
-                    .find(|u| {
-                        u.id == p.user_id
-                            && u.user_type == UserType::Human
-                            && !u.id.starts_with(DELETED_USER_ID_PREFIX)
-                    })
-                    .map(|u| u.id.clone())
-            })
+            others
+                .iter()
+                .find_map(|p| {
+                    users
+                        .iter()
+                        .find(|u| {
+                            u.id == p.user_id
+                                && u.user_type == UserType::Human
+                                && !u.id.starts_with(DELETED_USER_ID_PREFIX)
+                        })
+                        .map(|u| u.id.clone())
+                })
+                .or_else(|| Some(bot.id.clone()))
         } else {
             None
         };
@@ -130,6 +136,7 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
                 player_index: seat,
                 human_id: &human.id,
                 bot_id: &bot.id,
+                new_bot: created.then_some(&bot),
                 new_owner_id: new_owner_id.as_deref(),
                 state: &updated,
                 expected_version: version,
@@ -154,11 +161,12 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
         }))
     }
 
-    /// A bot not seated at this table, created when there is none
+    /// A bot not seated at this table, and whether it is a new one, which `replace_player`
+    /// creates with the ejection (none is free)
     async fn stand_in(
         &self,
         players: &[crate::domain::entities::PartyPlayer],
-    ) -> Result<User, RepositoryError> {
+    ) -> Result<(User, bool), RepositoryError> {
         let seated: HashSet<&str> = players.iter().map(|p| p.user_id.as_str()).collect();
         let mut free: Vec<User> = self
             .user_repo
@@ -169,7 +177,7 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
             .collect();
         free.sort_by(|a, b| (stand_in_rank(a), &a.username).cmp(&(stand_in_rank(b), &b.username)));
         if let Some(bot) = free.into_iter().next() {
-            return Ok(bot);
+            return Ok((bot, false));
         }
         let id = Uuid::new_v4().to_string();
         let bot = User::new_bot(
@@ -177,9 +185,7 @@ impl<U: UserRepository, P: PartyRepository> EjectLatePlayer<U, P> {
             format!("StandInBot-{}", &id[..8]),
             BotDifficulty::Medium,
         );
-        self.user_repo.save(&bot).await?;
-        tracing::info!("Created bot {} to take a late human's seat", bot.username);
-        Ok(bot)
+        Ok((bot, true))
     }
 }
 
@@ -235,9 +241,66 @@ pub async fn enforce_turn_deadlines(state: &Arc<AppState>) -> Vec<Ejection> {
     ejections
 }
 
-/// Run the turn timer in the background, every `every`, for the server's lifetime
+/// At the server's start, give every turn under way at least its whole limit from now:
+/// the deadlines are absolute times, and the time the server was down (a deploy, a
+/// restart) must not count against the player on turn. A deadline already further away is
+/// kept. Returns the number of turns given more time.
+pub async fn extend_turn_deadlines_after_downtime(state: &Arc<AppState>) -> usize {
+    let now = state.clock.now_millis();
+    let longest = u64::from(TURN_TIME_LIMITS.iter().copied().max().unwrap_or(0)) * 1000;
+    // Every party whose deadline could fall before now + its own limit
+    let parties = match state
+        .party_repo
+        .parties_past_turn_deadline(now.saturating_add(longest))
+        .await
+    {
+        Ok(parties) => parties,
+        Err(e) => {
+            tracing::error!("Turn timer: reading the deadlines at startup failed: {}", e);
+            return 0;
+        }
+    };
+    let mut extended = 0;
+    for party_id in parties {
+        let read = state.party_repo.get_versioned_game_state(&party_id).await;
+        let Ok(Some(VersionedGameState {
+            state: mut game_state,
+            version,
+        })) = read
+        else {
+            continue;
+        };
+        let full_turn = now.saturating_add(u64::from(game_state.turn_clock.limit_secs) * 1000);
+        match game_state.turn_clock.deadline {
+            Some(deadline) if deadline < full_turn => {
+                game_state.turn_clock.deadline = Some(full_turn);
+            }
+            _ => continue,
+        }
+        // The same turn keeps the deadline it is written with (`stamp_turn_deadline`); a
+        // move that wrote meanwhile began its own turn or kept one it had in full
+        match state
+            .party_repo
+            .update_game_state(&party_id, &game_state, version)
+            .await
+        {
+            Ok(()) => extended += 1,
+            Err(e) if e.is_conflict() => {}
+            Err(e) => tracing::error!("Turn timer: party {} at startup: {}", party_id, e),
+        }
+    }
+    if extended > 0 {
+        tracing::info!("Turn timer: {extended} turn(s) under way given their whole limit again");
+    }
+    extended
+}
+
+/// Run the turn timer in the background, every `every`, for the server's lifetime. It
+/// starts by giving the turns under way their whole limit again
+/// (`extend_turn_deadlines_after_downtime`): it runs once per server start.
 pub fn spawn_turn_timer(state: Arc<AppState>, every: Duration) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        extend_turn_deadlines_after_downtime(&state).await;
         let mut ticks = tokio::time::interval(every);
         ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
