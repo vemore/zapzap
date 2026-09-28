@@ -23,7 +23,8 @@ use zapzap_backend::api;
 use zapzap_backend::application::bot::BotRunner;
 use zapzap_backend::application::game::{
     enforce_turn_deadlines, extend_turn_deadlines_after_downtime, spawn_turn_timer, CallZapZap,
-    CallZapZapInput, EjectLatePlayer, PlayCards, PlayCardsError, PlayCardsInput,
+    CallZapZapInput, EjectLatePlayer, NextRound, NextRoundInput, PlayCards, PlayCardsError,
+    PlayCardsInput,
 };
 use zapzap_backend::domain::entities::{BotDifficulty, PartyStatus, User, UserType};
 use zapzap_backend::domain::repositories::{
@@ -1167,6 +1168,121 @@ async fn test_rewritten_game_results_count_the_ejected_players() {
     assert_eq!(body["gameFinished"], json!(true), "{body}");
     assert_eq!(party_status(&state, &party_id).await, PartyStatus::Finished);
     assert_eq!(ranking_of(&state, &party_id).await, (4, vec![1, 2, 3, 4]));
+}
+
+/// `user_id` calls ZapZap in round `round` of `party_id`, holding `hands` by seat, the
+/// totals `scores` before it; the use case itself, so the stand-in bot is never triggered
+async fn zapzap_in_round(
+    state: &AppState,
+    party_id: &str,
+    user_id: &str,
+    round: u16,
+    scores: &[u16],
+    hands: &[&[u8]],
+) -> bool {
+    let mut gs = stored_state(state, party_id).await;
+    assert_eq!(gs.round_number, round);
+    gs.scores[..scores.len()].copy_from_slice(scores);
+    for (seat, hand) in hands.iter().enumerate() {
+        gs.hands[seat] = smallvec::SmallVec::from_slice(hand);
+    }
+    gs.current_turn = 1;
+    gs.current_action = GameAction::Play;
+    state
+        .party_repo
+        .save_game_state(party_id, &gs)
+        .await
+        .unwrap();
+    CallZapZap::new(state.party_repo.clone())
+        .execute(CallZapZapInput {
+            party_id: party_id.to_string(),
+            user_id: user_id.to_string(),
+        })
+        .await
+        .unwrap_or_else(|e| panic!("the ZapZap of round {round}: {e}"))
+        .game_finished
+}
+
+#[tokio::test]
+async fn test_the_game_details_give_each_player_the_rounds_they_played() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    // Three humans: the owner (seat 0), Bea (seat 1), Cid (seat 2)
+    let (party_id, humans) = timed_party(&mut app, &state, "rounds", 2, &[], 30).await;
+    let (owner_id, bea_id, cid_id) = (&humans.ids[0], &humans.ids[1], &humans.ids[2]);
+
+    // Round 1: the owner runs out of time; a bot takes the seat
+    clock.advance(Duration::from_secs(30));
+    let ejection = EjectLatePlayer::new(state.user_repo.clone(), state.party_repo.clone())
+        .execute(&party_id, clock.now_millis())
+        .await
+        .unwrap();
+    assert_eq!(ejection.map(|e| e.player_index), Some(0));
+    let stand_in = seat_user(&state, &party_id, 0).await;
+    let next_round = || async {
+        NextRound::new(state.party_repo.clone())
+            .execute(NextRoundInput {
+                party_id: party_id.clone(),
+                user_id: bea_id.clone(),
+            })
+            .await
+            .unwrap_or_else(|e| panic!("nextRound: {e}"));
+    };
+    // Bea calls with 3 points: nobody goes past 100
+    let (low, six, fifteen): (&[u8], &[u8], &[u8]) =
+        (&[0, 1], &[26, 27, 28], &[13, 14, 15, 16, 17]);
+    let hands = [six, low, six];
+    let over = zapzap_in_round(&state, &party_id, bea_id, 1, &[10, 10, 10], &hands).await;
+    assert!(!over);
+    next_round().await;
+    // Round 2: Cid goes past 100 (95 + 15)
+    let hands = [six, low, fifteen];
+    let over = zapzap_in_round(&state, &party_id, bea_id, 2, &[16, 10, 95], &hands).await;
+    assert!(!over);
+    assert!(stored_state(&state, &party_id).await.is_eliminated(2));
+    next_round().await;
+    // Round 3, a Golden Score: Bea's lower hand wins the game
+    let hands = [six, low, &[][..]];
+    let over = zapzap_in_round(&state, &party_id, bea_id, 3, &[22, 10, 110], &hands).await;
+    assert!(over);
+
+    // The stored results: the rounds each took part in
+    let rounds = |user_id: &str| {
+        let (state, party_id, user_id) = (&state, &party_id, user_id.to_string());
+        async move { result_of(state, party_id, &user_id).await.unwrap().3 }
+    };
+    assert_eq!(rounds(bea_id).await, 3);
+    assert_eq!(rounds(&stand_in.id).await, 3);
+    assert_eq!(rounds(cid_id).await, 2);
+    assert_eq!(rounds(owner_id).await, 1);
+
+    // The game details give each player those rounds, not the game's
+    let (status, body) = send(
+        &mut app,
+        "GET",
+        &format!("/api/history/{party_id}"),
+        Value::Null,
+        Some(&humans.tokens[1]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["game"]["totalRounds"], 3, "{body}");
+    let players: Vec<(&str, &Value)> = body["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (p["userId"].as_str().unwrap(), &p["roundsPlayed"]))
+        .collect();
+    assert_eq!(
+        players,
+        [
+            (bea_id.as_str(), &json!(3)),
+            (stand_in.id.as_str(), &json!(3)),
+            (cid_id.as_str(), &json!(2)),
+            (owner_id.as_str(), &json!(1))
+        ],
+        "{body}"
+    );
 }
 
 #[tokio::test]

@@ -146,6 +146,8 @@ pub struct GamePlayerResult {
     pub final_score: i32,
     #[serde(rename = "finishPosition")]
     pub finish_position: i32,
+    /// The rounds this player took part in, as `player_game_results` stores it
+    /// (`build_game_results`): fewer than `totalRounds` for an eliminated or ejected player
     #[serde(rename = "roundsPlayed")]
     pub rounds_played: i32,
     #[serde(rename = "totalZapZapCalls")]
@@ -374,13 +376,14 @@ pub async fn get_game_details(
     }
 
     // Get player results with stats calculated from round_scores
-    let player_results = sqlx::query_as::<_, (String, String, i32, i32, bool, i32, i32, i32)>(
+    let player_results = sqlx::query_as::<_, (String, String, i32, i32, i32, bool, i32, i32, i32)>(
         r#"
         SELECT
             pgr.user_id,
             u.username,
             pgr.final_score,
             pgr.finish_position,
+            pgr.rounds_played,
             pgr.is_winner,
             COALESCE((SELECT SUM(is_zapzap_caller) FROM round_scores WHERE party_id = pgr.party_id AND user_id = pgr.user_id), 0) as total_zapzap_calls,
             COALESCE((SELECT SUM(zapzap_success) FROM round_scores WHERE party_id = pgr.party_id AND user_id = pgr.user_id), 0) as successful_zapzaps,
@@ -404,6 +407,7 @@ pub async fn get_game_details(
                 username,
                 final_score,
                 finish_position,
+                rounds_played,
                 is_winner,
                 total_zapzap_calls,
                 successful_zapzaps,
@@ -415,7 +419,7 @@ pub async fn get_game_details(
                     username,
                     final_score,
                     finish_position,
-                    rounds_played: total_rounds,
+                    rounds_played,
                     total_zapzap_calls,
                     successful_zapzaps,
                     failed_zapzaps,
