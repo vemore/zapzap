@@ -26,9 +26,10 @@ use zapzap_backend::domain::entities::{
     BotDifficulty, Party, PartyPlayer, PartyStatus, Round, User, UserType,
 };
 use zapzap_backend::domain::repositories::{
-    PartyRepository, PartyWithPlayerCount, PlayerGameResult, RepositoryError, RoundScoreEntry,
-    SeatReplacement, UserRepository, VersionedGameState,
+    EjectedPlayer, PartyRepository, PartyWithPlayerCount, PlayerGameResult, RepositoryError,
+    RoundScoreEntry, SeatReplacement, UserRepository, VersionedGameState,
 };
+use zapzap_backend::domain::services::build_game_results;
 use zapzap_backend::domain::value_objects::{GameAction, GameState};
 use zapzap_backend::infrastructure::app_state::AppState;
 use zapzap_backend::infrastructure::bot::card_analyzer::calculate_hand_value;
@@ -962,6 +963,216 @@ async fn test_the_last_human_ejected_hands_the_party_to_the_bot_on_their_seat() 
     );
 }
 
+/// `game_results.player_count` of `party_id`, and every `finish_position` of its players
+/// in order
+async fn ranking_of(state: &AppState, party_id: &str) -> (i64, Vec<i64>) {
+    let (player_count,): (i64,) =
+        sqlx::query_as("SELECT player_count FROM game_results WHERE party_id = ?")
+            .bind(party_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    let positions: Vec<i64> = sqlx::query_scalar(
+        "SELECT finish_position FROM player_game_results WHERE party_id = ? \
+         ORDER BY finish_position",
+    )
+    .bind(party_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap();
+    (player_count, positions)
+}
+
+/// The entry of `party_id` in the history of `token`'s user
+async fn history_entry(app: &mut Router, token: &str, party_id: &str) -> Value {
+    let (status, body) = send(app, "GET", "/api/history", Value::Null, Some(token)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|game| game["partyId"] == party_id)
+        .unwrap_or_else(|| panic!("{party_id} not in the history: {body}"))
+        .clone()
+}
+
+#[tokio::test]
+async fn test_two_players_ejected_in_turn_rank_4th_and_5th_of_5() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    // The owner (seat 0) and Bea (seat 1), humans; a bot on seat 2
+    let (party_id, humans) =
+        timed_party(&mut app, &state, "twice", 1, &[BotDifficulty::Hard], 30).await;
+    let (owner_id, bea_id) = (&humans.ids[0], &humans.ids[1]);
+
+    // The owner is to draw; close to 100, the game ends in a round or two
+    let mut gs = stored_state(&state, &party_id).await;
+    gs.current_action = GameAction::Draw;
+    gs.scores[..3].copy_from_slice(&[90, 90, 90]);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    // The owner runs out of time; the stand-in draws, and Bea is on turn
+    clock.advance(Duration::from_secs(30));
+    assert_eq!(enforce_turn_deadlines(&state).await.len(), 1);
+    assert_eq!(
+        result_of(&state, &party_id, owner_id).await,
+        Some((4, 0, 90, 1))
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while stored_state(&state, &party_id).await.current_turn != 1 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the stand-in did not draw"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // Bea runs out of time in her turn: she is 4th, the owner moves down to 5th
+    clock.advance(Duration::from_secs(30));
+    let ejections = enforce_turn_deadlines(&state).await;
+    assert_eq!(ejections.len(), 1, "{ejections:?}");
+    assert_eq!(ejections[0].human_id, *bea_id);
+    assert_eq!(result_of(&state, &party_id, bea_id).await.unwrap().0, 4);
+    assert_eq!(result_of(&state, &party_id, owner_id).await.unwrap().0, 5);
+
+    // The bots play the game out: five players ranked 1 to 5, the ejected last
+    wait_finished(&state, &party_id, Duration::from_secs(30)).await;
+    assert_eq!(
+        ranking_of(&state, &party_id).await,
+        (5, vec![1, 2, 3, 4, 5])
+    );
+    let bea = result_of(&state, &party_id, bea_id).await.unwrap();
+    let owner = result_of(&state, &party_id, owner_id).await.unwrap();
+    assert_eq!((bea.0, bea.1), (4, 0));
+    assert_eq!((owner.0, owner.1), (5, 0));
+    // Their history places them within the game's players, a loss each
+    for (token, placement) in [(&humans.tokens[1], 4), (&humans.tokens[0], 5)] {
+        let entry = history_entry(&mut app, token, &party_id).await;
+        assert_eq!(entry["playerCount"], 5, "{entry}");
+        assert_eq!(entry["userPlacement"], placement, "{entry}");
+        let (_, body) = send(&mut app, "GET", "/api/stats/me", Value::Null, Some(token)).await;
+        assert_eq!(
+            (&body["stats"]["gamesPlayed"], &body["stats"]["losses"]),
+            (&json!(1), &json!(1)),
+            "{body}"
+        );
+    }
+}
+
+/// A timed party of three humans whose owner (seat 0) was ejected, then Bea (seat 1)
+/// deleted her account, which left the stand-in alone in the game: the forfeit ended it.
+/// Cid (seat 2) was out already. Returns the party and its humans.
+async fn forfeit_ends_the_game_after_an_ejection(
+    app: &mut Router,
+    state: &AppState,
+    clock: &ManualClock,
+    prefix: &str,
+) -> (String, Humans) {
+    let (party_id, humans) = timed_party(app, state, prefix, 2, &[], 30).await;
+    let mut gs = stored_state(state, &party_id).await;
+    gs.scores[..3].copy_from_slice(&[10, 20, 105]);
+    gs.eliminate_player(2);
+    state
+        .party_repo
+        .save_game_state(&party_id, &gs)
+        .await
+        .unwrap();
+
+    // The owner is ejected; the stand-in has not played yet
+    clock.advance(Duration::from_secs(30));
+    let ejection = EjectLatePlayer::new(state.user_repo.clone(), state.party_repo.clone())
+        .execute(&party_id, clock.now_millis())
+        .await
+        .unwrap();
+    assert_eq!(ejection.map(|e| e.player_index), Some(0));
+    assert_eq!(party_status(state, &party_id).await, PartyStatus::Playing);
+
+    let (status, body) = send(
+        app,
+        "DELETE",
+        "/api/auth/me",
+        json!({"password": "password123"}),
+        Some(&humans.tokens[1]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(party_status(state, &party_id).await, PartyStatus::Finished);
+    (party_id, humans)
+}
+
+#[tokio::test]
+async fn test_an_ejected_player_ranks_after_every_seat_when_a_forfeit_ends_the_game() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, humans) =
+        forfeit_ends_the_game_after_an_ejection(&mut app, &state, &clock, "forfeitend").await;
+
+    // The stand-in wins; Bea (her forfeit) and Cid, out in the same round, by seat; the
+    // ejected owner after the three seats
+    assert_eq!(ranking_of(&state, &party_id).await, (4, vec![1, 2, 3, 4]));
+    let stand_in = seat_user(&state, &party_id, 0).await;
+    assert_eq!(
+        result_of(&state, &party_id, &stand_in.id).await.unwrap().0,
+        1
+    );
+    assert_eq!(
+        result_of(&state, &party_id, &humans.ids[2])
+            .await
+            .unwrap()
+            .0,
+        3
+    );
+    assert_eq!(
+        result_of(&state, &party_id, &humans.ids[0]).await,
+        Some((4, 0, 10, 1))
+    );
+    for (token, placement) in [(&humans.tokens[0], 4), (&humans.tokens[2], 3)] {
+        let entry = history_entry(&mut app, token, &party_id).await;
+        assert_eq!(entry["playerCount"], 4, "{entry}");
+        assert_eq!(entry["userPlacement"], placement, "{entry}");
+    }
+}
+
+#[tokio::test]
+async fn test_rewritten_game_results_count_the_ejected_players() {
+    let clock = Arc::new(ManualClock::new());
+    let (mut app, state) = test_app(&clock).await;
+    let (party_id, _) =
+        forfeit_ends_the_game_after_an_ejection(&mut app, &state, &clock, "rewrite").await;
+
+    // A row written before the ejected counted, then the results written again (the
+    // `nextRound` recovery upserts them): the count follows the players
+    sqlx::query("UPDATE game_results SET player_count = 3 WHERE party_id = ?")
+        .bind(&party_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let repo = &state.party_repo;
+    let players = repo.get_party_players(&party_id).await.unwrap();
+    let results = build_game_results(
+        &stored_state(&state, &party_id).await,
+        players.iter().map(|p| (p.player_index, p.user_id.clone())),
+        &repo.get_elimination_order(&party_id).await.unwrap(),
+        &repo.get_ejected_players(&party_id).await.unwrap(),
+        0,
+    );
+    repo.save_game_results(
+        &party_id,
+        &results.winner_user_id,
+        results.winner_score,
+        results.total_rounds,
+        results.was_golden_score,
+        results.players,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ranking_of(&state, &party_id).await, (4, vec![1, 2, 3, 4]));
+}
+
 /// The party repository of the game, with one step run right after the first
 /// `get_player_index`: between a move's seat check and its write
 struct AfterSeatCheck {
@@ -1154,6 +1365,12 @@ impl PartyRepository for AfterSeatCheck {
         party_id: &str,
     ) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
         self.inner.get_elimination_order(party_id).await
+    }
+    async fn get_ejected_players(
+        &self,
+        party_id: &str,
+    ) -> Result<Vec<EjectedPlayer>, RepositoryError> {
+        self.inner.get_ejected_players(party_id).await
     }
     async fn save_game_results(
         &self,

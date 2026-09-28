@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sqlx::{SqliteConnection, SqlitePool};
 
-use super::party_repo::{elimination_order, write_game_results};
+use super::party_repo::{ejected_players, elimination_order, write_game_results};
 use crate::domain::entities::{
     deleted_user_id_pattern, BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX,
 };
@@ -140,7 +140,8 @@ async fn forfeit_playing_seats(
 
 /// Finish a game a forfeit left with one seat: the party and its round are finished and
 /// the results written by `build_game_results`, as a zapzap's are (the forfeited seats
-/// count as eliminated in the current round). Returns the winner's user id.
+/// count as eliminated in the current round, the players the turn timer ejected come
+/// after every seat). Returns the winner's user id.
 async fn finish_forfeited_game(
     conn: &mut SqliteConnection,
     party_id: &str,
@@ -173,12 +174,14 @@ async fn finish_forfeited_game(
     .await
     .map_err(db_err)?;
     let recorded = elimination_order(conn, party_id).await?;
+    let ejected = ejected_players(conn, party_id).await?;
     let results = build_game_results(
         state,
         seats
             .into_iter()
             .map(|(index, user_id)| (index as u8, user_id)),
         &recorded,
+        &ejected,
         winner_index,
     );
     write_game_results(

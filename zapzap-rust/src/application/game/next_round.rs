@@ -109,10 +109,12 @@ impl<P: PartyRepository> NextRound<P> {
                 .party_repo
                 .get_elimination_order(&input.party_id)
                 .await?;
+            let ejected = self.party_repo.get_ejected_players(&input.party_id).await?;
             let results = build_game_results(
                 &game_state,
                 players.iter().map(|p| (p.player_index, p.user_id.clone())),
                 &elimination_order,
+                &ejected,
                 winner,
             );
             let winner_user_id = results.winner_user_id.clone();
