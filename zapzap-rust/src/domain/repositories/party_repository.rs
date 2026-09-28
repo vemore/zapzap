@@ -113,7 +113,8 @@ pub trait PartyRepository: Send + Sync {
     /// transaction: the game state read at `expected_version` is written as the next
     /// version by the compare-and-swap of `update_game_state`; the seat changes hands; the
     /// party's ownership passes on when the human owned it; and the human's result, a
-    /// loss ranked after every seat, is written. `Conflict`, with nothing written, when
+    /// loss ranked after every seat by `rank_ejected`, is written (the players ejected
+    /// before move down one). `Conflict`, with nothing written, when
     /// another write of the game state (a move) came in since the read, or the seat is no
     /// longer the human's.
     async fn replace_player(
@@ -217,6 +218,13 @@ pub trait PartyRepository: Send + Sync {
         party_id: &str,
     ) -> Result<Vec<(String, Option<u32>)>, RepositoryError>;
 
+    /// The players the turn timer ejected from the party, the latest ejected first: the
+    /// results of users no longer seated, each written at its ejection (`replace_player`)
+    async fn get_ejected_players(
+        &self,
+        party_id: &str,
+    ) -> Result<Vec<EjectedPlayer>, RepositoryError>;
+
     // ========== Game results ==========
 
     /// Save game results when game finishes
@@ -285,6 +293,15 @@ pub struct PlayerGameResult {
     pub finish_position: u8,
     pub rounds_played: u32,
     pub is_winner: bool,
+}
+
+/// A player the turn timer ejected, as their result was written at the ejection: the score
+/// and the round they left with (GAME_RULES.md "Final Ranking" item 5)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EjectedPlayer {
+    pub user_id: String,
+    pub final_score: u16,
+    pub rounds_played: u32,
 }
 
 /// Game action log entry

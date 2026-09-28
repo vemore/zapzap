@@ -7,9 +7,10 @@ use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
 };
 use crate::domain::repositories::{
-    GameAction, PartyRepository, PlayerGameResult, RepositoryError, SeatReplacement,
+    EjectedPlayer, GameAction, PartyRepository, PlayerGameResult, RepositoryError, SeatReplacement,
     VersionedGameState,
 };
+use crate::domain::services::rank_ejected;
 use crate::domain::value_objects::{GameState, PartySettings};
 use crate::infrastructure::services::{Clock, SystemClock};
 
@@ -530,39 +531,28 @@ impl PartyRepository for SqlitePartyRepository {
             .map_err(db_err)?;
         }
 
-        // The human's game is a loss, whatever the bot does with the seat. The seats take
-        // positions 1..=seat_count when the game ends; the players ejected before rank
-        // after every seat, the latest ejected first, so the earlier ones move down one.
-        let seat_count = i32::from(replacement.seat_count);
-        sqlx::query(
-            "UPDATE player_game_results SET finish_position = finish_position + 1 \
-             WHERE party_id = ? AND finish_position > ?",
-        )
-        .bind(party_id)
-        .bind(seat_count)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
+        // The human's game is a loss at once, whatever the bot does with the seat, ranked
+        // as the game's end ranks it (`rank_ejected`): after every seat, the latest
+        // ejected first, so the players ejected before move down one
         let state = replacement.state;
-        sqlx::query(
-            "INSERT INTO player_game_results \
-             (party_id, user_id, final_score, finish_position, rounds_played, is_winner, created_at) \
-             VALUES (?, ?, ?, ?, ?, 0, ?) \
-             ON CONFLICT(party_id, user_id) DO UPDATE SET \
-                final_score = excluded.final_score, \
-                finish_position = excluded.finish_position, \
-                rounds_played = excluded.rounds_played, \
-                is_winner = 0",
+        let mut ejected = vec![EjectedPlayer {
+            user_id: replacement.human_id.to_string(),
+            final_score: state.get_score(replacement.player_index),
+            rounds_played: u32::from(state.round_number),
+        }];
+        ejected.extend(
+            ejected_players(&mut tx, party_id)
+                .await?
+                .into_iter()
+                .filter(|player| player.user_id != replacement.human_id),
+        );
+        write_player_results(
+            &mut tx,
+            party_id,
+            &rank_ejected(usize::from(replacement.seat_count), &ejected),
+            now,
         )
-        .bind(party_id)
-        .bind(replacement.human_id)
-        .bind(i32::from(state.get_score(replacement.player_index)))
-        .bind(seat_count + 1)
-        .bind(i32::from(state.round_number))
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
+        .await?;
 
         tx.commit().await.map_err(db_err)
     }
@@ -886,6 +876,14 @@ impl PartyRepository for SqlitePartyRepository {
         elimination_order(&mut conn, party_id).await
     }
 
+    async fn get_ejected_players(
+        &self,
+        party_id: &str,
+    ) -> Result<Vec<EjectedPlayer>, RepositoryError> {
+        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        ejected_players(&mut conn, party_id).await
+    }
+
     async fn save_game_results(
         &self,
         party_id: &str,
@@ -992,8 +990,40 @@ pub(crate) async fn elimination_order(
         .collect())
 }
 
+/// The players the turn timer ejected from the party, the latest ejected first: the
+/// `player_game_results` rows of users no longer seated, which only an ejection writes
+/// before the game's end (`replace_player`), newest row first. An upsert keeps a row's id,
+/// so the order is the ejections' whatever was rewritten since. On a connection, so that a
+/// transaction can read it (`replace_player`, `delete_account`).
+pub(crate) async fn ejected_players(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+) -> Result<Vec<EjectedPlayer>, RepositoryError> {
+    let rows = sqlx::query_as::<_, (String, i64, i64)>(
+        "SELECT pgr.user_id, pgr.final_score, pgr.rounds_played FROM player_game_results pgr \
+         WHERE pgr.party_id = ?1 AND NOT EXISTS ( \
+             SELECT 1 FROM party_players pp \
+             WHERE pp.party_id = ?1 AND pp.user_id = pgr.user_id) \
+         ORDER BY pgr.id DESC",
+    )
+    .bind(party_id)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(db_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, final_score, rounds_played)| EjectedPlayer {
+            user_id,
+            final_score: final_score as u16,
+            rounds_played: rounds_played as u32,
+        })
+        .collect())
+}
+
 /// Write a finished game's results (`game_results`, `player_game_results`), upserted on
-/// the party. On a connection, so that a transaction can write them (`delete_account`).
+/// the party: `player_results` is every player of the game, the ejected ones included
+/// (`build_game_results`), and so its number of players. On a connection, so that a
+/// transaction can write them (`delete_account`).
 pub(crate) async fn write_game_results(
     conn: &mut SqliteConnection,
     party_id: &str,
@@ -1013,6 +1043,7 @@ pub(crate) async fn write_game_results(
             winner_final_score = excluded.winner_final_score,
             total_rounds = excluded.total_rounds,
             was_golden_score = excluded.was_golden_score,
+            player_count = excluded.player_count,
             finished_at = excluded.finished_at",
     )
     .bind(party_id)
@@ -1027,6 +1058,17 @@ pub(crate) async fn write_game_results(
     .await
     .map_err(db_err)?;
 
+    write_player_results(conn, party_id, &player_results, now).await
+}
+
+/// Write players' `player_game_results` rows, upserted on the party and the user (an
+/// upsert keeps the row's id and `created_at`)
+async fn write_player_results(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+    player_results: &[PlayerGameResult],
+    now: i64,
+) -> Result<(), RepositoryError> {
     for result in player_results {
         sqlx::query(
             "INSERT INTO player_game_results (party_id, user_id, final_score, finish_position, rounds_played, is_winner, created_at)
@@ -1048,6 +1090,5 @@ pub(crate) async fn write_game_results(
         .await
         .map_err(db_err)?;
     }
-
     Ok(())
 }

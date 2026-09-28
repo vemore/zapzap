@@ -215,7 +215,9 @@ history shows):
    who left and a player past 100 alike — rank in seat order, the first seat first.
 5. Players ejected for running out of time come after every seat (the bot that took over
    their seat ranks in their place), the latest ejected first, with the score they had
-   when they left. Their game is never a win.
+   when they left. Their game is never a win, and it counts as a loss from the moment
+   they are ejected. They are players of the game: a game of 3 seats that lost 2 players
+   to the clock ranks 5 players, the ejected 4th and 5th.
 
 ### Golden Score Rules
 

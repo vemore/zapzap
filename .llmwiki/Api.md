@@ -92,7 +92,7 @@ Every action answers 404 `PARTY_NOT_FOUND`, 400 `INVALID_PARTY_STATE` when the p
 ### History — `/api/history` (`zapzap-rust/src/api/routes/mod.rs:200-225`)
 | Method | Path | Auth | Handler | Notes |
 |---|---|---|---|---|
-| GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:259` | same handler; `limit` default 20 (`history.rs:28-30`). Body: `{success, games[{id, partyId, partyName, winnerUserId, winnerUsername, winnerFinalScore, totalRounds, wasGoldenScore, playerCount, finishedAt, visibility, userPlacement, userScore}], pagination{limit, offset, hasMore}}` |
+| GET | `/` and `/my-games` | JWT | `zapzap-rust/src/api/routes/history.rs:259` | same handler; `limit` default 20 (`history.rs:28-30`). Body: `{success, games[{id, partyId, partyName, winnerUserId, winnerUsername, winnerFinalScore, totalRounds, wasGoldenScore, playerCount, finishedAt, visibility, userPlacement, userScore}], pagination{limit, offset, hasMore}}`; `playerCount` counts every player of the game, the ones the turn timer ejected included, so `userPlacement` ≤ `playerCount` ([[GameRules]] § Final ranking) |
 | GET | `/public` | none | `history.rs:281` | finished public games only (`visibility = 'public'`); the same body without `visibility`, `userPlacement`, `userScore` |
 | GET | `/:partyId` | JWT | `history.rs:301` | 404 `Game not found`; 403 `{error:"Access denied. Party is private."}` for a **private** game to a user in neither `party_players` nor `player_game_results`; public games stay readable by any signed-in user |
 
