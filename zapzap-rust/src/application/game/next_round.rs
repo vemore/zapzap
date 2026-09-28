@@ -3,8 +3,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::entities::{PartyPlayer, PartyStatus, Round};
-use crate::domain::repositories::{PartyRepository, RepositoryError, VersionedGameState};
-use crate::domain::services::{build_game_results, initialize_round, is_game_over};
+use crate::domain::repositories::{
+    GameWrite, PartyRepository, RepositoryError, RoundWrite, VersionedGameState,
+};
+use crate::domain::services::{initialize_round, is_game_over};
 use crate::domain::value_objects::{GameAction, GameState};
 
 /// Next round input
@@ -60,7 +62,7 @@ impl<P: PartyRepository> NextRound<P> {
 
     pub async fn execute(&self, input: NextRoundInput) -> Result<NextRoundOutput, NextRoundError> {
         // Find party
-        let mut party = self
+        let party = self
             .party_repo
             .find_by_id(&input.party_id)
             .await?
@@ -86,49 +88,36 @@ impl<P: PartyRepository> NextRound<P> {
             return Err(NextRoundError::RoundNotFinished);
         }
 
-        // Check if game is over. Unreachable in normal play: the zapzap that ends the game
-        // finishes the party (`call_zapzap.rs`), and a finished party is refused above.
-        // It recovers a zapzap stopped between saving the round and finishing the party;
-        // that zapzap finishes the party before it saves the game results, so they are
-        // not saved yet, and this branch finishes the party first too: a second call is
-        // refused. (Both writes are upserts on `party_id` besides.)
+        // Check if game is over. Unreachable since a zapzap writes the end of the game in
+        // one transaction (`call_zapzap.rs`): the party is finished with the state, and a
+        // finished party is refused above. It recovers a game an earlier version left
+        // half-written (the state over, the party still playing): the party is finished
+        // and the results written, under the compare-and-swap, so a second call is
+        // refused. (The results are upserts on `party_id` besides.)
         if let Some(winner) = is_game_over(&game_state) {
-            // Mark party as finished
-            party.finish();
-            self.party_repo.save(&party).await?;
-
             // Get final scores
             let scores: Vec<u16> = (0..game_state.player_count as usize)
                 .map(|i| game_state.scores[i])
                 .collect();
 
-            // Get players for saving results
             let players = self.party_repo.get_party_players(&input.party_id).await?;
 
-            let elimination_order = self
+            let results = self
                 .party_repo
-                .get_elimination_order(&input.party_id)
-                .await?;
-            let ejected = self.party_repo.get_ejected_players(&input.party_id).await?;
-            let results = build_game_results(
-                &game_state,
-                players.iter().map(|p| (p.player_index, p.user_id.clone())),
-                &elimination_order,
-                &ejected,
-                winner,
-            );
-            let winner_user_id = results.winner_user_id.clone();
+                .write_game(&GameWrite {
+                    party_id: &input.party_id,
+                    state: &game_state,
+                    expected_version: version,
+                    seat_holder: None,
+                    round: RoundWrite::Unchanged,
+                    winner: Some(winner),
+                })
+                .await?
+                .ok_or_else(|| {
+                    RepositoryError::Database("a finished game wrote no results".to_string())
+                })?;
+            let winner_user_id = results.winner_user_id;
             let winner_score = results.winner_score;
-            self.party_repo
-                .save_game_results(
-                    &input.party_id,
-                    &results.winner_user_id,
-                    results.winner_score,
-                    results.total_rounds,
-                    results.was_golden_score,
-                    results.players,
-                )
-                .await?;
 
             // Once the game is over every other seat is out, as on Node, where the golden
             // score's loser joins the players past 100
@@ -182,26 +171,28 @@ impl<P: PartyRepository> NextRound<P> {
         new_game_state.turn_clock = game_state.turn_clock.clone();
 
         // Create round record
-        let round_id = Uuid::new_v4().to_string();
         let round = Round::new(
-            round_id.clone(),
+            Uuid::new_v4().to_string(),
             input.party_id.clone(),
             new_round_number as u32,
             next_starting_player,
         );
 
-        // Save game state first, unless another write came in since the read (a second
-        // nextRound, a forfeit): `Conflict`, and no round row is written
+        // Save the new round's state, its row and the party's current round, in one
+        // transaction, unless another write came in since the read (a second nextRound, a
+        // forfeit, an admin stop): `Conflict`, and nothing is written. Only the party's
+        // current round is written, so a forfeit that passed the party on since it was
+        // read stands.
         self.party_repo
-            .update_game_state(&input.party_id, &new_game_state, version)
+            .write_game(&GameWrite {
+                party_id: &input.party_id,
+                state: &new_game_state,
+                expected_version: version,
+                seat_holder: None,
+                round: RoundWrite::Start(&round),
+                winner: None,
+            })
             .await?;
-
-        // Save round
-        self.party_repo.save_round(&round).await?;
-
-        // Update party current round
-        party.current_round_id = Some(round_id);
-        self.party_repo.save(&party).await?;
 
         // Get eliminated players
         let eliminated = eliminated_seats(&new_game_state, &players);
