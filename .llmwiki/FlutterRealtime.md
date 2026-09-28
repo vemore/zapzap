@@ -3,7 +3,7 @@
 > Scope: the Flutter client's real-time channel (SSE): parser, transports, `SseClient`,
 > `SseEvent`, `SseProvider`, and presence.
 > Related: [[FrontendFlutter]] · [[FlutterAuth]] · [[FlutterParties]] · [[Architecture]] · [[Backend]]
-> Updated: 2026-09-27
+> Updated: 2026-09-28
 
 ## Facts
 
@@ -12,7 +12,7 @@
 The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`. The backend filters
 per user ([[Backend]]): events without a party and
 a public party's lifecycle events (`playerJoined`, `playerLeft`, `partyStarted`,
-`partyDeleted`, `gameFinished`, what `PartyListProvider` reloads on) go to every stream, a
+`partyDeleted`, `gameFinished`, what `PartyListProvider` reloads on, with `playerReplaced` and `playerForfeited` from the players' own streams) go to every stream, a
 game's moves and every event of a private party only to its players' streams — so the
 token matters; an initial `event: connected`, then every broadcast as `event:
 event` + a JSON object, a `: heartbeat` comment every 20 s, and a `type` on every broadcast (`zapzap-rust/src/api/sse.rs`,

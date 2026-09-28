@@ -184,6 +184,14 @@ void main() {
       }
     });
 
+    test('a seat given to a bot reloads, so an ejected player is no longer a member', () {
+      // The game screen pops back to a list loaded before the ejection: without
+      // a reload its row keeps isMember and offers "Resume" to a seat that is gone
+      for (final action in ['playerReplaced', 'playerForfeited']) {
+        expect(PartyListProvider.refreshingActions, contains(action));
+      }
+    });
+
     test('disposing cancels a pending reload and the subscription', () {
       fakeAsync((async) {
         final backend = FakeLobbyBackend();

@@ -38,7 +38,8 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
   too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). **The event
   stream keeps the list current** (React waits for a reload): `playerJoined`, `playerLeft`,
-  `partyStarted`, `partyDeleted` and `gameFinished` (`refreshingActions`), about any party,
+  `playerReplaced`, `playerForfeited`, `partyStarted`, `partyDeleted` and `gameFinished`
+  (`refreshingActions`), about any party,
   reload it without a spinner `refreshDelay` (1 s) after the last one, so a burst of bot
   joins is one `GET /party`; a game move reloads nothing. Only the newest load's answer is
   kept (`_loadGeneration`, as in the lobby), so a pull and an event answering out of order
@@ -174,6 +175,8 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   `PartyErrorCode` (`providers/party_provider.dart`) names the party codes.
 
 ## Decisions & History
+
+- 2026-09-28 (fix/flutter-list-refresh-on-ejection): the list also reloads on `playerReplaced` and `playerForfeited`. A player ejected by the turn clock was popped back to the list loaded before the game, which still said `isMember` and offered « Reprendre » to a seat now a bot's (`Tu n'as pas de place à cette table`). The ejected player's own stream carries `playerReplaced` ([[Backend]] § Turn timer).
 
 - **Parties, create and lobby (2026-09-22, `feat/flutter-lobby`).** Each screen owns its
   provider instead of a global one, because the lobby's state is one party's and dies with
