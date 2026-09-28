@@ -23,7 +23,9 @@ use crate::application::game::{
     SelectHandSize, SelectHandSizeError, SelectHandSizeInput,
 };
 use crate::domain::entities::{BotDifficulty, PartyStatus};
-use crate::domain::repositories::{PartyRepository, UserRepository, VersionedGameState};
+use crate::domain::repositories::{
+    PartyRepository, RepositoryError, UserRepository, VersionedGameState,
+};
 use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::{GameAction, GameState};
 use crate::infrastructure::app_state::{AppState, GameEvent};
@@ -379,7 +381,7 @@ async fn deal_next_round(
     {
         Ok(dealt) => dealt,
         Err(NextRoundError::RoundNotFinished) => return Ok(RoundEnd::DealtElsewhere),
-        Err(NextRoundError::Repository(e)) if e.is_conflict() => {
+        Err(NextRoundError::Repository(e)) if read_again(&e) => {
             return Ok(RoundEnd::DealtElsewhere)
         }
         // The ZapZap that ended the game finished the party, or the party is gone
@@ -410,11 +412,18 @@ async fn deal_next_round(
     })
 }
 
+/// A bot's write that lost a race: another write of the game state came first (a forfeit,
+/// a human's request, an admin stop: `Conflict`), or the game is gone (the party deleted:
+/// `NotFound`). It wrote nothing: the loop reads the state again, and ends if none is left.
+fn read_again(e: &RepositoryError) -> bool {
+    e.is_conflict() || e.is_not_found()
+}
+
 /// Play bot moves until a human is to move, a round ends while a human is still in the
 /// game, or the game ends; the caller holds the party's roster, so no other loop runs for
 /// this party meanwhile. A move whose write loses a race with another write of the game
 /// state (a forfeit, a human's request) wrote nothing: the loop reads the state again and
-/// decides afresh.
+/// decides afresh (`read_again`).
 async fn run_bot_loop(
     state: &Arc<AppState>,
     party_id: &str,
@@ -514,7 +523,7 @@ async fn run_bot_loop(
                 .update_game_state(party_id, &updated, version)
                 .await
             {
-                Err(e) if !e.is_conflict() => tracing::error!("Failed to update game state: {}", e),
+                Err(e) if !read_again(&e) => tracing::error!("Failed to update game state: {}", e),
                 _ => {}
             }
             continue;
@@ -538,7 +547,7 @@ async fn run_bot_loop(
                     })
                     .await
                 {
-                    Err(SelectHandSizeError::Repository(e)) if e.is_conflict() => continue,
+                    Err(SelectHandSizeError::Repository(e)) if read_again(&e) => continue,
                     result => result.map_err(|e| e.to_string())?,
                 };
                 broadcast_bot_event(
@@ -559,7 +568,7 @@ async fn run_bot_loop(
                         })
                         .await
                     {
-                        Err(CallZapZapError::Repository(e)) if e.is_conflict() => continue,
+                        Err(CallZapZapError::Repository(e)) if read_again(&e) => continue,
                         result => result.map_err(|e| e.to_string())?,
                     };
                     broadcast_bot_event(
@@ -591,7 +600,7 @@ async fn run_bot_loop(
                         })
                         .await
                     {
-                        Err(PlayCardsError::Repository(e)) if e.is_conflict() => continue,
+                        Err(PlayCardsError::Repository(e)) if read_again(&e) => continue,
                         result => result.map_err(|e| e.to_string())?,
                     };
                     broadcast_bot_event(
@@ -621,7 +630,7 @@ async fn run_bot_loop(
                 // A discard pick that fails falls back to the deck
                 let source = match drawn {
                     Ok(_) => source,
-                    Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
+                    Err(DrawCardError::Repository(e)) if read_again(&e) => continue,
                     Err(_) => {
                         match DrawCard::new(state.party_repo.clone())
                             .execute(DrawCardInput {
@@ -632,7 +641,7 @@ async fn run_bot_loop(
                             })
                             .await
                         {
-                            Err(DrawCardError::Repository(e)) if e.is_conflict() => continue,
+                            Err(DrawCardError::Repository(e)) if read_again(&e) => continue,
                             result => result.map_err(|e| e.to_string())?,
                         };
                         "deck"

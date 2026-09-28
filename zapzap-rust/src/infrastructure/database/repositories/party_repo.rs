@@ -7,10 +7,10 @@ use crate::domain::entities::{
     Party, PartyPlayer, PartyStatus, PartyVisibility, Round, RoundStatus,
 };
 use crate::domain::repositories::{
-    EjectedPlayer, GameAction, PartyRepository, PlayerGameResult, RepositoryError, SeatReplacement,
-    VersionedGameState,
+    EjectedPlayer, GameAction, GameWrite, PartyRepository, PlayerGameResult, RepositoryError,
+    RoundScoreEntry, RoundWrite, SeatReplacement, VersionedGameState,
 };
-use crate::domain::services::rank_ejected;
+use crate::domain::services::{build_game_results, rank_ejected, GameResults};
 use crate::domain::value_objects::{GameState, PartySettings};
 use crate::infrastructure::services::{Clock, SystemClock};
 
@@ -535,17 +535,13 @@ impl PartyRepository for SqlitePartyRepository {
         // as the game's end ranks it (`rank_ejected`): after every seat, the latest
         // ejected first, so the players ejected before move down one
         let state = replacement.state;
+        // (The human has no result yet: one is written only at an ejection or the end)
         let mut ejected = vec![EjectedPlayer {
             user_id: replacement.human_id.to_string(),
             final_score: state.get_score(replacement.player_index),
             rounds_played: u32::from(state.round_number),
         }];
-        ejected.extend(
-            ejected_players(&mut tx, party_id)
-                .await?
-                .into_iter()
-                .filter(|player| player.user_id != replacement.human_id),
-        );
+        ejected.extend(ejected_players(&mut tx, party_id).await?);
         write_player_results(
             &mut tx,
             party_id,
@@ -703,24 +699,102 @@ impl PartyRepository for SqlitePartyRepository {
         .await
     }
 
-    async fn update_game_state_for_player(
+    async fn write_game(
         &self,
-        party_id: &str,
-        state: &GameState,
-        expected_version: i64,
-        player_index: u8,
-        user_id: &str,
-    ) -> Result<(), RepositoryError> {
-        let mut conn = self.pool.acquire().await.map_err(db_err)?;
+        write: &GameWrite<'_>,
+    ) -> Result<Option<GameResults>, RepositoryError> {
+        let now = chrono::Utc::now().timestamp();
+        let party_id = write.party_id;
+        // The write lock up front, as `replace_player` and `delete_account` take it: the
+        // version compared is the one every other writer sees until this commits
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(db_err)?;
+
+        // First the compare-and-swap: a lost race rolls back when it returns, having
+        // written nothing
         write_game_state_if_unchanged(
-            &mut conn,
+            &mut tx,
             party_id,
-            state,
-            expected_version,
+            write.state,
+            write.expected_version,
             self.clock.now_millis(),
-            Some((player_index, user_id)),
+            write.seat_holder,
         )
-        .await
+        .await?;
+
+        let round_number = i32::from(write.state.round_number);
+        match write.round {
+            RoundWrite::Unchanged => {}
+            RoundWrite::Progress => {
+                sqlx::query(
+                    "UPDATE rounds SET current_turn = ?, current_action = ? \
+                     WHERE party_id = ? AND round_number = ?",
+                )
+                .bind(i32::from(write.state.current_turn))
+                .bind(write.state.current_action.as_str())
+                .bind(party_id)
+                .bind(round_number)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+            }
+            RoundWrite::Finish(scores) => {
+                sqlx::query(
+                    "UPDATE rounds SET status = 'finished', finished_at = ? \
+                     WHERE party_id = ? AND round_number = ?",
+                )
+                .bind(now)
+                .bind(party_id)
+                .bind(round_number)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+                write_round_scores(&mut tx, party_id, round_number, scores, now).await?;
+            }
+            RoundWrite::Start(round) => {
+                sqlx::query(
+                    "INSERT INTO rounds (id, party_id, round_number, status, current_turn, \
+                     current_action, created_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(&round.id)
+                .bind(&round.party_id)
+                .bind(round.round_number as i32)
+                .bind(round.status.as_str())
+                .bind(round.current_turn as i32)
+                .bind(&round.current_action)
+                .bind(round.created_at)
+                .bind(round.finished_at)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+                sqlx::query("UPDATE parties SET current_round_id = ?, updated_at = ? WHERE id = ?")
+                    .bind(&round.id)
+                    .bind(now)
+                    .bind(party_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(db_err)?;
+            }
+        }
+
+        let results = match write.winner {
+            None => None,
+            Some(winner) => {
+                sqlx::query("UPDATE parties SET status = 'finished', updated_at = ? WHERE id = ?")
+                    .bind(now)
+                    .bind(party_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(db_err)?;
+                Some(write_game_results(&mut tx, party_id, write.state, winner).await?)
+            }
+        };
+
+        tx.commit().await.map_err(db_err)?;
+        Ok(results)
     }
 
     async fn parties_past_turn_deadline(&self, now: u64) -> Result<Vec<String>, RepositoryError> {
@@ -813,98 +887,6 @@ impl PartyRepository for SqlitePartyRepository {
 
         Ok(actions)
     }
-
-    async fn save_round_scores(
-        &self,
-        party_id: &str,
-        round_number: u32,
-        scores: Vec<crate::domain::repositories::RoundScoreEntry>,
-    ) -> Result<(), RepositoryError> {
-        let now = chrono::Utc::now().timestamp();
-
-        for score in scores {
-            let hand_cards_json = serde_json::to_string(&score.hand_cards).unwrap_or_default();
-
-            sqlx::query(
-                r#"
-                INSERT INTO round_scores (
-                    party_id, round_number, user_id, player_index,
-                    score_this_round, total_score_after, hand_points,
-                    is_zapzap_caller, zapzap_success, was_counteracted,
-                    hand_cards, is_lowest_hand, is_eliminated, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(party_id, round_number, user_id) DO UPDATE SET
-                    score_this_round = excluded.score_this_round,
-                    total_score_after = excluded.total_score_after,
-                    hand_points = excluded.hand_points,
-                    is_zapzap_caller = excluded.is_zapzap_caller,
-                    zapzap_success = excluded.zapzap_success,
-                    was_counteracted = excluded.was_counteracted,
-                    hand_cards = excluded.hand_cards,
-                    is_lowest_hand = excluded.is_lowest_hand,
-                    is_eliminated = excluded.is_eliminated
-                "#,
-            )
-            .bind(party_id)
-            .bind(round_number as i32)
-            .bind(&score.user_id)
-            .bind(score.player_index as i32)
-            .bind(score.score_this_round as i32)
-            .bind(score.total_score_after as i32)
-            .bind(score.hand_points as i32)
-            .bind(if score.is_zapzap_caller { 1 } else { 0 })
-            .bind(if score.zapzap_success { 1 } else { 0 })
-            .bind(if score.was_counteracted { 1 } else { 0 })
-            .bind(&hand_cards_json)
-            .bind(if score.is_lowest_hand { 1 } else { 0 })
-            .bind(if score.is_eliminated { 1 } else { 0 })
-            .bind(now)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
-        }
-
-        Ok(())
-    }
-
-    async fn get_elimination_order(
-        &self,
-        party_id: &str,
-    ) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
-        let mut conn = self.pool.acquire().await.map_err(db_err)?;
-        elimination_order(&mut conn, party_id).await
-    }
-
-    async fn get_ejected_players(
-        &self,
-        party_id: &str,
-    ) -> Result<Vec<EjectedPlayer>, RepositoryError> {
-        let mut conn = self.pool.acquire().await.map_err(db_err)?;
-        ejected_players(&mut conn, party_id).await
-    }
-
-    async fn save_game_results(
-        &self,
-        party_id: &str,
-        winner_user_id: &str,
-        winner_score: u16,
-        total_rounds: u32,
-        was_golden_score: bool,
-        player_results: Vec<PlayerGameResult>,
-    ) -> Result<(), RepositoryError> {
-        let mut conn = self.pool.acquire().await.map_err(db_err)?;
-        write_game_results(
-            &mut conn,
-            party_id,
-            winner_user_id,
-            winner_score,
-            total_rounds,
-            was_golden_score,
-            player_results,
-        )
-        .await
-    }
 }
 
 fn db_err(e: sqlx::Error) -> RepositoryError {
@@ -912,12 +894,14 @@ fn db_err(e: sqlx::Error) -> RepositoryError {
 }
 
 /// Write a game state read at `expected_version`, as the next version, the deadline of the
-/// turn under way stamped at `now_ms`: the compare-and-swap of every move
-/// (`update_game_state`, `update_game_state_for_player`) and of an ejection
-/// (`replace_player`). With `seat_holder` `(seat, user)`, only while that user still holds
-/// that seat (a player's move). One statement, so SQLite checks the version and the seat
-/// and writes atomically; `Conflict`, with nothing written, when the version moved on, the
-/// state is gone or the seat changed hands.
+/// turn under way stamped at `now_ms`: the compare-and-swap of every game use case
+/// (`update_game_state`, `write_game`) and of an ejection (`replace_player`). Only while
+/// the party is playing (an admin stop lands between a move's read of the party and its
+/// read of the state), and with `seat_holder` `(seat, user)` only while that user still
+/// holds that seat (a player's move). One statement, so SQLite checks the version, the
+/// status and the seat and writes atomically; `Conflict`, with nothing written, when the
+/// version moved on, the party is no longer playing or the seat changed hands; `NotFound`
+/// when the state is gone (the party deleted).
 async fn write_game_state_if_unchanged(
     conn: &mut SqliteConnection,
     party_id: &str,
@@ -930,7 +914,9 @@ async fn write_game_state_if_unchanged(
     state.stamp_turn_deadline(now_ms);
     let written = sqlx::query(
         "UPDATE game_state SET state_json = ?1, updated_at = ?2, version = version + 1 \
-         WHERE party_id = ?3 AND version = ?4 AND (?5 IS NULL OR EXISTS ( \
+         WHERE party_id = ?3 AND version = ?4 \
+         AND EXISTS (SELECT 1 FROM parties WHERE id = ?3 AND status = 'playing') \
+         AND (?5 IS NULL OR EXISTS ( \
              SELECT 1 FROM party_players \
              WHERE party_id = ?3 AND player_index = ?5 AND user_id = ?6))",
     )
@@ -943,25 +929,37 @@ async fn write_game_state_if_unchanged(
     .execute(&mut *conn)
     .await
     .map_err(db_err)?;
-
-    if written.rows_affected() == 0 {
-        return Err(RepositoryError::Conflict(match seat_holder {
-            Some((seat, user)) => format!(
-                "game state of party {party_id} changed since version {expected_version}, \
-                 or seat {seat} is no longer {user}'s"
-            ),
-            None => {
-                format!("game state of party {party_id} changed since version {expected_version}")
-            }
-        }));
+    if written.rows_affected() > 0 {
+        return Ok(());
     }
-    Ok(())
+
+    let stored: Option<i64> =
+        sqlx::query_scalar("SELECT version FROM game_state WHERE party_id = ?")
+            .bind(party_id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(db_err)?;
+    if stored.is_none() {
+        return Err(RepositoryError::NotFound(format!(
+            "game state of party {party_id}"
+        )));
+    }
+    Err(RepositoryError::Conflict(match seat_holder {
+        Some((seat, user)) => format!(
+            "game state of party {party_id} changed since version {expected_version}, \
+             the party is no longer playing, or seat {seat} is no longer {user}'s"
+        ),
+        None => format!(
+            "game state of party {party_id} changed since version {expected_version}, \
+             or the party is no longer playing"
+        ),
+    }))
 }
 
 /// Each player of the party with the first round they were eliminated in, by seat: the
 /// `MIN(round_number)` of their `round_scores` rows marked `is_eliminated`, `None` if none.
-/// On a connection, so that a transaction can read it (`delete_account`).
-pub(crate) async fn elimination_order(
+/// On a connection, so that the transaction finishing a game reads it (`write_game_results`).
+async fn elimination_order(
     conn: &mut SqliteConnection,
     party_id: &str,
 ) -> Result<Vec<(String, Option<u32>)>, RepositoryError> {
@@ -994,8 +992,8 @@ pub(crate) async fn elimination_order(
 /// `player_game_results` rows of users no longer seated, which only an ejection writes
 /// before the game's end (`replace_player`), newest row first. An upsert keeps a row's id,
 /// so the order is the ejections' whatever was rewritten since. On a connection, so that a
-/// transaction can read it (`replace_player`, `delete_account`).
-pub(crate) async fn ejected_players(
+/// transaction can read it (`replace_player`, `write_game_results`).
+async fn ejected_players(
     conn: &mut SqliteConnection,
     party_id: &str,
 ) -> Result<Vec<EjectedPlayer>, RepositoryError> {
@@ -1020,20 +1018,42 @@ pub(crate) async fn ejected_players(
         .collect())
 }
 
-/// Write a finished game's results (`game_results`, `player_game_results`), upserted on
-/// the party: `player_results` is every player of the game, the ejected ones included
-/// (`build_game_results`), and so its number of players. On a connection, so that a
-/// transaction can write them (`delete_account`).
+/// Build and write the results of the game `state` ended, won by seat `winner`
+/// (`game_results`, `player_game_results`, upserted on the party): every player of the
+/// game, from the seats, the eliminations recorded in `round_scores` and the players the
+/// turn timer ejected, all read on `conn` (`build_game_results`). Run inside the
+/// transaction that finishes the game (`write_game`, an account deletion's forfeit), it
+/// reads what it writes over: an ejected player's account deleted before it is read under
+/// its anonymous id, never half-way. Returns the results.
 pub(crate) async fn write_game_results(
     conn: &mut SqliteConnection,
     party_id: &str,
-    winner_user_id: &str,
-    winner_score: u16,
-    total_rounds: u32,
-    was_golden_score: bool,
-    player_results: Vec<PlayerGameResult>,
-) -> Result<(), RepositoryError> {
+    state: &GameState,
+    winner: u8,
+) -> Result<GameResults, RepositoryError> {
+    let seats: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT player_index, user_id FROM party_players WHERE party_id = ? \
+         ORDER BY player_index",
+    )
+    .bind(party_id)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(db_err)?;
+    let recorded = elimination_order(conn, party_id).await?;
+    let ejected = ejected_players(conn, party_id).await?;
+    let results = build_game_results(
+        state,
+        seats
+            .into_iter()
+            .map(|(index, user_id)| (index as u8, user_id)),
+        &recorded,
+        &ejected,
+        winner,
+    );
     let now = chrono::Utc::now().timestamp();
+    let player_results = &results.players;
+    let (winner_user_id, winner_score) = (&results.winner_user_id, results.winner_score);
+    let (total_rounds, was_golden_score) = (results.total_rounds, results.was_golden_score);
 
     sqlx::query(
         "INSERT INTO game_results (party_id, winner_user_id, winner_final_score, total_rounds, was_golden_score, player_count, finished_at, created_at)
@@ -1058,7 +1078,61 @@ pub(crate) async fn write_game_results(
     .await
     .map_err(db_err)?;
 
-    write_player_results(conn, party_id, &player_results, now).await
+    write_player_results(conn, party_id, player_results, now).await?;
+    Ok(results)
+}
+
+/// Write the scores of round `round_number`, one row per seat, upserted on the party, the
+/// round and the user
+async fn write_round_scores(
+    conn: &mut SqliteConnection,
+    party_id: &str,
+    round_number: i32,
+    scores: &[RoundScoreEntry],
+    now: i64,
+) -> Result<(), RepositoryError> {
+    for score in scores {
+        let hand_cards_json = serde_json::to_string(&score.hand_cards).unwrap_or_default();
+        sqlx::query(
+            r#"
+            INSERT INTO round_scores (
+                party_id, round_number, user_id, player_index,
+                score_this_round, total_score_after, hand_points,
+                is_zapzap_caller, zapzap_success, was_counteracted,
+                hand_cards, is_lowest_hand, is_eliminated, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(party_id, round_number, user_id) DO UPDATE SET
+                score_this_round = excluded.score_this_round,
+                total_score_after = excluded.total_score_after,
+                hand_points = excluded.hand_points,
+                is_zapzap_caller = excluded.is_zapzap_caller,
+                zapzap_success = excluded.zapzap_success,
+                was_counteracted = excluded.was_counteracted,
+                hand_cards = excluded.hand_cards,
+                is_lowest_hand = excluded.is_lowest_hand,
+                is_eliminated = excluded.is_eliminated
+            "#,
+        )
+        .bind(party_id)
+        .bind(round_number)
+        .bind(&score.user_id)
+        .bind(score.player_index as i32)
+        .bind(score.score_this_round as i32)
+        .bind(score.total_score_after as i32)
+        .bind(score.hand_points as i32)
+        .bind(if score.is_zapzap_caller { 1 } else { 0 })
+        .bind(if score.zapzap_success { 1 } else { 0 })
+        .bind(if score.was_counteracted { 1 } else { 0 })
+        .bind(&hand_cards_json)
+        .bind(if score.is_lowest_hand { 1 } else { 0 })
+        .bind(if score.is_eliminated { 1 } else { 0 })
+        .bind(now)
+        .execute(&mut *conn)
+        .await
+        .map_err(db_err)?;
+    }
+    Ok(())
 }
 
 /// Write players' `player_game_results` rows, upserted on the party and the user (an

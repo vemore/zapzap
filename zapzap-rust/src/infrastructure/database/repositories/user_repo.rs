@@ -3,14 +3,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sqlx::{SqliteConnection, SqlitePool};
 
-use super::party_repo::{ejected_players, elimination_order, write_game_results};
+use super::party_repo::write_game_results;
 use crate::domain::entities::{
     deleted_user_id_pattern, BotDifficulty, User, UserType, DELETED_USER_ID_PREFIX,
 };
 use crate::domain::repositories::{
     AccountDeletion, ForfeitOutcome, RepositoryError, SeatForfeit, UserRepository,
 };
-use crate::domain::services::{build_game_results, forfeit_seat};
+use crate::domain::services::forfeit_seat;
 use crate::domain::value_objects::GameState;
 use crate::infrastructure::services::{Clock, SystemClock};
 
@@ -139,7 +139,7 @@ async fn forfeit_playing_seats(
 }
 
 /// Finish a game a forfeit left with one seat: the party and its round are finished and
-/// the results written by `build_game_results`, as a zapzap's are (the forfeited seats
+/// the results written by `write_game_results`, as a zapzap's are (the forfeited seats
 /// count as eliminated in the current round, the players the turn timer ejected come
 /// after every seat). Returns the winner's user id.
 async fn finish_forfeited_game(
@@ -165,35 +165,7 @@ async fn finish_forfeited_game(
     .await
     .map_err(db_err)?;
 
-    let seats: Vec<(i64, String)> = sqlx::query_as(
-        "SELECT player_index, user_id FROM party_players WHERE party_id = ? \
-         ORDER BY player_index",
-    )
-    .bind(party_id)
-    .fetch_all(&mut *conn)
-    .await
-    .map_err(db_err)?;
-    let recorded = elimination_order(conn, party_id).await?;
-    let ejected = ejected_players(conn, party_id).await?;
-    let results = build_game_results(
-        state,
-        seats
-            .into_iter()
-            .map(|(index, user_id)| (index as u8, user_id)),
-        &recorded,
-        &ejected,
-        winner_index,
-    );
-    write_game_results(
-        conn,
-        party_id,
-        &results.winner_user_id,
-        results.winner_score,
-        results.total_rounds,
-        results.was_golden_score,
-        results.players,
-    )
-    .await?;
+    let results = write_game_results(conn, party_id, state, winner_index).await?;
     Ok(results.winner_user_id)
 }
 

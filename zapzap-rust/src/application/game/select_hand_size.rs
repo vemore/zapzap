@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::domain::entities::PartyStatus;
-use crate::domain::repositories::{PartyRepository, RepositoryError, VersionedGameState};
+use crate::domain::repositories::{
+    GameWrite, PartyRepository, RepositoryError, RoundWrite, VersionedGameState,
+};
 use crate::domain::services::hand_size_bounds;
 use crate::domain::value_objects::{GameAction, LastAction, LAST_ACTION_SELECT_HAND_SIZE};
 
@@ -124,24 +126,20 @@ impl<P: PartyRepository> SelectHandSize<P> {
             ..LastAction::default()
         };
 
-        // Save game state, unless another write came in since the read (a forfeit, a
-        // second request), or the seat is no longer this player's (an ejection by the turn
-        // timer after the seat was read): `Conflict`, and nothing below runs
+        // Save the game state and the round's turn and action, in one transaction, unless
+        // another write came in since the read (a forfeit, a second request, an admin
+        // stop), or the seat is no longer this player's (an ejection by the turn timer
+        // after the seat was read): `Conflict`, and nothing is written
         self.party_repo
-            .update_game_state_for_player(
-                &input.party_id,
-                &game_state,
-                version,
-                player_index,
-                &input.user_id,
-            )
+            .write_game(&GameWrite {
+                party_id: &input.party_id,
+                state: &game_state,
+                expected_version: version,
+                seat_holder: Some((player_index, &input.user_id)),
+                round: RoundWrite::Progress,
+                winner: None,
+            })
             .await?;
-
-        // Update round
-        if let Some(mut round) = self.party_repo.get_current_round(&input.party_id).await? {
-            round.current_action = "play".to_string();
-            self.party_repo.save_round(&round).await?;
-        }
 
         Ok(SelectHandSizeOutput {
             hand_size: input.hand_size,

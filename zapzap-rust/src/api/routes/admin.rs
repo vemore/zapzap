@@ -693,11 +693,10 @@ pub async fn stop_party(
         ));
     }
 
-    // Update party status to finished
-    sqlx::query("UPDATE parties SET status = 'finished', updated_at = ? WHERE id = ?")
-        .bind(chrono::Utc::now().timestamp())
-        .bind(&party_id)
-        .execute(state.party_repo.get_db())
+    // Finish the party and bump its game state's version, in one transaction: a move that
+    // read the state before the stop is refused by its compare-and-swap, as one that read
+    // the party before it is by the status the compare-and-swap checks
+    stop_party_and_game(state.party_repo.get_db(), &party_id)
         .await
         .map_err(|e| {
             (
@@ -715,6 +714,22 @@ pub async fn stop_party(
         party_name: party.name,
         stopped: true,
     }))
+}
+
+/// The writes of an admin stop: the party finished, and its game state (if any) a new
+/// version, in one transaction taking the write lock up front, as the game writes do
+async fn stop_party_and_game(db: &sqlx::SqlitePool, party_id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    sqlx::query("UPDATE parties SET status = 'finished', updated_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().timestamp())
+        .bind(party_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE game_state SET version = version + 1 WHERE party_id = ?")
+        .bind(party_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 /// DELETE /api/admin/parties/:partyId - Delete a party
