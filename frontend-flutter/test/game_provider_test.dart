@@ -105,6 +105,59 @@ void main() {
       expect(game.error, isNull);
     });
 
+    test('a first load answered NOT_IN_PARTY is an error, not an '
+        'ejection', () async {
+      final backend = FakeGameBackend();
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': 'NOT_IN_PARTY'},
+      );
+      final game = provider(backend);
+      await game.load();
+
+      expect(game.outcome, isNull);
+      expect((game.error! as ApiException).code, GameErrorCode.notInParty);
+    });
+
+    test('NOT_IN_PARTY over a party not started yet is no ejection', () async {
+      final backend = FakeGameBackend(state: gameSnapshotJson());
+      final game = provider(backend);
+      await game.load();
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': 'NOT_IN_PARTY'},
+      );
+
+      await game.load(showSpinner: false);
+
+      expect(game.outcome, isNull);
+      expect(game.refreshError, isA<ApiException>());
+    });
+
+    test('a refresh answered NOT_IN_PARTY once the game was shown is the '
+        'ejection whose event was missed', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 1, currentAction: 'play'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      // The stream was down when `playerReplaced` went out; the next
+      // event's refetch is the first to hear of it.
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': 'NOT_IN_PARTY'},
+      );
+
+      events.add(event('play'));
+      await pumpEventQueue();
+
+      expect(game.outcome, GameOutcome.ejected);
+      expect(game.refreshError, isNull);
+      expect(game.error, isNull);
+    });
+
     test('a failed load fills error, not actionError', () async {
       final game = provider(FakeGameBackend());
       await game.load();
@@ -387,6 +440,114 @@ void main() {
       final error = game.consumeActionError();
       expect((error! as ApiException).code, GameErrorCode.invalidPlay);
       expect(game.consumeActionError(), isNull, reason: 'shown once');
+    });
+
+    test('a move that lost a race reloads the table, then says so', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(
+            currentTurn: 0,
+            currentAction: 'play',
+            playerHand: [0, 13, 26],
+          ),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      game.toggleCard(0);
+      // A bot's move came in between the play's read and its write
+      backend.state = gameSnapshotJson(
+        gameState: gameStateJson(
+          currentTurn: 1,
+          currentAction: 'play',
+          playerHand: [0, 13, 26],
+        ),
+      );
+      backend.failures['POST /api/game/p1/play'] = (
+        status: 409,
+        body: {
+          'error': 'The game changed meanwhile: reload it and try again',
+          'code': 'GAME_STATE_CONFLICT',
+        },
+      );
+      final before = backend.stateCalls;
+
+      await game.play();
+
+      expect(backend.stateCalls, before + 1, reason: 'the table is stale');
+      expect(game.isMyTurn, isFalse, reason: 'the reloaded table is drawn');
+      expect(game.error, isNull);
+      expect(game.refreshError, isNull);
+      expect(game.outcome, isNull);
+      expect(game.busy, isFalse);
+      final error = game.consumeActionError();
+      expect((error! as ApiException).code, GameErrorCode.gameStateConflict);
+    });
+
+    test('another 409 is a refusal, with no reload', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'draw'),
+        ),
+      );
+      backend.failures['POST /api/game/p1/draw'] = (
+        status: 409,
+        body: {'error': 'Something else', 'code': 'SOMETHING_ELSE'},
+      );
+      final game = provider(backend);
+      await game.load();
+      final before = backend.stateCalls;
+
+      await game.draw();
+
+      expect(backend.stateCalls, before);
+      final error = game.consumeActionError();
+      expect((error! as ApiException).code, 'SOMETHING_ELSE');
+    });
+
+    test('a race lost to this player\'s own ejection ends the board, with '
+        'no refusal to show', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'draw'),
+        ),
+      );
+      final game = provider(backend);
+      await game.load();
+      backend.failures['POST /api/game/p1/draw'] = (
+        status: 409,
+        body: {'error': 'changed', 'code': 'GAME_STATE_CONFLICT'},
+      );
+      backend.failures['GET /api/game/p1/state'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': 'NOT_IN_PARTY'},
+      );
+
+      await game.draw();
+
+      expect(game.outcome, GameOutcome.ejected);
+      expect(game.consumeActionError(), isNull);
+      expect(game.refreshError, isNull);
+    });
+
+    test('a move refused NOT_IN_PARTY once the game was shown is the '
+        'ejection whose event was missed', () async {
+      final backend = FakeGameBackend(
+        state: gameSnapshotJson(
+          gameState: gameStateJson(currentTurn: 0, currentAction: 'draw'),
+        ),
+      );
+      backend.failures['POST /api/game/p1/draw'] = (
+        status: 403,
+        body: {'error': 'not in party', 'code': 'NOT_IN_PARTY'},
+      );
+      final game = provider(backend);
+      await game.load();
+
+      await game.draw();
+
+      expect(game.outcome, GameOutcome.ejected);
+      expect(game.consumeActionError(), isNull);
     });
 
     test('draw takes the deck, or the selected discard card', () async {

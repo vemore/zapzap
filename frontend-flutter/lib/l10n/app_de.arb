@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "Die Runde ist noch nicht vorbei.",
   "gameRefreshFailed": "Der Spieltisch ist evtl. nicht aktuell: Aktualisierung fehlgeschlagen",
   "errorNotInParty": "Du hast keinen Platz an diesem Tisch.",
+  "errorGameStateConflict": "Der Tisch hat sich inzwischen geändert: versuch es noch einmal.",
   "gameRoundOverZapZapSuccess": "{player} hat erfolgreich ZapZap gerufen!",
   "gameRoundOverCounteractedCall": "{player} hat ZapZap gerufen, wurde aber gekontert!",
   "gameRoundOverPenalty": "Strafe: {hand} + ({players} − 1) × 5 = {score} Punkte",

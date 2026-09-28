@@ -392,6 +392,7 @@
   "errorRoundNotFinished": "A rodada ainda não acabou.",
   "gameRefreshFailed": "O tabuleiro pode estar desatualizado: a atualização falhou",
   "errorNotInParty": "Você não tem lugar nesta mesa.",
+  "errorGameStateConflict": "A mesa mudou nesse meio-tempo: tente de novo.",
   "gameRoundOverZapZapSuccess": "{player} acertou o ZapZap!",
   "gameRoundOverCounteractedCall": "{player} anunciou ZapZap, mas foi rebatido!",
   "gameRoundOverPenalty": "Penalidade: {hand} + ({players} − 1) × 5 = {score} pontos",
