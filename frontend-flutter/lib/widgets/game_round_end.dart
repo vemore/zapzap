@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
 import 'playing_card.dart';
+import 'round_end_effects/round_end_effects.dart';
 import 'victory_confetti.dart';
 
 /// One player as the end of a round shows them — plain data, so the widget
@@ -54,6 +55,10 @@ class RoundEndPlayer {
 /// climbs from the old score to the new one over a bar towards 100 —, and,
 /// pinned under them, the way on: who picks the next hand size and Next
 /// round, or the way out of a finished game.
+///
+/// As it opens, the moments that turned the round play over it once, for
+/// every player (`RoundEndEffects`): a held ZapZap, a counteracted one, an
+/// elimination; then the confetti of a win.
 class GameRoundEnd extends StatelessWidget {
   const GameRoundEnd({
     super.key,
@@ -143,6 +148,26 @@ class GameRoundEnd extends StatelessWidget {
         MediaQuery.textScalerOf(context).scale(10) / 10 > stackedTextScale;
 
     final celebrate = gameFinished && winnerIsMe && animate;
+    final eliminated = [
+      for (final player in players)
+        // Put out by this round: past 100, or — in Golden Score — a
+        // counteracted caller, whatever the total. A seat out before the
+        // round was dealt no cards (`select_hand_size.rs`), nor holds a
+        // seat that was given up (`forfeit_seat`): no overlay for them.
+        if (player.isEliminated &&
+            (player.hand.isNotEmpty ||
+                (player.previousTotal <= RoundEndScoreBar.limit &&
+                    player.totalScore > RoundEndScoreBar.limit)))
+          EliminatedFx(
+            playerIndex: player.playerIndex,
+            name: player.name,
+            previousTotal: player.previousTotal,
+            total: player.totalScore,
+          ),
+    ];
+    final effects =
+        animate &&
+        (celebrate || zapZapCallerName != null || eliminated.isNotEmpty);
     final content = Column(
       key: const Key('roundOver'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -160,10 +185,12 @@ class GameRoundEnd extends StatelessWidget {
                     _header(context, l10n),
                     if (zapZapCallerName != null) ...[
                       const SizedBox(height: 10),
-                      _zapZapBanner(l10n),
+                      FxTarget.banner(child: _zapZapBanner(l10n)),
                     ],
                     const SizedBox(height: 10),
-                    _table(l10n, animate: animate, stacked: stacked),
+                    FxTarget.table(
+                      child: _table(l10n, animate: animate, stacked: stacked),
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       l10n.gameRoundEndDangerLegend,
@@ -181,15 +208,62 @@ class GameRoundEnd extends StatelessWidget {
         _footer(l10n),
       ],
     );
-    if (!celebrate) return content;
-    return Stack(
-      children: [
-        content,
-        const Positioned.fill(
-          child: VictoryConfetti(key: Key('victoryAnimation')),
-        ),
-      ],
+    if (!effects) return content;
+    return RoundEndEffects(
+      celebrate: celebrate,
+      phases: () => _phases(context, l10n, eliminated),
+      child: content,
     );
+  }
+
+  /// The overlays of this round, in the order they play.
+  List<RoundEndPhase> _phases(
+    BuildContext context,
+    AppLocalizations l10n,
+    List<EliminatedFx> eliminated,
+  ) {
+    final direction = Directionality.of(context);
+    final caller = players.where((p) => p.isZapZapCaller).firstOrNull;
+    return [
+      if (zapZapCallerName != null && !wasCounterActed)
+        HeldBoltPhase(word: l10n.gameFxZapZap, textDirection: direction),
+      if (zapZapCallerName != null && wasCounterActed)
+        CounteredStampPhase(
+          title: l10n.gameFxCountered,
+          line:
+              counterActedByName == null ||
+                  counterActorZapZapValue == null ||
+                  callerZapZapValue == null
+              ? null
+              : l10n
+                    .gameFxCounteredBy(
+                      counterActedByName!,
+                      counterActorZapZapValue!,
+                      callerZapZapValue!,
+                    )
+                    .toUpperCase(),
+          textDirection: direction,
+          textStyle: DefaultTextStyle.of(context).style,
+          callerIndex: caller?.playerIndex,
+          callerPreviousTotal: caller?.previousTotal ?? 0,
+          callerTotal: caller?.totalScore ?? 0,
+          penaltyLabel: l10n.gameRoundEndRoundPoints(
+            caller?.roundScore ?? callerRoundScore ?? 0,
+          ),
+          // Unless the gauge climbs it past 100.
+          countsCallerTotal:
+              caller != null &&
+              !eliminated.any(
+                (e) => e.playerIndex == caller.playerIndex && e.crosses,
+              ),
+        ),
+      if (eliminated.isNotEmpty)
+        EliminationGaugePhase(
+          players: eliminated,
+          tapeLabel: l10n.gameFxEliminated,
+          textDirection: direction,
+        ),
+    ];
   }
 
   /// "Round over · Round n", or the end of the game with its winner banner.
@@ -330,10 +404,12 @@ class GameRoundEnd extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                wasCounterActed ? Icons.warning_amber : Icons.bolt,
-                color: colour,
-                size: 20,
+              FxTarget.bannerIcon(
+                child: Icon(
+                  wasCounterActed ? Icons.warning_amber : Icons.bolt,
+                  color: colour,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -553,13 +629,37 @@ class _PlayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fx = RoundEndFx.maybeOf(context);
+    if (fx == null || !fx.touchesRow(player.playerIndex)) {
+      return _row(context, null);
+    }
+    // A row the overlays move: keyed for them to find, rebuilt at each
+    // of their ticks.
+    return KeyedSubtree(
+      key: fx.keys.row(player.playerIndex),
+      child: ListenableBuilder(
+        listenable: fx,
+        builder: (context, _) => _row(context, fx),
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, RoundEndFxController? fx) {
     final l10n = AppLocalizations.of(context);
     final me = player.isMe;
+    final index = player.playerIndex;
+    final look = fx?.row(index) ?? RowLook();
+    final background = me ? AppColors.amber400.withValues(alpha: 0.08) : null;
 
-    return Container(
-      key: GameRoundEnd.playerKey(player.playerIndex),
+    final row = Container(
+      key: GameRoundEnd.playerKey(index),
       decoration: BoxDecoration(
-        color: me ? AppColors.amber400.withValues(alpha: 0.08) : null,
+        color: look.flash > 0
+            ? Color.alphaBlend(
+                AppColors.error.withValues(alpha: 0.5 * look.flash),
+                background ?? Colors.transparent,
+              )
+            : background,
         border: Border(
           top: const BorderSide(color: AppColors.slate700),
           left: me
@@ -575,7 +675,7 @@ class _PlayerRow extends StatelessWidget {
         duration: animate ? GameRoundEnd.totalAnimation : Duration.zero,
         curve: Curves.easeOut,
         builder: (context, value, _) {
-          final shown = value.round();
+          final shown = fx?.totalOf(index) ?? value.round();
           return Padding(
             padding: EdgeInsets.fromLTRB(0, 5, me ? 3 : 0, 6),
             child: Column(
@@ -593,18 +693,28 @@ class _PlayerRow extends StatelessWidget {
                           : AppColors.slate100,
                     ),
                   ),
-                  name: _name(l10n),
+                  name: _name(l10n, look),
                   hand: _MiniHand(cards: player.hand),
-                  round: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      l10n.gameRoundEndRoundPoints(player.roundScore),
-                      style: TextStyle(
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        color: player.roundScore == 0
-                            ? const Color(0xFF4ADE80)
-                            : AppColors.slate100,
+                  round: _keyed(
+                    fx?.keys.roundCell(index),
+                    Transform.scale(
+                      scale: look.roundScale,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          l10n.gameRoundEndRoundPoints(player.roundScore),
+                          style: TextStyle(
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                            color: Color.lerp(
+                              player.roundScore == 0
+                                  ? const Color(0xFF4ADE80)
+                                  : AppColors.slate100,
+                              AppColors.error,
+                              look.roundRed,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -631,9 +741,12 @@ class _PlayerRow extends StatelessWidget {
                     left: (me ? 9 : 12) + _RoundEndRowLayout.rankWidth,
                     right: 9,
                   ),
-                  child: RoundEndScoreBar(
-                    key: GameRoundEnd.barKey(player.playerIndex),
-                    total: shown,
+                  child: _keyed(
+                    fx?.keys.bar(index),
+                    RoundEndScoreBar(
+                      key: GameRoundEnd.barKey(index),
+                      total: shown,
+                    ),
                   ),
                 ),
               ],
@@ -642,12 +755,23 @@ class _PlayerRow extends StatelessWidget {
         },
       ),
     );
+    if (fx == null) return row;
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.translationValues(look.shake.dx, look.shake.dy, 0)
+        ..rotateZ(look.tilt),
+      child: row,
+    );
   }
+
+  /// [child] under [key], when the overlays aim at it.
+  static Widget _keyed(GlobalKey? key, Widget child) =>
+      key == null ? child : KeyedSubtree(key: key, child: child);
 
   /// The name, "You" on the player's own row, a bolt for the ZapZap caller
   /// and a crown for the lowest hand — icons, so a row stays one line —,
   /// and "Eliminated" in words, not in colour alone.
-  Widget _name(AppLocalizations l10n) => Column(
+  Widget _name(AppLocalizations l10n, RowLook look) => Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -690,9 +814,18 @@ class _PlayerRow extends StatelessWidget {
       if (player.isEliminated)
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: _Badge(
-            label: l10n.gameEliminatedMark,
-            colour: AppColors.error,
+          // Hidden until the elimination overlay pops it.
+          child: Opacity(
+            opacity: look.badgeScale > 0 ? 1 : 0,
+            // Read out from the start: the badge is information.
+            alwaysIncludeSemantics: true,
+            child: Transform.scale(
+              scale: math.max(look.badgeScale, 0.01),
+              child: _Badge(
+                label: l10n.gameEliminatedMark,
+                colour: AppColors.error,
+              ),
+            ),
           ),
         ),
     ],
