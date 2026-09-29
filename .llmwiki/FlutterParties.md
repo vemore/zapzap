@@ -1,9 +1,10 @@
 # FlutterParties
 
 > Scope: the Flutter parties list, create-party form and lobby, back navigation, presence in the
-> app bar, and the app-bar menu (rules sheet, confirmed sign-out, account deletion).
+> app bar, the app-bar menu (rules sheet, confirmed sign-out), and the account page
+> (username, password, account deletion).
 > Related: [[FrontendFlutter]] · [[FlutterRealtime]] · [[FlutterGameBoard]] · [[FlutterAuth]] · [[Api]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -148,26 +149,50 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   values, the turn, the time per turn, valid plays, ZapZap at 5 points or less, the counteract penalty,
   elimination above 100 points, the Golden Score): **a rule change updates those strings
   too**. The entries that open something over the screen rather than lead to a route are
-  ids in `_NavigationMenu`'s `overlays` map (`rules`, `logout`, `delete-account`); a new
+  ids in `_NavigationMenu`'s `overlays` map (`rules`, `logout`); a new
   one is one id, one map entry, one `_item`. Under Rules, **Tutoriel / Tutorial**
   (`menu-tutorial`) pushes `/tutorial` (The example game, [[FlutterGameBoard]]). Last, below another divider:
-  **Se déconnecter / Sign out** (`menu-logout`), which asks first (`confirmLogout`,
+  **Mon compte / My account** (`menu-account`), which pushes the account page
+  (`/account`, below), then **Se déconnecter / Sign out** (`menu-logout`), which asks first (`confirmLogout`,
   `logout-dialog`: « Se déconnecter ? », `logout-cancel` keeps the session and the screen,
-  `logout-confirm` calls `AuthProvider.logout`, Google signed out too), then, in red,
-  **Supprimer mon compte / Delete my account** (`menu-delete-account`), which opens
+  `logout-confirm` calls `AuthProvider.logout`, Google signed out too). No « Supprimer mon
+  compte » entry any more: the deletion is on the account page.
+- **The account page** (`screens/account_screen.dart`, `AppRoutes.account` = `/account`,
+  `/app/account` on the PWA; a deep link, its back button `popOrGo`es to the parties; at
+  most `AccountScreen.maxWidth` (560 px) wide): a card with the username
+  (`account-current-username`), how the account signs in (`account-sign-in-method`:
+  password, Google, or Google and a password — `User.hasPassword`) and a Google account's
+  e-mail; then **the username** (`account-username`, the sign-up form's rules of
+  `utils/validators.dart`, its refusal shown once edited; `account-username-save` active
+  once the trimmed name differs and passes) — `AuthProvider.rename`, a snack bar
+  « Pseudo modifié », 409 `USERNAME_EXISTS` under the field (`account-username-error`,
+  `renameErrorText`); then **the password** (`account-password`, « Changer le mot de
+  passe », or « Choisir un mot de passe » with a line on what it adds for a Google account
+  without one), which opens `widgets/change_password_dialog.dart`
+  (`change-password-dialog`): the current password (`change-password-current`) and the new
+  one (`change-password-new`, the sign-up form's six characters), `change-password-confirm`
+  active once both pass — or, for a Google account without a password, the new one and the
+  Google confirmation (`change-password-google`, active once the new one passes; a token
+  from Google's own web button before that is not sent) —, then a snack bar « Mot de passe
+  enregistré »; 403 `INVALID_PASSWORD` / `GOOGLE_AUTH_FAILED` stay in the dialog
+  (`change-password-error`, `changePasswordErrorText`). Last, in red,
+  **Supprimer mon compte / Delete my account** (`account-delete`), which opens
   `widgets/delete_account_dialog.dart` (`delete-account-dialog`): the warning (irreversible;
   finished games stay in the others' history as « Joueur supprimé »), then a password field
   (`delete-account-password`, `delete-account-confirm` enabled once it is filled) — or, for a
   Google account (`User.isGoogleUser`, stored with the session), a "Confirmer avec Google"
   button (`delete-account-google`; Google's own button on the web) whose fresh ID token is
-  sent as `credential`, the login screen's way. Google that does not get ready (script
+  sent as `credential`, the login screen's way. Both dialogs take the Google confirmation
+  from `widgets/google_confirmation.dart` (`GoogleConfirmation`): Google that does not get ready (script
   blocked, no route to Google, no client id) is given up on as the login screen does it
   (`GoogleSignInSection.watchReady`, `readyTimeout`, shared per service): the button gives
-  way to a notice (`delete-account-google-unavailable`: try later, or ask by e-mail).
+  way to a notice (`delete-account-google-unavailable`: try later, or ask by e-mail;
+  `change-password-google-unavailable`: try later).
   Refusals stay in the dialog
   (`delete-account-error`, `deleteAccountErrorText`): 403 `INVALID_PASSWORD` (and 400
   `MISSING_CONFIRMATION`) → wrong password, 403 `GOOGLE_AUTH_FAILED`, 409 `ACTIVE_PARTY`
   (leave or finish your games first), 409 `LAST_ADMIN`. None is a 401, so none signs out.
+  Tests: `test/account_screen_test.dart`, `test/delete_account_test.dart`.
 - **Error text** comes from `partyErrorText` (`widgets/error_banner.dart`), mapping
   `ApiException.code` (`PARTY_NOT_FOUND`, `PARTY_FULL`, `PARTY_STARTED`,
   `PARTY_ALREADY_PLAYING`, `NOT_OWNER`, `NOT_AUTHORIZED`, `NOT_IN_PARTY`, no answer) to
@@ -176,6 +201,7 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
 
 ## Decisions & History
 
+- 2026-09-29 (feat/account-page): « Mon compte » replaced « Supprimer mon compte » in the ⋮ menu, placed just above Sign out, where the deletion was; the deletion moved one screen deeper, onto the account page, still in the app as Google Play asks. A routed page, not a dialog: it holds three independent actions, and the PWA gets `/app/account`, where a later change will redirect the old web URL `/account/delete`. The username is edited in place with the sign-up form's rules (stricter than the backend's), the password in a dialog, because a Google account's first password needs the Google confirmation the deletion uses. Four keys lost their deletion-only names (`deleteAccountMenu` → `deleteAccountButton`, `deleteAccountGoogleButton` → `googleConfirmButton`, `deleteAccountErrorPassword` → `errorWrongPassword`, `deleteAccountErrorGoogle` → `errorGoogleConfirmation`), the password dialog using them too. Its width is a local `ConstrainedBox`; the wide-screen work may swap it for a shared widget.
 - 2026-09-28 (fix/flutter-list-refresh-on-ejection): the list also reloads on `playerReplaced` and `playerForfeited`. A player ejected by the turn clock was popped back to the list loaded before the game, which still said `isMember` and offered « Reprendre » to a seat now a bot's (`Tu n'as pas de place à cette table`). The ejected player's own stream carries `playerReplaced` ([[Backend]] § Turn timer).
 
 - **Parties, create and lobby (2026-09-22, `feat/flutter-lobby`).** Each screen owns its

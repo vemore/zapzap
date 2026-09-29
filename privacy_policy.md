@@ -1,6 +1,6 @@
 # ZapZap — Politique de confidentialité / Privacy Policy
 
-**Last Updated / Dernière mise à jour :** 2026-09-25
+**Last Updated / Dernière mise à jour :** 2026-09-29
 
 This page is served at <https://zapzap.ombivince.synology.me/privacy>. It is written in
 French first, then in English; both say the same thing.
@@ -28,7 +28,7 @@ par le développeur de ZapZap.
   l'historique des autres joueurs de la partie. Les coups servent aussi à améliorer les
   bots du jeu.
 - **Sur ton appareil** : le jeton de session qui te garde connecté, et ton profil (pseudo,
-  compte Google ou non) pour l'affichage. Ils restent sur ton appareil et sont effacés à la
+  compte Google ou non, mot de passe ou non) pour l'affichage. Ils restent sur ton appareil et sont effacés à la
   déconnexion.
 - **Les journaux du serveur web** : l'adresse IP, la date, la page demandée et le
   navigateur de chaque requête, comme tout serveur web.
@@ -61,8 +61,9 @@ nom « Joueur supprimé », sans lien avec toi.
 
 ### Supprimer ton compte
 
-- **Dans l'application** (Android ou web) : menu ⋮ en haut à droite → **Supprimer mon
-  compte**, puis confirme avec ton mot de passe (ou avec Google pour un compte Google).
+- **Dans l'application** (Android ou web) : menu ⋮ en haut à droite → **Mon compte** →
+  **Supprimer mon compte**, puis confirme avec ton mot de passe (ou avec Google pour un
+  compte Google).
 - **Depuis le web, sans l'application** :
   <https://zapzap.ombivince.synology.me/account/delete> — connecte-toi, puis confirme.
 - **Par e-mail** : écris à <scribio.ai@gmail.com> depuis l'adresse de ton compte Google, ou
@@ -96,7 +97,7 @@ ZapZap's developer.
   and your statistics, and finished games also appear in the history of the other players
   of that game. The moves are also used to improve the game's bots.
 - **On your device**: the session token that keeps you signed in, and your profile
-  (username, whether it is a Google account) for display. They stay on your device and are
+  (username, whether it is a Google account, whether it has a password) for display. They stay on your device and are
   erased when you sign out.
 - **Web server logs**: the IP address, time, requested page and browser of each request, as
   any web server keeps.
@@ -126,8 +127,8 @@ in the other players' history under the name "Deleted player", with no link to y
 
 ### Deleting your account
 
-- **In the app** (Android or web): the ⋮ menu at the top right → **Delete my account**, then
-  confirm with your password (or with Google for a Google account).
+- **In the app** (Android or web): the ⋮ menu at the top right → **My account** → **Delete
+  my account**, then confirm with your password (or with Google for a Google account).
 - **From the web, without the app**:
   <https://zapzap.ombivince.synology.me/account/delete> — sign in, then confirm.
 - **By e-mail**: write to <scribio.ai@gmail.com> from your Google account's address, or

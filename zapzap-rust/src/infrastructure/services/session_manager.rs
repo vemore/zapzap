@@ -123,6 +123,14 @@ impl SessionManager {
         inner.sessions.remove(user_id)
     }
 
+    /// A connected user's new name (a rename, or a stream opened with a token issued before
+    /// one); nothing when they are not connected
+    pub fn rename_user(&self, user_id: &str, username: &str) {
+        if let Some(session) = self.write().sessions.get_mut(user_id) {
+            session.username = username.to_string();
+        }
+    }
+
     /// Update user status
     pub fn update_status(&self, user_id: &str, status: SessionStatus, party_id: Option<String>) {
         if let Some(session) = self.write().sessions.get_mut(user_id) {

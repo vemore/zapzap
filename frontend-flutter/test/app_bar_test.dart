@@ -334,7 +334,10 @@ void main() {
         expect(find.text('Historique'), findsOneWidget);
         expect(find.text('Statistiques'), findsOneWidget);
         expect(find.text('Règles'), findsOneWidget);
+        expect(find.text('Mon compte'), findsOneWidget);
         expect(find.text('Se déconnecter'), findsOneWidget);
+        // The deletion is on the account page, no longer a red entry here.
+        expect(find.byKey(const Key('menu-delete-account')), findsNothing);
       });
 
       testWidgets('the rules sheet fits at a $scale text scale', (
@@ -356,8 +359,8 @@ void main() {
         expect(find.textContaining('Un ZapZap contré'), findsOneWidget);
       });
 
-      testWidgets('the bar with its back button fits the history and the '
-          'statistics at a $scale text scale', (tester) async {
+      testWidgets('the bar with its back button fits the history, the '
+          'statistics and the account at a $scale text scale', (tester) async {
         await pumpApp(
           tester,
           backend: FakeLobbyBackend(
@@ -372,6 +375,10 @@ void main() {
         expect(find.byKey(const Key('connected-players')), findsOneWidget);
 
         await choose(tester, 'menu-stats');
+        expect(find.byKey(const Key('back')), findsOneWidget);
+        expect(find.byKey(const Key('connected-players')), findsOneWidget);
+
+        await choose(tester, 'menu-account');
         expect(find.byKey(const Key('back')), findsOneWidget);
         expect(find.byKey(const Key('connected-players')), findsOneWidget);
       });

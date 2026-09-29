@@ -3,7 +3,7 @@
 > Scope: the Flutter client's session (`AuthProvider`, token storage), the login and register
 > screens, the routing guard, and Google sign-in on the web and on Android.
 > Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterAndroidPwa]] · [[Api]] · [[Frontend]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -13,7 +13,10 @@
   (`null` signed out), `isAuthenticated` (a user and a token whose `exp` is still ahead —
   re-checked on every read, so a session that expires while the app runs stops counting
   at the next navigation), `isAdmin`, `isRestored`; `restore()`, `login`, `register`,
-  `logout`, `deleteAccount({password, credential})` (the call, then `logout`: the stored
+  `logout`, `rename(username)` (`PATCH /auth/me`: the new token and user replace the
+  session and are stored, as a sign-in's are), `changePassword({newPassword,
+  currentPassword, credential})` (the session goes on; a Google account without a password
+  is stored as having one since), `deleteAccount({password, credential})` (the call, then `logout`: the stored
   session erased and the router on the login screen; a refusal throws, still signed in). It keeps `ApiClient.token` in step and owns `ApiClient.onUnauthorized`.
   `logout` is idempotent — the first of several parallel 401s does the work, the others
   return — clears the storage, and signs out of Google (`GoogleSignInService.signOut`, not
@@ -28,6 +31,8 @@
   the web (`token_storage_web.dart`, localStorage, keys prefixed `flutter.` by the plugin —
   no clash with the React client's own `token` on the same origin). Keys `token` and `user`
   (JSON of `User.toJson()`), those of the React client. `MemoryTokenStorage` for tests.
+  `User.hasPassword` comes from `/auth/google` and `PATCH /auth/me`; login and register
+  prove one, and a session stored before the field reads it as "not a Google account".
 - **Screens**: login (`Login.jsx`) only requires both fields — as React, so an account
   that predates the rules still signs in; register (`Register.jsx`) checks the rules of
   `auth.js:42-88` (`utils/validators.dart`: username trimmed, 3-30,
@@ -189,3 +194,13 @@
   never 401, so a wrong password does not sign out through `onUnauthorized`. Deleted players
   are anonymised, not erased (the user's decision): the history names them from the
   `deleted-` id prefix.
+- **The account page (2026-09-29, `feat/account-page`).** A player could only delete the
+  account: no rename, no password change, and a Google account could never add a password.
+  The menu's « Supprimer mon compte » became « Mon compte », a routed page
+  ([[FlutterParties]] § The app-bar menu) — a route rather than a sheet, so the PWA has
+  `/app/account` to point the old web URL at later. The rename keeps the session: the
+  backend answers a new token, stored as a sign-in's. `User.hasPassword` was added because
+  `isGoogleUser` alone cannot tell a Google account that set a password; the delete dialog
+  still offers Google to every Google account, which the backend accepts from an account
+  with both ([[Api]]). The Google confirmation moved into `widgets/google_confirmation.dart`,
+  shared by the delete and password dialogs, so both give up on Google the same way.

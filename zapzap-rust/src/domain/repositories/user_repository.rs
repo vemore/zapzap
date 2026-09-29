@@ -128,4 +128,15 @@ pub trait UserRepository: Send + Sync {
 
     /// Set user admin status
     async fn set_admin(&self, id: &str, is_admin: bool) -> Result<(), RepositoryError>;
+
+    /// Rename a user, that column only. A name another user holds fails on the UNIQUE
+    /// constraint (`RepositoryError::is_unique_violation`); `false` when no row matched
+    async fn update_username(&self, id: &str, username: &str) -> Result<bool, RepositoryError>;
+
+    /// Replace a user's password hash, that column only; `false` when no row matched
+    async fn update_password_hash(
+        &self,
+        id: &str,
+        password_hash: &str,
+    ) -> Result<bool, RepositoryError>;
 }

@@ -41,6 +41,34 @@ void main() {
       final again = User.fromJson(user.toJson());
       expect(again.id, user.id);
       expect(again.createdAt, user.createdAt);
+      expect(again.hasPassword, isTrue);
+    });
+
+    test('hasPassword: as the backend says, else every account but a '
+        'Google one', () {
+      // Login and register prove a password; a session stored before the
+      // field was not a Google one either.
+      expect(User.fromJson({'id': 'u1', 'username': 'a'}).hasPassword, isTrue);
+      expect(
+        User.fromJson({'id': 'u1', 'username': 'a', 'isGoogleUser': true})
+            .hasPassword,
+        isFalse,
+      );
+      final both = User.fromJson({
+        'id': 'u1',
+        'username': 'a',
+        'isGoogleUser': true,
+        'hasPassword': true,
+      });
+      expect(both.hasPassword, isTrue);
+      expect(User.fromJson(both.toJson()).hasPassword, isTrue);
+      final google = User.fromJson({
+        'id': 'u1',
+        'username': 'a',
+        'isGoogleUser': true,
+      });
+      expect(google.withPassword().hasPassword, isTrue);
+      expect(google.withPassword().isGoogleUser, isTrue);
     });
   });
 

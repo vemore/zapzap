@@ -20,7 +20,8 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 ### Technical Features
 - 🏗️ **Layered backend**: domain, application (use cases), infrastructure and API layers in `zapzap-rust/`
 - 🔐 **JWT Authentication**: Secure token-based user management; a player deletes their own
-  account from either client, or from the web at `/account/delete`
+  account from either client, or from the web at `/account/delete`, and in the Flutter
+  client's account page also changes their username and password
 - 🔏 **Privacy policy**: [`privacy_policy.md`](privacy_policy.md), served at `/privacy`
   (rendered by `scripts/build_privacy_page.py` into `nginx/privacy.html`)
 - 💾 **Database Persistence**: SQLite for game state and user data
@@ -400,6 +401,9 @@ npm run dev && npm run lint && npx vitest run && npm run build
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login and get JWT token
 - `DELETE /api/auth/me` - Delete your own account (confirmed by the password, or a Google token)
+- `PATCH /api/auth/me` - Change your username (answers a new token)
+- `PUT /api/auth/me/password` - Change your password (confirmed as the deletion is; a Google
+  account sets its first one)
 
 **Party Management:**
 - `POST /api/party` - Create new party

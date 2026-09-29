@@ -5,10 +5,8 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../router.dart';
-import '../utils/app_theme.dart';
 import 'connected_players.dart';
 import 'connection_indicator.dart';
-import 'delete_account_dialog.dart';
 import 'rules_sheet.dart';
 
 /// The app bar of the signed-in screens: who is online, whether the event
@@ -56,10 +54,11 @@ class ZapZapAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// Admins get an Admin entry too ([AppRoutes.admin]); for anyone else the
 /// router would send it back to the parties. Then the help: the rules, over
 /// the current screen ([showRulesSheet]), and the example game
-/// ([AppRoutes.tutorial]). Last, on every signed-in screen,
-/// "Sign out", confirmed first ([confirmLogout]) — the game screen's players
-/// took a one-tap icon for "leave the table" —, and "Delete my account"
-/// ([showDeleteAccountDialog]): Google Play wants it reachable from the app.
+/// ([AppRoutes.tutorial]). Last, on every signed-in screen, "My account"
+/// ([AppRoutes.account]: the username, the password, and the account
+/// deletion Google Play wants reachable from the app), then "Sign out",
+/// confirmed first ([confirmLogout]) — the game screen's players took a
+/// one-tap icon for "leave the table".
 class _NavigationMenu extends StatelessWidget {
   const _NavigationMenu({required this.actions});
 
@@ -69,7 +68,6 @@ class _NavigationMenu extends StatelessWidget {
   /// lead to a route.
   static const _rules = 'rules';
   static const _logout = 'logout';
-  static const _deleteAccount = 'delete-account';
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +75,6 @@ class _NavigationMenu extends StatelessWidget {
     final overlays = <String, void Function()>{
       _rules: () => showRulesSheet(context),
       _logout: () => confirmLogout(context),
-      _deleteAccount: () => showDeleteAccountDialog(context),
     };
     return PopupMenuButton<String>(
       key: const Key('app-bar-menu'),
@@ -143,17 +140,16 @@ class _NavigationMenu extends StatelessWidget {
           ),
         const PopupMenuDivider(),
         _item(
+          key: const Key('menu-account'),
+          route: AppRoutes.account,
+          icon: Icons.account_circle,
+          label: l10n.accountTitle,
+        ),
+        _item(
           key: const Key('menu-logout'),
           route: _logout,
           icon: Icons.logout,
           label: l10n.logoutButton,
-        ),
-        _item(
-          key: const Key('menu-delete-account'),
-          route: _deleteAccount,
-          icon: Icons.person_remove,
-          label: l10n.deleteAccountMenu,
-          color: AppColors.error,
         ),
       ],
     );

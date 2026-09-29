@@ -7,21 +7,31 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 
+use crate::domain::entities::User;
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::app_state::AppState;
 
 // Re-export Claims for use in route handlers
 pub use crate::infrastructure::auth::Claims;
 
-/// Whether the token's user is still in the database; a lookup error counts as no.
-pub async fn user_exists(state: &AppState, user_id: &str) -> bool {
+/// The token's user as the database holds it now, `None` when it is gone; a lookup error
+/// counts as gone.
+pub async fn current_user(state: &AppState, user_id: &str) -> Option<User> {
     match state.user_repo.find_by_id(user_id).await {
-        Ok(user) => user.is_some(),
+        Ok(user) => user,
         Err(e) => {
             tracing::error!("Auth user lookup failed: {}", e);
-            false
+            None
         }
     }
+}
+
+/// The claims of a token, with the username the database holds now: the token keeps the
+/// name it was issued with, which a rename (`PATCH /api/auth/me`) makes stale on the
+/// player's other devices until they sign in again.
+fn with_current_name(mut claims: Claims, user: User) -> Claims {
+    claims.username = user.username;
+    claims
 }
 
 /// Why a request carries no usable bearer token.
@@ -84,12 +94,14 @@ pub async fn auth_middleware(
     };
 
     // The user must still exist, one primary-key lookup
-    if !user_exists(&state, &claims.user_id).await {
+    let Some(user) = current_user(&state, &claims.user_id).await else {
         return invalid_token();
-    }
+    };
 
     // Add claims to request extensions
-    request.extensions_mut().insert(claims);
+    request
+        .extensions_mut()
+        .insert(with_current_name(claims, user));
 
     next.run(request).await
 }
@@ -105,8 +117,10 @@ pub async fn optional_auth_middleware(
         .ok()
         .and_then(|token| state.jwt_service.verify(token).ok());
     if let Some(claims) = claims {
-        if user_exists(&state, &claims.user_id).await {
-            request.extensions_mut().insert(claims);
+        if let Some(user) = current_user(&state, &claims.user_id).await {
+            request
+                .extensions_mut()
+                .insert(with_current_name(claims, user));
         }
     }
 

@@ -6,6 +6,26 @@ use crate::domain::entities::User;
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::{JwtService, PasswordService};
 
+/// A username's rules, at sign-up and on a rename (`RenameUser`): the message of the
+/// first one broken
+pub fn validate_username(username: &str) -> Result<(), String> {
+    if username.trim().is_empty() {
+        return Err("Username is required".into());
+    }
+    if username.len() < 3 {
+        return Err("Username must be at least 3 characters".into());
+    }
+    Ok(())
+}
+
+/// A password's rules, at sign-up and on a change (`ChangePassword`)
+pub fn validate_password(password: &str) -> Result<(), String> {
+    if password.len() < 4 {
+        return Err("Password must be at least 4 characters".into());
+    }
+    Ok(())
+}
+
 /// Register user input
 pub struct RegisterUserInput {
     pub username: String,
@@ -37,19 +57,8 @@ impl RegisterUser {
         input: RegisterUserInput,
     ) -> Result<RegisterUserOutput, RegisterError> {
         // Validate input
-        if input.username.trim().is_empty() {
-            return Err(RegisterError::Validation("Username is required".into()));
-        }
-        if input.username.len() < 3 {
-            return Err(RegisterError::Validation(
-                "Username must be at least 3 characters".into(),
-            ));
-        }
-        if input.password.len() < 4 {
-            return Err(RegisterError::Validation(
-                "Password must be at least 4 characters".into(),
-            ));
-        }
+        validate_username(&input.username).map_err(RegisterError::Validation)?;
+        validate_password(&input.password).map_err(RegisterError::Validation)?;
 
         // Check if username exists
         if self.user_repo.exists_by_username(&input.username).await? {
