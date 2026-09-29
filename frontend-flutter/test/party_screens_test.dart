@@ -15,6 +15,12 @@ import 'auth_helpers.dart';
 import 'party_helpers.dart';
 import 'sse_fakes.dart';
 
+import 'package:flutter/services.dart';
+import 'package:zapzap/widgets/content_column.dart';
+import 'package:zapzap/widgets/party_card.dart';
+
+import 'wide_screen_helpers.dart';
+
 void main() {
   /// The app signed in as Vincent (`u1`), with [backend] answering the API
   /// and a real-time channel the test drives.
@@ -991,6 +997,233 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  group('wide screen', () {
+    // The screens on a laptop, a desktop monitor and a portrait tablet:
+    // their content in the one centred column ([ContentColumn]), the cards
+    // and the seats side by side, and — as on a phone — nothing that
+    // overflows, which would fail the test.
+    FakeLobbyBackend someParties() => FakeLobbyBackend(
+      parties: [
+        partySummaryJson(
+          id: 'p1',
+          name: 'Une partie au nom particulièrement long',
+          playerCount: 4,
+          maxPlayers: 4,
+          status: 'playing',
+          isMember: true,
+        ),
+        partySummaryJson(id: 'p2', name: 'Mon salon', isMember: true),
+        partySummaryJson(id: 'p3', name: 'Apéro', ownerId: 'u2'),
+        partySummaryJson(id: 'p4', name: 'Pause déjeuner', ownerId: 'u3'),
+        partySummaryJson(
+          id: 'p5',
+          name: 'Complète',
+          ownerId: 'u4',
+          playerCount: 5,
+        ),
+      ],
+      connected: [connectedPlayerJson('u1', 'Vincent')],
+    );
+
+    FakeLobbyBackend hostedLobby() => FakeLobbyBackend(
+      details: partyDetailsJson(
+        id: 'p1',
+        name: 'Une partie au nom particulièrement long',
+        ownerId: 'u1',
+        players: [
+          partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+          partyPlayerJson(
+            userId: 'b1',
+            username: 'HardVinceBot1',
+            playerIndex: 1,
+            userType: 'bot',
+            botDifficulty: 'hard_vince',
+          ),
+          partyPlayerJson(userId: 'u2', username: 'Thibaut', playerIndex: 2),
+        ],
+      ),
+      connected: [connectedPlayerJson('u1', 'Vincent')],
+    );
+
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        final at = '$name, text x$scale';
+
+        testWidgets('the party list lies in the content column at $at', (
+          tester,
+        ) async {
+          await pumpApp(tester, someParties(), size: size, textScale: scale);
+          expectInContentColumn(
+            tester,
+            find.byType(PartyCard),
+            windowWidth: size.width,
+          );
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('parties-heading-open')),
+            windowWidth: size.width,
+          );
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the lobby lies in the content column at $at, its seats '
+            'two a row', (tester) async {
+          await pumpApp(
+            tester,
+            hostedLobby(),
+            initialLocation: AppRoutes.partyPath('p1'),
+            size: size,
+            textScale: scale,
+          );
+          for (final key in [
+            'lobby-invite',
+            'seat-u1',
+            'empty-seat-1',
+            'start-party',
+            'leave-party',
+          ]) {
+            expectInContentColumn(
+              tester,
+              find.byKey(Key(key)),
+              windowWidth: size.width,
+            );
+          }
+          // Vincent and the bot side by side, the bot's line as tall.
+          final me = tester.getRect(find.byKey(const Key('seat-u1')));
+          final bot = tester.getRect(find.byKey(const Key('seat-b1')));
+          expect(bot.top, me.top);
+          expect(bot.left, greaterThan(me.right));
+          expect(bot.height, me.height);
+          // Under the seats, out of view on a short window.
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('fill-and-start')),
+            100,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('fill-and-start')),
+            windowWidth: size.width,
+          );
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the create form lies in the content column at $at', (
+          tester,
+        ) async {
+          await pumpApp(
+            tester,
+            FakeLobbyBackend(),
+            initialLocation: AppRoutes.createParty,
+            size: size,
+            textScale: scale,
+          );
+          for (final key in [
+            'party-name',
+            'turn-time-limit',
+            'create-submit',
+          ]) {
+            expectInContentColumn(
+              tester,
+              find.byKey(Key(key)),
+              windowWidth: size.width,
+            );
+          }
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('at 1920×1080 the party list is no wider than the content '
+        'column, and centred', (tester) async {
+      const size = Size(1920, 1080);
+      await pumpApp(tester, someParties(), size: size);
+
+      final list = unionRect(tester, find.byType(PartyCard));
+      expect(list.width, lessThanOrEqualTo(ContentColumn.maxWidth));
+      expect(list.left, (size.width - ContentColumn.maxWidth) / 2);
+      expect(list.right, (size.width + ContentColumn.maxWidth) / 2);
+      // Three cards a row: the three open parties side by side.
+      final tops = {
+        for (final id in ['p3', 'p4', 'p5'])
+          tester.getTopLeft(find.byKey(Key('party-$id'))).dy,
+      };
+      expect(tops, hasLength(1));
+    });
+
+    testWidgets('Enter in the name field creates the party', (tester) async {
+      final backend = FakeLobbyBackend();
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.createParty,
+        size: const Size(1280, 800),
+      );
+      await tester.enterText(find.byKey(const Key('party-name')), 'Au clavier');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.requests.where(
+          (r) => r.method == 'POST' && r.url.path == '/api/party',
+        ),
+        hasLength(1),
+      );
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+    });
+
+    testWidgets('Escape closes the delete and fill dialogs, sending nothing', (
+      tester,
+    ) async {
+      final backend = hostedLobby();
+      await pumpApp(
+        tester,
+        backend,
+        initialLocation: AppRoutes.partyPath('p1'),
+        size: const Size(1280, 800),
+      );
+      final sent = backend.requests.length;
+
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('delete-party')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('delete-confirm')), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('delete-confirm')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('fill-and-start')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fill-dialog')), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fill-dialog')), findsNothing);
+
+      expect(backend.requests.length, sent);
+      expect(find.byType(PartyLobbyScreen), findsOneWidget);
+    });
+
+    testWidgets('Escape closes the rules sheet', (tester) async {
+      await pumpApp(tester, someParties(), size: const Size(1280, 800));
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('menu-rules')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('rules-sheet')), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('rules-sheet')), findsNothing);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+    });
   });
 
   group('back navigation', () {

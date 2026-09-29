@@ -12,6 +12,7 @@ import '../repositories/stats_repository.dart';
 import '../router.dart';
 import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
+import '../widgets/content_column.dart';
 import '../widgets/history_game_tile.dart';
 import '../widgets/history_summary.dart';
 import '../widgets/zapzap_app_bar.dart';
@@ -69,7 +70,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// My games: the summary, the entries, and the invitation when the list is
   /// short — alone when it is empty.
-  Widget _mine(BuildContext context, List<GameHistoryEntry> games) {
+  Widget _mine(
+    BuildContext context,
+    List<GameHistoryEntry> games,
+    EdgeInsets padding,
+  ) {
     final userId = context.watch<AuthProvider>().user?.id;
     final invite = HistoryInvite(
       // `push`: Back from the form returns to the history.
@@ -77,7 +82,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     return ListView(
       key: const Key('history-list'),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: padding.copyWith(top: 8, bottom: 24),
       children: [
         if (games.isNotEmpty) ...[
           FutureBuilder<UserStats>(
@@ -130,58 +135,61 @@ class _HistoryScreenState extends State<HistoryScreen> {
           onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: SegmentedButton<HistoryTab>(
-              key: const Key('history-tabs'),
-              segments: [
-                ButtonSegment(
-                  value: HistoryTab.mine,
-                  icon: const Icon(Icons.person),
-                  label: Text(l10n.historyTabMine),
-                ),
-                ButtonSegment(
-                  value: HistoryTab.public,
-                  icon: const Icon(Icons.public),
-                  label: Text(l10n.historyTabPublic),
-                ),
-              ],
-              selected: {_tab},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) => _reload(selection.first),
+      body: ContentColumn(
+        builder: (context, padding) => Column(
+          children: [
+            Padding(
+              padding: padding.copyWith(bottom: 8),
+              child: SegmentedButton<HistoryTab>(
+                key: const Key('history-tabs'),
+                segments: [
+                  ButtonSegment(
+                    value: HistoryTab.mine,
+                    icon: const Icon(Icons.person),
+                    label: Text(l10n.historyTabMine),
+                  ),
+                  ButtonSegment(
+                    value: HistoryTab.public,
+                    icon: const Icon(Icons.public),
+                    label: Text(l10n.historyTabPublic),
+                  ),
+                ],
+                selected: {_tab},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) => _reload(selection.first),
+              ),
             ),
-          ),
-          Expanded(
-            child: AsyncSection<Page<GameHistoryEntry>>(
-              future: _games!,
-              errorMessage: (_) => l10n.historyLoadError,
-              onRetry: _reload,
-              // My games has its own empty state ([HistoryInvite]).
-              isEmpty: (page) =>
-                  _tab == HistoryTab.public && page.items.isEmpty,
-              emptyMessage: l10n.historyEmptyPublic,
-              builder: (context, page) => _tab == HistoryTab.mine
-                  ? _mine(context, page.items)
-                  : ListView.builder(
-                      key: const Key('history-list'),
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: page.items.length,
-                      itemBuilder: (context, index) {
-                        final game = page.items[index];
-                        return HistoryGameTile(
-                          key: Key('history-game-${game.partyId}'),
-                          game: game,
-                          // `push`: the system Back returns to this list.
-                          onTap: () =>
-                              context.push(AppRoutes.gameDetails(game.partyId)),
-                        );
-                      },
-                    ),
+            Expanded(
+              child: AsyncSection<Page<GameHistoryEntry>>(
+                future: _games!,
+                errorMessage: (_) => l10n.historyLoadError,
+                onRetry: _reload,
+                // My games has its own empty state ([HistoryInvite]).
+                isEmpty: (page) =>
+                    _tab == HistoryTab.public && page.items.isEmpty,
+                emptyMessage: l10n.historyEmptyPublic,
+                builder: (context, page) => _tab == HistoryTab.mine
+                    ? _mine(context, page.items, padding)
+                    : ListView.builder(
+                        key: const Key('history-list'),
+                        padding: padding.copyWith(top: 8, bottom: 24),
+                        itemCount: page.items.length,
+                        itemBuilder: (context, index) {
+                          final game = page.items[index];
+                          return HistoryGameTile(
+                            key: Key('history-game-${game.partyId}'),
+                            game: game,
+                            // `push`: the system Back returns to this list.
+                            onTap: () => context.push(
+                              AppRoutes.gameDetails(game.partyId),
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

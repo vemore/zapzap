@@ -14,6 +14,7 @@ import '../router.dart';
 import '../utils/app_theme.dart';
 import '../utils/navigation.dart';
 import '../utils/turn_timer.dart';
+import '../widgets/content_column.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/party_card.dart';
 import '../widgets/player_seat_tile.dart';
@@ -38,6 +39,10 @@ class PartyLobbyScreen extends StatefulWidget {
   const PartyLobbyScreen({super.key, required this.partyId});
 
   final String partyId;
+
+  /// The narrowest a seat gets beside another ([ContentGrid]): below it,
+  /// one seat a line.
+  static const seatMinWidth = 360.0;
 
   @override
   State<PartyLobbyScreen> createState() => _PartyLobbyScreenState();
@@ -218,37 +223,39 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () => _lobby.load(showSpinner: false),
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      children: [
-                        if (inviteCode != null && inviteCode.isNotEmpty) ...[
-                          _inviteCode(context, inviteCode),
-                          const SizedBox(height: 12),
-                        ],
-                        _settings(context, details),
-                        const SizedBox(height: 20),
-                        _seatsHeader(context),
-                        const SizedBox(height: 8),
-                        ..._seats(
-                          inviteHint:
-                              inviteCode != null && inviteCode.isNotEmpty,
-                        ),
-                        // Under the free seats it fills, not pinned with Start
-                        // and Leave: at a large font size the pinned buttons
-                        // would leave the seats no room.
-                        if (_lobby.canAddBots) ...[
-                          const SizedBox(height: 4),
-                          FilledButton.tonalIcon(
-                            key: const Key('fill-and-start'),
-                            onPressed: _lobby.busy ? null : _confirmFill,
-                            icon: const Icon(Icons.smart_toy_outlined),
-                            label: Text(
-                              l10n.lobbyFillAndStart,
-                              textAlign: TextAlign.center,
-                            ),
+                    child: ContentColumn(
+                      builder: (context, padding) => ListView(
+                        padding: padding,
+                        children: [
+                          if (inviteCode != null && inviteCode.isNotEmpty) ...[
+                            _inviteCode(context, inviteCode),
+                            const SizedBox(height: 12),
+                          ],
+                          _settings(context, details),
+                          const SizedBox(height: 20),
+                          _seatsHeader(context),
+                          const SizedBox(height: 8),
+                          _seats(
+                            inviteHint:
+                                inviteCode != null && inviteCode.isNotEmpty,
                           ),
+                          // Under the free seats it fills, not pinned with Start
+                          // and Leave: at a large font size the pinned buttons
+                          // would leave the seats no room.
+                          if (_lobby.canAddBots) ...[
+                            const SizedBox(height: 12),
+                            FilledButton.tonalIcon(
+                              key: const Key('fill-and-start'),
+                              onPressed: _lobby.busy ? null : _confirmFill,
+                              icon: const Icon(Icons.smart_toy_outlined),
+                              label: Text(
+                                l10n.lobbyFillAndStart,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -387,7 +394,7 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
   /// online by definition; the others, when `ConnectedPlayersProvider` has
   /// them — it holds five at most, so an absent dot means "not known to be
   /// online", and nothing says "offline".
-  List<Widget> _seats({required bool inviteHint}) {
+  Widget _seats({required bool inviteHint}) {
     final ownerId = _lobby.details?.party.ownerId;
     final me = _lobby.currentUserId;
     final online = {
@@ -396,11 +403,17 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
       ?me,
     };
     final empty = _lobby.maxPlayers - _lobby.playerCount;
-    return [
-      for (final player in _lobby.players)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: PlayerSeatTile(
+    // Two columns once the content column has room for them: a seat is
+    // one short line, and a table of eight seats then fits a laptop's
+    // height.
+    return ContentGrid(
+      minWidth: PartyLobbyScreen.seatMinWidth,
+      maxColumns: 2,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final player in _lobby.players)
+          PlayerSeatTile(
             player: player,
             // Which seat is the owner's: only `ownerId` says so for every
             // seat. The backend computes `isOwner` from the same `ownerId`,
@@ -408,13 +421,10 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
             isOwner: ownerId != null && player.userId == ownerId,
             online: online.contains(player.userId),
           ),
-        ),
-      for (var index = 0; index < empty; index++)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+        for (var index = 0; index < empty; index++)
           // The hint once, on the first free seat: repeated on each it
           // would be noise.
-          child: EmptySeatTile(
+          EmptySeatTile(
             key: Key('empty-seat-$index'),
             showInviteHint: inviteHint && index == 0,
             onAddBot: _lobby.canAddBots ? _lobby.addBot : null,
@@ -422,8 +432,8 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
             enabled: !_lobby.busy,
             addBotKey: Key('empty-seat-$index-add-bot'),
           ),
-        ),
-    ];
+      ],
+    );
   }
 
   /// S4: why Start is (or is not) active, Start itself for the owner, then
@@ -440,59 +450,63 @@ class _PartyLobbyScreenState extends State<PartyLobbyScreen> {
       color: AppColors.slate800,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_lobby.error != null) ...[
-                ErrorBanner(message: partyErrorText(l10n, _lobby.error!)),
-                const SizedBox(height: 8),
-              ],
-              Row(
-                key: const Key('start-reason'),
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    missing > 0 ? Icons.hourglass_empty : Icons.check,
-                    size: 16,
-                    color: missing > 0
-                        ? AppColors.amber400
-                        : AppColors.slate400,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      reason,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: missing > 0
-                            ? AppColors.amber400
-                            : AppColors.slate400,
-                        fontSize: 13.5,
+        child: ContentColumn(
+          top: 10,
+          bottom: 12,
+          builder: (context, padding) => Padding(
+            padding: padding,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_lobby.error != null) ...[
+                  ErrorBanner(message: partyErrorText(l10n, _lobby.error!)),
+                  const SizedBox(height: 8),
+                ],
+                Row(
+                  key: const Key('start-reason'),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      missing > 0 ? Icons.hourglass_empty : Icons.check,
+                      size: 16,
+                      color: missing > 0
+                          ? AppColors.amber400
+                          : AppColors.slate400,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        reason,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: missing > 0
+                              ? AppColors.amber400
+                              : AppColors.slate400,
+                          fontSize: 13.5,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (_lobby.isOwner) ...[
-                FilledButton.icon(
-                  key: const Key('start-party'),
-                  onPressed: _lobby.canStart ? _lobby.start : null,
-                  icon: const Icon(Icons.play_arrow),
-                  label: Text(l10n.lobbyStartWithCount(_lobby.playerCount)),
+                  ],
                 ),
                 const SizedBox(height: 8),
+                if (_lobby.isOwner) ...[
+                  FilledButton.icon(
+                    key: const Key('start-party'),
+                    onPressed: _lobby.canStart ? _lobby.start : null,
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text(l10n.lobbyStartWithCount(_lobby.playerCount)),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                OutlinedButton.icon(
+                  key: const Key('leave-party'),
+                  onPressed: _lobby.busy ? null : _lobby.leave,
+                  icon: const Icon(Icons.logout),
+                  label: Text(l10n.lobbyLeaveButton),
+                ),
               ],
-              OutlinedButton.icon(
-                key: const Key('leave-party'),
-                onPressed: _lobby.busy ? null : _lobby.leave,
-                icon: const Icon(Icons.logout),
-                label: Text(l10n.lobbyLeaveButton),
-              ),
-            ],
+            ),
           ),
         ),
       ),

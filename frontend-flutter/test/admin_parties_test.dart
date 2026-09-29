@@ -8,6 +8,7 @@ import 'package:zapzap/widgets/admin_parties.dart';
 
 import 'admin_helpers.dart';
 import 'history_helpers.dart' show phoneSize;
+import 'wide_screen_helpers.dart';
 
 const _finishedId = 'da33c689-6f43-49d4-ba89-953f105e7960';
 const _waitingId = 'f9d11bf6-2a4c-4e45-a8d3-4ef3863f02e9';
@@ -256,6 +257,35 @@ void main() {
           findsOneWidget,
         );
       });
+    }
+  });
+
+  group('wide screen', () {
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        testWidgets('the parties tab lies in the content column at $name, '
+            'text x$scale', (tester) async {
+          await pumpParties(
+            tester,
+            backend: FakeAdminBackend.fixture(),
+            size: size,
+            textScale: scale,
+          );
+
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('admin-parties-filter')),
+            windowWidth: size.width,
+          );
+          await scrollTo(
+            tester,
+            row(_waitingId),
+            listKey: 'admin-parties-list',
+          );
+          expectInContentColumn(tester, rows(), windowWidth: size.width);
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
   });
 }

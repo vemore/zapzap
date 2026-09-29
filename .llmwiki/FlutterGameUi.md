@@ -4,7 +4,7 @@
 > ZapZap, felt, pile and deck, opponents), board motion and reduced motion, and the card
 > model, play rules and card widgets.
 > Related: [[FrontendFlutter]] · [[FlutterGameBoard]] · [[GameRules]] · [[Frontend]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -182,7 +182,9 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   a card shows on its edge, drawn in front of the face, in three looks (`CardLook`,
   `PlayingCard.look`, `edgeFor`, `shadowFor`): plain — cannot be played, a drop shadow;
   playable — takes a tap, a 1.5 px `amber200` edge and a soft glow; selected — a 3 px
-  `amber400` edge and a strong glow. No tap when disabled; a localised semantics label
+  `amber400` edge and a strong glow. Under the mouse, a card that takes a tap shows the
+  click cursor and glows as a selected one, its edge unchanged (`_PointerTarget`,
+  2026-09-29). No tap when disabled; a localised semantics label
   whose `onTap` is the card's tap — none when disabled, so a screen reader selects a card
   as a finger does);
   `CardBack` (sizes `xxs` 16 … `lg` 80 px, as `CardBack.jsx`, or any `width`; a painted red

@@ -22,6 +22,7 @@ import 'package:zapzap/widgets/turn_countdown.dart';
 import 'auth_helpers.dart';
 import 'game_helpers.dart';
 import 'sse_fakes.dart';
+import 'wide_screen_helpers.dart';
 
 void main() {
   /// The app signed in as Vincent (`u1`), on `/game/p1`, with [backend]
@@ -1621,4 +1622,148 @@ void main() {
       },
     );
   }
+
+  group('wide screen', () {
+    // The wide board (from [GameScreen.wideBreakpoint], 800 px: a portrait
+    // tablet has it too) in each state a game goes through, on a laptop, a
+    // desktop monitor and a portrait tablet. Anything that does not fit
+    // throws a layout error, which fails the test.
+    FakeGameBackend roundOver({bool gameFinished = false}) => FakeGameBackend(
+      state: gameSnapshotJson(
+        roundStatus: 'finished',
+        gameState: gameStateJson(
+          currentTurn: 2,
+          currentAction: 'finished',
+          zapZapCaller: 2,
+          lowestHandPlayerIndex: 1,
+          wasCounterActed: true,
+          counterActedByPlayerIndex: 1,
+          gameFinished: gameFinished,
+          winner: gameFinished
+              ? {'playerIndex': 1, 'username': 'EasyBot1', 'score': 30}
+              : null,
+          eliminatedPlayers: gameFinished ? [0, 2] : [],
+          allHands: {
+            '0': [0, 1, 2, 3, 4, 5, 6],
+            '1': [20],
+            '2': [30, 31, 32],
+          },
+          handPoints: {'0': 28, '1': 1, '2': 20},
+          roundScores: {'0': 28, '1': 0, '2': 30},
+        ),
+      ),
+    );
+
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        final at = '$name, text x$scale';
+
+        testWidgets('the play phase fits at $at, the players beside the '
+            'felt', (tester) async {
+          await pumpGame(
+            tester,
+            playing(
+              playerHand: [0, 1, 2, 3, 4, 5, 6],
+              lastCardsPlayed: [7, 8, 9],
+              cardsPlayed: [20, 21],
+              lastAction: {
+                'type': 'play',
+                'playerIndex': 2,
+                'cardIds': [20, 21],
+                'timestamp': 1790094197863,
+              },
+            ),
+            size: size,
+            textScale: scale,
+          );
+
+          expectBoardStanding(tester);
+          final table = tester.getRect(find.byType(GamePlayerTable));
+          final felt = tester.getRect(find.byType(GameTableArea));
+          expect(felt.left, greaterThan(table.right));
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the draw phase fits at $at', (tester) async {
+          await pumpGame(
+            tester,
+            playing(
+              currentAction: 'draw',
+              playerHand: [0, 1, 2, 3, 4, 5, 6, 7],
+              lastCardsPlayed: [30, 31, 32, 33],
+              cardsPlayed: [20, 21, 22],
+            ),
+            size: size,
+            textScale: scale,
+          );
+
+          expect(find.byKey(const Key('drawInstruction')), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the tallest action bar fits at $at', (tester) async {
+          await pumpGame(
+            tester,
+            playing(playerHand: [0, 1, 2, 3, 4, 14, 30], lastCardsPlayed: [7]),
+            size: size,
+            textScale: scale,
+          );
+          selectCard(tester, 0);
+          selectCard(tester, 14);
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('invalidPlayReason')), findsOneWidget);
+          expectBoardStanding(tester);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the hand-size phase fits at $at', (tester) async {
+          await pumpGame(
+            tester,
+            FakeGameBackend(
+              state: gameSnapshotJson(
+                gameState: gameStateJson(
+                  currentTurn: 0,
+                  currentAction: 'selectHandSize',
+                  isGoldenScore: true,
+                ),
+              ),
+            ),
+            size: size,
+            textScale: scale,
+          );
+
+          expect(find.byType(GameHandSizeSelector), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the end of a round fits at $at', (tester) async {
+          await pumpGame(tester, roundOver(), size: size, textScale: scale);
+
+          expect(find.byKey(const Key('roundOver')), findsOneWidget);
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('next-round')),
+            200,
+          );
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the end of a game fits at $at', (tester) async {
+          await pumpGame(
+            tester,
+            roundOver(gameFinished: true),
+            size: size,
+            textScale: scale,
+          );
+
+          expect(find.byKey(const Key('winnerBanner')), findsOneWidget);
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('back-to-parties')),
+            200,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  });
 }

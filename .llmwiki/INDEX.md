@@ -33,13 +33,13 @@ Load this file first. Then read only the pages your task touches.
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-28 |
 | [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-28 |
 | [[Frontend]] | `frontend/`: React + Vite structure, API and SSE clients, the turn timer (creation, countdown, ejection), Google OAuth, build and tests | 2026-09-28 |
-| [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, build and tests | 2026-09-28 |
+| [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, wide screens, build and tests | 2026-09-29 |
 | [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-28 |
 | [[FlutterRealtime]] | Flutter real-time channel (SSE): parser, two transports, reconnecting `SseClient`, `SseProvider` following the session, presence | 2026-09-28 |
-| [[FlutterParties]] | Flutter parties list, create-party, lobby and its bots, back navigation, the app-bar menu (rules sheet, confirmed sign-out, account deletion) | 2026-09-28 |
-| [[FlutterGameBoard]] | Flutter game board: `GameProvider`, modes, errors, phone layout, the turn clock and ejection, end of round and game, the offline example game (`/tutorial`) | 2026-09-28 |
-| [[FlutterGameUi]] | Flutter turn UX (step, named button, suggestions, ZapZap, felt, pile, opponents), board motion and reduced motion, card model, play rules, card widgets | 2026-09-28 |
-| [[FlutterHistoryAdmin]] | Flutter history, game details and statistics screens; the admin screen (users, parties, statistics tabs) | 2026-09-27 |
+| [[FlutterParties]] | Flutter parties list, create-party, lobby and its bots, back navigation, the app-bar menu (rules sheet, confirmed sign-out, account deletion) | 2026-09-29 |
+| [[FlutterGameBoard]] | Flutter game board: `GameProvider`, modes, errors, phone and wide layouts, the turn clock and ejection, end of round and game, the offline example game (`/tutorial`) | 2026-09-29 |
+| [[FlutterGameUi]] | Flutter turn UX (step, named button, suggestions, ZapZap, felt, pile, opponents), board motion and reduced motion, card model, play rules, card widgets | 2026-09-29 |
+| [[FlutterHistoryAdmin]] | Flutter history, game details and statistics screens; the admin screen (users, parties, statistics tabs) | 2026-09-29 |
 | [[FlutterI18n]] | Flutter l10n: ten ARB files, the game-terms glossary, the l10n tests, generated code not committed, the "tu" voice | 2026-09-28 |
 | [[FlutterAndroidPwa]] | Flutter Android app (CI APK, release signing, keys, OAuth SHA-1s, manifest, icons) and the PWA image (Dockerfile, nginx, manifest) | 2026-09-27 |
 | [[NativeEngine]] | `native/`: headless engine, DRL training, the two Node scripts that drive it (`train-native.js`, `genetic-optimize-thibot.js`) | 2026-09-27 |

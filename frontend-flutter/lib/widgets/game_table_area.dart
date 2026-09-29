@@ -64,6 +64,7 @@ class GameTableArea extends StatefulWidget {
     this.cardWidth = CardSizes.tablePhone,
     this.drawPlayedWidth,
     this.playedByMe = false,
+    this.playedBeside = false,
   });
 
   final List<int> cardsPlayed;
@@ -100,6 +101,12 @@ class GameTableArea extends StatefulWidget {
   /// of this player's own play beside the pile and the deck, the targets,
   /// the height they leave going to the hand.
   final double? drawPlayedWidth;
+
+  /// The cards played this turn beside the pile and the deck, their labels
+  /// in line, rather than above them: a wide board's felt has the width,
+  /// and a laptop window not the height of two rows of cards over the hand
+  /// (1366x768). They fold above the pile when the felt is too narrow.
+  final bool playedBeside;
 
   /// The last move was this player's: the cards it brought glide up from
   /// the hand, under the felt, instead of down from the players, and a
@@ -412,6 +419,28 @@ class _GameTableAreaState extends State<GameTableArea>
     final message = drawing ? null : _message(l10n);
     final taken = message == null ? null : _takenCard();
     final take = widget.takeCard;
+    final played = widget.cardsPlayed.isEmpty
+        ? null
+        : Column(
+            key: const Key('playedCards'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _label(l10n.gameTablePlayedLabel),
+              _cards(
+                widget.cardsPlayed,
+                (id) => _landing(
+                  id,
+                  PlayingCard(
+                    cardId: id,
+                    width: drawing
+                        ? widget.drawPlayedWidth ?? widget.cardWidth
+                        : widget.cardWidth,
+                    disabled: true,
+                  ),
+                ),
+              ),
+            ],
+          );
     final edge = drawing ? GameTableArea.drawEdgeColor : AppColors.rimInlay;
     final edgeWidth = drawing ? 2.0 : 1.0;
     return Stack(
@@ -527,22 +556,8 @@ class _GameTableAreaState extends State<GameTableArea>
                                     ),
                                   ),
                                 ),
-                              if (widget.cardsPlayed.isNotEmpty) ...[
-                                _label(l10n.gameTablePlayedLabel),
-                                _cards(
-                                  widget.cardsPlayed,
-                                  (id) => _landing(
-                                    id,
-                                    PlayingCard(
-                                      cardId: id,
-                                      width: drawing
-                                          ? widget.drawPlayedWidth ??
-                                                widget.cardWidth
-                                          : widget.cardWidth,
-                                      disabled: true,
-                                    ),
-                                  ),
-                                ),
+                              if (played != null && !widget.playedBeside) ...[
+                                played,
                                 const SizedBox(height: 2),
                               ],
                               // The pile and the deck side by side, the deck folding under
@@ -553,7 +568,12 @@ class _GameTableAreaState extends State<GameTableArea>
                                 crossAxisAlignment: WrapCrossAlignment.start,
                                 spacing: 18,
                                 runSpacing: 6,
-                                children: [_pile(l10n), _deck(l10n)],
+                                children: [
+                                  if (played != null && widget.playedBeside)
+                                    played,
+                                  _pile(l10n),
+                                  _deck(l10n),
+                                ],
                               ),
                               if (drawing && take != null)
                                 Padding(

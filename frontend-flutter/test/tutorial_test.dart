@@ -33,6 +33,7 @@ import 'package:zapzap/widgets/playing_card.dart';
 import 'auth_helpers.dart';
 import 'party_helpers.dart';
 import 'sse_fakes.dart';
+import 'wide_screen_helpers.dart';
 
 void main() {
   /// The app signed out on [location], on a 400x860 phone; every HTTP
@@ -185,6 +186,27 @@ void main() {
         });
       }
     }
+
+    group('wide screen', () {
+      // The phone column, centred ([TutorialScreen.maxWidth]), played
+      // through on a laptop, a desktop monitor and a portrait tablet.
+      for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+        for (final scale in wideTextScales) {
+          testWidgets('every step fits $name at text scale $scale', (
+            tester,
+          ) async {
+            await pumpSignedOut(tester, size: size, textScale: scale);
+            final board = tester.getRect(find.byType(GameTableArea));
+            expect(board.center.dx, closeTo(size.width / 2, 1));
+            for (final step in TutorialStep.values) {
+              expect(find.byKey(const Key('tutorialCoach')), findsOneWidget);
+              await playStep(tester, step);
+            }
+            expect(find.byType(TutorialScreen), findsNothing);
+          });
+        }
+      }
+    });
 
     testWidgets('a move other than the one asked for is refused with the '
         "step's hint, and the step stays", (tester) async {

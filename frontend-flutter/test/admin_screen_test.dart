@@ -14,6 +14,7 @@ import 'package:zapzap/widgets/admin_users.dart';
 import 'admin_helpers.dart';
 import 'fixtures.dart';
 import 'history_helpers.dart' show phoneSize;
+import 'wide_screen_helpers.dart';
 
 const _adminId = 'b40fa968-ebee-4af4-8117-342d47e3eff3';
 const _simonId = 'e88614f8-13ac-45ca-a4b2-2e6a26b797fd';
@@ -349,6 +350,57 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('admin-users-range')), findsOneWidget);
       });
+    }
+  });
+
+  group('wide screen', () {
+    // A laptop, a desktop monitor, a portrait tablet: the tabs and the rows
+    // in the one centred column, and nothing that overflows.
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        testWidgets('the users tab lies in the content column at $name, '
+            'text x$scale', (tester) async {
+          await pumpAdmin(
+            tester,
+            backend: FakeAdminBackend.fixture(extra: 112),
+            size: size,
+            textScale: scale,
+          );
+
+          for (final finder in [
+            find.byKey(const Key('admin-users-search')),
+            find.byType(AdminUserTile),
+          ]) {
+            expectInContentColumn(tester, finder, windowWidth: size.width);
+          }
+          // The first tab's label lines up with the content under it.
+          final label = find.descendant(
+            of: find.byKey(const Key('admin-tab-users')),
+            matching: find.byType(Text),
+          );
+          expect(
+            tester.getTopLeft(label).dx,
+            tester.getTopLeft(find.byKey(const Key('admin-users-count'))).dx,
+          );
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('admin-users-next')),
+            500,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const Key('admin-users-list')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('admin-users-next')),
+            windowWidth: size.width,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
   });
 }

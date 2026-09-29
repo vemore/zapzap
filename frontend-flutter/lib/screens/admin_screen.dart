@@ -6,6 +6,7 @@ import '../utils/navigation.dart';
 import '../widgets/admin_parties.dart';
 import '../widgets/admin_stats.dart';
 import '../widgets/admin_users.dart';
+import '../widgets/content_column.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The tabs of the admin screen; each [segment] is its path under
@@ -74,29 +75,40 @@ class _AdminScreenState extends State<AdminScreen>
       ),
       body: Column(
         children: [
-          TabBar(
-            key: const Key('admin-tabs'),
-            controller: _tabs,
-            // Scrollable, so three labels fit a phone at a large font.
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(
-                key: const Key('admin-tab-users'),
-                icon: const Icon(Icons.people),
-                text: l10n.adminTabUsers,
+          // In the content column: a tab's own padding is the gutter, so
+          // the first label lines up with the content under it.
+          ContentColumn(
+            top: 0,
+            bottom: 0,
+            builder: (context, padding) => Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: padding.left - ContentColumn.gutter,
               ),
-              Tab(
-                key: const Key('admin-tab-parties'),
-                icon: const Icon(Icons.sports_esports),
-                text: l10n.adminTabParties,
+              child: TabBar(
+                key: const Key('admin-tabs'),
+                controller: _tabs,
+                // Scrollable, so three labels fit a phone at a large font.
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  Tab(
+                    key: const Key('admin-tab-users'),
+                    icon: const Icon(Icons.people),
+                    text: l10n.adminTabUsers,
+                  ),
+                  Tab(
+                    key: const Key('admin-tab-parties'),
+                    icon: const Icon(Icons.sports_esports),
+                    text: l10n.adminTabParties,
+                  ),
+                  Tab(
+                    key: const Key('admin-tab-statistics'),
+                    icon: const Icon(Icons.bar_chart),
+                    text: l10n.adminTabStatistics,
+                  ),
+                ],
               ),
-              Tab(
-                key: const Key('admin-tab-statistics'),
-                icon: const Icon(Icons.bar_chart),
-                text: l10n.adminTabStatistics,
-              ),
-            ],
+            ),
           ),
           Expanded(
             child: IndexedStack(

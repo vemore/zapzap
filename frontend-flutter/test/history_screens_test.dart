@@ -15,6 +15,7 @@ import 'package:zapzap/widgets/zapzap_app_bar.dart';
 
 import 'fixtures.dart';
 import 'history_helpers.dart';
+import 'wide_screen_helpers.dart';
 
 void main() {
   const partyId = 'da33c689-6f43-49d4-ba89-953f105e7960';
@@ -374,6 +375,72 @@ void main() {
         await tester.scrollUntilVisible(find.text('Contré'), 300);
         expect(find.byKey(const Key('rounds-table')), findsOneWidget);
       });
+    }
+  });
+
+  group('wide screen', () {
+    // A laptop, a desktop monitor, a portrait tablet: the content in the one
+    // centred column, and nothing that overflows.
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        final at = '$name, text x$scale';
+
+        testWidgets('the history lies in the content column at $at', (
+          tester,
+        ) async {
+          await pumpScreen(
+            tester,
+            initialLocation: AppRoutes.history,
+            api: routedApi(historyBodies()),
+            size: size,
+            textScale: scale,
+          );
+
+          for (final finder in [
+            find.byKey(const Key('history-tabs')),
+            find.byType(HistoryGameTile),
+          ]) {
+            expectInContentColumn(tester, finder, windowWidth: size.width);
+          }
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the game details lie in the content column at $at', (
+          tester,
+        ) async {
+          await pumpScreen(
+            tester,
+            initialLocation: AppRoutes.gameDetails(partyId),
+            api: routedApi(historyBodies()),
+            size: size,
+            textScale: scale,
+          );
+
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('game-winner')),
+            windowWidth: size.width,
+          );
+          // The page's own scroll view: the rounds table scrolls sideways
+          // in it.
+          await tester.scrollUntilVisible(
+            find.text('Contré'),
+            300,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('rounds-table')),
+            windowWidth: size.width,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
   });
 }

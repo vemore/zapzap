@@ -110,9 +110,9 @@ class PlayingCard extends StatelessWidget {
       label: AppLocalizations.of(context).cardName(card),
       onTap: tap,
       excludeSemantics: true,
-      child: GestureDetector(
+      child: _PointerTarget(
         onTap: tap,
-        child: AnimatedContainer(
+        builder: (hovered) => AnimatedContainer(
           duration: Motion.of(context, Motion.select),
           width: width,
           height: height,
@@ -120,7 +120,11 @@ class PlayingCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: radius,
-            boxShadow: shadowFor(look),
+            // Under the mouse, a card that takes a tap glows as a selected
+            // one does: the tap it answers is one click away.
+            boxShadow: shadowFor(
+              hovered && look == CardLook.playable ? CardLook.selected : look,
+            ),
           ),
           child: ClipRRect(
             borderRadius: radius,
@@ -132,6 +136,41 @@ class PlayingCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A tap target for the mouse as well as the finger: the click cursor over
+/// it and a hover state while [onTap] is given; neither, and no tap, when
+/// it is `null`.
+class _PointerTarget extends StatefulWidget {
+  const _PointerTarget({required this.onTap, required this.builder});
+
+  final VoidCallback? onTap;
+  final Widget Function(bool hovered) builder;
+
+  @override
+  State<_PointerTarget> createState() => _PointerTargetState();
+}
+
+class _PointerTargetState extends State<_PointerTarget> {
+  bool _hovered = false;
+
+  void _hover(bool hovered) {
+    if (hovered != _hovered) setState(() => _hovered = hovered);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onTap = widget.onTap;
+    return MouseRegion(
+      cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+      onEnter: (_) => _hover(true),
+      onExit: (_) => _hover(false),
+      child: GestureDetector(
+        onTap: onTap,
+        child: widget.builder(onTap != null && _hovered),
       ),
     );
   }
