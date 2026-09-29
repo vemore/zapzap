@@ -92,6 +92,7 @@ class GuestCredentials {
     required this.userId,
     required this.username,
     required this.password,
+    this.active = true,
   });
 
   factory GuestCredentials.fromJson(Map<String, dynamic> json) {
@@ -105,6 +106,7 @@ class GuestCredentials {
       userId: userId,
       username: username,
       password: password,
+      active: json['active'] != false,
     );
   }
 
@@ -112,13 +114,30 @@ class GuestCredentials {
   final String username;
   final String password;
 
-  GuestCredentials renamed(String username) =>
-      GuestCredentials(userId: userId, username: username, password: password);
+  /// The guest was the last account signed in on this device: the start-up
+  /// signs it back in. Another account's sign-in clears it, and only « Jouer
+  /// sans compte » brings the guest back ([AuthProvider.playAsGuest]).
+  final bool active;
+
+  GuestCredentials renamed(String username) => GuestCredentials(
+    userId: userId,
+    username: username,
+    password: password,
+    active: active,
+  );
+
+  GuestCredentials withActive(bool active) => GuestCredentials(
+    userId: userId,
+    username: username,
+    password: password,
+    active: active,
+  );
 
   Map<String, dynamic> toJson() => {
     'userId': userId,
     'username': username,
     'password': password,
+    'active': active,
   };
 }
 

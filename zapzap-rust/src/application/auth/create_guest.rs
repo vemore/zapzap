@@ -1,5 +1,5 @@
 //! Play without an account: a guest is a human user created without a form, under a
-//! random name (`Guest_` and five digits) and a random password the player's device keeps
+//! random name (`Guest_` and eight digits) and a random password the player's device keeps
 //! and signs back in with once the 7-day token has expired. The account becomes the
 //! player's own (`is_guest` cleared) when they set a password of their own
 //! (`ChangePassword`, `UserRepository::update_password_hash`).
@@ -16,14 +16,15 @@ use crate::infrastructure::auth::{JwtService, PasswordService};
 
 /// The start of every guest's name; the rest is `GUEST_DIGITS` random digits
 pub const GUEST_PREFIX: &str = "Guest_";
-const GUEST_DIGITS: usize = 5;
+const GUEST_DIGITS: usize = 8;
 /// Letters and digits: about 143 bits, under bcrypt's 72-byte limit
 pub const GUEST_PASSWORD_LENGTH: usize = 24;
-/// Names drawn before giving up: 100 000 of them, so a miss is rare until guests number
-/// tens of thousands
+/// Names drawn before giving up: 100 000 000 of them, so a miss stays rare with millions
+/// of guests
 const NAME_ATTEMPTS: usize = 20;
 
-/// A guest's name: `Guest_` and five random digits, which passes sign-up's rules
+/// A guest's name: `Guest_` and eight random digits (14 characters), which passes
+/// sign-up's rules
 pub fn guest_username() -> String {
     let mut rng = rand::rng();
     let digits: String = (0..GUEST_DIGITS)

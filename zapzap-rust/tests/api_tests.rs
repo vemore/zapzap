@@ -5966,3 +5966,39 @@ async fn test_a_guest_is_claimed_by_setting_its_own_password() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn test_a_failed_guest_creation_does_not_count_against_the_client() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let client = via_proxies("198.51.100.9");
+    // The database refuses every new user: each creation fails with a 500
+    sqlx::raw_sql(
+        "CREATE TRIGGER refuse_users BEFORE INSERT ON users \
+         BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+    )
+    .execute(&state.db)
+    .await
+    .unwrap();
+    // More failures than the quota: none of them is a 429
+    for _ in 0..=zapzap_backend::infrastructure::rate_limit::GUEST_PER_IP {
+        let (status, body) = post_guest(&mut app, Some(&client)).await;
+        assert_error(
+            status,
+            &body,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "GUEST_ERROR",
+        );
+    }
+
+    // The failures gave their slots back: the client still has its whole quota
+    sqlx::raw_sql("DROP TRIGGER refuse_users")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    for n in 0..zapzap_backend::infrastructure::rate_limit::GUEST_PER_IP {
+        let (status, body) = post_guest(&mut app, Some(&client)).await;
+        assert_eq!(status, StatusCode::CREATED, "guest {n}: {body}");
+    }
+    let (status, body) = post_guest(&mut app, Some(&client)).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+}

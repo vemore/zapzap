@@ -48,6 +48,9 @@ class AuthProvider extends ChangeNotifier {
   /// The guest sign-in under way, which parallel 401s share.
   Future<bool>? _resuming;
 
+  /// Why the last guest sign-in failed, when it did.
+  Object? _resumeFailure;
+
   /// The signed-in user, `null` when signed out.
   User? get user => _user;
 
@@ -77,7 +80,9 @@ class AuthProvider extends ChangeNotifier {
 
   /// Reloads the session saved by a previous run. An expired or unreadable
   /// one is erased; the guest's is replaced by a new sign-in with its stored
-  /// credentials, when the backend answers.
+  /// credentials, when the backend answers — only when the guest was the
+  /// last account signed in on this device ([GuestCredentials.active]):
+  /// after another account's session, the start-up is that account's.
   Future<void> restore() async {
     AuthSession? session;
     try {
@@ -94,9 +99,10 @@ class AuthProvider extends ChangeNotifier {
       _setSession(session);
     } else {
       if (session != null) await _clearStorage();
-      // Another account's expired session is that account's: to the login
-      // screen, as for anyone.
-      if (session == null || session.user.id == _guest?.userId) {
+      final guest = _guest;
+      if (guest != null &&
+          guest.active &&
+          (session == null || session.user.id == guest.userId)) {
         await _resumeGuest();
       }
     }
@@ -119,10 +125,18 @@ class AuthProvider extends ChangeNotifier {
       _signIn(await _repository.loginWithGoogle(credential));
 
   /// Plays without an account: signs this device's guest account back in,
-  /// or creates one (`POST /auth/guest`) and keeps its credentials. Throws
-  /// the [ApiException] of a refusal (`RATE_LIMITED`...).
+  /// or creates one (`POST /auth/guest`) and keeps its credentials. A new
+  /// one only when there is none, or the backend refused the stored
+  /// credentials (`INVALID_CREDENTIALS`, which erases them): any other
+  /// failure to sign the stored guest in (no network, a 5xx) is thrown and
+  /// the credentials kept, so the account is not replaced for a passing
+  /// fault. Throws the [ApiException] of a refusal (`RATE_LIMITED`...).
   Future<void> playAsGuest() async {
-    if (_guest != null && await _resumeGuest()) return;
+    if (_guest != null) {
+      if (await _resumeGuest()) return;
+      final failure = _resumeFailure;
+      if (_guest != null && failure != null) throw failure;
+    }
     final guest = await _repository.createGuest();
     final user = guest.session.user;
     _guest = GuestCredentials(
@@ -215,11 +229,13 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> _signInAsGuest() async {
     final guest = _guest;
     if (guest == null) return false;
+    _resumeFailure = null;
     try {
       await _signIn(await _repository.login(guest.username, guest.password));
       return true;
     } catch (error) {
       debugPrint('Guest not signed back in: $error');
+      _resumeFailure = error;
       if (error is ApiException &&
           error.code == ApiErrorCode.invalidCredentials) {
         await _forgetGuest();
@@ -251,6 +267,14 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _signIn(AuthSession session) async {
     _setSession(session);
     notifyListeners();
+    // Whose session this device holds: the guest's comes back at start-up
+    // only when it was the last one.
+    final guest = _guest;
+    final active = guest?.userId == session.user.id;
+    if (guest != null && guest.active != active) {
+      _guest = guest.withActive(active);
+      await _writeGuest();
+    }
     try {
       await _storage.write(session);
     } catch (error) {

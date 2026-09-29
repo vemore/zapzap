@@ -120,6 +120,7 @@ void main() {
         'userId': 'g1',
         'username': 'Guest_12345',
         'password': FakeLobbyBackend.guestPassword,
+        'active': true,
       });
 
       await tester.tap(find.text('Enregistrer mon compte'));

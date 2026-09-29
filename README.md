@@ -22,6 +22,9 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a Flutter cli
 - 🔐 **JWT Authentication**: Secure token-based user management; in the Flutter client's
   account page (on the web, `/account/delete` leads there too) a player changes their
   username and password, or deletes their account
+- 🎟️ **Play without an account**: « Jouer sans compte » in the Flutter client creates a
+  guest account (random name and password kept on the device, rate limited per network
+  address); choosing a password on the account page makes it a full account
 - 🔏 **Privacy policy**: [`privacy_policy.md`](privacy_policy.md), served at `/privacy`
   (rendered by `scripts/build_privacy_page.py` into `nginx/privacy.html`)
 - 💾 **Database Persistence**: SQLite for game state and user data
@@ -398,10 +401,12 @@ dart format lib test && flutter analyze && flutter test
 **Authentication:**
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login and get JWT token
+- `POST /api/auth/guest` - Create a guest account (random `Guest_` name and password,
+  answered once); rate limited: 5 per client address and 300 in all per hour
 - `DELETE /api/auth/me` - Delete your own account (confirmed by the password, or a Google token)
 - `PATCH /api/auth/me` - Change your username (answers a new token)
 - `PUT /api/auth/me/password` - Change your password (confirmed as the deletion is; a Google
-  account sets its first one)
+  account sets its first one; a guest's first one claims the account)
 
 **Party Management:**
 - `POST /api/party` - Create new party
@@ -701,7 +706,7 @@ Player 4: 10 points
 - CORS restricted to the origins of `ALLOWED_ORIGINS` (every origin when unset, for development)
 
 ⚠️ **Production Improvements Needed**:
-- Rate limiting
+- Rate limiting beyond guest creation
 - HTTPS enforcement
 - Security headers
 - Session management improvements
@@ -716,7 +721,7 @@ Player 4: 10 points
 - [x] Database persistence
 - [x] API documentation
 - [ ] Integration tests for all endpoints
-- [ ] API rate limiting
+- [ ] API rate limiting beyond guest creation
 
 ### Planned Features
 - [ ] WebSocket support (replace SSE)

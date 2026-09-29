@@ -27,15 +27,23 @@
 - **Guest play** (« Jouer sans compte » on the home screen, `home-guest`; `POST
   /auth/guest`, [[Api]] § Guest accounts): `playAsGuest()` signs the device's stored guest
   back in when there is one, else creates one and stores its credentials — id, username,
-  and the generated password, answered once — under the key `guest` (`GuestCredentials`),
-  apart from the session: `clear()` (an expired or refused session) keeps them. A 429
+  the generated password, answered once, and `active` — under the key `guest`
+  (`GuestCredentials`), apart from the session: `clear()` (an expired or refused session)
+  keeps them. A new guest replaces a stored one **only when the backend refused its
+  credentials** (`INVALID_CREDENTIALS`, which erases them); any other failure of the sign-in
+  again (no network, a 5xx) is thrown, shown as the home screen's error, and the
+  credentials kept. A 429
   `RATE_LIMITED` shows `homeGuestErrorRateLimited` under the button (`home-guest-error`,
   `guestErrorText`). **Silent sign-in again**: when the guest's token has expired at
   start-up, or a call is answered 401, the provider signs in with `/login` and the stored
   credentials before anything else; parallel 401s share one attempt (`_resuming`). The
   backend refusing them (`INVALID_CREDENTIALS`: the account deleted) erases them; no answer
-  keeps them for the next start, the player meanwhile on the login screen. Another
-  account's expired session never signs the guest in. The credentials follow a rename, and
+  keeps them for the next start, the player meanwhile on the login screen. **The start-up
+  signs the guest back in only when it was the last account signed in on this device**
+  (`GuestCredentials.active`, rewritten by every sign-in: true for the guest's, false for
+  any other account's). So after another account signs in — and out, or expires — the
+  device starts on the login screen, the guest's credentials kept inactive: « Jouer sans
+  compte » still brings that guest back, rather than a new one. The credentials follow a rename, and
   are erased by the claim (the first password change, `isGuest` false in its answer), by
   `logout` (the menu warns first: the account is then lost) and by `deleteAccount`.
   `User.isGuest` comes with every account shape; a session stored before it reads false.

@@ -1,7 +1,8 @@
 //! An in-memory rate limit: at most `per_key` accepted requests per key (a client address)
 //! and `global` in all over a sliding `window`. The backend is one process, so memory is
 //! enough; a restart forgets the counts. Only accepted requests count, so the log holds
-//! at most `global` instants and a refused client does not push its own wait further.
+//! at most `global` instants and a refused client does not push its own wait further; a
+//! request that failed after it was counted gives its slot back (`release`).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -74,6 +75,24 @@ impl RateLimiter {
             .push_back(now);
         true
     }
+
+    /// Give back the last slot `key` acquired: the request it counted failed and created
+    /// nothing
+    pub fn release(&self, key: &str) {
+        let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(times) = log.by_key.get_mut(key) else {
+            return;
+        };
+        let Some(at) = times.pop_back() else {
+            return;
+        };
+        if times.is_empty() {
+            log.by_key.remove(key);
+        }
+        if let Some(i) = log.all.iter().rposition(|t| *t == at) {
+            log.all.remove(i);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -101,6 +120,22 @@ mod tests {
         // A refused request is not counted: it does not push the next one further
         assert!(!limiter.try_acquire_at("a", t + Duration::from_secs(90)));
         assert!(limiter.try_acquire_at("a", t + Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn a_released_slot_is_given_back_to_the_key_and_the_global_quota() {
+        let limiter = RateLimiter::new(1, 2, Duration::from_secs(60));
+        let t = Instant::now();
+        assert!(limiter.try_acquire_at("a", t));
+        limiter.release("a");
+        assert!(limiter.try_acquire_at("a", t));
+        assert!(limiter.try_acquire_at("b", t));
+        assert!(!limiter.try_acquire_at("c", t), "the global quota is full");
+        limiter.release("b");
+        assert!(limiter.try_acquire_at("c", t));
+        // Nothing to give back: no effect
+        limiter.release("nobody");
+        assert!(!limiter.try_acquire_at("d", t));
     }
 
     #[test]

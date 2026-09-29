@@ -392,7 +392,7 @@ async fn google_handler(
 }
 
 /// POST /api/auth/guest - play without an account: a guest user under a random name
-/// (`Guest_` and five digits) and a random password, answered once for the client to
+/// (`Guest_` and eight digits) and a random password, answered once for the client to
 /// keep. At most `GUEST_PER_IP` per client address and `GUEST_GLOBAL` in all per hour
 /// (`RateLimiter::guest`); the address is `client_ip`'s, behind the proxies.
 async fn guest_handler(
@@ -439,12 +439,16 @@ async fn guest_handler(
                 }),
             ))
         }
-        Err(e) => Err(refusal(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "GUEST_ERROR",
-            &e,
-            "Guest account creation failed",
-        )),
+        Err(e) => {
+            // No account was created: the attempt does not count against the client
+            state.guest_limiter.release(&client.ip);
+            Err(refusal(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "GUEST_ERROR",
+                &e,
+                "Guest account creation failed",
+            ))
+        }
     }
 }
 
