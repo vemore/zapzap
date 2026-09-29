@@ -112,6 +112,10 @@ jobs:
       # Unit and integration tests: tests/api_tests.rs drives the router on an in-memory
       # SQLite, tests/schema_tests.rs checks the schema against a frozen Node-built one.
       - run: cargo test --locked --lib --bins --tests
+      # The Bedrock client's own tests (the Converse request, the answer read from the
+      # response) exist only with the feature.
+      - name: cargo test --features bedrock (the Bedrock client)
+        run: cargo test --locked --features bedrock --lib services::llm_service
 
   native:
     # Branch protection requires this exact check name: rename it there first.

@@ -15,7 +15,7 @@
 |---|---|
 | 54 cards, ids 0-53, deck `(0..54)` | `game_service.rs:40` |
 | Joker = id ≥ 52 (`JOKER_START`) | `card_analyzer.rs:9`, `:45-47` |
-| Suit = id / 13 (0 S, 1 H, 2 C, 3 D), rank = id % 13 | `card_analyzer.rs:27-42`; suit letters `zapzap-rust/src/infrastructure/bot/strategies/llm_bot.rs:21` |
+| Suit = id / 13 (0 S, 1 H, 2 C, 3 D), rank = id % 13 | `card_analyzer.rs:27-42`; suit letters `zapzap-rust/src/infrastructure/bot/strategies/llm_bot.rs:25` |
 | Points A=1 … K=13, Joker 0 (eligibility) | `card_analyzer.rs:12-23`, `calculate_hand_value` `:52-54` |
 | Joker = 25 at scoring unless holder has the lowest hand | `calculate_hand_score` `card_analyzer.rs:58-73` |
 

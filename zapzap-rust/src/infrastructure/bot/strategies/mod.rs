@@ -44,7 +44,7 @@ pub enum BotAction {
 }
 
 /// Draw source decision
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DrawSource {
     Deck,
     Discard(u8), // Card ID to take from discard
