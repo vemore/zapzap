@@ -2,7 +2,7 @@
 
 > Scope: bot players in the Rust backend (`zapzap-rust/src/infrastructure/bot/`): difficulties, strategies, parameter provenance, LLM bot (Ollama / Bedrock) and its memory, how bot turns are triggered. Short pointer to the training-only strategies in `native/`.
 > Related: [[Backend]] · [[Api]] · [[GameRules]] · [[NativeEngine]] · [[Architecture]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -35,8 +35,8 @@ Mapping done once, in `BotBrain::for_difficulty` (`zapzap-rust/src/application/b
 - **One strategy instance per bot per party, for the whole game**: the party's `Roster` (`runner.rs`) builds a bot's brain on its first move and returns the same instance afterwards, so what a strategy remembers survives from its play to its draw and across turns and rounds (tests `test_a_bot_keeps_its_strategy_for_the_game`, `zapzap-rust/tests/rules_and_bots_tests.rs`, and `test_draw_follows_the_play_on_the_same_instance`, `thibot.rs`). The roster lives as long as the party plays, in memory: a restart starts the strategies afresh.
 
 ### Rule-based strategies
-- **Easy** (`easy_bot.rs`): random valid play (`:52-65`); ZapZap only if hand value ≤1 or one card (`:82-93`); draws from discard with probability 0.2 (`:72`).
-- **Medium** (`medium_bot.rs`): 70% max-points play, 30% random (`:82`); discard if it completes a pair, or value ≤2 with 0.8 probability (`:105-117`); ZapZap at ≤3, one card, or ≤4 in golden score (`:124-149`).
+- **Easy** (`easy_bot.rs`): random valid play (never a play made only of jokers unless the hand is only jokers, `find_plays_without_lone_jokers`) (`:52-65`); ZapZap only if hand value ≤1 or one card (`:82-93`); draws from discard with probability 0.2 (`:72`).
+- **Medium** (`medium_bot.rs`): 70% max-points play, 30% random (both drawn from plays without lone jokers) (`:82`); discard if it completes a pair, or value ≤2 with 0.8 probability (`:105-117`); ZapZap at ≤3, one card, or ≤4 in golden score (`:124-149`).
 - **Hard** (`hard_bot.rs`): hand size 4 in golden score else random 4-5 (`:28-38`); play maximising `points_removed*2 + cards_removed*3` (`:74-85`); discard if it completes a pair/sequence or is worth ≤2 (`:95-110`); ZapZap at ≤2, ≤4 in golden score, or one card (`:116-141`).
 
 ### Thibot (`strategies/thibot.rs`)
