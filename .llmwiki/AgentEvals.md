@@ -109,6 +109,9 @@ wiki pages and the ten ARB files, and the setup is a full
 | 2026-09-28 | `origin/master` (`6e02fc8`) | `docs-only-wiki-fact` | 13, 26 s | 0.28 | fail: INDEX.md's Bots row not re-dated |
 | 2026-09-28 | `origin/master` (`6e02fc8`) | `out-of-scope-finding` | 15, 47 s | 0.32 | fail: the entry is headed in bold, not `### todo_nr/<date>-<slug>.md`, so no entry body is read |
 | 2026-09-28 | `origin/master` (`6e02fc8`) | `rule-change-golden-hand-size` | 105, 254 s | 1.42 | pass (11 checks) |
+| 2026-09-29 | `origin/master` (`7679693`) | `docs-only-wiki-fact` | 12, 29 s | 0.26 | fail: INDEX.md's Bots row not re-dated |
+| 2026-09-29 | `origin/master` (`7679693`) | `out-of-scope-finding` | 12, 45 s | 0.24 | fail: the entry is headed in bold with no date, fields `Where`/`What`, no `Area` |
+| 2026-09-29 | `origin/master` (`7679693`) | `rule-change-golden-hand-size` | 86, 263 s | 1.47 | pass (11 checks) |
 
 The three runs also failed "main checkout's `wip/` untouched": the orchestrator of the same
 session was editing `wip/` while they ran, so that check cannot tell an agent's write from
