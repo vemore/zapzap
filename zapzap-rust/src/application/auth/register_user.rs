@@ -2,9 +2,42 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::domain::entities::User;
+use crate::domain::entities::{User, DELETED_PLAYER_NAME};
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::{JwtService, PasswordService};
+
+/// Names no player may take, whatever their case: the default admin's, whose row the admin
+/// screens protect by its name, and the names the clients give a deleted player
+/// (`DELETED_PLAYER_NAME`, "Deleted player"), which a live player must not pass for
+pub const RESERVED_USERNAMES: &[&str] = &["admin", DELETED_PLAYER_NAME, "Deleted player"];
+
+/// Whether `username` is one of `RESERVED_USERNAMES`, compared trimmed and case-insensitively
+pub fn is_reserved_username(username: &str) -> bool {
+    let wanted = username.trim().to_lowercase();
+    RESERVED_USERNAMES
+        .iter()
+        .any(|reserved| reserved.to_lowercase() == wanted)
+}
+
+/// A username's rules, at sign-up and on a rename (`RenameUser`): the message of the
+/// first one broken
+pub fn validate_username(username: &str) -> Result<(), String> {
+    if username.trim().is_empty() {
+        return Err("Username is required".into());
+    }
+    if username.len() < 3 {
+        return Err("Username must be at least 3 characters".into());
+    }
+    Ok(())
+}
+
+/// A password's rules, at sign-up and on a change (`ChangePassword`)
+pub fn validate_password(password: &str) -> Result<(), String> {
+    if password.len() < 4 {
+        return Err("Password must be at least 4 characters".into());
+    }
+    Ok(())
+}
 
 /// Register user input
 pub struct RegisterUserInput {
@@ -37,18 +70,10 @@ impl RegisterUser {
         input: RegisterUserInput,
     ) -> Result<RegisterUserOutput, RegisterError> {
         // Validate input
-        if input.username.trim().is_empty() {
-            return Err(RegisterError::Validation("Username is required".into()));
-        }
-        if input.username.len() < 3 {
-            return Err(RegisterError::Validation(
-                "Username must be at least 3 characters".into(),
-            ));
-        }
-        if input.password.len() < 4 {
-            return Err(RegisterError::Validation(
-                "Password must be at least 4 characters".into(),
-            ));
+        validate_username(&input.username).map_err(RegisterError::Validation)?;
+        validate_password(&input.password).map_err(RegisterError::Validation)?;
+        if is_reserved_username(&input.username) {
+            return Err(RegisterError::Reserved);
         }
 
         // Check if username exists
@@ -84,6 +109,8 @@ pub enum RegisterError {
     Validation(String),
     #[error("Username already exists")]
     UsernameExists,
+    #[error("Username is reserved")]
+    Reserved,
     #[error("Internal error: {0}")]
     Internal(String),
     #[error("Repository error: {0}")]

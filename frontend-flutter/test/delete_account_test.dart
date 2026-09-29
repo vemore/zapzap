@@ -7,6 +7,7 @@ import 'package:zapzap/app.dart';
 import 'package:zapzap/l10n/app_localizations_en.dart';
 import 'package:zapzap/l10n/app_localizations_fr.dart';
 import 'package:zapzap/router.dart';
+import 'package:zapzap/screens/account_screen.dart';
 import 'package:zapzap/screens/login_screen.dart';
 import 'package:zapzap/services/google_sign_in_service.dart';
 import 'package:zapzap/services/token_storage.dart';
@@ -55,11 +56,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// ⋮ → « Mon compte » → « Supprimer mon compte »: still reachable in the
+  /// app, as Google Play wants, one screen deeper than before.
   Future<void> openDialog(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('app-bar-menu')));
     await tester.pumpAndSettle();
+    expect(find.text('Supprimer mon compte'), findsNothing);
+    await tester.tap(find.byKey(const Key('menu-account')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AccountScreen), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('account-delete')));
     expect(find.text('Supprimer mon compte'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('menu-delete-account')));
+    await tester.tap(find.byKey(const Key('account-delete')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('delete-account-dialog')), findsOneWidget);
     expect(find.text('Supprimer ton compte ?'), findsOneWidget);
@@ -71,7 +79,7 @@ void main() {
   ];
 
   group('delete my account', () {
-    testWidgets('the menu entry, the confirmation with the password, the '
+    testWidgets('the account page, the confirmation with the password, the '
         'call, then the login screen with the session erased', (tester) async {
       final backend = FakeLobbyBackend();
       final storage = session();

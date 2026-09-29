@@ -139,6 +139,9 @@ class FakeLobbyBackend {
   /// The id `POST /party` hands back.
   String createdPartyId;
 
+  /// The token `PATCH /auth/me` hands back.
+  final String renamedToken = jwtExpiringIn(const Duration(hours: 12));
+
   /// `'<METHOD> <path>'` (`'POST /api/party/p1/join'`) to the refusal that
   /// route answers instead.
   final Map<String, ({int status, JsonMap body})> failures = {};
@@ -233,6 +236,22 @@ class FakeLobbyBackend {
         'success': true,
         'party': {'id': createdPartyId, 'status': 'playing'},
         'round': {'id': 'r1', 'roundNumber': 1, 'status': 'active'},
+      });
+    }
+    // A rename answers the account as `/auth/google` describes one, with a
+    // new token.
+    if (path == '/api/auth/me' && request.method == 'PATCH') {
+      final username = (jsonDecode(request.body) as Map)['username'];
+      return _json({
+        'success': true,
+        'user': {
+          'id': 'u1',
+          'username': username,
+          'isAdmin': false,
+          'isGoogleUser': false,
+          'hasPassword': true,
+        },
+        'token': renamedToken,
       });
     }
     if (path.endsWith('/join') || path.endsWith('/leave')) {

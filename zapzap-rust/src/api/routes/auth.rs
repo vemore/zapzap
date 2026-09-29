@@ -4,30 +4,36 @@ use axum::{
     extract::State,
     http::StatusCode,
     middleware,
-    routing::{delete, post},
+    routing::{delete, post, put},
     Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{auth_middleware, Claims};
 use crate::application::auth::{
-    DeleteAccount, DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput,
-    LoginWithGoogle, RegisterUser, RegisterUserInput,
+    ChangePassword, ChangePasswordError, ChangePasswordInput, ConfirmError, DeleteAccount,
+    DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput, LoginWithGoogle,
+    RegisterUser, RegisterUserInput, RenameError, RenameUser,
 };
 use crate::application::bot::spawn_bot_turns;
+use crate::domain::entities::User;
 use crate::domain::repositories::{ForfeitOutcome, SeatForfeit};
 use crate::infrastructure::app_state::{AppState, GameEvent};
 
 /// Create auth router
 pub fn create_auth_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    let auth = || middleware::from_fn_with_state(state.clone(), auth_middleware);
     Router::new()
         .route("/register", post(register_handler))
         .route("/login", post(login_handler))
         .route("/google", post(google_handler))
         .route(
             "/me",
-            delete(delete_me_handler).layer(middleware::from_fn_with_state(state, auth_middleware)),
+            delete(delete_me_handler)
+                .patch(rename_me_handler)
+                .layer(auth()),
         )
+        .route("/me/password", put(change_password_handler).layer(auth()))
 }
 
 // ========== DTOs ==========
@@ -65,35 +71,57 @@ pub struct RegisterUserInfo {
 #[serde(rename_all = "camelCase")]
 pub struct LoginResponse {
     success: bool,
-    user: LoginUserInfo,
+    user: AccountUserInfo,
     token: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoginUserInfo {
-    id: String,
-    username: String,
-    is_admin: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleLoginResponse {
     success: bool,
-    user: GoogleUserInfo,
+    user: AccountUserInfo,
     token: String,
     is_new_user: bool,
 }
 
+/// The signed-in account as `/login`, `/google` and `PATCH /me` describe it: one shape, so
+/// a Google account signing in with its password is stored as the Google account it is
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GoogleUserInfo {
+pub struct AccountUserInfo {
     id: String,
     username: String,
     email: Option<String>,
     is_admin: bool,
     is_google_user: bool,
+    /// A Google account may have set a password since (`PUT /me/password`)
+    has_password: bool,
+}
+
+impl From<&User> for AccountUserInfo {
+    fn from(user: &User) -> Self {
+        Self {
+            id: user.id.clone(),
+            username: user.username.clone(),
+            email: user.email.clone(),
+            is_admin: user.is_admin,
+            is_google_user: user.google_id.is_some(),
+            has_password: user.password_hash.is_some(),
+        }
+    }
+}
+
+/// `PATCH /me`: the renamed user and a token carrying the name
+#[derive(Serialize)]
+pub struct RenameResponse {
+    success: bool,
+    user: AccountUserInfo,
+    token: String,
+}
+
+#[derive(Serialize)]
+pub struct SuccessResponse {
+    success: bool,
 }
 
 #[derive(Serialize)]
@@ -167,6 +195,12 @@ async fn register_handler(
                     "USERNAME_EXISTS",
                     "Username already exists".to_string(),
                 ),
+                // Taken, as far as the player is concerned: the clients say so
+                crate::application::auth::RegisterError::Reserved => (
+                    StatusCode::CONFLICT,
+                    "USERNAME_EXISTS",
+                    "Username is reserved".to_string(),
+                ),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "REGISTRATION_ERROR",
@@ -223,11 +257,7 @@ async fn login_handler(
     match use_case.execute(input).await {
         Ok(output) => Ok(Json(LoginResponse {
             success: true,
-            user: LoginUserInfo {
-                id: output.user.id.clone(),
-                username: output.user.username.clone(),
-                is_admin: output.user.is_admin,
-            },
+            user: AccountUserInfo::from(&output.user),
             token: output.token,
         })),
         Err(e) => {
@@ -306,13 +336,7 @@ async fn google_handler(
             );
             Ok(Json(GoogleLoginResponse {
                 success: true,
-                user: GoogleUserInfo {
-                    id: output.user.id.clone(),
-                    username: output.user.username.clone(),
-                    email: output.user.email.clone(),
-                    is_admin: output.user.is_admin,
-                    is_google_user: output.user.google_id.is_some(),
-                },
+                user: AccountUserInfo::from(&output.user),
                 token: output.token,
                 is_new_user: output.is_new_user,
             }))
@@ -440,37 +464,134 @@ async fn delete_me_handler(
         Err(e) => {
             let (status, code) = match &e {
                 DeleteAccountError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
-                DeleteAccountError::MissingConfirmation => {
-                    (StatusCode::BAD_REQUEST, "MISSING_CONFIRMATION")
-                }
-                DeleteAccountError::InvalidPassword => (StatusCode::FORBIDDEN, "INVALID_PASSWORD"),
-                DeleteAccountError::GoogleNotConfigured
-                | DeleteAccountError::Google(_)
-                | DeleteAccountError::OtherGoogleAccount
-                | DeleteAccountError::StaleGoogleConfirmation => {
-                    (StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED")
-                }
+                DeleteAccountError::Confirmation(e) => confirmation_refusal(e),
                 DeleteAccountError::ActiveParty => (StatusCode::CONFLICT, "ACTIVE_PARTY"),
                 DeleteAccountError::LastAdmin => (StatusCode::CONFLICT, "LAST_ADMIN"),
                 DeleteAccountError::Repository(_) => {
                     (StatusCode::INTERNAL_SERVER_ERROR, "DELETE_ACCOUNT_ERROR")
                 }
             };
-            let error = if status == StatusCode::INTERNAL_SERVER_ERROR {
-                // The database's message stays in the log
-                tracing::error!("Account deletion failed: {}", e);
-                "Account deletion failed".to_string()
-            } else {
-                e.to_string()
+            Err(refusal(status, code, &e, "Account deletion failed"))
+        }
+    }
+}
+
+/// The status and code of a refused confirmation (`confirm_identity`). A wrong one is 403,
+/// not 401: the clients sign out on a 401.
+fn confirmation_refusal(e: &ConfirmError) -> (StatusCode, &'static str) {
+    match e {
+        ConfirmError::MissingConfirmation => (StatusCode::BAD_REQUEST, "MISSING_CONFIRMATION"),
+        ConfirmError::InvalidPassword => (StatusCode::FORBIDDEN, "INVALID_PASSWORD"),
+        ConfirmError::GoogleNotConfigured
+        | ConfirmError::Google(_)
+        | ConfirmError::OtherGoogleAccount
+        | ConfirmError::StaleGoogleConfirmation => (StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED"),
+    }
+}
+
+/// A refusal's body: the error's message, or for a 500 `failed`, the message only logged
+/// (it may be the database's)
+fn refusal(
+    status: StatusCode,
+    code: &str,
+    e: &dyn std::fmt::Display,
+    failed: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let error = if status == StatusCode::INTERNAL_SERVER_ERROR {
+        tracing::error!("{}: {}", failed, e);
+        failed.to_string()
+    } else {
+        e.to_string()
+    };
+    (
+        status,
+        Json(ErrorResponse {
+            error,
+            code: code.to_string(),
+            details: None,
+        }),
+    )
+}
+
+/// PATCH /api/auth/me - a player changes their username (`{username}`, sign-up's rules).
+/// The answer carries a new token: the JWT names the user.
+async fn rename_me_handler(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    body: Option<Json<serde_json::Value>>,
+) -> Result<Json<RenameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let username = body
+        .as_ref()
+        .and_then(|Json(b)| b.get("username"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+
+    let use_case = RenameUser::new(state.user_repo.clone(), state.jwt_service.clone());
+    match use_case
+        .execute(&claims.user_id, username, claims.exp)
+        .await
+    {
+        Ok(output) => {
+            // Who is online names them by the new name, from now on
+            state
+                .session_manager
+                .rename_user(&output.user.id, &output.user.username);
+            Ok(Json(RenameResponse {
+                success: true,
+                user: AccountUserInfo::from(&output.user),
+                token: output.token,
+            }))
+        }
+        Err(e) => {
+            let (status, code) = match &e {
+                RenameError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
+                // A reserved name reads as taken, as at sign-up
+                RenameError::UsernameExists | RenameError::Reserved => {
+                    (StatusCode::CONFLICT, "USERNAME_EXISTS")
+                }
+                RenameError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
+                RenameError::Internal(_) | RenameError::Repository(_) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "ACCOUNT_UPDATE_ERROR")
+                }
             };
-            Err((
-                status,
-                Json(ErrorResponse {
-                    error,
-                    code: code.to_string(),
-                    details: None,
-                }),
-            ))
+            Err(refusal(status, code, &e, "Rename failed"))
+        }
+    }
+}
+
+/// PUT /api/auth/me/password - a player changes their password (`{newPassword}`),
+/// confirmed as a deletion is: `currentPassword`, or for an account without one a fresh
+/// Google ID token (`credential`), which sets its first password.
+async fn change_password_handler(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    body: Option<Json<serde_json::Value>>,
+) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let field = |name: &str| {
+        body.as_ref()
+            .and_then(|Json(b)| b.get(name))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    let input = ChangePasswordInput {
+        current_password: field("currentPassword"),
+        credential: field("credential"),
+        new_password: field("newPassword").unwrap_or_default(),
+    };
+
+    let use_case = ChangePassword::new(state.user_repo.clone(), state.google_oauth.clone());
+    match use_case.execute(&claims.user_id, input).await {
+        Ok(()) => Ok(Json(SuccessResponse { success: true })),
+        Err(e) => {
+            let (status, code) = match &e {
+                ChangePasswordError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
+                ChangePasswordError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
+                ChangePasswordError::Confirmation(e) => confirmation_refusal(e),
+                ChangePasswordError::Internal(_) | ChangePasswordError::Repository(_) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_CHANGE_ERROR")
+                }
+            };
+            Err(refusal(status, code, &e, "Password change failed"))
         }
     }
 }

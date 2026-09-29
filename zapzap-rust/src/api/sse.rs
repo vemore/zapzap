@@ -3,7 +3,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::api::middleware::user_exists;
+use crate::api::middleware::current_user;
 use crate::domain::entities::PartyVisibility;
 use crate::domain::repositories::PartyRepository;
 use crate::infrastructure::app_state::{AppState, GameEvent};
@@ -131,19 +131,14 @@ async fn closed_signal(closed: &mut Option<tokio::sync::watch::Receiver<bool>>) 
 struct StreamGuard {
     state: Arc<AppState>,
     user_id: String,
-    username: String,
 }
 
 impl Drop for StreamGuard {
     fn drop(&mut self) {
-        if self
-            .state
-            .session_manager
-            .disconnect(&self.user_id)
-            .is_some()
-        {
+        // The session's name, which a rename while connected has updated
+        if let Some(session) = self.state.session_manager.disconnect(&self.user_id) {
             let event = GameEvent::new("userDisconnected", None, Some(self.user_id.clone()))
-                .with_data(serde_json::json!({ "username": self.username }));
+                .with_data(serde_json::json!({ "username": session.username }));
             self.state.broadcast_event(event);
         }
     }
@@ -171,11 +166,18 @@ pub async fn sse_handler(
         let (session, signal) = state
             .session_manager
             .connect(&claims.user_id, &claims.username);
-        if user_exists(&state, &claims.user_id).await {
+        if let Some(user) = current_user(&state, &claims.user_id).await {
+            // A token issued before a rename carries the old name: the session takes the
+            // current one
+            if user.username != claims.username {
+                state
+                    .session_manager
+                    .rename_user(&claims.user_id, &user.username);
+            }
             // Only the user's first stream is an arrival
             if session.is_some() {
                 let event = GameEvent::new("userConnected", None, Some(claims.user_id.clone()))
-                    .with_data(serde_json::json!({ "username": claims.username }));
+                    .with_data(serde_json::json!({ "username": user.username }));
                 state.broadcast_event(event);
             }
             closed = Some(signal);
@@ -184,7 +186,6 @@ pub async fn sse_handler(
             guard = Some(StreamGuard {
                 state: state.clone(),
                 user_id: claims.user_id,
-                username: claims.username,
             });
         } else {
             // Unregistered quietly: no arrival was told, so no departure is

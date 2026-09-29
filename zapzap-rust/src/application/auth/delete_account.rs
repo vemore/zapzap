@@ -1,18 +1,14 @@
 //! A player deletes their own account, confirmed by their password or, for an account
-//! created with Google, by a fresh Google ID token of the same Google account. Their
-//! finished games stay in the other players' history under an anonymous user
-//! (`UserRepository::delete_account`). A seat in a game in progress is forfeited; a
-//! waiting party refuses the deletion until the player leaves it.
+//! created with Google, by a fresh Google ID token of the same Google account
+//! (`confirm_identity`). Their finished games stay in the other players' history under an
+//! anonymous user (`UserRepository::delete_account`). A seat in a game in progress is
+//! forfeited; a waiting party refuses the deletion until the player leaves it.
 
 use std::sync::Arc;
 
+use super::confirm_identity::{confirm_identity, ConfirmError};
 use crate::domain::repositories::{AccountDeletion, SeatForfeit, UserRepository};
-use crate::infrastructure::auth::PasswordService;
-use crate::infrastructure::services::{GoogleAuthError, GoogleOAuthService};
-
-/// How old a Google ID token may be to confirm a deletion: Google's tokens live an hour,
-/// and one left over from sign-in is not a fresh confirmation
-pub const GOOGLE_CONFIRMATION_MAX_AGE_SECS: i64 = 10 * 60;
+use crate::infrastructure::services::GoogleOAuthService;
 
 /// What confirms the deletion
 pub struct DeleteAccountInput {
@@ -56,38 +52,13 @@ impl DeleteAccount {
             .find_by_id(user_id)
             .await?
             .ok_or(DeleteAccountError::NotFound)?;
-        let password = input.password.filter(|p| !p.is_empty());
-        let credential = input.credential.filter(|c| !c.is_empty());
-
-        match (&user.password_hash, &user.google_id) {
-            (Some(hash), _) => {
-                let password = password.ok_or(DeleteAccountError::MissingConfirmation)?;
-                // An unreadable stored hash confirms nothing, as at login
-                if !PasswordService::verify(&password, hash).unwrap_or(false) {
-                    return Err(DeleteAccountError::InvalidPassword);
-                }
-            }
-            (None, Some(google_id)) => {
-                let credential = credential.ok_or(DeleteAccountError::MissingConfirmation)?;
-                let google = self
-                    .google
-                    .as_ref()
-                    .ok_or(DeleteAccountError::GoogleNotConfigured)?;
-                let profile = google.verify_id_token(&credential).await?;
-                if &profile.google_id != google_id {
-                    return Err(DeleteAccountError::OtherGoogleAccount);
-                }
-                let now = chrono::Utc::now().timestamp();
-                if profile
-                    .issued_at
-                    .is_none_or(|iat| now - iat > GOOGLE_CONFIRMATION_MAX_AGE_SECS)
-                {
-                    return Err(DeleteAccountError::StaleGoogleConfirmation);
-                }
-            }
-            // Neither a password nor Google: nothing can confirm it (a bot, never a player)
-            (None, None) => return Err(DeleteAccountError::MissingConfirmation),
-        }
+        confirm_identity(
+            &user,
+            input.password.as_deref(),
+            input.credential.as_deref(),
+            self.google.as_deref(),
+        )
+        .await?;
 
         match self.user_repo.delete_account(user_id).await? {
             AccountDeletion::Deleted {
@@ -117,18 +88,8 @@ impl DeleteAccount {
 pub enum DeleteAccountError {
     #[error("User not found")]
     NotFound,
-    #[error("Confirm with your password, or with Google for a Google account")]
-    MissingConfirmation,
-    #[error("Invalid password")]
-    InvalidPassword,
-    #[error("Google OAuth non configuré sur ce serveur")]
-    GoogleNotConfigured,
     #[error(transparent)]
-    Google(#[from] GoogleAuthError),
-    #[error("This Google account is not the one of this user")]
-    OtherGoogleAccount,
-    #[error("Google confirmation too old: sign in with Google again")]
-    StaleGoogleConfirmation,
+    Confirmation(#[from] ConfirmError),
     #[error("Leave your waiting parties first")]
     ActiveParty,
     #[error("The only admin cannot delete their account")]
@@ -140,6 +101,7 @@ pub enum DeleteAccountError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::auth::GOOGLE_CONFIRMATION_MAX_AGE_SECS;
     use crate::domain::entities::User;
     use crate::infrastructure::database::repositories::racing_user_repo::RacingUserRepo;
     use crate::infrastructure::services::google_oauth_test_keys::{
@@ -182,12 +144,18 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err, DeleteAccountError::OtherGoogleAccount));
+        assert!(matches!(
+            err,
+            DeleteAccountError::Confirmation(ConfirmError::OtherGoogleAccount)
+        ));
         let err = use_case
             .execute(&user.id, with_credential("not-a-token".into()))
             .await
             .unwrap_err();
-        assert!(matches!(err, DeleteAccountError::Google(_)));
+        assert!(matches!(
+            err,
+            DeleteAccountError::Confirmation(ConfirmError::Google(_))
+        ));
         let err = use_case
             .execute(
                 &user.id,
@@ -198,7 +166,10 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err, DeleteAccountError::MissingConfirmation));
+        assert!(matches!(
+            err,
+            DeleteAccountError::Confirmation(ConfirmError::MissingConfirmation)
+        ));
         assert!(repo.find_by_id(&user.id).await.unwrap().is_some());
 
         use_case
@@ -226,7 +197,10 @@ mod tests {
                 .execute(&user.id, with_credential(sign(&claims("g-5", iat), KID)))
                 .await
                 .unwrap_err();
-            assert!(matches!(err, DeleteAccountError::StaleGoogleConfirmation));
+            assert!(matches!(
+                err,
+                DeleteAccountError::Confirmation(ConfirmError::StaleGoogleConfirmation)
+            ));
             assert!(repo.find_by_id(&user.id).await.unwrap().is_some());
         }
 

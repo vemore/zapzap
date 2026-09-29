@@ -84,6 +84,35 @@ class AuthProvider extends ChangeNotifier {
   Future<void> loginWithGoogle(String credential) async =>
       _signIn(await _repository.loginWithGoogle(credential));
 
+  /// Renames the signed-in account. The token names the user, so the new one
+  /// the backend answers replaces it, stored as a sign-in's is. Throws the
+  /// [ApiException] of a refusal (`USERNAME_EXISTS`, `VALIDATION_ERROR`),
+  /// unchanged.
+  Future<void> rename(String username) async =>
+      _signIn(await _repository.rename(username));
+
+  /// Sets the signed-in account's password to [newPassword], confirmed by
+  /// [currentPassword] or, for a Google account without one, a fresh Google
+  /// ID token ([credential]); the session goes on, and remembers the account
+  /// has a password now. Throws the [ApiException] of a refusal
+  /// (`INVALID_PASSWORD`, `GOOGLE_AUTH_FAILED`...), unchanged.
+  Future<void> changePassword({
+    required String newPassword,
+    String? currentPassword,
+    String? credential,
+  }) async {
+    await _repository.changePassword(
+      newPassword: newPassword,
+      currentPassword: currentPassword,
+      credential: credential,
+    );
+    final user = _user;
+    final token = _token;
+    if (user != null && token != null && !user.hasPassword) {
+      await _signIn(AuthSession(user: user.withPassword(), token: token));
+    }
+  }
+
   /// Deletes the signed-in account, confirmed by its [password] or, for a
   /// Google account, a fresh Google ID token ([credential]); then signs out,
   /// which erases the stored session and lets the router show the login

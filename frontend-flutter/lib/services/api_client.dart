@@ -51,6 +51,15 @@ class ApiClient {
     bool authenticated = true,
   }) => _send('POST', path, body: body, authenticated: authenticated);
 
+  Future<JsonMap> patch(
+    String path, {
+    Object? body,
+    bool authenticated = true,
+  }) => _send('PATCH', path, body: body, authenticated: authenticated);
+
+  Future<JsonMap> put(String path, {Object? body, bool authenticated = true}) =>
+      _send('PUT', path, body: body, authenticated: authenticated);
+
   /// [body] is sent as JSON when given (`DELETE /auth/me` carries its
   /// confirmation there).
   Future<JsonMap> delete(

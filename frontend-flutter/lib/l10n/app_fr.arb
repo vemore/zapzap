@@ -2291,9 +2291,9 @@
   "@deletedPlayer": {
     "description": "Name shown in the history for a player who deleted their account"
   },
-  "deleteAccountMenu": "Supprimer mon compte",
-  "@deleteAccountMenu": {
-    "description": "App-bar menu entry that deletes the signed-in account"
+  "deleteAccountButton": "Supprimer mon compte",
+  "@deleteAccountButton": {
+    "description": "Account page button opening the account deletion dialog"
   },
   "deleteAccountTitle": "Supprimer ton compte ?",
   "@deleteAccountTitle": {
@@ -2311,21 +2311,21 @@
   "@deleteAccountGoogleHint": {
     "description": "A Google account confirms its deletion with Google, not a password"
   },
-  "deleteAccountGoogleButton": "Confirmer avec Google",
-  "@deleteAccountGoogleButton": {
-    "description": "Button that confirms the account deletion with Google"
+  "googleConfirmButton": "Confirmer avec Google",
+  "@googleConfirmButton": {
+    "description": "Button confirming an account change with Google (deletion, a first password)"
   },
   "deleteAccountConfirm": "Supprimer définitivement",
   "@deleteAccountConfirm": {
     "description": "Button that deletes the account"
   },
-  "deleteAccountErrorPassword": "Mot de passe incorrect.",
-  "@deleteAccountErrorPassword": {
-    "description": "The password confirming the deletion is wrong"
+  "errorWrongPassword": "Mot de passe incorrect.",
+  "@errorWrongPassword": {
+    "description": "The password confirming an account change (deletion, new password) is wrong"
   },
-  "deleteAccountErrorGoogle": "La confirmation Google a échoué, ou ce n'est pas le bon compte Google.",
-  "@deleteAccountErrorGoogle": {
-    "description": "The Google confirmation of the deletion was refused"
+  "errorGoogleConfirmation": "La confirmation Google a échoué, ou ce n'est pas le bon compte Google.",
+  "@errorGoogleConfirmation": {
+    "description": "The Google confirmation of an account change (deletion, new password) was refused"
   },
   "deleteAccountErrorActiveParty": "Tu es encore dans une partie en attente : quitte-la d'abord.",
   "@deleteAccountErrorActiveParty": {
@@ -2338,6 +2338,70 @@
   "deleteAccountGoogleUnavailable": "Google est injoignable d'ici : il ne peut pas confirmer la suppression. Réessaie plus tard, ou demande-la par e-mail (voir la politique de confidentialité).",
   "@deleteAccountGoogleUnavailable": {
     "description": "A Google account cannot confirm its deletion: Google did not get ready (script blocked, no route to Google)"
+  },
+  "accountTitle": "Mon compte",
+  "@accountTitle": {
+    "description": "App-bar menu entry leading to the account page, and that page's title"
+  },
+  "accountSignInPassword": "Connexion par mot de passe",
+  "@accountSignInPassword": {
+    "description": "Account page: how this account signs in, a password only"
+  },
+  "accountSignInGoogle": "Connexion avec Google",
+  "@accountSignInGoogle": {
+    "description": "Account page: how this account signs in, Google only (no password)"
+  },
+  "accountSignInGoogleAndPassword": "Connexion avec Google ou par mot de passe",
+  "@accountSignInGoogleAndPassword": {
+    "description": "Account page: a Google account that has set a password too"
+  },
+  "accountUsernameHelper": "Tes parties passées affichent aussi le nouveau pseudo.",
+  "@accountUsernameHelper": {
+    "description": "Helper under the username field of the account page: the history follows a rename"
+  },
+  "saveButton": "Enregistrer",
+  "@saveButton": {
+    "description": "Button saving a change (the account page's username, a new password)"
+  },
+  "accountUsernameSaved": "Pseudo modifié",
+  "@accountUsernameSaved": {
+    "description": "Snackbar after the username was changed"
+  },
+  "accountPasswordChange": "Changer le mot de passe",
+  "@accountPasswordChange": {
+    "description": "Account page button and dialog title: change the password (the account has one)"
+  },
+  "accountPasswordSet": "Choisir un mot de passe",
+  "@accountPasswordSet": {
+    "description": "Account page button and dialog title: a Google account without a password sets its first one"
+  },
+  "accountPasswordSetHint": "Avec un mot de passe, tu peux aussi te connecter avec ton pseudo, sans Google.",
+  "@accountPasswordSetHint": {
+    "description": "Account page, Google account without a password: what setting one adds"
+  },
+  "accountPasswordCurrentLabel": "Mot de passe actuel",
+  "@accountPasswordCurrentLabel": {
+    "description": "Password dialog: the current password, which confirms the change"
+  },
+  "accountPasswordNewLabel": "Nouveau mot de passe",
+  "@accountPasswordNewLabel": {
+    "description": "Password dialog: the new password"
+  },
+  "accountPasswordGoogleHint": "Confirme avec ton compte Google pour enregistrer ce mot de passe.",
+  "@accountPasswordGoogleHint": {
+    "description": "Password dialog of a Google account: it confirms the new password with Google"
+  },
+  "accountPasswordForgotGoogleHint": "Mot de passe oublié ? Confirme plutôt avec ton compte Google.",
+  "@accountPasswordForgotGoogleHint": {
+    "description": "Password dialog of a Google account that has a password: Google can confirm the new one instead of the forgotten current one"
+  },
+  "accountPasswordGoogleUnavailable": "Google est injoignable d'ici : il ne peut pas confirmer ce mot de passe. Réessaie plus tard.",
+  "@accountPasswordGoogleUnavailable": {
+    "description": "Password dialog of a Google account: Google did not get ready (script blocked, no route to Google)"
+  },
+  "accountPasswordSaved": "Mot de passe enregistré",
+  "@accountPasswordSaved": {
+    "description": "Snackbar after the password was changed or set"
   },
   "menuRules": "Règles",
   "@menuRules": {

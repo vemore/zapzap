@@ -3,7 +3,10 @@
   "user": {
     "id": "a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e",
     "username": "Vincent",
-    "isAdmin": false
+    "email": null,
+    "isAdmin": false,
+    "isGoogleUser": false,
+    "hasPassword": true
   },
   "token": "test-token-auth_login"
 }

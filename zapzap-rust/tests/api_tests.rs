@@ -2701,6 +2701,119 @@ mod google_and_bot_admin {
         .await;
         assert_eq!(again["isNewUser"], true, "{again}");
     }
+
+    #[tokio::test]
+    async fn test_google_account_sets_a_first_password_with_a_fresh_google_token() {
+        let (mut app, _) = app_with_state(true).await;
+        let (status, login) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-pw", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{login}");
+        assert_eq!(login["user"]["hasPassword"], false, "{login}");
+        let username = login["user"]["username"].as_str().unwrap().to_string();
+        let token = login["token"].as_str().unwrap().to_string();
+        let client = app.clone();
+        let send = |method: &'static str, path: &'static str, body: Value| {
+            let token = token.clone();
+            let mut app = client.clone();
+            async move {
+                send_raw(
+                    &mut app,
+                    method,
+                    path,
+                    &body.to_string(),
+                    Some("application/json"),
+                    Some(&token),
+                )
+                .await
+            }
+        };
+        let login_status = |password: &'static str| {
+            let username = username.clone();
+            let mut app = client.clone();
+            async move {
+                post_json(
+                    &mut app,
+                    "/api/auth/login",
+                    json!({"username": username, "password": password}),
+                )
+                .await
+                .0
+            }
+        };
+
+        // No password to confirm with; another Google account's token is not this one's
+        let (status, body) = send(
+            "PUT",
+            "/api/auth/me/password",
+            json!({"currentPassword": "guess", "newPassword": "firstone"}),
+        )
+        .await;
+        assert_error(
+            status,
+            &body,
+            StatusCode::BAD_REQUEST,
+            "MISSING_CONFIRMATION",
+        );
+        let (status, body) = send(
+            "PUT",
+            "/api/auth/me/password",
+            json!({"credential": google_token("g-other", CLIENT_ID), "newPassword": "firstone"}),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::FORBIDDEN, "GOOGLE_AUTH_FAILED");
+        assert_eq!(login_status("firstone").await, StatusCode::UNAUTHORIZED);
+
+        let (status, body) = send(
+            "PUT",
+            "/api/auth/me/password",
+            json!({"credential": google_token("g-pw", CLIENT_ID), "newPassword": "firstone"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+
+        // The account now signs in either way, and says it has a password. `/login`
+        // describes it as `/google` does: a Google account, with its e-mail
+        let (status, by_password) = post_json(
+            &mut app.clone(),
+            "/api/auth/login",
+            json!({"username": username, "password": "firstone"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{by_password}");
+        assert_eq!(by_password["user"]["isGoogleUser"], true, "{by_password}");
+        assert_eq!(by_password["user"]["hasPassword"], true, "{by_password}");
+        assert_eq!(by_password["user"]["email"], "ada@example.com");
+        assert_eq!(by_password["user"]["id"], login["user"]["id"]);
+        let (_, again) = post_json(
+            &mut app,
+            "/api/auth/google",
+            json!({"credential": google_token("g-pw", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(again["isNewUser"], false, "{again}");
+        assert_eq!(again["user"]["hasPassword"], true, "{again}");
+        // The password now confirms a change; so does Google still
+        let (status, body) = send(
+            "PUT",
+            "/api/auth/me/password",
+            json!({"currentPassword": "firstone", "newPassword": "secondone"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(login_status("secondone").await, StatusCode::OK);
+        assert_eq!(login_status("firstone").await, StatusCode::UNAUTHORIZED);
+        let (status, body) = send(
+            "DELETE",
+            "/api/auth/me",
+            json!({"credential": google_token("g-pw", CLIENT_ID)}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
 }
 
 // ============================================================================
@@ -5256,5 +5369,329 @@ async fn test_admin_party_list_names_a_deleted_owner_anonymously() {
     assert_eq!(
         body["parties"][0]["ownerUsername"], "Joueur supprimé",
         "{body}"
+    );
+}
+
+// ============================================================================
+// A player renames their account and changes their password (PATCH /api/auth/me,
+// PUT /api/auth/me/password)
+// ============================================================================
+
+/// `method path` with a JSON body, signed in
+async fn send_me(
+    app: &mut Router,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    send_raw(
+        app,
+        method,
+        path,
+        &body.to_string(),
+        Some("application/json"),
+        Some(token),
+    )
+    .await
+}
+
+async fn login_status(app: &mut Router, username: &str, password: &str) -> StatusCode {
+    post_json(
+        app,
+        "/api/auth/login",
+        json!({"username": username, "password": password}),
+    )
+    .await
+    .0
+}
+
+#[tokio::test]
+async fn test_rename_answers_a_token_carrying_the_new_name() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (old_token, user_id) = register(&mut app, "renamer").await;
+    let (host, _) = register(&mut app, "renamehost").await;
+    let party_id = create_party(&mut app, &host, "Rename table").await;
+
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &old_token,
+        json!({"username": "renamed"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["user"],
+        json!({
+            "id": user_id, "username": "renamed", "email": null, "isAdmin": false,
+            "isGoogleUser": false, "hasPassword": true
+        })
+    );
+    let token = body["token"].as_str().unwrap();
+    let claims = state.jwt_service.verify(token).unwrap();
+    assert_eq!(claims.user_id, user_id);
+    assert_eq!(claims.username, "renamed");
+
+    // The new name signs in, the old one no longer does, and is free for someone else
+    assert_eq!(
+        login_status(&mut app, "renamed", "password123").await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        login_status(&mut app, "renamer", "password123").await,
+        StatusCode::UNAUTHORIZED
+    );
+    register(&mut app, "renamer").await;
+
+    // A token issued before the rename still works, and speaks with the current name
+    let mut events = state.event_sender.new_receiver();
+    let (status, body) = post_json_auth(
+        &mut app,
+        &format!("/api/party/{party_id}/join"),
+        json!({}),
+        &old_token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "join: {body}");
+    let mut joined = None;
+    while let Ok(event) = events.try_recv() {
+        if event.action.as_deref() == Some("playerJoined") {
+            joined = Some(event.data.clone());
+        }
+    }
+    assert_eq!(joined.unwrap()["username"], "renamed");
+
+    // Its own name again: accepted, nothing changes
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        token,
+        json!({"username": "renamed"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["username"], "renamed");
+}
+
+#[tokio::test]
+async fn test_rename_refuses_a_taken_name_and_sign_up_invalid_ones() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "keepsname").await;
+    register(&mut app, "takenname").await;
+
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &token,
+        json!({"username": "takenname"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+
+    // Sign-up's rules, with sign-up's messages
+    for (username, message) in [
+        (json!("ab"), "Username must be at least 3 characters"),
+        (json!("   "), "Username is required"),
+        (json!(""), "Username is required"),
+        (Value::Null, "Username is required"),
+    ] {
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &token,
+            json!({ "username": username }),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+        assert_eq!(body["error"], message, "{username}");
+    }
+    let (status, _) = send_raw(&mut app, "PATCH", "/api/auth/me", "{}", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Nothing was renamed
+    assert_eq!(
+        login_status(&mut app, "keepsname", "password123").await,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn test_change_password_needs_the_current_one() {
+    let mut app = create_test_app().await;
+    let (token, _) = register(&mut app, "changespw").await;
+    let client = app.clone();
+    let change = |body: Value| {
+        let token = token.clone();
+        let mut app = client.clone();
+        async move { send_me(&mut app, "PUT", "/api/auth/me/password", &token, body).await }
+    };
+
+    // A wrong current password is 403, as DELETE /api/auth/me answers it (a 401 would
+    // sign the client out), and changes nothing
+    let (status, body) =
+        change(json!({"currentPassword": "wrong-one", "newPassword": "brandnew"})).await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "INVALID_PASSWORD");
+    let (status, body) = change(json!({"newPassword": "brandnew"})).await;
+    assert_error(
+        status,
+        &body,
+        StatusCode::BAD_REQUEST,
+        "MISSING_CONFIRMATION",
+    );
+    let (status, body) =
+        change(json!({"currentPassword": "password123", "newPassword": "abc"})).await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    assert_eq!(body["error"], "Password must be at least 4 characters");
+    assert_eq!(
+        login_status(&mut app, "changespw", "password123").await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        login_status(&mut app, "changespw", "brandnew").await,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, _) = send_raw(&mut app, "PUT", "/api/auth/me/password", "{}", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, body) =
+        change(json!({"currentPassword": "password123", "newPassword": "brandnew"})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, json!({"success": true}));
+
+    // The new password signs in, the old one does not; the session goes on
+    assert_eq!(
+        login_status(&mut app, "changespw", "brandnew").await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        login_status(&mut app, "changespw", "password123").await,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, _) = get_auth(&mut app, "/api/history", &token).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_rename_never_extends_the_session() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (_, user_id) = register(&mut app, "expiring").await;
+    // A session with an hour left, not the 7 days a fresh token gets
+    let exp = chrono::Utc::now().timestamp() as usize + 3600;
+    let token = state
+        .jwt_service
+        .sign_until(&user_id, "expiring", false, exp)
+        .unwrap();
+
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &token,
+        json!({"username": "stillexpiring"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let renamed = state
+        .jwt_service
+        .verify(body["token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(renamed.username, "stillexpiring");
+    assert_eq!(renamed.exp, exp);
+    assert_eq!(renamed.exp, state.jwt_service.verify(&token).unwrap().exp);
+}
+
+#[tokio::test]
+async fn test_reserved_names_are_refused_at_sign_up_and_rename() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "ordinary").await;
+
+    // "admin" and the deleted player's names, whatever their case: taken, for the player
+    for name in [
+        "admin",
+        "ADMIN",
+        " Admin ",
+        "Joueur supprimé",
+        "JOUEUR SUPPRIMÉ",
+        "deleted player",
+    ] {
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/register",
+            json!({"username": name, "password": "password123"}),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+        assert_eq!(body["error"], "Username is reserved", "{name}");
+
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &token,
+            json!({ "username": name }),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+        assert_eq!(body["error"], "Username is reserved", "{name}");
+    }
+    assert_eq!(
+        login_status(&mut app, "ordinary", "password123").await,
+        StatusCode::OK
+    );
+
+    // The default admin keeps its own name, and may change its case
+    let admin = User::new_human(
+        "u-admin".into(),
+        "admin".into(),
+        zapzap_backend::infrastructure::auth::PasswordService::hash("adminpw").unwrap(),
+    );
+    state.user_repo.save(&admin).await.unwrap();
+    let admin_token = state.jwt_service.sign(&admin.id, "admin", false).unwrap();
+    for name in ["admin", "Admin"] {
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &admin_token,
+            json!({ "username": name }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{name}: {body}");
+        assert_eq!(body["user"]["username"], name);
+    }
+    // But not another reserved one
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &admin_token,
+        json!({"username": "Deleted player"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+}
+
+#[tokio::test]
+async fn test_login_answers_the_account_shape() {
+    let mut app = create_test_app().await;
+    let (_, user_id) = register(&mut app, "shapely").await;
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": "shapely", "password": "password123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["user"],
+        json!({
+            "id": user_id, "username": "shapely", "email": null, "isAdmin": false,
+            "isGoogleUser": false, "hasPassword": true
+        })
     );
 }

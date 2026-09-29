@@ -510,4 +510,32 @@ impl UserRepository for SqliteUserRepository {
 
         Ok(())
     }
+
+    async fn update_username(&self, id: &str, username: &str) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("UPDATE users SET username = ?, updated_at = ? WHERE id = ?")
+            .bind(username)
+            .bind(chrono::Utc::now().timestamp())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn update_password_hash(
+        &self,
+        id: &str,
+        password_hash: &str,
+    ) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+            .bind(password_hash)
+            .bind(chrono::Utc::now().timestamp())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
+    }
 }

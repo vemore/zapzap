@@ -1,8 +1,9 @@
 import '../models/user.dart';
 import '../services/api_client.dart';
 
-/// `/api/auth`. Every call but [deleteAccount] is unauthenticated: a 401
-/// there is a wrong password, not an expired session.
+/// `/api/auth`. Every call but the `/auth/me` ones ([rename],
+/// [changePassword], [deleteAccount]) is unauthenticated: a 401 there is a
+/// wrong password, not an expired session.
 class AuthRepository {
   const AuthRepository(this._api);
 
@@ -40,6 +41,32 @@ class AuthRepository {
           authenticated: false,
         ),
       );
+
+  /// `PATCH /auth/me`, signed in: the account takes [username] (sign-up's
+  /// rules) and the answer a new token carrying it → 409 `USERNAME_EXISTS`,
+  /// 400 `VALIDATION_ERROR`.
+  Future<AuthSession> rename(String username) async => AuthSession.fromJson(
+    await _api.patch('/auth/me', body: {'username': username}),
+  );
+
+  /// `PUT /auth/me/password`, signed in: [newPassword], confirmed as
+  /// [deleteAccount] is — by [currentPassword], or for a Google account
+  /// without one by a fresh Google ID token ([credential]), which sets its
+  /// first password. Never a 401 for a wrong confirmation: 403
+  /// `INVALID_PASSWORD` or `GOOGLE_AUTH_FAILED`, 400 `MISSING_CONFIRMATION`
+  /// or `VALIDATION_ERROR`.
+  Future<void> changePassword({
+    required String newPassword,
+    String? currentPassword,
+    String? credential,
+  }) => _api.put(
+    '/auth/me/password',
+    body: {
+      'newPassword': newPassword,
+      'currentPassword': ?currentPassword,
+      'credential': ?credential,
+    },
+  );
 
   /// `DELETE /auth/me`, signed in, confirmed by the account's [password] or,
   /// for a Google account, a fresh Google ID token ([credential]). A refusal

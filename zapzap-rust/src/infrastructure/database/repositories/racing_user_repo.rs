@@ -129,4 +129,14 @@ impl UserRepository for RacingUserRepo {
     async fn set_admin(&self, id: &str, is_admin: bool) -> Result<(), RepositoryError> {
         self.inner.set_admin(id, is_admin).await
     }
+    async fn update_username(&self, id: &str, username: &str) -> Result<bool, RepositoryError> {
+        self.inner.update_username(id, username).await
+    }
+    async fn update_password_hash(
+        &self,
+        id: &str,
+        password_hash: &str,
+    ) -> Result<bool, RepositoryError> {
+        self.inner.update_password_hash(id, password_hash).await
+    }
 }

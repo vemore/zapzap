@@ -32,11 +32,24 @@ impl JwtService {
     /// Sign a new JWT token
     pub fn sign(&self, user_id: &str, username: &str, is_admin: bool) -> Result<String, JwtError> {
         let now = chrono::Utc::now().timestamp() as usize;
+        self.sign_until(user_id, username, is_admin, now + self.expires_in_seconds)
+    }
+
+    /// Sign a JWT token expiring at `exp` (Unix seconds): a token replacing another one
+    /// (a rename) keeps its expiry, so it never extends the session
+    pub fn sign_until(
+        &self,
+        user_id: &str,
+        username: &str,
+        is_admin: bool,
+        exp: usize,
+    ) -> Result<String, JwtError> {
+        let now = chrono::Utc::now().timestamp() as usize;
         let claims = Claims {
             user_id: user_id.to_string(),
             username: username.to_string(),
             is_admin,
-            exp: now + self.expires_in_seconds,
+            exp,
             iat: now,
         };
 

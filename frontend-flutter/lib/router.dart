@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/account_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/create_party_screen.dart';
 import 'screens/game_details_screen.dart';
@@ -34,6 +35,10 @@ abstract final class AppRoutes {
 
   static const history = '/history';
   static const stats = '/stats';
+
+  /// The signed-in player's account: [AccountScreen]. `/app/account` on the
+  /// PWA.
+  static const account = '/account';
 
   /// The admin screen, on its users tab; [adminTab] opens another tab.
   static const admin = '/admin';
@@ -139,6 +144,10 @@ GoRouter _router({
     GoRoute(
       path: AppRoutes.stats,
       builder: (context, state) => const StatsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.account,
+      builder: (context, state) => const AccountScreen(),
     ),
     GoRoute(
       path: AppRoutes.admin,
