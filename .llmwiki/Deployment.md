@@ -106,9 +106,8 @@ with that read-only query, remove or merge the extra one, then redeploy. The fir
 feat/guest-play adds `users.is_guest` (existing users 0), which no data can make fail. They are
 additive, so an older image rolled back to reads and writes the migrated file as before.
 
-**After the deploy of feat/guest-play**, create one guest from a phone on mobile data and
-read `docker compose logs backend | grep "Guest account created"`: the address must be the
-phone's, not DSM's LAN one — the check of the proxy assumption in [[Api]] § Guest accounts.
+The guest rate limit needs DSM to forward the client's address: § The client address behind
+DSM, below.
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
 bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`
@@ -125,6 +124,30 @@ bundled webpki roots for Google's keys; the Bedrock client, `rustls-native-certs
 before (`libssl3`, `curl`). The binary is root-owned and only `/app/data` belongs to uid 1000
 (a recursive `chown` of `/app` after the `COPY` stored the binary twice, 20 MB); everything
 the backend writes lives under `data/`.
+
+### The client address behind DSM
+
+The guest rate limit needs DSM's reverse proxy to append the client's address to
+`X-Forwarded-For` (the rule and what a missing entry allows: [[Api]] § Guest accounts). **It
+does not by default**: the guest deploy's first log (f4c4cd08c603, 2026-09-29) read `for
+192.168.1.27 (1 X-Forwarded-For entries)` for a LAN client through the public URL. **Set on
+2026-09-29**, the header below.
+
+**The setting, by hand in DSM's GUI** (no SSH): Control Panel → Login Portal → Advanced →
+Reverse Proxy → the zapzap rule → Edit → Custom Header → Create: Header Name
+`X-Forwarded-For`, Value `$proxy_add_x_forwarded_for` (DSM's proxy is nginx: what the client
+sent, then the address DSM was connected from) → Save.
+
+**The check**, after that change and any DSM upgrade or rule edit: on a phone on mobile data
+(Wi-Fi off), note its public address (any "what is my IP" page), create a guest at
+`https://zapzap.ombivince.synology.me/app/` (« Jouer sans compte »), then
+`ssh vemore@192.168.1.147 'cd /home/vemore/docker/zapzap && docker compose -p zapzap -f
+compose.yaml logs backend | grep "Guest account created" | tail -1'` must read `for <that
+address> (2 X-Forwarded-For entries)` (`<prefix>::/64` over IPv6). `1` entry and a `172.x`
+address (the nginx container, the fallback peer) means DSM no longer appends.
+Verified 2026-09-29 12:08 UTC, from a phone on 4G, on the pre-#191 build (hops 2): `Guest
+account created: Guest_01962385 (…) for 92.184.103.42 (2 X-Forwarded-For entries)` — the
+carrier's public address, 2 entries: DSM appends.
 
 ### Rolling back
 
@@ -434,4 +457,8 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   review), so the root stays free for a later landing page or a single image serving both.
   Nothing to change in the deploy directory; the old `zapzap-frontend` images are tagged, so
   `docker image prune` keeps them: remove them by tag (the `deploy` skill, "Disk on the NAS").
+- **DSM appends `X-Forwarded-For` through a custom header (2026-09-29, fix/guest-client-ip).**
+  One entry where the hop count expects two: the header goes on DSM's rule rather than a
+  hop count or nginx's `real_ip` module, since nothing behind DSM recovers an address DSM
+  never passed on. Set and verified the same day (§ The client address behind DSM).
 - 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.
