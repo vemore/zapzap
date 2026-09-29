@@ -4,7 +4,7 @@ use crate::domain::entities::PartyStatus;
 use crate::domain::repositories::{
     GameWrite, PartyRepository, RepositoryError, RoundWrite, VersionedGameState,
 };
-use crate::domain::services::hand_size_bounds;
+use crate::domain::services::{fixed_deck_requested, hand_size_bounds, order_for_deal};
 use crate::domain::value_objects::{GameAction, LastAction, LAST_ACTION_SELECT_HAND_SIZE};
 
 /// Select hand size input
@@ -91,12 +91,8 @@ impl<P: PartyRepository> SelectHandSize<P> {
         all_cards.extend(game_state.discard_pile.iter().copied());
         game_state.discard_pile.clear();
 
-        // Shuffle the deck
-        {
-            use rand::seq::SliceRandom;
-            let mut rng = rand::rng();
-            all_cards.shuffle(&mut rng);
-        }
+        // Shuffle the deck (in order for the end-to-end test: `order_for_deal`)
+        order_for_deal(&mut all_cards, fixed_deck_requested());
 
         // Deal cards to active players with the selected hand size
         for player in 0..game_state.player_count {

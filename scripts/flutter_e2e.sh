@@ -5,7 +5,9 @@
 #
 # On a throwaway database in a temporary directory: seeds the bot accounts
 # (`zapzap-backend seed`, which creates the file and its schema), starts the Rust
-# backend with a generated JWT_SECRET, waits for /api/health, starts a chromedriver, then
+# backend with a generated JWT_SECRET and the fixed deal (ZAPZAP_TEST_FIXED_DECK=1, honoured
+# by a debug build only: the round then ends by the test's second turn, whatever the bots
+# do — play_round_test.dart), waits for /api/health, starts a chromedriver, then
 # runs `flutter drive` on headless Chrome (a phone-sized page). Everything it started is
 # stopped on exit, by process id; the database goes with the directory. The CI job
 # `flutter-e2e` runs it; the procedure by hand is in .llmwiki/Testing.md.
@@ -15,7 +17,8 @@
 #
 # Usage: scripts/flutter_e2e.sh
 #   E2E_BACKEND_BIN   the backend binary (default: the debug build under
-#                     $CARGO_TARGET_DIR, else zapzap-rust/target)
+#                     $CARGO_TARGET_DIR, else zapzap-rust/target); a debug build, since a
+#                     release build ignores ZAPZAP_TEST_FIXED_DECK
 #   E2E_API_PORT      the backend's port (default 9921)
 #   E2E_DRIVER_PORT   chromedriver's port (default 4461)
 #   E2E_BOT_ACTION_DELAY_MS
@@ -79,7 +82,7 @@ echo "== starting the Rust backend on :$API_PORT (bots pause $BOT_DELAY ms)"
 # Run from zapzap-rust/: its data/ link holds the bot parameters.
 (cd "$ROOT/zapzap-rust" && exec env JWT_SECRET="$(openssl rand -hex 32)" DB_PATH="$DB" \
     PORT="$API_PORT" RUST_LOG="${RUST_LOG:-info}" BOT_ACTION_DELAY_MS="$BOT_DELAY" \
-    "$BACKEND_BIN") >"$BACKEND_LOG" 2>&1 &
+    ZAPZAP_TEST_FIXED_DECK=1 "$BACKEND_BIN") >"$BACKEND_LOG" 2>&1 &
 pids+=($!)
 wait_for backend "http://localhost:$API_PORT/api/health" 60
 

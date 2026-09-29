@@ -45,9 +45,11 @@
   ZapZap as soon as it is enabled. It checks `roundOver`, the three
   `roundEndPlayer-<i>` rows, `roundEndMe`, the `zapZapBanner` (a round only ends on a
   call) and Next round (or Back to games). It drives widget keys only, in French
-  (`locale: fr`, the bot option's label). Shedding the most points each turn brings the
-  hand to ZapZap in about ten turns: the test allows 60 moves (`maxMoves`), with 5 min
-  (`roundTimeout`) as a safety net and 30 s per screen; either limit fails with the steps
+  (`locale: fr`, the bot option's label). The deal is fixed (`ZAPZAP_TEST_FIXED_DECK=1`,
+  [[Backend]] § Configuration): the test player is dealt A♠ 2♠ 3♠ 4♠, plays the run,
+  draws A♥ and calls ZapZap on turn 2. It allows `maxTurns = 2`, fails at turn 1 on any
+  other deal (`fixedDealPoints = 10`), and logs the hand value at each turn's start; 5 min
+  (`roundTimeout`) is a safety net and 30 s per screen; each limit fails with the steps
   taken and the text on screen.
 - `test_driver/integration_test.dart` is the host side (`integrationDriver()`); the steps
   land in `frontend-flutter/build/integration_response_data.json`. `flutter test` runs
@@ -56,7 +58,8 @@
 - **`scripts/flutter_e2e.sh`** runs it end to end, as CI does: in a `mktemp -d` directory
   it seeds the bot accounts (`DB_PATH=<dir>/e2e.db zapzap-backend seed`, which creates the
   file and its schema, [[Backend]] § Seeding), starts the Rust backend's debug build from
-  `zapzap-rust/` with a generated `JWT_SECRET` (`openssl rand -hex 32`), waits for
+  `zapzap-rust/` with a generated `JWT_SECRET` (`openssl rand -hex 32`) and
+  `ZAPZAP_TEST_FIXED_DECK=1` (the fixed deal, which a release build ignores), waits for
   `/api/health` (60 s), starts chromedriver and waits for its `/status` (30 s), then runs
   the `flutter drive` of step 3 below, headless. It exits with `flutter drive`'s status,
   stops what it started by process id, prints the backend log's last 80 lines on a
@@ -67,12 +70,13 @@
   a GitHub runner sets, else `chromedriver` on the PATH). Needs `cargo build --locked` in
   `zapzap-rust/` and `flutter pub get`. Locally (2026-09-24, Chrome
   153): `CHROMEDRIVER=<cft>/chromedriver E2E_API_PORT=9551 E2E_DRIVER_PORT=9552
-  scripts/flutter_e2e.sh`, about 80 s (2026-09-25), 45 s of it the web compile; the round
-  takes 4 to 9 turns.
+  scripts/flutter_e2e.sh`, about 65 s (2026-09-29), 45 s of it the web compile; the round
+  is always two turns.
 - **Procedure by hand** (checked 2026-09-24 with Chrome 153 against the Node backend of the time; the steps below use the Rust one):
   1. A backend with the bot accounts, on a port of your choice, on a throwaway database
      (`DB_PATH`, [[Architecture]]), from `zapzap-rust/`: `DB_PATH=/tmp/e2e.db cargo run --
-     seed && JWT_SECRET=$(openssl rand -hex 32) DB_PATH=/tmp/e2e.db PORT=9921 cargo run`
+     seed && JWT_SECRET=$(openssl rand -hex 32) DB_PATH=/tmp/e2e.db PORT=9921
+     ZAPZAP_TEST_FIXED_DECK=1 cargo run`
      (leave `ALLOWED_ORIGINS` unset, so that CORS answers every origin: the test page is
      served from another port). Each run
      adds a user and a party, so reusing a development database works too.
@@ -159,6 +163,7 @@
 - `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- 2026-09-29 (fix/e2e-deterministic-round, #186): the Flutter end-to-end round runs on a fixed deal (`ZAPZAP_TEST_FIXED_DECK=1`, debug builds only) and ends by its second turn; the 60-move budget is gone. No driver strategy bounds a random deal ([[Backend]] § Decisions & History).
 - **2026-09-29 (ci/split-flutter-job): the Flutter job is three parallel jobs, and builds nothing twice.**
   One serial `flutter` job set a Flutter pull request's wall clock: 556 s on run 36540405673
   (setup ~50 s, `test` 130 s, `build web` 59 s, `build apk --debug` 148 s, `build apk --release`
