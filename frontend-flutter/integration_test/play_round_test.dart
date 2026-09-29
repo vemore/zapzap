@@ -5,8 +5,15 @@
 // commencer »), then plays until the round ends — four cards when the hand size is this
 // player's to pick, the suggestion that takes the most points off the hand, a
 // draw from the deck, ZapZap as soon as the hand allows it — then checks the
-// end-of-round screen. Shedding the most points each turn brings the hand to
-// ZapZap within a few turns: the round is held to [maxMoves].
+// end-of-round screen.
+//
+// The deal is fixed: the backend is a debug build started with
+// ZAPZAP_TEST_FIXED_DECK=1, which deals the cards in id order
+// (`order_for_deal`, zapzap-rust/src/domain/services/game_service.rs). A
+// random deal cannot bound the round, whatever the driver plays: four high
+// cards of four ranks and high draws keep a hand over 5 points for good. With
+// the fixed deal the round ends by this player's turn [maxTurns]
+// ([fixedDealPoints] tells how).
 //
 // It needs a backend with the bot accounts (`zapzap-backend seed`) and is run
 // with `flutter drive`, never `flutter test`: scripts/flutter_e2e.sh does both
@@ -23,12 +30,18 @@ import 'package:zapzap/widgets/game_hand_size_selector.dart';
 import 'package:zapzap/widgets/game_round_end.dart';
 import 'package:zapzap/widgets/hand_suggestions.dart';
 
-/// How many moves (a play, a draw, the call) this player may make before the
-/// round must be over: playing the most points each turn, a hand reaches
-/// ZapZap in about ten turns, and a bot's call ends it sooner.
-const maxMoves = 60;
+/// What this player's hand is worth as its turn 1 starts, with the fixed deal.
+/// Seat 0 — this player, who starts round 1 and picks four cards — is dealt
+/// A♠ 2♠ 3♠ 4♠; the bots get 5♠–8♠ and 9♠–Q♠; K♠ is flipped. Turn 1 plays
+/// the run, the suggestion taking the most points off, and draws A♥ from the
+/// deck: 1 point. No bot can touch that hand, so turn 2 calls ZapZap — unless
+/// a bot's call ended the round first.
+const fixedDealPoints = 10;
 
-/// How long a round may take, a safety net behind [maxMoves]: the script
+/// The turns this player may start before the round must be over.
+const maxTurns = 2;
+
+/// How long a round may take, a safety net behind [maxTurns]: the script
 /// starts the bots without a pause between their actions.
 const roundTimeout = Duration(minutes: 5);
 
@@ -140,7 +153,8 @@ void main() {
   });
 }
 
-/// Takes this player's moves until the end-of-round screen shows.
+/// Takes this player's moves until the end-of-round screen shows, logging
+/// what the hand is worth as each of its turns starts.
 Future<void> playUntilRoundEnds(WidgetTester tester) async {
   final roundOver = find.byKey(const Key('roundOver'));
   final handSize = find.byKey(const Key('confirm-hand-size'));
@@ -152,15 +166,14 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
   final firstCard = find.byKey(CardFan.itemKey(0));
   final myTurn = find.byKey(const Key('turnSteps'));
 
-  var moves = 0;
+  var turn = 0;
+  // From this player's play step until its draw.
+  var inTurn = false;
   final deadline = DateTime.now().add(roundTimeout);
   while (roundOver.evaluate().isEmpty) {
-    if (moves > maxMoves) {
-      fail('the round did not end within $maxMoves moves\n${screenText()}');
-    }
     if (DateTime.now().isAfter(deadline)) {
       fail(
-        'the round did not end within $roundTimeout ($moves moves)\n'
+        'the round did not end within $roundTimeout (turn $turn)\n'
         '${screenText()}',
       );
     }
@@ -168,20 +181,31 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
       log('choosing the hand size');
       if (smallestHand.evaluate().isNotEmpty) await tap(tester, smallestHand);
       await tap(tester, handSize);
-    } else if (myTurn.evaluate().isNotEmpty && isEnabled(tester, zapZap)) {
-      log('calling ZapZap');
-      await tap(tester, zapZap);
-      await pumpUntil(tester, find.byKey(const Key('zapzap-confirm')));
-      await tap(tester, find.byKey(const Key('zapzap-confirm')));
-      moves++;
-    } else if (draw.evaluate().isNotEmpty && isEnabled(tester, draw)) {
-      await tap(tester, draw);
-      moves++;
-      log('turn ${moves ~/ 2}: played and drew');
     } else if (myTurn.evaluate().isNotEmpty && play.evaluate().isNotEmpty) {
-      if (isEnabled(tester, play)) {
+      if (!inTurn) {
+        inTurn = true;
+        turn++;
+        final points = handPoints();
+        log('turn $turn: hand at $points pts');
+        if (turn > maxTurns) {
+          fail('the round did not end within $maxTurns turns\n${screenText()}');
+        }
+        if (turn == 1 && points != fixedDealPoints) {
+          fail(
+            'not the fixed deal ($points pts, not $fixedDealPoints): start '
+            'the backend, a debug build, with ZAPZAP_TEST_FIXED_DECK=1\n'
+            '${screenText()}',
+          );
+        }
+      }
+      if (isEnabled(tester, zapZap)) {
+        log('turn $turn: calling ZapZap');
+        await tap(tester, zapZap);
+        await pumpUntil(tester, find.byKey(const Key('zapzap-confirm')));
+        await tap(tester, find.byKey(const Key('zapzap-confirm')));
+      } else if (isEnabled(tester, play)) {
         await tap(tester, play);
-        moves++;
+        log('turn $turn: played');
       } else if (bestPlay.evaluate().isNotEmpty) {
         // The suggestions come most points first.
         await tap(tester, bestPlay);
@@ -189,10 +213,24 @@ Future<void> playUntilRoundEnds(WidgetTester tester) async {
         // No suggestion (jokers only): one card alone is always a valid play.
         await tap(tester, firstCard);
       }
+    } else if (draw.evaluate().isNotEmpty && isEnabled(tester, draw)) {
+      await tap(tester, draw);
+      inTurn = false;
+      log('turn $turn: drew from the deck');
     }
     // Let the move's answer and the bots' turns arrive.
     await tester.pump(const Duration(milliseconds: 300));
   }
+}
+
+/// What this player's hand is worth, jokers at 0, read from its title
+/// ("Ta main · 10 pts").
+int handPoints() {
+  final title = find.byKey(const Key('handValue')).evaluate().first.widget;
+  final text = (title as Text).data ?? '';
+  final points = RegExp(r'\d+').firstMatch(text)?.group(0);
+  if (points == null) fail('no value in the hand title "$text"');
+  return int.parse(points);
 }
 
 /// Pumps real time until [finder] finds something.

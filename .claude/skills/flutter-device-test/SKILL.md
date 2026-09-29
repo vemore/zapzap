@@ -104,8 +104,11 @@ W=$(mktemp -d)
 cd zapzap-rust && cargo build --locked
 DB_PATH=$W/device.db target/debug/zapzap-backend seed           # the bot accounts
 JWT_SECRET=$(openssl rand -hex 32) DB_PATH=$W/device.db PORT=9999 \
-  BOT_ACTION_DELAY_MS=0 target/debug/zapzap-backend             # background task
+  BOT_ACTION_DELAY_MS=0 ZAPZAP_TEST_FIXED_DECK=1 target/debug/zapzap-backend   # background task
 ```
+
+`ZAPZAP_TEST_FIXED_DECK=1` fixes the deal, which the test needs: it fails at its first turn,
+saying so, on a shuffled one. A release build ignores the variable: use the debug one.
 
 (`CARGO_TARGET_DIR` may point elsewhere in a worktree: use the binary it names.)
 

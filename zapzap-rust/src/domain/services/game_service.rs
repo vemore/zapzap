@@ -198,6 +198,34 @@ pub fn hand_size_bounds(state: &GameState) -> (u8, u8) {
     (4, rule_max.min(deck_max))
 }
 
+/// The variable that fixes the deal for the Flutter end-to-end test
+/// (`scripts/flutter_e2e.sh`): set to `1`, in a debug build, [`order_for_deal`] lays the
+/// deck in card-id order instead of shuffling it
+pub const FIXED_DECK_ENV: &str = "ZAPZAP_TEST_FIXED_DECK";
+
+/// Whether the deal is fixed: only in a debug build — the production image is a release
+/// build (`zapzap-rust/Dockerfile`), where this is false whatever the environment — and
+/// only when [`FIXED_DECK_ENV`] is `1`
+pub fn fixed_deck_requested() -> bool {
+    cfg!(debug_assertions) && fixed_deck_from(std::env::var(FIXED_DECK_ENV).ok().as_deref())
+}
+
+fn fixed_deck_from(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+/// Orders the cards of a deal, which pops them from the end: shuffled, or, when `fixed`,
+/// sorted so that it hands out card ids 0, 1, 2… in turn. With four cards and three
+/// players, seat 0 gets A♠ 2♠ 3♠ 4♠, seat 1 5♠–8♠, seat 2 9♠–Q♠, K♠ is flipped and
+/// A♥ is the first card drawn from the deck
+pub fn order_for_deal(cards: &mut [u8], fixed: bool) {
+    if fixed {
+        cards.sort_unstable_by(|a, b| b.cmp(a));
+    } else {
+        cards.shuffle(&mut rand::rng());
+    }
+}
+
 /// Points a counteracted ZapZap caller takes per other active player, on top of their hand
 pub const COUNTERACT_PENALTY_PER_OPPONENT: u16 = 5;
 
@@ -676,5 +704,51 @@ mod tests {
         state.current_action = GameAction::Finished;
         state.eliminated_mask = 0b1010;
         assert_eq!(forfeit_seat(&mut state, 2), Some(0));
+    }
+
+    #[test]
+    fn test_fixed_deck_needs_the_variable_set_to_1() {
+        assert!(!fixed_deck_from(None));
+        assert!(!fixed_deck_from(Some("")));
+        assert!(!fixed_deck_from(Some("0")));
+        assert!(!fixed_deck_from(Some("true")));
+        assert!(fixed_deck_from(Some("1")));
+    }
+
+    #[test]
+    fn test_the_deal_is_shuffled_when_the_variable_is_unset() {
+        // cargo test never sets it: the default path, as in production
+        assert!(std::env::var_os(FIXED_DECK_ENV).is_none());
+        assert!(!fixed_deck_requested());
+
+        let mut cards: Vec<u8> = (0..DECK_SIZE).collect();
+        order_for_deal(&mut cards, false);
+        let mut sorted = cards.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..DECK_SIZE).collect::<Vec<u8>>());
+        // Either sorted order comes out of a shuffle 2 times in 54!
+        let descending: Vec<u8> = (0..DECK_SIZE).rev().collect();
+        assert_ne!(cards, sorted);
+        assert_ne!(cards, descending);
+    }
+
+    #[test]
+    fn test_the_fixed_deal_hands_out_card_ids_in_order() {
+        // Any order in, as the cards collected from the provisional deal come
+        let mut cards: Vec<u8> = (0..DECK_SIZE).collect();
+        cards.shuffle(&mut rand::rng());
+        order_for_deal(&mut cards, true);
+
+        // Four cards to three seats, then the flip, then the first draw
+        let mut deal = || -> Vec<u8> { (0..4).map(|_| cards.pop().unwrap()).collect() };
+        let seat0 = deal();
+        assert_eq!(seat0, vec![0, 1, 2, 3], "A♠ 2♠ 3♠ 4♠");
+        assert_eq!(card_analyzer::calculate_hand_value(&seat0), 10);
+        assert_eq!(deal(), vec![4, 5, 6, 7]);
+        assert_eq!(deal(), vec![8, 9, 10, 11]);
+        assert_eq!(cards.pop(), Some(12), "K♠ flipped");
+        let drawn = cards.pop().unwrap();
+        assert_eq!(drawn, 13, "A♥ drawn");
+        assert!(card_analyzer::can_call_zapzap(&[drawn]));
     }
 }
