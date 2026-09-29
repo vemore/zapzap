@@ -130,9 +130,10 @@ the backend writes lives under `data/`.
 The guest rate limit needs DSM's reverse proxy to append the client's address to
 `X-Forwarded-For` (the rule and what a missing entry allows: [[Api]] § Guest accounts). **It
 does not by default**: the guest deploy's first log (f4c4cd08c603, 2026-09-29) read `for
-192.168.1.27 (1 X-Forwarded-For entries)` for a LAN client through the public URL.
+192.168.1.27 (1 X-Forwarded-For entries)` for a LAN client through the public URL. **Set on
+2026-09-29**, the header below.
 
-**The fix, by hand in DSM's GUI** (no SSH): Control Panel → Login Portal → Advanced →
+**The setting, by hand in DSM's GUI** (no SSH): Control Panel → Login Portal → Advanced →
 Reverse Proxy → the zapzap rule → Edit → Custom Header → Create: Header Name
 `X-Forwarded-For`, Value `$proxy_add_x_forwarded_for` (DSM's proxy is nginx: what the client
 sent, then the address DSM was connected from) → Save.
@@ -143,8 +144,10 @@ sent, then the address DSM was connected from) → Save.
 `ssh vemore@192.168.1.147 'cd /home/vemore/docker/zapzap && docker compose -p zapzap -f
 compose.yaml logs backend | grep "Guest account created" | tail -1'` must read `for <that
 address> (2 X-Forwarded-For entries)` (`<prefix>::/64` over IPv6). `1` entry and a `172.x`
-address (the nginx container, the fallback peer) means DSM still does not append.
-Verified: **not yet** — record the date and the line here.
+address (the nginx container, the fallback peer) means DSM no longer appends.
+Verified 2026-09-29 12:08 UTC, from a phone on 4G, on the pre-#191 build (hops 2): `Guest
+account created: Guest_01962385 (…) for 92.184.103.42 (2 X-Forwarded-For entries)` — the
+carrier's public address, 2 entries: DSM appends.
 
 ### Rolling back
 
@@ -457,5 +460,5 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
 - **DSM appends `X-Forwarded-For` through a custom header (2026-09-29, fix/guest-client-ip).**
   One entry where the hop count expects two: the header goes on DSM's rule rather than a
   hop count or nginx's `real_ip` module, since nothing behind DSM recovers an address DSM
-  never passed on. Until it is set, every client shares one key ([[Api]] Decisions & History).
+  never passed on. Set and verified the same day (§ The client address behind DSM).
 - 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.

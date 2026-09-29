@@ -11,9 +11,9 @@
 //! Once every trusted proxy appends (DSM needs its custom header), the key is never an
 //! entry the client could have chosen: a header with fewer entries than the hop count (a
 //! proxy did not append, so its leftmost entry may be the client's own), or an entry that
-//! is not an IP address, falls back to the connection's peer. Until DSM appends, a client
-//! that sends `X-Forwarded-For: <forged>` reaches the backend as `[<forged>, DSM]`: the
-//! count matches, and no hop count tells it from `[client, DSM]`. An
+//! is not an IP address, falls back to the connection's peer. Without DSM's entry, a
+//! client that sends `X-Forwarded-For: <forged>` reaches the backend as `[<forged>, DSM]`:
+//! the count matches, and no hop count tells it from `[client, DSM]`. An
 //! IPv6 address is keyed by its /64, the block one subscriber gets; an IPv4-mapped one by
 //! its IPv4.
 
