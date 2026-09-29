@@ -60,11 +60,6 @@ should_implement_trait = "allow"
 default = []
 bedrock = ["aws-config", "aws-sdk-bedrockruntime", "aws-smithy-types"]
 
-# The LLM bot against HardBots on Bedrock, paid: .llmwiki/Bots.md § LLM bot
-[[example]]
-name = "llm_benchmark"
-required-features = ["bedrock"]
-
 [dev-dependencies]
 tokio-test = "0.4"
 axum-test = "15"
