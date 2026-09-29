@@ -146,6 +146,26 @@ void main() {
       expect(find.textContaining('2 / 5'), findsNothing);
     });
 
+    testWidgets('a party created elsewhere shows up without a pull', (
+      tester,
+    ) async {
+      final backend = FakeLobbyBackend();
+      final transport = await pumpApp(tester, backend);
+      expect(find.text('Aucune partie disponible'), findsOneWidget);
+
+      backend.parties = [partySummaryJson(id: 'p9', name: 'Nouvelle table')];
+      await broadcast(tester, transport, {
+        'type': 'partyUpdate',
+        'partyId': 'p9',
+        'userId': 'u2',
+        'action': 'partyCreated',
+      });
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('party-p9')), findsOneWidget);
+      expect(find.text('Nouvelle table'), findsOneWidget);
+    });
+
     testWidgets('a party deleted elsewhere leaves the list', (tester) async {
       final backend = FakeLobbyBackend(
         parties: [partySummaryJson(id: 'p1', name: 'Doomed party')],
@@ -1334,6 +1354,78 @@ void main() {
       expect(find.byType(GameScreen), findsNothing);
       expect(find.byType(PartyLobbyScreen), findsNothing);
       expect(find.byType(PartiesScreen), findsOneWidget);
+    });
+
+    int listRequests(FakeLobbyBackend backend) => backend.requests
+        .where((r) => r.method == 'GET' && r.url.path == '/api/party')
+        .length;
+
+    // The zapzap that ends a game sends no `gameFinished` (the backend
+    // finishes the party there and broadcasts `zapzap` only): the list
+    // popped back to must not wait for an event to drop « En cours ».
+    testWidgets('a game that finished meanwhile is no longer « En cours » '
+        'once the game pops back, with no event nor pull', (tester) async {
+      final finale = backend()
+        ..parties = [
+          partySummaryJson(
+            id: 'p1',
+            name: 'Finale',
+            status: 'playing',
+            isMember: true,
+          ),
+        ];
+      await pumpApp(tester, finale);
+      expect(find.byKey(const Key('in-progress-p1')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('open-p1')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameScreen), findsOneWidget);
+
+      // Finished: `GET /party` leaves a finished public party out.
+      finale.parties = [];
+      await systemBack(tester);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      expect(find.byKey(const Key('in-progress-p1')), findsNothing);
+      expect(find.byKey(const Key('party-p1')), findsNothing);
+      expect(find.text('En cours'), findsNothing);
+    });
+
+    testWidgets('the list reloads too when the game it comes back from '
+        'replaced a lobby', (tester) async {
+      final lobby = backend()
+        ..details = partyDetailsJson(
+          id: 'p1',
+          players: [
+            partyPlayerJson(userId: 'u1', username: 'Vincent', playerIndex: 0),
+            partyPlayerJson(userId: 'u2', username: 'Alice', playerIndex: 1),
+            partyPlayerJson(userId: 'u3', username: 'Bob', playerIndex: 2),
+          ],
+        );
+      await pumpApp(tester, lobby);
+
+      await tester.tap(find.byKey(const Key('join-p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('start-party')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameScreen), findsOneWidget);
+
+      // Finished: `GET /party` leaves a finished public party out.
+      lobby.parties = [];
+      await systemBack(tester);
+      expect(find.byType(PartiesScreen), findsOneWidget);
+      expect(find.byKey(const Key('party-p1')), findsNothing);
+    });
+
+    testWidgets('closing a menu over the list reloads nothing', (tester) async {
+      final quiet = backend();
+      await pumpApp(tester, quiet);
+      final before = listRequests(quiet);
+
+      await tester.tap(find.byKey(const Key('app-bar-menu')));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(listRequests(quiet), before);
     });
 
     testWidgets('a lobby opened by a link goes back to the list', (

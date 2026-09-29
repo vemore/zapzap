@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "Create yours",
   "partiesPullToRefresh": "Pull down to refresh.",
   "partyInProgressBadge": "In progress",
+  "partyYourTurnBadge": "Your turn",
   "partyCardHost": "you host",
   "partyResumeButton": "Resume",
   "partyLobbyButton": "Lobby",

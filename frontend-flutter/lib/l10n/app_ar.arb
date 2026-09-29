@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "أنشئ لعبتك",
   "partiesPullToRefresh": "اسحب لأسفل للتحديث.",
   "partyInProgressBadge": "قيد اللعب",
+  "partyYourTurnBadge": "دورك",
   "partyCardHost": "أنت المضيف",
   "partyResumeButton": "استئناف",
   "partyLobbyButton": "الردهة",

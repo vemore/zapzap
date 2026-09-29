@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "自分で作成",
   "partiesPullToRefresh": "下にスワイプして更新できます。",
   "partyInProgressBadge": "進行中",
+  "partyYourTurnBadge": "あなたの番",
   "partyCardHost": "あなたがホスト",
   "partyResumeButton": "再開",
   "partyLobbyButton": "ロビー",

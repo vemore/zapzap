@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "Crea la tuya",
   "partiesPullToRefresh": "Desliza hacia abajo para actualizar.",
   "partyInProgressBadge": "En curso",
+  "partyYourTurnBadge": "Tu turno",
   "partyCardHost": "eres el anfitrión",
   "partyResumeButton": "Reanudar",
   "partyLobbyButton": "Sala",

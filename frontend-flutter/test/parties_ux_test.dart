@@ -138,7 +138,7 @@ void main() {
           expect(border(tester, 'party-m2'), AppColors.amber400);
           expect(border(tester, 'party-m1'), PartyCard.joined);
           expect(border(tester, 'party-o1'), AppColors.slate600);
-          // No backend says whose turn it is: no such badge.
+          // No game waits for my move (isMyTurn false): no such badge.
           expect(find.textContaining('ton tour'), findsNothing);
           // The host is told so; someone else's party is not mine to host.
           expect(
@@ -146,6 +146,50 @@ void main() {
             findsOneWidget,
           );
           expect(find.textContaining('4 / 4'), findsOneWidget);
+        });
+
+        testWidgets("P1: a game waiting for my move comes first, « C'est ton "
+            'tour » in place of « En cours »', (tester) async {
+          await pumpApp(
+            tester,
+            FakeLobbyBackend(
+              parties: [
+                ...mixed(),
+                partySummaryJson(
+                  id: 'm3',
+                  name: 'À moi de jouer',
+                  ownerId: 'u2',
+                  status: 'playing',
+                  playerCount: 3,
+                  maxPlayers: 3,
+                  isMember: true,
+                  isMyTurn: true,
+                ),
+              ],
+            ),
+            size: phone,
+            textScale: scale,
+          );
+
+          // Listed last by the backend, first on screen.
+          expect(
+            top(tester, 'parties-heading-mine'),
+            lessThan(top(tester, 'party-m3')),
+          );
+          expect(top(tester, 'party-m3'), lessThan(top(tester, 'party-m2')));
+          expect(find.byKey(const Key('your-turn-m3')), findsOneWidget);
+          expect(find.text("C'est ton tour"), findsOneWidget);
+          expect(find.byKey(const Key('in-progress-m3')), findsNothing);
+          expect(find.byKey(const Key('in-progress-m2')), findsOneWidget);
+          expect(border(tester, 'party-m3'), AppColors.amber400);
+          expect(
+            tester.widget(find.byKey(const Key('open-m3'))),
+            isA<FilledButton>(),
+          );
+          expect(
+            tester.getSize(find.byKey(const Key('party-m3'))).height,
+            lessThanOrEqualTo(scale == 1.0 ? 100 : 130),
+          );
         });
 
         testWidgets('P2: two lines per card and one action, Resume filled '
