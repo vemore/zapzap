@@ -571,6 +571,7 @@ class _GameScreenState extends State<GameScreen> {
           ? null
           : winner.username ?? _nameOf(winner.playerIndex),
       winnerScore: winner?.score,
+      winnerIsMe: winner != null && winner.playerIndex == _game.myPlayerIndex,
       busy: _game.busy,
       onNextRound: _game.nextRound,
       onBackToParties: () => context.popOrGo(AppRoutes.parties),

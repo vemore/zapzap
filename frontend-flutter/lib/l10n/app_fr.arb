@@ -397,6 +397,10 @@
   "@partyInProgressBadge": {
     "description": "Badge on a party the user is in whose game is running"
   },
+  "partyYourTurnBadge": "C'est ton tour",
+  "@partyYourTurnBadge": {
+    "description": "Badge on a party the user is in whose game waits for their move (isMyTurn), in place of the in-progress badge"
+  },
   "partyCardHost": "tu es l'hôte",
   "@partyCardHost": {
     "description": "On a party card: the signed-in user created this party"

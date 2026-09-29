@@ -17,6 +17,7 @@ JsonMap partySummaryJson({
   int playerCount = 1,
   int maxPlayers = 5,
   bool isMember = false,
+  bool isMyTurn = false,
 }) => {
   'id': id,
   'name': name,
@@ -25,7 +26,7 @@ JsonMap partySummaryJson({
   'playerCount': playerCount,
   'maxPlayers': maxPlayers,
   'isMember': isMember,
-  'isMyTurn': false,
+  'isMyTurn': isMyTurn,
   'createdAt': 1790094174,
 };
 
