@@ -15,7 +15,7 @@
   **`release-android`** skill; the Play state is [[Release]]. Driving the app on the user's
   phone (Wi-Fi adb, the screenshot loop, the integration round against a LAN backend) is the
   **`flutter-device-test`** skill.
-- **Download the debug APK from CI**: every run of the `flutter` job (a pull request or a
+- **Download the debug APK from CI**: every run of the `flutter-apk` job (a pull request or a
   push touching `frontend-flutter/`) uploads it as the artifact **`app-debug`**, kept 14 days —
   the run's page (Actions → CI → the run) → *Artifacts* → `app-debug`, a zip holding
   `app-debug.apk`; or `gh run download <run id> -n app-debug`. Install with
@@ -36,8 +36,9 @@
     **refused** before any task runs (`gradle.taskGraph.whenReady`): `No android/key.properties:
     a release bundle … must be signed with the upload key` — a Play bundle is never
     debug-signed.
-  Both are CI steps of the `flutter` job ("Release build without key.properties",
-  "Release bundle without key.properties is refused"). The release build also runs R8
+  Both are CI steps of the `flutter-release` job ("Release build without key.properties",
+  "Release bundle without key.properties is refused"), which runs on a change under
+  `frontend-flutter/android/`, to `pubspec.*`, and on every push to `master` ([[Testing]]). The release build also runs R8
   (`isMinifyEnabled`, `isShrinkResources`, keep rules in `android/app/proguard-rules.pro`:
   the Flutter embedding and plugins, Credential Manager's Play services provider and
   `googleid` for google_sign_in, flutter_secure_storage). A class R8 strips shows up at run
@@ -150,8 +151,8 @@
   compose files.
 - **`--no-web-resources-cdn` is load-bearing**: without it the bundle fetches CanvasKit from
   `www.gstatic.com` at runtime, so a client with no route to Google shows a blank page while
-  the 36 MB `canvaskit/` in the image goes unused. The CI `flutter` job passes the same flag,
-  so it builds what the image builds.
+  the 36 MB `canvaskit/` in the image goes unused. CI builds the release web bundle nowhere else than
+  in this image (the `image` job), so it tests what production serves.
 - Stage 2 is `nginx:alpine` with the bundle at `/usr/share/nginx/html/app`, so a request path
   matches the public one. `frontend-flutter/nginx.conf`: `/healthz` for the container health
   check, `/app` → relative 301 `/app/` keeping the query (`$is_args$args`),

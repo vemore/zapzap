@@ -160,8 +160,8 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   `/healthz` answers the container health check.
 - The bundle carries CanvasKit itself (`--no-web-resources-cdn`): the engine is served from
   `/app/canvaskit/`, not from `www.gstatic.com`, so a client that cannot reach Google still
-  gets an app rather than a blank page. The flag is in `frontend-flutter/Dockerfile` **and**
-  in the CI `flutter` job, which must build what the image builds.
+  gets an app rather than a blank page. The flag is in `frontend-flutter/Dockerfile`, whose build
+  in the CI `image` job is CI's only release web build (since 2026-09-29, [[Testing]]).
 - **The PWA cannot take the API down.** `location /app/` resolves `frontend-flutter`
   through Docker's DNS (`resolver 127.0.0.11`) with the host in a variable, so nginx starts
   whether or not the container exists and answers 502 on the web alone. An `upstream` block

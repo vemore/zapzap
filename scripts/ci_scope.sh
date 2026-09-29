@@ -3,7 +3,8 @@
 # ZapZap - which CI jobs a change needs.
 #
 # Reads changed paths on stdin, one per line, and writes the job flags on stdout
-# as `name=true|false`, in the order .github/workflows/ci.yml declares them. No
+# as `name=true|false`, in a fixed order: the jobs of .github/workflows/ci.yml as
+# they were declared, then `android` (the `flutter-release` job), added last. No
 # gh, no network, no repository access: the classification is a pure function of
 # the path list, which is what lets scripts/ci_scope_selftest.sh pin it.
 #
@@ -21,8 +22,9 @@ image=false
 hooks=false
 flutter=false
 e2e=false
+android=false
 
-everything() { rust=true; native=true; image=true; hooks=true; flutter=true; e2e=true; }
+everything() { rust=true; native=true; image=true; hooks=true; flutter=true; e2e=true; android=true; }
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -47,6 +49,11 @@ while IFS= read -r path; do
         # The Flutter client (Android + PWA), the image the PWA is served from
         # (.llmwiki/Deployment.md), and its end-to-end run. The React client's frontend/,
         # removed on 2026-09-29, is unclassified since: a path under it runs everything.
+        # The Android project and the dependencies also run the R8 release build
+        # (`android`): R8 shrinks the Java and Kotlin classes -- the Gradle files, the keep
+        # rules, a plugin's Android code -- never the Dart code.
+        frontend-flutter/android/*|frontend-flutter/pubspec.yaml|frontend-flutter/pubspec.lock)
+            flutter=true; image=true; e2e=true; android=true ;;
         frontend-flutter/*) flutter=true; image=true; e2e=true ;;
 
         # The reverse proxy: its configuration, baked into the production proxy image
@@ -102,4 +109,5 @@ while IFS= read -r path; do
     esac
 done
 
-printf 'rust=%s\nnative=%s\nimage=%s\nhooks=%s\nflutter=%s\ne2e=%s\n' "$rust" "$native" "$image" "$hooks" "$flutter" "$e2e"
+printf 'rust=%s\nnative=%s\nimage=%s\nhooks=%s\nflutter=%s\ne2e=%s\nandroid=%s\n' \
+    "$rust" "$native" "$image" "$hooks" "$flutter" "$e2e" "$android"

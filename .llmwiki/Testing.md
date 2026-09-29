@@ -16,7 +16,7 @@
 | Rust backend turn timer tests (`zapzap-rust/tests/turn_timer_tests.rs`, 17 tests on 2026-09-28: the turn time limit, ejection, `playerReplaced`, the loss, the ejected players' ranking, one human runs no clock, the deadline in the state, the ejection's compare-and-swap, a restart's downtime, the last human's party; a `ManualClock`, no waiting) | `cargo test --test turn_timer_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
-| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web`, `build apk --debug` and `build apk --release`; the format check and the analyzer also in the commit hook. `test/gis_script_guard_test.dart` runs headless Chrome (`CHROME_EXECUTABLE`, else `google-chrome` on the PATH, the runner's) |
+| Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes (`flutter` job), `build apk --debug` and `build apk --release` in jobs of their own, the web build in the `image` job's PWA image; the format check and the analyzer also in the commit hook. `test/gis_script_guard_test.dart` runs headless Chrome (`CHROME_EXECUTABLE`, else `google-chrome` on the PATH, the runner's) |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand, below | green (2026-09-24) | yes (`flutter-e2e` job) |
 | Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes; then uid 1000, the CA store and the size under 40 MB), `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, the proxy image (`nginx/Dockerfile`), `nginx -t` in it and `scripts/proxy_redirects_smoke.sh` (its routes, below), `docker compose config` of both compose files | green | yes |
 
@@ -100,19 +100,21 @@
 | `frontend` | never (`if: ${{ false }}`): the React client is removed, the job only keeps a required check name | — | — |
 | `image` | `image != 'false'` | `scripts/build_privacy_page.py --check` with pandoc at the version the script pins (the release `.deb` from GitHub): a committed `nginx/privacy.html` stale against `privacy_policy.md` fails the job ([[Deployment]] § The privacy policy); the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it, then `scripts/proxy_redirects_smoke.sh` (the image between a stub backend and a stub PWA on a Docker network of its own: each URL of the removed React client answers a relative 301 to its PWA page, query kept, and `/api/`, `/suscribeupdate`, `/app/`, `/privacy`, `/privacy.html`, `/nginx-health` answer as before; [[Deployment]] § The URLs of the removed React client); `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (the root compose's `backend` service — the production image, `CARGO_FEATURES=bedrock` — built by `docker buildx bake` from that compose file with a GitHub Actions layer cache, `type=gha,scope=zapzap-backend-image,mode=max`, on a docker-container builder of its own (`docker/setup-buildx-action` with `use: false`, so the job's plain `docker build`s keep the default builder; `crazy-max/ghaction-github-runtime` hands the cache token to the script): 8m51s cold, the cache export included, 19 s on an unchanged `zapzap-rust/` (#141); without the `SMOKE_CACHE_*` variables the script runs `docker compose build backend`; then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]), `scripts/wiki_lint_selftest.sh` (the wiki lint on a fixture wiki; the lint itself is a report, not a gate: [[Documentation]] § Wiki lint), `scripts/wip_selftest.sh` (`scripts/wip.sh refine` on a fixture `wip/`: section spellings, the per-Area `todo/` count), `scripts/delivery_metrics_selftest.sh` (a throwaway history with a known answer, [[ParallelDelivery]] § Measuring delivery), `evals/selftest.sh` (each agent-eval check against its untouched tree, `good.sh` and `bad.sh`, no agent: [[AgentEvals]]); JDK 17 and `astral-sh/setup-uv`, then pytest on `scripts/test_play_publish.py` (a fake Google service) and `scripts/test_verify_aab.py` (fake bundles signed by throwaway keystores, `VERIFY_AAB_REQUIRE_TOOLS=1` so a missing JDK fails rather than skips) ([[Release]]); pytest on `scripts/test_arb_keys.py` (the ARB checker on fixture files, and the committed ARB files' key sets: [[FlutterI18n]]), and on `scripts/test_agent_metrics.py` (synthetic transcripts) | 10 min |
-| `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK, `platforms;android-36` and `build-tools;36.0.0` installed by `sdkmanager`, Gradle heap capped at 4 GB), uploaded as the artifact `app-debug` (14 days); `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
+| `flutter` | `flutter != 'false'` | the shared setup `.github/actions/flutter-setup` (Flutter 3.47.2 by `subosito/flutter-action@v2` with its pub cache, `pub get --enforce-lockfile`, `gen-l10n`), then `dart format --set-exit-if-changed`, `analyze`, `test`; no JDK, no Android SDK. No web build: the `image` job's PWA image is CI's only release web build | 30 min |
+| `flutter-apk` | `flutter != 'false'` | the shared setup with `android: 'true'` (JDK 17 by `actions/setup-java` with the Gradle cache, the Gradle heap capped at 4 GB in `~/.gradle/gradle.properties`, `platforms;android-36` and `build-tools;36.0.0` by `sdkmanager` on the runner's Android SDK), `build apk --debug`, uploaded as the artifact `app-debug` (14 days) | 30 min |
+| `flutter-release` | `android != 'false'` | the shared setup with `android: 'true'`, `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 
-- **A job's `name:` is its check context, and five of them are pinned by branch
+- **A job's `name:` is its check context, and four of them are pinned by branch
   protection**: `Rust backend — fmt, clippy, test`, `Native engine — fmt, build, test`,
-  `Frontend — build`, `Images — backend and frontend build`, `Hooks — self-test`
+  `Images — backend and frontend build`, `Hooks — self-test`
   ([[ParallelDelivery]]). Renaming one is not cosmetic: the required context stops
   reporting, and every pull request is `BLOCKED` for ever with no failing check to show
   why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
-  `native`. A job that lost its purpose keeps its name too: `Frontend — build` stays, always
-  skipped, since the React client went (2026-09-29), until the user drops it from the
-  required checks; then the job can go. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
+  `native`. A job that lost its purpose keeps its name until the user drops it from the required
+  checks, and only then goes: `Frontend — build` was kept, always skipped, from the React
+  client's removal until both happened (2026-09-29). A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The
   `flutter` job's name and the `flutter-e2e` job's `Flutter end to end — a round against
   the Rust backend` are not pinned: adding them to branch protection is the user's
@@ -124,7 +126,7 @@
 
 ### The scope job (`scripts/ci_scope.sh`)
 - On push/dispatch every flag is `true` (step "Which jobs this change needs"). On a PR it lists changed files with `gh api .../pulls/$PR/files --paginate`, including `previous_filename` so renames count on both sides; ≥ 3000 files → everything; otherwise pipes the list into `scripts/ci_scope.sh` — all in that step.
-- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= image= hooks= flutter= e2e=`, in the order `ci.yml` declares the jobs (`e2e` last: the `flutter-e2e` job). Per path, first match wins; the last case is the catch-all:
+- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= image= hooks= flutter= e2e= android=`, in a fixed order: the jobs as `ci.yml` declared them (`e2e`: the `flutter-e2e` job), then `android` (the `flutter-release` job), added last so the older self-test cases kept their shape. Per path, first match wins; the last case is the catch-all:
 
 | Pattern | Flags |
 |---|---|
@@ -133,6 +135,7 @@
 | `zapzap-rust/*` | rust, image, e2e (production's backend: its image, a round played through the Flutter client) |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
+| `frontend-flutter/android/*`, `frontend-flutter/pubspec.yaml`, `frontend-flutter/pubspec.lock` | flutter, image, e2e, android (the R8 release build: R8 shrinks the Java and Kotlin classes — Gradle files, keep rules, a plugin's Android code —, never the Dart code) |
 | `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]), e2e |
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `scripts/deploy_nas.sh`, its self-test and `deploy.env.example`, `rebuild.sh`, `scripts/wiki_lint.sh`, its self-test and `scripts/lib/*`, `scripts/wip.sh` and `scripts/wip_selftest.sh`, `evals/*` (not its `*.md` prompts) | hooks |
@@ -144,9 +147,9 @@
 | `scripts/flutter_e2e.sh` | e2e |
 | `store_listing/*` (the Play Store listing), `scripts/generate_store_graphics.py`, `scripts/capture_store_screenshots.{sh,js}`, `scripts/compose_store_screenshots.py` | flutter (`frontend-flutter/test/store_listing_test.dart` checks the listing against Play's limits; the generators run by hand, `store_listing/README.md`) |
 | root `package.json`, `package-lock.json` (Playwright only, [[ParallelDelivery]]) | none |
-| anything else (`.github/`, `.claude/`, `scripts/`, new dirs, the removed frontend/) | everything |
+| anything else (`.github/` — the workflow and `.github/actions/` —, `.claude/`, `scripts/`, new dirs, the removed frontend/) | everything |
 
-- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n i h fl e2e>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
+- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n i h fl e2e an>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
@@ -156,6 +159,26 @@
 - `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- **2026-09-29 (ci/split-flutter-job): the Flutter job is three parallel jobs, and builds nothing twice.**
+  One serial `flutter` job set a Flutter pull request's wall clock: 556 s on run 36540405673
+  (setup ~50 s, `test` 130 s, `build web` 59 s, `build apk --debug` 148 s, `build apk --release`
+  133 s), against 507–591 s for a whole pull request run. Now `flutter` (analyze, test),
+  `flutter-apk` (the debug APK the `flutter-device-test` skill installs) and `flutter-release`
+  (R8) run side by side, their setup in one composite action rather than copied three times.
+  `build web` went: the `image` job's PWA image already built the same bundle with the same
+  flags on every change that sets `flutter` from `frontend-flutter/` (`store_listing/*`, the
+  one other source of the flag, changes no Dart code). Handing the job's bundle to the image as
+  an artifact was the alternative, rejected: it would tie the required `image` job to a
+  non-required one and change the Dockerfile production builds from. The R8 build runs on a
+  flag of its own, `android` (the Android project, `pubspec.*`, every push to master), since R8
+  reads no Dart code. The `flutter` job kept its `name:` although it no longer builds web or
+  APKs: not a required check, but the rule against renames is kept whole. Measured on #185
+  (run 36551441329, every job run since it changed `ci.yml`): 4m25s for the run, against
+  507–591 s before; `flutter` 2m38s (`test` 112 s), `flutter-apk` 3m47s (setup 69 s, debug
+  APK 143 s), `flutter-release` 4m13s (setup 74 s, R8 168 s), `image` 3m27s (the PWA image
+  2m29s). A Dart-only pull request waits for `flutter-apk` or `image`, ~4 min. Not done: `cargo-chef`
+  or sccache for the backend image, whose 340 s on a Rust change are now the longest job of a
+  Rust pull request.
 - **2026-09-29 (chore/remove-react-client): the React client is removed, and its suites with it.** vitest (294 tests), the lint and build gates, the `frontend` scope flag and the React image build of the `image` job are gone; a path under frontend/ now runs everything. The `frontend` job stays with its pinned `name:`, skipped, until branch protection drops it. The proxy's routes gained a test of their own, `scripts/proxy_redirects_smoke.sh`, in the `image` job: a test on the real image rather than a copy of the conf, since the redirects are the only thing left of the client. The React suites' notes (the flaky-test fix of 2026-09-24, the lint and vitest made green on 2026-09-23) are in this page at `055c288`.
 - 2026-09-25 (chore/store-listing): the Play Store listing's limits are a Dart test in the `flutter` job (`frontend-flutter/test/store_listing_test.dart`), not a new CI job or step: `ci.yml` was another pull request's in parallel, and a new job's name would have had to join the branch protection. `scripts/ci_scope.sh` sends `store_listing/*` and its generators to `flutter` instead of the catch-all.
 - 2026-09-25 (fix/flutter-e2e-round-bounded): the Flutter end-to-end round no longer runs past its 5 min at random (#99, #102, #107, each green on rerun). Since the Rust backend honours `BOT_ACTION_DELAY_MS` (1000 ms by default) each bot turn took seconds, and the driver played the first card of its hand, whose points only drifted (47 after 58 turns on #102). The script starts the bots without a pause, and the driver deals four cards and plays the suggestion taking the most points off, so the round is held to a move budget rather than to a longer timeout.
