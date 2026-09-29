@@ -12,11 +12,11 @@
 
 - CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `frontend` (always
   skipped since the React client went, 2026-09-29: it only keeps a required name), `image`,
-  `hooks`, `flutter`, `flutter-e2e`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
+  `hooks`, `flutter`, `flutter-apk`, `flutter-release`, `flutter-e2e`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
   reports Success, so a docs-only pull request satisfies required checks.
 - Branch protection is set once the harness is merged (2026-09-22, after #21–#23): required
-  checks = the five build jobs `rust` … `hooks` (not `scope`, and not yet `flutter`, added
-  after them: until it is listed, a red `flutter` job does not stop a merge — only the
+  checks = the five build jobs `rust` … `hooks` (not `scope`, and not yet the Flutter jobs, added
+  after them: until they are listed, a red Flutter job does not stop a merge — only the
   "green or skipped" rule of the lanes does), `strict` (up to date before merging → merges
   are **serial**), linear history (**squash**), no force-push; `enforce_admins` off, so the
   hook refuses `--admin` instead. Read it with `gh api repos/vemore/zapzap/branches/master/protection`.

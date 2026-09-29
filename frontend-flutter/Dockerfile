@@ -1,14 +1,15 @@
 # Flutter PWA image for ZapZap (multi-stage build).
 #
-# Stage 1 builds the web bundle with the same Flutter the CI `flutter` job pins
-# (.github/workflows/ci.yml): a newer SDK is a different build, so the version and its
+# Stage 1 builds the web bundle with the same Flutter the CI Flutter jobs pin
+# (.github/actions/flutter-setup): a newer SDK is a different build, so the version and its
 # checksum are pinned here too. Stage 2 is nginx serving the bundle under /app/, which is
 # where the production proxy routes it (nginx/nginx.conf, .llmwiki/Deployment.md).
 
 # Stage 1: build the web bundle
 FROM debian:bookworm-slim AS builder
 
-# Keep in step with .github/workflows/ci.yml (subosito/flutter-action) and
+# Keep in step with .github/actions/flutter-setup/action.yml and the flutter-e2e job of
+# .github/workflows/ci.yml (subosito/flutter-action), and
 # .llmwiki/FrontendFlutter.md. The checksum is the one the release index publishes for
 # this archive; bump both together.
 ARG FLUTTER_VERSION=3.47.2
@@ -46,8 +47,8 @@ COPY --chown=builder:builder . .
 # --no-web-resources-cdn: without it the bundle loads CanvasKit from www.gstatic.com at
 # runtime, so a client that cannot reach Google serves a blank page — and the canvaskit/
 # directory copied into the image would be dead weight. With it, the engine is served from
-# /app/canvaskit/ like the rest of the bundle. Keep it in step with the CI build
-# (.github/workflows/ci.yml).
+# /app/canvaskit/ like the rest of the bundle. This build is CI's only release web build (the
+# `image` job of .github/workflows/ci.yml builds this image).
 #
 # GOOGLE_CLIENT_ID: the web OAuth client id (docker-compose.yml passes the .env's
 # VITE_GOOGLE_OAUTH_CLIENT_ID, the name the removed React image read). A client id is not

@@ -35,16 +35,18 @@
 - **The PWA is deployable**: its own image (`frontend-flutter/Dockerfile` +
   `frontend-flutter/nginx.conf`), the `frontend-flutter` service in both compose files, and
   the `/app/` route of the production proxy. See "The PWA image" below and [[Deployment]].
-- CI: the `flutter` job (`.github/workflows/ci.yml`, Flutter pinned to 3.47.2 with
-  `subosito/flutter-action`, JDK 17) runs `pub get --enforce-lockfile` (a stale
-  `pubspec.lock` fails the job), `gen-l10n`, `dart format --output=none
-  --set-exit-if-changed lib test` (an unformatted file fails the job), `analyze`, `test`,
-  `build web --base-href /app/ --no-web-resources-cdn` (the image's flags),
-  `build apk --debug` (uploaded, below), `build apk --release` (R8, and the debug-key
-  fallback: CI has no `key.properties` — [[FlutterAndroidPwa]]) and `build appbundle --release`,
-  which must fail there, naming `key.properties`. `scripts/ci_scope.sh` selects it
+- CI: three parallel jobs of `.github/workflows/ci.yml`, sharing one setup
+  (`.github/actions/flutter-setup`: Flutter pinned to 3.47.2 with `subosito/flutter-action`,
+  `pub get --enforce-lockfile` — a stale `pubspec.lock` fails the job —, `gen-l10n`; JDK 17
+  and the Android SDK packages for the two APK jobs). `flutter` runs `dart format
+  --output=none --set-exit-if-changed lib test` (an unformatted file fails the job),
+  `analyze`, `test`; `flutter-apk` `build apk --debug` (uploaded, [[FlutterAndroidPwa]]);
+  `flutter-release`, only when the Android project or `pubspec.*` change and on `master`,
+  `build apk --release` (R8, and the debug-key fallback: CI has no `key.properties`) and
+  `build appbundle --release`, which must fail there, naming `key.properties`. The web
+  bundle is built by the `image` job's PWA image alone ([[Testing]]). `scripts/ci_scope.sh` selects them
   **and the `image` job** for a path under `frontend-flutter/` (a `.md` there selects
-  nothing), because the PWA image is built from those sources ([[Testing]]). It is not yet a required check of the branch protection ([[ParallelDelivery]]).
+  nothing), because the PWA image is built from those sources ([[Testing]]). None of the three is a required check of the branch protection yet ([[ParallelDelivery]]).
 - Commit gate: `flutter pub get --offline`, `flutter gen-l10n`, `dart format --output=none
   --set-exit-if-changed lib test` (the whole tree), `flutter analyze` when the
   commit leaves a non-`.md` file under `frontend-flutter/` (a README edit or a deletion runs
