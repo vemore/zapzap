@@ -2291,6 +2291,33 @@
   "@gameZapZapBadge": {
     "description": "Badge of the player who called ZapZap"
   },
+  "gameFxZapZap": "ZAPZAP !",
+  "@gameFxZapZap": {
+    "description": "Word that drops over the round end when a ZapZap held (animation, shown in capitals)"
+  },
+  "gameFxCountered": "CONTRÉ",
+  "@gameFxCountered": {
+    "description": "Word on the ink stamp that slams onto the round end when a ZapZap was counteracted (animation, capitals)"
+  },
+  "gameFxCounteredBy": "par {player} · {counter} ≤ {caller}",
+  "@gameFxCounteredBy": {
+    "description": "Line under the counteract stamp: who counteracted, their hand value and the caller's (a Joker counts 0); shown in capitals",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      },
+      "counter": {
+        "type": "int"
+      },
+      "caller": {
+        "type": "int"
+      }
+    }
+  },
+  "gameFxEliminated": "ÉLIMINÉ",
+  "@gameFxEliminated": {
+    "description": "Word on the red tape across the row of a player the round put out (above 100 points); shown in capitals"
+  },
   "deletedPlayer": "Joueur supprimé",
   "@deletedPlayer": {
     "description": "Name shown in the history for a player who deleted their account"

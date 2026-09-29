@@ -203,6 +203,27 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   score) heading the page. X is the seat after this round's `startingPlayer`, skipping
   whoever is out (`GAME_RULES.md` "Subsequent Rounds").
 - **A win is celebrated** (`widgets/victory_confetti.dart`): when `winnerIsMe` (the winner seat is mine), a one-shot confetti burst (`Key('victoryAnimation'`, two bottom-corner cannons, ~110 pieces, 2.4 s, a `Stack` overlay so the table does not move) and the winner banner scales in with an overshoot (`VictoryPop`). Nothing for the others, and nothing when `MediaQuery.disableAnimations`. `test/victory_confetti_test.dart`.
+- **The moments that turn a round play over it** (`widgets/round_end_effects/`, 2026-09-29):
+  as the round end opens, for every player at the table, once. A held ZapZap is "Coup de
+  foudre" (`held_bolt.dart`, `Key('zapzapHeldAnimation')`, 1.7 s: a bolt on the banner's
+  icon, flash, shake, sparks, a ring, "ZAPZAP !" dropping letter by letter then drawn into
+  the banner while arcs crawl on its border); a counteracted one is "Coup de tampon"
+  (`countered_stamp.dart`, `zapzapCounteredAnimation`, 1.9 s: an ink stamp "CONTRÉ / par X ·
+  a ≤ b" slams on the banner from 2.8×, −12°, dust and ink specks, then the caller's row
+  flashes red and "+n" pops over its round column); an elimination is "Surchauffe"
+  (`elimination_gauge.dart`, `eliminationAnimation`, 2.2 s: the row spotlit, its bar grown
+  into a gauge climbing past 100 with sparks, a red "ÉLIMINÉ ×" tape, the badge popping).
+  Order: the ZapZap overlay, then the elimination — several players out share one pass, the
+  gauge climbing for each in turn —, then the confetti. Each starts at the previous one's
+  nominal time, their last sparks overlapping. Eliminated here means put out *by this round*
+  (total before ≤ 100 < total after): a seat out earlier, or ejected, gets none. While they
+  play, the overlays drive the widgets they aim at through `RoundEndFx` (the rows' shake,
+  red wash, total and badge; the banner's squash and glow; the whole table's shake): a
+  total an overlay counts up waits for it, the Eliminated badge is hidden until the gauge
+  pops it. The table stays live under them: a touch anywhere reaches it and skips to the
+  end state, so Next round is never out of reach. Nothing is built under
+  `MediaQuery.disableAnimations`. Ported from the proposals' HTML (every piece a pure
+  function of its clock and a seed: `fx_core.dart`); `test/round_end_effects_test.dart`.
 - Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
   sizes itself to its children hands an unbounded width to its text, which then runs off a
   360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
@@ -282,6 +303,19 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   the player's own row and a bar towards 100, the button pinned with who deals next, and
   totals that climb, all in the existing theme. The badges of the lowest hand and the
   caller became icons so a row stays one line.
+- **The round end's overlays (2026-09-29, `feat/round-end-animations`).** The user picked
+  one of three proposals per moment (artifact XxPTAsHtJmAQwpA6vDc2Mo): A "Coup de foudre",
+  B "Coup de tampon", C "Surchauffe". They are ported as painters and positioned widgets over
+  the real round end, aimed at its widgets by `GlobalKey`s, rather than as a separate
+  screen, so the table they explain is the one left on screen. Played for every player,
+  unlike the confetti, since everyone at the table lives the moment. The overlays do not
+  block the table — a touch passes through and skips them — because a ZapZap and an
+  elimination back to back last about 4 s, longer than a player should wait for the
+  button. Every effect is computed from its own clock and a fixed seed instead of being
+  integrated frame by frame: the same frames on every device and in every test. The
+  tape's cross is `×`, not `✕`, which Roboto lacks. The bolt starts at the top of the round
+  end, under the app bar, which the body cannot paint over. Checked on rendered frames
+  (Roboto loaded in a throwaway widget test) at 360×740, French and Arabic.
 - **The game board (2026-09-23, `feat/flutter-game-board`).** One `GameProvider` per party,
   built by the screen like the lobby's, rather than an app-wide one: a board's state is one
   party's and dies with the screen. A refused *move* is a snack bar and the board stays,
