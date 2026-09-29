@@ -2,7 +2,7 @@
   "name": "zapzap",
   "version": "1.0.0",
   "private": true,
-  "description": "Root tooling only: Playwright, the headless browser fallback of .llmwiki/ParallelDelivery.md. The backend is zapzap-rust/, the clients frontend/ and frontend-flutter/.",
+  "description": "Root tooling only: Playwright, the headless browser fallback of .llmwiki/ParallelDelivery.md. The backend is zapzap-rust/, the client frontend-flutter/.",
   "license": "ISC",
   "repository": {
     "type": "git",

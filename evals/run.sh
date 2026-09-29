@@ -76,7 +76,7 @@ PY
 
 # Resolve a case id into: DIR (its files), PROMPT, SETUP_KIND, UNTOUCHED, SOURCE.
 # SETUP_KIND says what scripts/worktree_setup.sh prepares before the agent starts, so the
-# commit hook's gates can run: none, rust (cargo only) or all (npm ci, cargo, pub get).
+# commit hook's gates can run: none, rust (cargo only) or all (cargo, pub get).
 resolve() {
     local id="$1"
     SOURCE="" SETUP_KIND=none UNTOUCHED=fail
@@ -142,7 +142,7 @@ ALLOWED=(
     "Bash(cargo fmt --manifest-path zapzap-rust/Cargo.toml:*)"
     "Bash(cargo clippy --manifest-path zapzap-rust/Cargo.toml:*)"
     "Bash(cargo test --manifest-path zapzap-rust/Cargo.toml:*)"
-    "Bash(npm --prefix frontend run:*)" "Bash(dart format frontend-flutter/:*)"
+    "Bash(dart format frontend-flutter/:*)"
 )
 DENIED=(
     "Bash(git push:*)" "Bash(gh:*)" "Bash(git remote:*)" "Bash(git config:*)"
@@ -192,7 +192,7 @@ run_case() {
 
     local setup_flags=()
     case "$SETUP_KIND" in
-        rust) setup_flags=(--no-frontend --no-flutter) ;;
+        rust) setup_flags=(--no-flutter) ;;
         all) setup_flags=() ;;
     esac
 

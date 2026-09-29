@@ -3,7 +3,7 @@
 > Scope: what the Flutter board shows each turn (step, named button, hand value, suggestions,
 > ZapZap, felt, pile and deck, opponents), board motion and reduced motion, and the card
 > model, play rules and card widgets.
-> Related: [[FrontendFlutter]] · [[FlutterGameBoard]] · [[GameRules]] · [[Frontend]]
+> Related: [[FrontendFlutter]] · [[FlutterGameBoard]] · [[GameRules]]
 > Updated: 2026-09-29
 
 ## Facts
@@ -166,14 +166,14 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
 - Ids as the backend's (`GameRules`): 0-51 = suit `id ~/ 13` (spades, hearts, clubs,
   diamonds) × rank `id % 13 + 1` (Ace 1 .. King 13); 52 red joker, 53 black joker
   (`lib/models/card.dart`). Value = rank; joker 0, or 25 with `penalty: true`.
-- `analyzePlay(List<int>)` (`lib/utils/rules.dart`), ported from
-  `frontend/src/utils/validation.js` and checked against `GAME_RULES.md`: a single card; a
+- `analyzePlay(List<int>)` (`lib/utils/rules.dart`), ported from the removed React client's
+  `utils/validation.js` and checked against `GAME_RULES.md`: a single card; a
   same-rank group ≥ 2, jokers wild, all-joker groups valid (as the backend); a one-suit
   sequence ≥ 3, jokers filling gaps or extending an end, Ace low only, no K-A wrap, at most
   13 cards. It returns a `PlayType` and, when refused, a `PlayError` code that the UI turns
   into text with `playErrorMessage` — no message in `rules.dart`.
-- **Stricter than React:** a repeated id (`[c, c]`) is refused (`PlayError.duplicateCard`);
-  React and the Rust backend accept it ([[GameRules]]).
+- **A repeated id** (`[c, c]`) is refused (`PlayError.duplicateCard`), as the Rust backend
+  refuses it since 2026-09-24 ([[GameRules]]); the React client accepted it.
 - `isZapZapEligible`: hand ≤ 5 with jokers 0. Final scoring is not ported (the backend
   computes it); `counteractPenalty(activePlayers)` is, only to warn before a call (above).
 - Widgets: `PlayingCard` (height = width × 1.4, radius 5 % of width ≥ 2; a face always
@@ -205,8 +205,7 @@ mockups do. `test/game_turn_ux_test.dart` proves each item, one group per item.
   deck by Dmitry Fomin (Wikimedia Commons) — and `joker_red.svg` / `joker_black.svg`, David
   Bellot's LGPL SVG-cards jokers reframed into the faces' `0 0 360 540` frame (same outline,
   same scale for both, no `<use>`, `<text>` or `<style>`); rendered with `flutter_svg`,
-  stretched into the width × 1.4 box (`BoxFit.fill`). `frontend/public/joker-*.svg` are the
-  same bytes. Licence and the changes made: `frontend-flutter/THIRD_PARTY.md`. The 54 files
+  stretched into the width × 1.4 box (`BoxFit.fill`). Licence and the changes made: `frontend-flutter/THIRD_PARTY.md`. The 54 files
   weigh 1.32 MB after `svgo` (the jokers 31.6 and 24.5 KB); the twelve court cards are
   1.15 MB of it. `test/card_widgets_test.dart` pins the jokers' frame and pumps them beside a
   face at 38 and 80 px.

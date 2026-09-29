@@ -1,6 +1,6 @@
 # FrontendFlutter
 
-> Scope: the Flutter client in `frontend-flutter/` — Android app and PWA — its status, stack,
+> Scope: the Flutter client in `frontend-flutter/` — Android app and PWA, the only client — its status, stack,
 > layout, API configuration and API layer (client, errors, models, repositories), theme,
 > build and tests; the hub of the Flutter pages, one per sub-topic (below).
 > Related: [[FlutterAuth]] · [[FlutterRealtime]] · [[FlutterParties]] · [[FlutterGameBoard]] ·
@@ -17,9 +17,10 @@
   (`/history/:partyId`), the statistics (`/stats`), the account page (`/account`), the admin screen (`/admin`, admins only),
   a start-up splash and a not-found screen
   (`frontend-flutter/lib/router.dart`), over the API layer, the session and the real-time
-  channel (below), up to the end of the round and the end of the game (below). Nothing of
-  the React client ([[Frontend]]) is missing any more: Google sign-in is below, after
-  Authentication.
+  channel (below), up to the end of the round and the end of the game (below). **The only
+  client since 2026-09-29**: the React client it was ported from is removed, and its URLs
+  redirect to the PWA ([[Frontend]]). "React" on the Flutter pages names that reference
+  implementation, readable at `055c288` ([[Frontend]]).
 - **History and statistics are reached from the app-bar menu** of every signed-in screen
   (`ZapZapAppBar`, below) — the history, the game details and the statistics carry that
   bar too, with a back button; the deep links (`/app/history`, `/app/stats`) still work. An
@@ -111,7 +112,7 @@
 
 ### API layer (`frontend-flutter/lib/services/`, `models/`, `repositories/`)
 
-- **`ApiClient`** (`services/api_client.dart`), the counterpart of the React `api.js`:
+- **`ApiClient`** (`services/api_client.dart`), the port of the React `api.js`:
   `get`/`post`/`delete` to `ApiConfig.apiUri(path)`, JSON in and out, a `JsonMap` back,
   `ApiClient.defaultTimeout` 10 s. `token` (settable) is sent as `Authorization: Bearer`
   unless the call passes `authenticated: false` (login, register, Google, and the public
@@ -119,7 +120,7 @@
 - **401 → `onUnauthorized`** (settable callback): fires on a 401 to an *authenticated* call,
   before the `ApiException` is thrown. Unauthenticated calls never fire it, so a wrong
   password (401 `INVALID_CREDENTIALS`) logs nobody out. `AuthProvider` sets it to its
-  `logout`, and the router follows to login (the React client only clears, `api.js:34-38`).
+  `logout`, and the router follows to login (the React client only cleared it).
 - **`ApiException(status, code, message, details)`** (`services/api_exception.dart`) reads
   every error shape: `{error, code, details?}` (auth/party/game);
   `{success:false, error}` and `{error}` (admin on Rust, history, stats, bots) — `code` then
@@ -244,10 +245,10 @@ Moved to [[FlutterAndroidPwa]] (CI APK, release signing, keys, Google sign-in on
 
 ### Theme (`frontend-flutter/lib/utils/app_theme.dart`)
 
-Dark only, from `frontend/tailwind.config.js`: slate `#0f172a` (background), `#1e293b`
+Dark only, from the React client's Tailwind configuration: slate `#0f172a` (background), `#1e293b`
 (surfaces), `#334155`, `#475569` (outline); amber `#fbbf24` (primary), `#f59e0b`, `#d97706`;
 the table felt is Tailwind green-900 `#14532d` / green-800 `#166534`. Icons are Material
-(the React client uses lucide). The game board's felt has its own tokens: `feltCenter` `#1c7a45` /
+(the React client used lucide). The game board's felt has its own tokens: `feltCenter` `#1c7a45` /
 `feltEdge` `#0b3b1f` (its radial gradient), `feltFleckLight`/`feltFleckDark` (the texture),
 `feltWatermark`, and the rim's `rimLight` `#5b3a22` / `rimDark` `#2b170b` and `rimInlay`
 `#8a6a3a`; `table`/`tableLight` stay for the theme's `tertiary`.
@@ -342,6 +343,10 @@ project `.gitignore`.
   routing and the auth pull request only has to set it. Error text stays out of the UI:
   screens map `ApiException.code` to ARB strings.
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** This page lost its Node-vs-Rust comparisons (CORS, SSE, presence, shapes, the refusals the client pre-empts); the client code kept its Node-shape branches until refactor/flutter-drop-node-branches (2026-09-25), which checked each against `zapzap-rust/src/api/routes/*.rs` and `api/sse.rs` and dropped those Rust never reaches: the `isOwner` fallback on `ownerId`, the `winnerUserId` placement fallback, the JSON-string `handCards`, the unnamed SSE `message` and `userStatusChanged`, `NextRoundResult.isGoldenScore`/`enteringGoldenScore`, a `null` `roundScores`, a `join` without `playerIndex`, a leaderboard row without `averageScore`, and the old Rust party settings keys with the lobby's hand-size chip (`lobbyHandSizeChip`). The parsing kept for Rust answers before 2026-09-24 (list-shaped maps, bare indexes, RFC 3339 dates) was left alone. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
+- **The React client is removed (2026-09-29, chore/remove-react-client).** Every React route
+  had its Flutter one, `/account/delete` last (the account page, #179): the PWA became the
+  only web client, and the old URLs answer a 301 to it ([[Deployment]]). Web players sign in
+  once more, since the PWA keeps its token under `flutter.token` (accepted by the user).
 - **Wide screens (2026-09-29, `feat/flutter-wide-screens`).** With React to be removed, the
   PWA becomes every PC player's client, and nobody had looked at it past a phone: on a
   1920 px monitor the lists, cards and buttons stretched edge to edge, and at 1366x768 the

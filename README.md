@@ -1,6 +1,6 @@
 # ZapZap 🃏
 
-A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vite frontend, a Flutter client in the making (Android + PWA), and a Rust simulation engine for bot training. Production runs the Rust backend. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
+A real-time multiplayer card game: a Rust backend (axum + SQLite), a Flutter client (Android + a PWA served under `/app/`), and a Rust simulation engine for bot training. Production runs the Rust backend. ZapZap is a rummy-style game where players race to minimize their hand value and call "ZapZap" when they reach 5 points or less.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![API Version](https://img.shields.io/badge/API-v2.0-blue.svg)](.llmwiki/Api.md)
@@ -14,20 +14,20 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 - 🃏 **Rummy-Style Gameplay**: Play sequences, pairs, and strategic card combinations
 - ⚡ **ZapZap Mechanic**: Call ZapZap when your hand is ≤5 points to win the round
 - 🎭 **Counteract System**: Opponents can counteract your ZapZap if they have equal/lower points
-- 🎨 **Visual Card Interface**: Beautiful card animations using deck-of-cards library
+- 🎨 **Visual Card Interface**: SVG card faces and animated plays on a felt table
 - 📊 **Live Updates**: Real-time game state synchronization across all players
 
 ### Technical Features
 - 🏗️ **Layered backend**: domain, application (use cases), infrastructure and API layers in `zapzap-rust/`
-- 🔐 **JWT Authentication**: Secure token-based user management; a player deletes their own
-  account from either client, or from the web at `/account/delete`, and in the Flutter
-  client's account page also changes their username and password
+- 🔐 **JWT Authentication**: Secure token-based user management; in the Flutter client's
+  account page (on the web, `/account/delete` leads there too) a player changes their
+  username and password, or deletes their account
 - 🔏 **Privacy policy**: [`privacy_policy.md`](privacy_policy.md), served at `/privacy`
   (rendered by `scripts/build_privacy_page.py` into `nginx/privacy.html`)
 - 💾 **Database Persistence**: SQLite for game state and user data
 - 🎪 **Multi-Party Support**: Multiple concurrent games
 - 📡 **RESTful API**: Well-designed API with proper HTTP methods
-- ✅ **Tested**: Rust unit and API integration tests, vitest, Flutter tests and an end-to-end round, all in CI
+- ✅ **Tested**: Rust unit and API integration tests, Flutter tests and an end-to-end round, the proxy's routes, all in CI
 
 ---
 
@@ -36,7 +36,7 @@ A real-time multiplayer card game: a Rust backend (axum + SQLite), a React + Vit
 ### Prerequisites
 
 - **Rust**, the toolchain `zapzap-rust/rust-toolchain.toml` pins (rustup installs it)
-- **Node.js** and **npm**, for the React frontend (`frontend/`)
+- **Flutter** 3.47.2, for the client (`frontend-flutter/`, [`.llmwiki/FrontendFlutter.md`](.llmwiki/FrontendFlutter.md))
 
 ### Installation
 
@@ -56,8 +56,8 @@ cd zapzap
 # The backend (JWT_SECRET is required)
 cd zapzap-rust && JWT_SECRET=$(openssl rand -hex 32) cargo run
 
-# The React frontend, in another shell: http://localhost:5173, proxies /api to :9999
-cd frontend && npm ci && npm run dev
+# The Flutter web client, in another shell, against that backend
+cd frontend-flutter && flutter pub get && flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9999
 ```
 
 The backend listens on **port 9999** by default (`PORT`).
@@ -115,15 +115,14 @@ The application will be available at **http://localhost** (port 80).
 
 ### Docker Services
 
-The Docker setup includes four services:
+The Docker setup includes three services:
 
 - **nginx** (Reverse Proxy) - Routes requests to appropriate services
-  - Port 80 → Frontend, Flutter PWA and API; serves the privacy policy at `/privacy` itself
+  - Port 80 → Flutter PWA and API; serves the privacy policy at `/privacy` itself, and
+    redirects `/` and the removed React client's other URLs to the PWA under `/app/`
 - **backend** (Rust API, `zapzap-rust/`) - axum API server, built with the AWS Bedrock client
   of the LLM bots (`CARGO_FEATURES=bedrock`)
   - Internal port 9999, database `./data/zapzap.db` mounted at `/app/data`
-- **frontend** (React App) - Vite-built React application
-  - Internal port 80, served at `/`
 - **frontend-flutter** (Flutter PWA) - the Flutter web bundle, built with `--base-href /app/`
   - Internal port 80, served at `/app/`
 
@@ -138,7 +137,7 @@ JWT_SECRET=your-secure-random-string-here
 # Optional
 RUST_LOG=info
 PROXY_PORT=80
-GOOGLE_OAUTH_CLIENT_ID=...          # Google sign-in; VITE_GOOGLE_OAUTH_CLIENT_ID for the clients
+GOOGLE_OAUTH_CLIENT_ID=...          # Google sign-in; VITE_GOOGLE_OAUTH_CLIENT_ID for the PWA build
 BOT_ACTION_DELAY_MS=1000
 ALLOWED_ORIGINS=https://a.example   # CORS origins, comma-separated; unset: every origin (dev).
                                     # docker-compose.prod.yml defaults it to the production domain
@@ -232,7 +231,7 @@ docker-compose up -d
 
 ### Deploying to production
 
-Production does not build from a clone: `scripts/deploy_nas.sh` builds the four images from a
+Production does not build from a clone: `scripts/deploy_nas.sh` builds the three images from a
 clean `HEAD` on the dev machine, tags them with the commit's 12-character sha and `latest`, pushes them to the LAN
 registry, and has the NAS deploy directory pull and start them from
 `docker-compose.prod.yml` (registry images only), waiting until the site answers.
@@ -324,8 +323,7 @@ For complete rules, see the [Game Rules](#-complete-game-rules) section below.
 | Part | Path | Stack | Status |
 |---|---|---|---|
 | Backend | `zapzap-rust/` | Rust 1.92 (pinned), axum, sqlx/SQLite, JWT | **runs in production** (since 2026-09-24) |
-| Frontend | `frontend/` | React, Vite, react-router | deployed |
-| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n in ten languages (fr, en, es, pt, de, ru, ja, hi, id, ar) | login, register (password or Google), the party list, create-party, the lobby, the game board, a rules sheet, an offline example game (tutorial), history and statistics, the admin screen (users, parties, statistics); Android (debug) + PWA deployed under `/app/` |
+| Flutter client | `frontend-flutter/` | Flutter 3.47 (Dart 3.13), Provider, go_router, gen-l10n in ten languages (fr, en, es, pt, de, ru, ja, hi, id, ar) | the only client: login, register (password or Google), the party list, create-party, the lobby, the game board, a rules sheet, an offline example game (tutorial), history and statistics, the account page, the admin screen (users, parties, statistics); Android + PWA deployed under `/app/` |
 | Native engine | `native/` | Rust cdylib (napi), burn | offline bot training |
 
 The Flutter client, from `frontend-flutter/`:
@@ -371,9 +369,9 @@ The detail — module layout, routes, bots, SSE, deployment — lives in the pro
 
 `.github/workflows/ci.yml` runs on every pull request: a `scope` job picks, from the changed
 paths (`scripts/ci_scope.sh`), which of these run — Rust backend (fmt, clippy `-D warnings`,
-unit and API integration tests), native engine (fmt, tests), frontend (lint, vitest, build), images (the production
-compose's Rust backend with the Bedrock feature, started until its health check passes; both
-frontends), hooks (the Claude Code hooks self-test, and the self-tests of the deploy script, the wiki lint and the agent evals' checks), Flutter client (analyze, tests, web, debug and
+unit and API integration tests), native engine (fmt, tests), images (the production
+compose's Rust backend with the Bedrock feature, started until its health check passes; the
+Flutter PWA; the proxy, its old React URLs redirected), hooks (the Claude Code hooks self-test, and the self-tests of the deploy script, the wiki lint and the agent evals' checks), Flutter client (analyze, tests, web, debug and
 release apk builds; the debug APK is the run's `app-debug` artifact, kept 14 days), Flutter end to end (a round against the Rust backend). `master` accepts only
 squash-merged pull requests with green checks. What CI does not run yet, and why:
 [`.llmwiki/KnownLimits.md`](.llmwiki/KnownLimits.md).
@@ -391,8 +389,8 @@ cargo run -- seed --demo                        # the bot accounts and the demo 
 cargo fmt && cargo clippy --all-targets -- -D warnings
 cargo test
 
-# Frontend (frontend/)
-npm run dev && npm run lint && npx vitest run && npm run build
+# Flutter client (frontend-flutter/)
+dart format lib test && flutter analyze && flutter test
 ```
 
 ### API Endpoints
@@ -428,7 +426,6 @@ The complete list, with auth and failure codes: [`.llmwiki/Api.md`](.llmwiki/Api
 ```bash
 (cd zapzap-rust && cargo test)                  # unit + API integration tests
 (cd native && cargo test)                       # the simulation engine
-(cd frontend && npx vitest run)                 # the React client
 (cd frontend-flutter && flutter test)           # the Flutter client
 scripts/flutter_e2e.sh                          # a round, Flutter client against the Rust backend
 ```
@@ -756,7 +753,7 @@ Contributions are welcome! Please follow these steps:
 - ✅ Write tests for new features
 - ✅ Keep the backend's layers (domain, application, infrastructure, API)
 - ✅ Use meaningful commit messages ([Conventional Commits](https://www.conventionalcommits.org/))
-- ✅ Document public items (Rust doc comments, JSDoc in the frontend)
+- ✅ Document public items (Rust and Dart doc comments)
 - ✅ Update documentation
 
 ---
@@ -771,7 +768,6 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 - **[axum](https://github.com/tokio-rs/axum)** - Web framework of the backend
 - **[SQLite](https://www.sqlite.org/)** - Embedded database
-- **[deck-of-cards](https://www.npmjs.com/package/deck-of-cards)** - Visual card animations (React client)
 - **[Flutter](https://flutter.dev/)** - The Android and PWA client
 
 ---

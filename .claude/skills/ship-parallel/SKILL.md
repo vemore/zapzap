@@ -81,7 +81,7 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
    The go-ahead covers the loop, merges and deploys included; it does not stand in for lane
    C's go-ahead in §3.
 
-Four agents at a time at most: each worktree costs an `npm ci` and cargo builds.
+Four agents at a time at most: each worktree costs a `flutter pub get` and cargo builds.
 
 ## 2. Launch one agent per pull request
 
@@ -117,7 +117,7 @@ stay out of those files; if you cannot, say so in your report.
 
 Rules:
 1. First: `git fetch --prune origin && git switch -c <type>/<topic> origin/master`, then
-   `scripts/worktree_setup.sh` (--no-frontend or --no-rust when a side is untouched).
+   `scripts/worktree_setup.sh` (--no-rust or --no-flutter when a side is untouched).
 2. Read CLAUDE.md, .llmwiki/INDEX.md and the pages the change touches.
 3. Implement, with tests. Update the wiki pages and README.md the change falsifies, in the
    same pull request.
@@ -228,11 +228,11 @@ After **each** merge, so a regression points at one pull request:
 
 | Paths changed | Do |
 |---|---|
-| `zapzap-rust/`, `frontend/`, `frontend-flutter/`, `nginx/`, `docker-compose.prod.yml` | `deploy` skill (`scripts/deploy_nas.sh`, run from the main checkout on the merged `master`) — production runs the Rust backend (`.llmwiki/Deployment.md`) |
+| `zapzap-rust/`, `frontend-flutter/`, `nginx/`, `docker-compose.prod.yml` | `deploy` skill (`scripts/deploy_nas.sh`, run from the main checkout on the merged `master`) — production runs the Rust backend (`.llmwiki/Deployment.md`) |
 | `native/`, `data/` (the Rust backend reads none of its tracked files), root `package*.json`, `docker-compose.yml` (local and CI only), docs, `.claude/`, `.github/`, `scripts/` | nothing to deploy |
 
-Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, the frontend
-loads, and the path the pull request changed, driven for real (Playwright). Record it.
+Then smoke-test production: `https://zapzap.ombivince.synology.me/api/health`, `/` redirects
+to `/app/` and the PWA loads, and the path the pull request changed, driven for real (Playwright). Record it.
 
 **When the deploy cannot run** — §1.5 said so, or the `deploy` skill cannot reach the NAS or
 the registry — a merge whose paths call for a deploy is **merged, not deployed**, never a

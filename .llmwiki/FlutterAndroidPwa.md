@@ -3,7 +3,7 @@
 > Scope: the Flutter client's two targets: the Android app (CI APK, release signing, keys, OAuth
 > clients, manifest, icons, system bars) and the PWA image (Dockerfile, nginx, manifest).
 > Related: [[FrontendFlutter]] · [[FlutterAuth]] · [[Release]] · [[Deployment]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-27
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -144,7 +144,7 @@
   and `flutter build web --release --base-href /app/ --no-web-resources-cdn
   --dart-define=GOOGLE_CLIENT_ID=…`.
 - **`ARG GOOGLE_CLIENT_ID`**, empty by default: both compose files pass the `.env`'s
-  `VITE_GOOGLE_OAUTH_CLIENT_ID` (the React image's own build argument), so production shows
+  `VITE_GOOGLE_OAUTH_CLIENT_ID` (named after the removed React image's build argument), so production shows
   the Google button on the same, already authorised origin; a build without it (CI's
   `image` job) has no button. `test/pwa_build_config_test.dart` pins the ARG and the two
   compose files.

@@ -3,7 +3,7 @@
 > Scope: the Claude Code hooks that enforce project rules mechanically, what each refuses and
 > on what evidence, and what they do not cover.
 > Related: [[ParallelDelivery]] · [[Testing]] · [[Documentation]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -15,7 +15,7 @@
 | Event | Matcher | Script | What it does |
 |---|---|---|---|
 | `PreToolUse` | `Bash` | `guard-bash.sh` | Refuses a set of commands outright; before a commit, refuses what must not be committed and runs the gates |
-| `SessionStart` | — | `session-start.sh` | Worktrees in flight, branches whose remote is gone, PRs merged into a non-master base, the open `wip/` counts, whether the branch is safe; `frontend/node_modules` missing |
+| `SessionStart` | — | `session-start.sh` | Worktrees in flight, branches whose remote is gone, PRs merged into a non-master base, the open `wip/` counts, whether the branch is safe |
 | `Stop` | — | `require-pull-request.sh` | Refuses to end the turn while commits have no pull request, or while it is red or closed unmerged |
 | `SubagentStop` | — | `require-pull-request.sh` | The same for an agent, judged on its worktree's branch |
 
@@ -38,7 +38,7 @@ the repository a path remote leads to). A throwaway repository an agent builds u
 scratchpad to test a script is not that, and pushing to or committing on its master passes.
 A remote or directory the guard cannot tell (`$VAR`, `cd $D`) counts as the project.
 
-`scripts/hooks_selftest.sh` exercises all of it — 237 cases in sandbox repositories, with a
+`scripts/hooks_selftest.sh` exercises all of it — 232 cases in sandbox repositories, with a
 stubbed `gh`, `cargo`, `npm`, `flutter` and `dart` — plus `scripts/cleanup_local.sh`, the
 `flutter pub get` of `scripts/worktree_setup.sh` (and that a failed one clears its setup
 marker) and its `--deploy` links and `scripts/generate_keystore.sh` (stub `keytool`: writes to `$HOME`,
@@ -75,9 +75,8 @@ under `--amend`, plus trailing pathspecs and the changed files under them; durin
 |---|---|
 | `zapzap-rust/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` (target dir shared with the main checkout; a failure touches `zapzap-rust/src/lib.rs` and runs clippy once more before refusing — see below) |
 | `native/` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (no `--locked`: `native/Cargo.lock` is untracked; target dir shared with the main checkout; the same one retry, touching `native/src/lib.rs`) |
-| `frontend/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `npm run lint`, then `npm run build`; no `frontend/node_modules` → refusal naming `npm ci --prefix <tree>/frontend` |
 | `frontend-flutter/`, a file the commit leaves in the tree and not a `.md` (a README edit or a deletion runs none) | `flutter pub get --offline`, `flutter gen-l10n` (the generated l10n is not committed and goes stale), `dart format --output=none --set-exit-if-changed lib test` (plus `integration_test` when it exists; the whole tree, not only the staged files, so drift another commit let through is caught — under a second; the refusal names `dart format lib test`), `flutter analyze`; no `flutter` on PATH or no `frontend-flutter/.dart_tool` → refusal naming `cd <tree>/frontend-flutter && flutter pub get`; a `pubspec.lock` the pub get rewrote and that is left unstaged (not under `-a`) → refusal naming `git add` |
-| anything else (docs, `scripts/`, the root `package.json`) | none |
+| anything else (docs, `scripts/`, the root `package.json`, the removed frontend/) | none |
 
 **The clippy retry.** Worktrees build into the main checkout's `target/` so a fresh worktree's
 first commit does not rebuild every dependency, and that shared directory can hold a library
@@ -141,6 +140,7 @@ ship-parallel agent prompt says so.
   branched from `master` once its base merged, so the hook keeps counting from
   `origin/master` and no flag was added.
 - **Production runs the Rust backend (2026-09-24).** `deploy.sh` refuses a compose file `docker-compose` cannot read — the Rust service's `JWT_SECRET` has no default — before building, printing compose's reason; three cases pin it. The Node backend, now the rollback, keeps having no pre-commit gate.
+- **The React client is removed (2026-09-29, chore/remove-react-client).** Its gate (`npm run lint`, `npm run build`, the `node_modules` refusal), the session opener's frontend/node_modules line and `worktree_setup.sh --no-frontend` went with it; the self-test's six React gate cases became one, a frontend/ path running no gate. The client's history is in [[Frontend]].
 - **The Node backend is removed (2026-09-25, chore/remove-node-backend).** It had no gate, so the table only loses its `src/` row; the self-test's "no gate" case now stages `scripts/train-native.js`, and its OAuth-secret case a root `client_secret_*.json`. Its code can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:src/api/server.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds it, the former rollback target).
 - **`deploy.sh` is removed (2026-09-25, feat/deploy-through-registry).** Its 45 cases leave `scripts/hooks_selftest.sh` with it; `scripts/deploy_nas.sh`, which replaces it, has its own table (`scripts/deploy_nas_selftest.sh`, 158 cases), run by the same `hooks` CI job. `worktree_setup.sh --deploy` also links `scripts/deploy.env`, with three cases.
 - **A retry, not a target directory per worktree (2026-09-27, fix/hook-clippy-retry).** The stale shared target of #79 had two fixes: a target directory per worktree (every fresh worktree rebuilds all dependencies, past the hook's timeout) or one retry after `touch src/lib.rs`. The user chose the retry (2026-09-25); it covers `native/` too, which shares its target the same way. Twelve self-test cases: a stub `cargo` whose clippy fails until the committing tree's `src/lib.rs` is newer than a marker passes on the retry for both crates, with two clippy runs and the file's content unchanged; a real error is refused after exactly two runs, saying so; a green clippy runs once and leaves the mtime alone.

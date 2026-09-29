@@ -22,7 +22,7 @@ is half-done there. Branch off `origin/master`:
 ```bash
 git fetch --prune origin
 git worktree add ../zapzap-release-<x.y.z> -b chore/release-<x.y.z> origin/master
-scripts/worktree_setup.sh ../zapzap-release-<x.y.z> --no-frontend
+scripts/worktree_setup.sh ../zapzap-release-<x.y.z>
 ln -s /home/vemore/workspace/zapzap/frontend-flutter/android/key.properties \
       ../zapzap-release-<x.y.z>/frontend-flutter/android/key.properties
 cd ../zapzap-release-<x.y.z>

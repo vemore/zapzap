@@ -44,32 +44,15 @@ services:
       retries: 3
       start_period: 10s
 
-  # Frontend Service (uses parent frontend)
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
-    container_name: zapzap-frontend
-    restart: unless-stopped
-    networks:
-      - zapzap-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
   # Flutter PWA Service (served under /app/ by the proxy, uses parent frontend-flutter)
   frontend-flutter:
     build:
       context: ../frontend-flutter
       dockerfile: Dockerfile
       args:
-        # The web OAuth client id, the React build's own (not a secret); empty → no
-        # Google button (frontend-flutter/Dockerfile, .llmwiki/FrontendFlutter.md).
+        # The web OAuth client id (not a secret; the key keeps the name the removed React
+        # build gave it); empty → no Google button (frontend-flutter/Dockerfile,
+        # .llmwiki/FrontendFlutter.md).
         - GOOGLE_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
     container_name: zapzap-frontend-flutter
     restart: unless-stopped
@@ -92,13 +75,11 @@ services:
     volumes:
       - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     # No condition on frontend-flutter, deliberately: a PWA that fails its health check
-    # would otherwise hold zapzap-proxy in Created and take the whole site down, since
-    # the deploy has already stopped the old containers. The /app/ location resolves the
-    # PWA per request instead (nginx/nginx.conf), so a broken PWA is a 502 on /app/ only.
+    # would otherwise hold zapzap-proxy in Created and take /api/ down with the web client.
+    # The /app/ location resolves the PWA per request instead (nginx/nginx.conf), so a
+    # broken PWA is a 502 on the web alone.
     depends_on:
       backend:
-        condition: service_healthy
-      frontend:
         condition: service_healthy
     networks:
       - zapzap-network

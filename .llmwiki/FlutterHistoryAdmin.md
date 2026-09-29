@@ -2,15 +2,16 @@
 
 > Scope: the Flutter history, game details and statistics screens, and the admin screen (users,
 > parties, statistics tabs).
-> Related: [[FrontendFlutter]] · [[FlutterParties]] · [[Api]] · [[Frontend]]
+> Related: [[FrontendFlutter]] · [[FlutterParties]] · [[Api]]
 > Updated: 2026-09-29
 
 ## Facts
 
 ### History and statistics
 
-The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx` and
-`components/Stats/Statistics.jsx`. Three routes, all behind the session:
+The port of the React client's `components/History/GameHistory.jsx`, `GameDetails.jsx` and
+`components/Stats/Statistics.jsx` (removed on 2026-09-29, [[Frontend]]; "React" below names
+that reference). Three routes, all behind the session:
 `/history`, `/history/:partyId` (`AppRoutes.gameDetails(partyId)`) and `/stats`.
 
 - **A deleted player** is shown « Joueur supprimé » / "Deleted player" (`playerName`,
@@ -76,8 +77,8 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   name, strategy and colour and falls back to the raw name, so a new bot kind shows rather
   than breaks.
 - **My row in the leaderboard**: `LeaderboardRow.isCurrentUser` from
-  `AuthProvider.user?.id`, as React compares it against its own `useAuth()` user
-  (`frontend/src/components/Stats/Statistics.jsx:8`, `:194`).
+  `AuthProvider.user?.id`, as React compared it against its own `useAuth()` user
+  (`Statistics.jsx`).
 - **Formats** (`utils/date_format.dart`): dates through `intl` in
   `Localizations.localeOf(context)` (React hard-codes `fr-FR`) — the models already turned
   the backend's Unix seconds into UTC `DateTime`, so only `toLocal()` is left; the clock
@@ -108,8 +109,9 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
 
 ### Admin (`screens/admin_screen.dart`, `widgets/admin_*.dart`)
 
-The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayout}.jsx` and
-`Users/UserList.jsx`, `Parties/AdminPartyList.jsx`, `Statistics/AdminStats.jsx` ([[Frontend]]).
+Ported from the React client's `components/Admin/{AdminRoute,AdminLayout}.jsx` and
+`Users/UserList.jsx`, `Parties/AdminPartyList.jsx`, `Statistics/AdminStats.jsx` (removed on
+2026-09-29, [[Frontend]]).
 
 - **Routes** (`lib/router.dart`): `/admin` opens the Users tab; `/admin/users`,
   `/admin/parties`, `/admin/statistics` (`AppRoutes.adminTab(AdminTab)`) open that tab, any

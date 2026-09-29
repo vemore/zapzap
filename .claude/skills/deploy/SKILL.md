@@ -1,14 +1,15 @@
 ---
 name: deploy
-description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the four images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged with the 12-character sha, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>` (the compose file that tag ran with), and `--build-only`. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend/, frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
+description: Deploy ZapZap to production on the NAS (192.168.1.147) — scripts/deploy_nas.sh builds the three images on the dev machine, pushes them to the LAN registry 192.168.1.25:5050 tagged with the 12-character sha, and the NAS deploy directory /home/vemore/docker/zapzap (no git clone) pulls and starts them; the health wait, the checks through the public URL, logs, `--rollback <sha>` (the compose file that tag ran with), and `--build-only`. Use after a merge that changed zapzap-rust/ (the Rust backend production runs), frontend-flutter/, nginx/ or docker-compose.prod.yml, when rolling back a bad deploy, or when diagnosing the live service. Triggers: "déploie", "deploy", "mets en prod", "push to prod", "rollback", "logs de prod", "le site est down".
 ---
 
 # Deploying to the NAS
 
-Facts, and why it works this way: `.llmwiki/Deployment.md`. Production runs four containers
+Facts, and why it works this way: `.llmwiki/Deployment.md`. Production runs three containers
 from `docker-compose.prod.yml`: the **Rust** backend (`zapzap-backend`, built with
-`CARGO_FEATURES=bedrock`), the React client on `/`, the Flutter PWA on `/app/` and the proxy
-(`zapzap-proxy`, `nginx/nginx.conf` baked in). **Nothing is built on the NAS and it holds no
+`CARGO_FEATURES=bedrock`), the Flutter PWA on `/app/` and the proxy (`zapzap-proxy`,
+`nginx/nginx.conf` baked in), which redirects `/` and the removed React client's other URLs
+to the PWA. **Nothing is built on the NAS and it holds no
 clone**: `scripts/deploy_nas.sh` builds on the dev machine, pushes to the registry, and the
 NAS pulls.
 
@@ -16,7 +17,7 @@ NAS pulls.
 |---|---|
 | NAS | `ssh vemore@192.168.1.147`; `/usr/bin/docker` and Compose **v2** as `docker compose` (**5.5.1**) since 2026-09-28 — there is no `docker-compose` binary any more, and the ssh PATH needs no prefix. What v2 changes: `.llmwiki/Deployment.md` § Which Compose |
 | Deploy directory | `/home/vemore/docker/zapzap`: `compose.yaml` (written by the script), `.env` (the secrets — **never print it, never copy it off the NAS**), `data/` (`zapzap.db`, `bot-strategies/`, backups) |
-| Registry | `192.168.1.25:5050`, authenticated; images `zapzap-backend`, `zapzap-frontend`, `zapzap-frontend-flutter`, `zapzap-proxy`, each tagged with the first 12 characters of the sha and `latest` |
+| Registry | `192.168.1.25:5050`, authenticated; images `zapzap-backend`, `zapzap-frontend-flutter`, `zapzap-proxy`, each tagged with the first 12 characters of the sha and `latest` |
 | Configuration | `scripts/deploy.env` (gitignored; from `scripts/deploy.env.example`): `REGISTRY`, `NAS_SSH`, `NAS_DEPLOY_DIR`, `PUBLIC_URL`; the Google client id comes from the repository's `.env` |
 
 Every command on the NAS by hand uses the project name the script uses:
@@ -53,7 +54,7 @@ gone, and production's `.env` holds only keys the Rust stack reads. How it went:
 - The commit to deploy is on `origin/master` and its CI is green (`gh run list --branch
   master --limit 1`), and the checkout you deploy from is **on that commit and clean**: the
   script refuses a modified tracked file, and an untracked one in a build context
-  (`zapzap-rust/`, `frontend/`, `frontend-flutter/`, `nginx/`), before building anything.
+  (`zapzap-rust/`, `frontend-flutter/`, `nginx/`), before building anything.
   `git switch master && git pull --ff-only` in the main checkout.
 - **Note the rollback target**: what production runs now.
 
@@ -67,9 +68,13 @@ gone, and production's `.env` holds only keys the Rust stack reads. How it went:
   (the last 10) — what a rollback restores. The script also prints the tag it replaces.
 - Registry login on the dev machine: `docker login 192.168.1.25:5050` if the last push was
   refused.
-- Disk on the NAS: each deploy pulls four images (the backend's is the largest) and keeps the
+- Disk on the NAS: each deploy pulls three images (the backend's is the largest) and keeps the
   previous tags, which is what makes a rollback a pull-free restart. Prune old tags now and
-  then, never the last two deploys': `docker images | grep 192.168.1.25:5050/zapzap`.
+  then, never the last two deploys': `docker images | grep 192.168.1.25:5050/zapzap`. The
+  `zapzap-frontend` images (the React client, removed 2026-09-29) can all go once no
+  rollback target predates that day; they are tagged, so `docker image prune` keeps them —
+  remove them by tag: `docker images --format '{{.Repository}}:{{.Tag}}' | grep
+  '/zapzap-frontend:' | xargs -r docker rmi`.
 
 The script checks the rest itself, on the NAS, before building: the deploy directory, its
 `.env`, `data/zapzap.db`, and that **uid 1000** (the backend image's user) owns `data/`, the
@@ -86,9 +91,9 @@ In order, stopping at the first failure:
 1. configuration (`REGISTRY`, `NAS_SSH`, `NAS_DEPLOY_DIR`, each named when missing), a clean
    tree, the Google client id;
 2. the NAS check above, **before** a build of several minutes;
-3. four `docker build`s of HEAD, each tagged with the first 12 characters of the sha and
+3. three `docker build`s of HEAD, each tagged with the first 12 characters of the sha and
    `latest`, labelled with the full revision; a refusal if the backend image has no `wget`
-   (its health check); four pushes of each tag;
+   (its health check); three pushes of each tag;
 4. `docker-compose.prod.yml` sent to the NAS as `compose.yaml.next`, the registry and the tag
    written in;
 5. on the NAS: the Compose it has — `docker compose`, else `docker-compose`, printed as
@@ -99,8 +104,8 @@ In order, stopping at the first failure:
    file;
 6. `down --remove-orphans` **with the running compose file**; only once it succeeded,
    `compose.yaml` → `compose.yaml.prev`, `.next` → `compose.yaml` (and a copy in `composes/`);
-   `up -d`, and **the health wait**: `backend`, `frontend` and `nginx` healthy and
-   `/api/health` 200 within 90 s; then a 60 s grace for `frontend-flutter`.
+   `up -d`, and **the health wait**: `backend`, `frontend-flutter` and `nginx` healthy and
+   `/api/health` 200 within 90 s; then a 60 s grace for any other service (none today).
 
 `scripts/deploy_nas.sh --build-only` stops after the pushes: it needs only `REGISTRY` and
 never contacts the NAS.
@@ -122,15 +127,18 @@ never contacts the NAS.
 - **A failing `down`, a failing `up -d`, or an essential service not healthy in 90 s are
   outages**, and the script says so: it names each container with its state, prints its
   last 30 log lines, and names the rollback command with the previous tag. With Compose v2
-  an unhealthy `backend` or `frontend` fails `up -d` itself (the proxy's `depends_on` health
+  an unhealthy `backend` fails `up -d` itself (the proxy's `depends_on` health
   condition), leaving `zapzap-proxy` in `Created`: the same report, under `START FAILED`. A failing `down`
   immediately restarts the compose file that was running — never the new, unchecked images. `up -d` returning 0 is not success: a container crash-looping
   under `restart: unless-stopped` satisfies it.
-- **`frontend-flutter` is deliberately not essential**: nginx resolves it per request, so an
-  unhealthy PWA is a 502 on `/app/` and nothing else. The script warns, says a rollback is
-  optional, ends with `⚠ Deployed <sha>, DEGRADED: …` and exits 2. Do not roll back for it by
-  reflex. If `docker ps -a` ever shows `zapzap-proxy` in `Created`,
-  `docker start zapzap-proxy` restores `/` and `/api/` at once.
+- **`frontend-flutter` is essential since the React client went (2026-09-29)**: it is the
+  only web client, so an unhealthy PWA is an outage for the web (exit 1, roll back), though
+  nginx resolves it per request and `/api/` — the Android app — keeps serving. A service
+  outside `ESSENTIAL_SERVICES` and the proxy's `depends_on` (none today) only warns: the
+  script says a rollback is optional, ends with `⚠ Deployed <sha>, DEGRADED: …` and exits 2.
+  A rollback to a compose file from before 2026-09-29 is not that case: its proxy waits on
+  the React client's `frontend`, so an unhealthy one fails `up -d` (`START FAILED`, exit 1). If `docker ps -a` ever shows `zapzap-proxy` in
+  `Created`, `docker start zapzap-proxy` restores `/api/` and `/app/` at once.
 - **An ssh drop mid-deploy** exits 1 saying what production runs is unknown: look
   (`docker ps -a` on the NAS) before anything else.
 
@@ -141,7 +149,10 @@ never contacts the NAS.
 
 ```bash
 curl -fsS https://zapzap.ombivince.synology.me/api/health
-curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/
+# The removed React client's URLs: relative redirects to the PWA (`/` a 302, the rest 301), query kept.
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://zapzap.ombivince.synology.me/
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' 'https://zapzap.ombivince.synology.me/party/abc?x=1'
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://zapzap.ombivince.synology.me/account/delete
 # The Flutter PWA: the page, a deep link (the SPA fallback), and the manifest.
 curl -fsS https://zapzap.ombivince.synology.me/app/ | grep -o '<base href="/app/">'
 curl -fsS -o /dev/null -w '%{http_code}\n' https://zapzap.ombivince.synology.me/app/parties
@@ -150,7 +161,9 @@ ssh vemore@192.168.1.147 'docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}
 ssh vemore@192.168.1.147 'docker logs --tail 50 zapzap-backend'
 ```
 
-The four containers run `192.168.1.25:5050/zapzap-*:<the sha deployed>` and are `healthy`.
+The three containers run `192.168.1.25:5050/zapzap-*:<the sha deployed>` and are `healthy`;
+the redirects answer `302 https://zapzap.ombivince.synology.me/app/`, `301 …/app/parties/abc?x=1`
+and `301 …/app/account`.
 The backend logs are the Rust ones (`RUST_LOG`, `info` by default): a `Starting ZapZap backend
 on 0.0.0.0:9999` line, and `AWS Bedrock LLM service initialized` when the LLM bots are on.
 
@@ -191,7 +204,7 @@ the bot quietly playing like Hard — means the LLM service is broken or off
 (`AWS Bedrock LLM service initialized` missing at start-up). The site still serves: fix it in
 a new pull request, not by a rollback, unless the user wants the LLM bots back at once.
 
-All four containers `healthy`, health answers 200, `/` still serves the React client, `/app/`
+All three containers `healthy`, health answers 200, `/` answers a 302 to `/app/`, `/app/`
 carries the `/app/` base href, `/app/parties` answers 200, no error at startup. Then drive
 the path the change touched in a browser (Playwright on
 `https://zapzap.ombivince.synology.me/`); for the PWA, sign in at `/app/` and check Chrome

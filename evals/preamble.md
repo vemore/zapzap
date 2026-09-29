@@ -15,7 +15,7 @@ one command per call from the worktree root, as plain `git <subcommand> ...` (no
 `git -C`, no `&&` or `;` chains): `git status|diff|log|show|add|mv|rm|commit|rev-parse|
 ls-files|grep`, `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `find`, `sort`, `jq`, `date`,
 `scripts/wip.sh list|themes`, `cargo fmt|clippy|test --manifest-path zapzap-rust/Cargo.toml`,
-`npm --prefix frontend run lint|build|test`, `dart format frontend-flutter/...`. Anything
+`dart format frontend-flutter/...`. Anything
 else is denied without a prompt. The commit hook still runs its gates on `git commit`.
 
 The task:

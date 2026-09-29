@@ -121,7 +121,7 @@ pub struct PartyInfo {
     pub invite_code: String,
     pub visibility: String,
     pub status: String,
-    /// The stored settings, JSON-encoded as Node sends them (the React admin parses them)
+    /// The stored settings, JSON-encoded as Node sends them (the admin client parses them)
     #[sqlx(rename = "settings_json")]
     pub settings: String,
     pub current_round_id: Option<String>,
