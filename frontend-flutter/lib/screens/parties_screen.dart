@@ -10,6 +10,7 @@ import '../providers/sse_provider.dart';
 import '../repositories/party_repository.dart';
 import '../router.dart';
 import '../utils/app_theme.dart';
+import '../widgets/content_column.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/party_card.dart';
 import '../widgets/zapzap_app_bar.dart';
@@ -80,81 +81,92 @@ class _PartiesScreenState extends State<PartiesScreen> {
         icon: const Icon(Icons.add),
         label: Text(l10n.partiesCreateButton),
       ),
-      body: ListenableBuilder(
-        listenable: _parties,
-        builder: (context, _) {
-          final error = _parties.error;
-          final mine = _parties.myParties;
-          final others = _parties.openParties;
-          return RefreshIndicator(
-            onRefresh: () => _parties.load(showSpinner: false),
-            child: CustomScrollView(
-              // Pull to refresh works on a list shorter than the screen.
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                if (error != null)
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    sliver: SliverToBoxAdapter(
-                      child: ErrorBanner(
-                        message: partyErrorText(l10n, error),
-                        onRetry: _parties.load,
-                      ),
-                    ),
-                  ),
-                if (_parties.loading)
-                  _skeletons()
-                else ...[
-                  if (mine.isNotEmpty) ...[
-                    _heading(context, l10n.partiesMine, 'mine'),
-                    _cards(context, mine),
-                  ],
-                  _heading(context, l10n.partiesHeading, 'open'),
-                  if (others.isNotEmpty)
-                    _cards(context, others)
-                  // A failed first load has no list to speak of: the banner
-                  // alone, not "no party yet" under it.
-                  else if (error == null)
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      sliver: SliverToBoxAdapter(
-                        child: _OpenPartiesInvite(
-                          onCreate: _create,
-                          nothingAtAll: mine.isEmpty,
-                        ),
-                      ),
-                    ),
-                ],
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: PartiesScreen.fabClearance),
-                ),
-              ],
-            ),
-          );
-        },
+      body: ContentColumn(
+        builder: (context, padding) => ListenableBuilder(
+          listenable: _parties,
+          builder: (context, _) => _list(context, padding),
+        ),
       ),
     );
   }
 
-  Widget _heading(BuildContext context, String text, String id) =>
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        sliver: SliverToBoxAdapter(
-          child: Semantics(
-            header: true,
-            child: Text(
-              text,
-              key: Key('parties-heading-$id'),
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(color: AppColors.slate400, letterSpacing: 0.8),
+  /// The list in the content column: [padding] holds its sides.
+  Widget _list(BuildContext context, EdgeInsets padding) {
+    final l10n = AppLocalizations.of(context);
+    final error = _parties.error;
+    final mine = _parties.myParties;
+    final others = _parties.openParties;
+    final sides = EdgeInsets.symmetric(horizontal: padding.left);
+    return RefreshIndicator(
+      onRefresh: () => _parties.load(showSpinner: false),
+      child: CustomScrollView(
+        // Pull to refresh works on a list shorter than the screen.
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (error != null)
+            SliverPadding(
+              padding: sides.copyWith(top: 16),
+              sliver: SliverToBoxAdapter(
+                child: ErrorBanner(
+                  message: partyErrorText(l10n, error),
+                  onRetry: _parties.load,
+                ),
+              ),
             ),
+          if (_parties.loading)
+            _skeletons(sides)
+          else ...[
+            if (mine.isNotEmpty) ...[
+              _heading(context, l10n.partiesMine, 'mine', sides),
+              _cards(mine, sides),
+            ],
+            _heading(context, l10n.partiesHeading, 'open', sides),
+            if (others.isNotEmpty)
+              _cards(others, sides)
+            // A failed first load has no list to speak of: the banner
+            // alone, not "no party yet" under it.
+            else if (error == null)
+              SliverPadding(
+                padding: sides,
+                sliver: SliverToBoxAdapter(
+                  child: _OpenPartiesInvite(
+                    onCreate: _create,
+                    nothingAtAll: mine.isEmpty,
+                  ),
+                ),
+              ),
+          ],
+          const SliverToBoxAdapter(
+            child: SizedBox(height: PartiesScreen.fabClearance),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heading(
+    BuildContext context,
+    String text,
+    String id,
+    EdgeInsets sides,
+  ) => SliverPadding(
+    padding: sides.copyWith(top: 16, bottom: 8),
+    sliver: SliverToBoxAdapter(
+      child: Semantics(
+        header: true,
+        child: Text(
+          text,
+          key: Key('parties-heading-$id'),
+          style: Theme.of(context).textTheme.titleSmall
+              ?.copyWith(color: AppColors.slate400, letterSpacing: 0.8),
         ),
-      );
+      ),
+    ),
+  );
 
   /// Three grey cards the shape of the real ones, while the list loads.
-  Widget _skeletons() => SliverPadding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+  Widget _skeletons(EdgeInsets sides) => SliverPadding(
+    padding: sides.copyWith(top: 16),
     sliver: SliverToBoxAdapter(
       child: Semantics(
         label: AppLocalizations.of(context).partiesLoading,
@@ -173,52 +185,35 @@ class _PartiesScreenState extends State<PartiesScreen> {
     ),
   );
 
-  /// [parties] as cards, one column on a phone and up to three on a wide
-  /// screen.
+  /// [parties] as cards, one column on a phone and up to three in the
+  /// content column of a wide screen ([ContentGrid.columnsFor]).
   ///
-  /// Rows rather than a `SliverGrid`: a grid tile needs a height decided
-  /// before the card is laid out, and any fixed one is too short at a large
-  /// system font size. A row sizes to its tallest card, and stretches the
-  /// others to match.
-  Widget _cards(BuildContext context, List<PartySummary> parties) {
-    final width = MediaQuery.sizeOf(context).width;
-    final columns = ((width - 32) ~/ 340).clamp(1, 3);
-    final rows = (parties.length + columns - 1) ~/ columns;
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      sliver: SliverList.builder(
-        itemCount: rows,
-        itemBuilder: (context, row) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var column = 0; column < columns; column++) ...[
-                  if (column > 0) const SizedBox(width: 12),
-                  Expanded(
-                    child: switch (row * columns + column) {
-                      final index when index < parties.length => PartyCard(
-                        party: parties[index],
-                        isHost:
-                            _userId != null &&
-                            parties[index].ownerId == _userId,
-                        onJoin: () => _join(parties[index]),
-                        onOpen: () => _open(parties[index]),
-                      ),
-                      // The last row's empty columns, so the cards beside
-                      // them keep their width.
-                      _ => const SizedBox.shrink(),
-                    },
-                  ),
-                ],
-              ],
-            ),
+  /// Rows rather than a `SliverGrid`, for the reason [ContentGrid] gives.
+  Widget _cards(List<PartySummary> parties, EdgeInsets sides) => SliverPadding(
+    padding: sides,
+    sliver: SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final columns = ContentGrid.columnsFor(constraints.crossAxisExtent);
+        return _rows(parties, columns);
+      },
+    ),
+  );
+
+  Widget _rows(List<PartySummary> parties, int columns) => SliverList.builder(
+    itemCount: (parties.length + columns - 1) ~/ columns,
+    itemBuilder: (context, row) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ContentGrid.row(columns: columns, [
+        for (final party in parties.skip(row * columns).take(columns))
+          PartyCard(
+            party: party,
+            isHost: _userId != null && party.ownerId == _userId,
+            onJoin: () => _join(party),
+            onOpen: () => _open(party),
           ),
-        ),
-      ),
-    );
-  }
+      ]),
+    ),
+  );
 }
 
 /// The end of an empty "Available games" section: there is nothing to join, so

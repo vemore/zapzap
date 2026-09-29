@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -177,6 +179,45 @@ void main() {
         greaterThan(playableShadow.spreadRadius),
       );
       expect(selectedShadow.color.a, greaterThan(playableShadow.color.a));
+    });
+
+    testWidgets('under the mouse, a card that takes a tap shows the click '
+        'cursor and glows as a selected one; a disabled card neither', (
+      tester,
+    ) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      // The test's mouse is device 1.
+      MouseCursor cursor() =>
+          RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1)!;
+      BoxShadow shadow() =>
+          _decoration(tester, find.byType(PlayingCard)).boxShadow!.single;
+
+      await tester.pumpWidget(_app(PlayingCard(cardId: 0, onTap: () {})));
+      final resting = shadow();
+      await mouse.moveTo(tester.getCenter(find.byType(PlayingCard)));
+      await tester.pumpAndSettle();
+      expect(cursor(), SystemMouseCursors.click);
+      expect(shadow(), PlayingCard.shadowFor(CardLook.selected).single);
+      expect(shadow().blurRadius, greaterThan(resting.blurRadius));
+      // The edge stays the playable one: hovering selects nothing.
+      expect(
+        edge(tester, find.byType(PlayingCard))!.top.width,
+        CardSizes.playableBorder,
+      );
+
+      await mouse.moveTo(Offset.zero);
+      await tester.pumpAndSettle();
+      expect(shadow(), resting);
+
+      await tester.pumpWidget(
+        _app(PlayingCard(cardId: 0, disabled: true, onTap: () {})),
+      );
+      await mouse.moveTo(tester.getCenter(find.byType(PlayingCard)));
+      await tester.pumpAndSettle();
+      expect(cursor(), SystemMouseCursors.basic);
+      expect(shadow(), PlayingCard.shadowFor(CardLook.plain).single);
     });
 
     testWidgets('a disabled card, even with an onTap, is plain', (

@@ -11,6 +11,7 @@ import 'package:zapzap/widgets/app_logo.dart';
 import 'auth_helpers.dart';
 import 'game_helpers.dart';
 import 'sse_fakes.dart';
+import 'wide_screen_helpers.dart';
 
 /// A storage that never answers: the app stays on the splash screen.
 class _PendingTokenStorage extends TokenStorage {
@@ -26,7 +27,8 @@ class _PendingTokenStorage extends TokenStorage {
 
 // The screens no other phone-width group covers — the way in, the splash,
 // the not-found page and the game screen's three message states — at a
-// 360×740 phone and the large system fonts Android offers. A RenderFlex that
+// 360×740 phone and the large system fonts Android offers, then in the
+// windows of the `wide screen` groups. A RenderFlex that
 // does not fit fails the test; a widget clipped by a fixed-size box does not,
 // so each test also checks its key controls lie inside the screen.
 void main() {
@@ -39,8 +41,9 @@ void main() {
     ApiClient? api,
     TokenStorage? storage,
     bool settle = true,
+    Size size = phone,
   }) async {
-    tester.view.physicalSize = phone;
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
@@ -63,13 +66,14 @@ void main() {
     }
   }
 
-  /// [finder] scrolled into view lies wholly on the phone's screen.
+  /// [finder] scrolled into view lies wholly on the screen.
   Future<void> expectOnScreen(WidgetTester tester, Finder finder) async {
     expect(finder, findsOneWidget);
     await tester.ensureVisible(finder);
     await tester.pump();
     final rect = tester.getRect(finder);
-    final screen = Offset.zero & phone;
+    final screen =
+        Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
     expect(
       screen.intersect(rect) == rect,
       isTrue,
@@ -186,4 +190,78 @@ void main() {
       });
     });
   }
+
+  group('wide screen', () {
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        final at = '$name, text x$scale';
+
+        testWidgets('the home screen fits at $at', (tester) async {
+          await pumpApp(tester, textScale: scale, size: size);
+          await expectOnScreen(tester, find.byType(AppLogo));
+          await expectOnScreen(tester, find.byType(FilledButton));
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the splash screen fits at $at', (tester) async {
+          await pumpApp(
+            tester,
+            textScale: scale,
+            storage: _PendingTokenStorage(),
+            settle: false,
+            size: size,
+          );
+          await expectOnScreen(tester, find.byType(AppLogo));
+          await expectOnScreen(tester, find.byType(CircularProgressIndicator));
+          expect(tester.takeException(), isNull);
+        });
+
+        for (final screen in ['login', 'register']) {
+          testWidgets('the $screen screen fits at $at, its card no wider '
+              'than the content column', (tester) async {
+            await pumpApp(
+              tester,
+              textScale: scale,
+              initialLocation: '/$screen',
+              size: size,
+            );
+            for (final key in ['username', 'password', 'submit']) {
+              await expectOnScreen(tester, find.byKey(Key('$screen-$key')));
+              expectInContentColumn(
+                tester,
+                find.byKey(Key('$screen-$key')),
+                windowWidth: size.width,
+              );
+            }
+            expect(tester.takeException(), isNull);
+          });
+        }
+
+        testWidgets('the not-found screen fits at $at', (tester) async {
+          await pumpApp(
+            tester,
+            textScale: scale,
+            initialLocation: '/nowhere',
+            size: size,
+          );
+          await expectOnScreen(tester, find.byType(FilledButton));
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the game screen error fits at $at', (tester) async {
+          await pumpApp(
+            tester,
+            textScale: scale,
+            initialLocation: AppRoutes.gamePath('p1'),
+            api: FakeGameBackend().client(),
+            storage: storedSession(validToken),
+            size: size,
+          );
+          await expectOnScreen(tester, find.byKey(const Key('retry-game')));
+          await expectOnScreen(tester, find.byKey(const Key('game-back-body')));
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  });
 }

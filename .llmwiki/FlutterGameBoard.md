@@ -3,7 +3,7 @@
 > Scope: the Flutter game board (`GameProvider`, modes, errors, layouts), the end of a round and of
 > the game, and the offline example game (`/tutorial`) with its first-opening offer.
 > Related: [[FrontendFlutter]] · [[FlutterGameUi]] · [[FlutterParties]] · [[GameRules]] · [[Api]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -102,7 +102,13 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
   390x844, text scales 1.0 and 1.5, with Roboto loaded from the SDK (the test font's square
   glyphs are twice as wide): the whole felt, the deck and the take hint show, except at
   360x740 at 1.5, where the players and the moves take half the height and the felt's
-  content scrolls inside a whole edge. The wide board's felt is `Expanded` too. Checked in the PWA (2026-09-23, Chromium at
+  content scrolls inside a whole edge. The wide board's felt is `Expanded` too, and lays
+  the cards played this turn beside the pile and the deck, labels in line
+  (`GameTableArea.playedBeside`), folding them above the pile when the felt is narrow: the
+  hand and the moves left a 1366x768 window's felt too short for two rows of 84 px cards,
+  which were cut by 67 px (52 at 1280x800; found evaluating the PWA, 2026-09-29).
+  `test/game_felt_layout_test.dart` (`wide screen`) shows the whole felt, content and all,
+  at 1366x768, 1280x800, 1920x1080 and 800x1280, in the play and the draw step. Checked in the PWA (2026-09-23, Chromium at
   390x844, the web build against a stand-in API in the draw step). `test/game_screen_test.dart`
   pumps every mode at 360x740 at text scales 1.0, 1.5 **and** 2.0 — not my turn with a two-line
   waiting banner, the tallest action bar (two-line banner over the invalid-play reason)

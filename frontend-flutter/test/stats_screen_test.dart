@@ -10,6 +10,11 @@ import 'package:zapzap/widgets/stats_personal.dart';
 import 'fixtures.dart';
 import 'history_helpers.dart';
 
+import 'package:zapzap/screens/stats_screen.dart';
+import 'package:zapzap/widgets/content_column.dart';
+
+import 'wide_screen_helpers.dart';
+
 void main() {
   const vincentId = 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e';
 
@@ -211,6 +216,51 @@ void main() {
           expect(find.byKey(const Key('bot-card-easy')), findsOneWidget);
         },
       );
+    }
+  });
+
+  group('wide screen', () {
+    // A laptop, a desktop monitor, a portrait tablet: the sections in the
+    // one centred column, the leaderboard in a column of its own from
+    // [StatsScreen.twoColumnsFrom], and nothing that overflows.
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        testWidgets('the statistics lie in the content column at $name, '
+            'text x$scale', (tester) async {
+          await pumpScreen(
+            tester,
+            initialLocation: AppRoutes.stats,
+            api: routedApi(statsBodies()),
+            size: size,
+            textScale: scale,
+          );
+
+          final twoColumns =
+              ContentColumn.contentWidth(size.width) >=
+              StatsScreen.twoColumnsFrom;
+          final personal = tester.getRect(find.byType(StatsPersonal));
+          final leaderboard = tester.getRect(find.byType(StatsLeaderboard));
+          if (twoColumns) {
+            // Side by side, the leaderboard on the right.
+            expect(leaderboard.left, greaterThan(personal.right));
+            expect(leaderboard.top, lessThan(personal.bottom));
+          } else {
+            expect(leaderboard.top, greaterThan(personal.bottom));
+          }
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('bot-card-easy')),
+            300,
+          );
+          for (final finder in [
+            find.byType(StatsPersonal),
+            find.byType(StatsLeaderboard),
+            find.byKey(const Key('bot-card-easy')),
+          ]) {
+            expectInContentColumn(tester, finder, windowWidth: size.width);
+          }
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
   });
 }

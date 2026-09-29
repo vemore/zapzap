@@ -3,7 +3,7 @@
 > Scope: the Flutter history, game details and statistics screens, and the admin screen (users,
 > parties, statistics tabs).
 > Related: [[FrontendFlutter]] · [[FlutterParties]] · [[Api]] · [[Frontend]]
-> Updated: 2026-09-27
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -69,7 +69,10 @@ The port of `frontend/src/components/History/GameHistory.jsx`, `GameDetails.jsx`
   `StatsBots` (`GET /stats/bots`) — totals, a `ChoiceChip` per difficulty found in the
   answer, a card per difficulty with its strategy, and the per-bot breakdown once one is
   picked; a reload that no longer carries the picked difficulty falls back to all of
-  them. `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
+  them. From a content width of 880 px (`StatsScreen.twoColumnsFrom`) the leaderboard
+  stands in a column of its own on the right, the personal figures over the bots on the
+  left: twenty rows are as tall as the other two sections together.
+  `difficultyStyle` (`widgets/stats_bots.dart`) holds the eight known difficulties'
   name, strategy and colour and falls back to the raw name, so a new bot kind shows rather
   than breaks.
 - **My row in the leaderboard**: `LeaderboardRow.isCurrentUser` from
@@ -114,7 +117,8 @@ The React counterparts are `frontend/src/components/Admin/{AdminRoute,AdminLayou
   `isAdmin` to `/parties` before any of them builds. The guard is cosmetic: the backend
   refuses every `/api/admin` call to a non-admin ([[Api]]).
 - **`AdminScreen`**: `ZapZapAppBar` with a back button (`popOrGo(/parties)`), then a
-  scrollable `TabBar` (Users, Parties, Statistics — keys `admin-tab-*`) over an
+  scrollable `TabBar` (Users, Parties, Statistics — keys `admin-tab-*`; in the content
+  column, its first label in line with the content) over an
   `IndexedStack`. A tab is built, and loads, the first time it shows (`_opened`), then
   stays alive, so the users list keeps its page and search and the parties their filter
   while another tab shows. A tab change does not change the URL.

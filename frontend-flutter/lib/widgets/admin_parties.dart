@@ -9,6 +9,7 @@ import '../repositories/admin_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
 import 'admin_common.dart';
+import 'content_column.dart';
 import 'error_banner.dart';
 import 'stats_common.dart';
 
@@ -191,66 +192,70 @@ class _AdminPartiesViewState extends State<AdminPartiesView> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: _load,
-            child: ListView(
-              key: const Key('admin-parties-list'),
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                Text(
-                  l10n.adminPartiesCount(total),
-                  key: const Key('admin-parties-count'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  key: const Key('admin-parties-filter'),
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    for (final status in AdminPartiesView.filters)
-                      ChoiceChip(
-                        key: Key('admin-parties-filter-${status ?? 'all'}'),
-                        label: Text(_filterLabel(l10n, status)),
-                        selected: _status == status,
-                        onSelected: (_) => _filter(status),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (error != null) ...[
-                  ErrorBanner(
-                    key: const Key('admin-parties-error'),
-                    message: _errorText(l10n, error),
-                    onRetry: _load,
+            child: ContentColumn(
+              top: 12,
+              bottom: 24,
+              builder: (context, padding) => ListView(
+                key: const Key('admin-parties-list'),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: padding,
+                children: [
+                  Text(
+                    l10n.adminPartiesCount(total),
+                    key: const Key('admin-parties-count'),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    key: const Key('admin-parties-filter'),
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final status in AdminPartiesView.filters)
+                        ChoiceChip(
+                          key: Key('admin-parties-filter-${status ?? 'all'}'),
+                          label: Text(_filterLabel(l10n, status)),
+                          selected: _status == status,
+                          onSelected: (_) => _filter(status),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
-                ],
-                if (page.items.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Text(
-                      l10n.adminPartiesEmpty,
-                      key: const Key('admin-parties-empty'),
-                      textAlign: TextAlign.center,
+                  if (error != null) ...[
+                    ErrorBanner(
+                      key: const Key('admin-parties-error'),
+                      message: _errorText(l10n, error),
+                      onRetry: _load,
                     ),
-                  ),
-                for (final party in page.items)
-                  AdminPartyTile(
-                    key: Key('admin-party-${party.id}'),
-                    party: party,
-                    busy: _busy == party.id,
-                    onStop: _busy == null ? () => _stop(party) : null,
-                    onDelete: _busy == null ? () => _delete(party) : null,
-                  ),
-                if (total > AdminPartiesView.pageSize)
-                  AdminPager(
-                    keyPrefix: 'admin-parties',
-                    pageSize: AdminPartiesView.pageSize,
-                    offset: _offset,
-                    total: total,
-                    onPage: _loading ? null : _goTo,
-                  ),
-              ],
+                    const SizedBox(height: 12),
+                  ],
+                  if (page.items.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 32),
+                      child: Text(
+                        l10n.adminPartiesEmpty,
+                        key: const Key('admin-parties-empty'),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  for (final party in page.items)
+                    AdminPartyTile(
+                      key: Key('admin-party-${party.id}'),
+                      party: party,
+                      busy: _busy == party.id,
+                      onStop: _busy == null ? () => _stop(party) : null,
+                      onDelete: _busy == null ? () => _delete(party) : null,
+                    ),
+                  if (total > AdminPartiesView.pageSize)
+                    AdminPager(
+                      keyPrefix: 'admin-parties',
+                      pageSize: AdminPartiesView.pageSize,
+                      offset: _offset,
+                      total: total,
+                      onPage: _loading ? null : _goTo,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

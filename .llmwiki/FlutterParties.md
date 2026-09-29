@@ -62,10 +62,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   the last card's button. A row without
   `maxPlayers` (or with 0) falls back to `settings.playerCount`, then to 5
   (`defaultPartyPlayers`, `models/party.dart`), as React does — not "2 / 0" and Full. A
-  failed load shows its error banner alone, not the "no party yet" empty state under it. The cards are laid out
-  as rows of one to three (`_cards`, by width), not as a `SliverGrid`: a grid tile's height
-  is decided before the card is laid out, and any fixed one overflows at a large system
-  font size.
+  failed load shows its error banner alone, not the "no party yet" empty state under it. The list lies in the
+  content column ([[FrontendFlutter]] § Wide screens), its cards in rows of one to three
+  (`ContentGrid.columnsFor`, 300 px a card at least: three at 960, two on a portrait
+  tablet), not as a `SliverGrid`: a grid tile's height is decided before the card is laid
+  out, and any fixed one overflows at a large system font size.
 - **`CreatePartyProvider`** (`providers/create_party_provider.dart`): the form — the seat
   count (3–8, clamped), the visibility, the name. **No human or bot per seat** (since
   2026-09-28): the creator takes seat 0, the others are filled in the lobby, by players or
@@ -117,7 +118,9 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   a dialog (`fill-dialog`) with Facile / Moyen / Difficile (`fill-level-<level>`, Moyen
   picked) and Commencer (`fill-confirm`), which leads to the game. It sits in the list, not
   pinned with Start: at a 2.0 text scale on 360×740 a fourth pinned button left the seats
-  161 px. Under the list, pinned: the reason Start is or is not active (players missing,
+  161 px. The list and the pinned bar lie in the content column; the seats go two a row
+  once it is 728 px wide (`PartyLobbyScreen.seatMinWidth`, 360, in a `ContentGrid`), so a
+  table of eight fits a laptop's height. Under the list, pinned: the reason Start is or is not active (players missing,
   "can start", or "the host can start" for a guest), Start named with the player count,
   then Leave. **Delete is in the ⋮ menu** (`AppBarMenuAction`, key `delete-party`), no
   longer a red button next to Leave; it still confirms.
