@@ -4,14 +4,15 @@
 > risk, the model per pull request, serial squash merges, deploy after each merge, local
 > cleanup, and `wip/`.
 > Procedure: the `ship-parallel` skill. Related: [[Hooks]] · [[Deployment]] · [[Testing]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
 ### `master` and its protection
 
-- CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `frontend`, `image`,
-  `hooks`, `flutter`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
+- CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `frontend` (always
+  skipped since the React client went, 2026-09-29: it only keeps a required name), `image`,
+  `hooks`, `flutter`, `flutter-e2e`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
   reports Success, so a docs-only pull request satisfies required checks.
 - Branch protection is set once the harness is merged (2026-09-22, after #21–#23): required
   checks = the five build jobs `rust` … `hooks` (not `scope`, and not yet `flutter`, added
@@ -35,7 +36,7 @@
   never commits. It holds the hooks in force and the local `wip/`.
 - Work happens in a worktree: `git worktree add ../zapzap-<topic> -b <type>/<topic>
   origin/master` by hand, or `.claude/worktrees/<name>` for an agent with
-  `isolation: "worktree"`. Then `scripts/worktree_setup.sh <dir>`: `npm ci` in `frontend/`,
+  `isolation: "worktree"`. Then `scripts/worktree_setup.sh <dir>`:
   a cargo clippy warm-up of `zapzap-rust/` on the main checkout's target dir, `flutter pub
   get` + `gen-l10n` in `frontend-flutter/` (`--no-flutter` skips it); `--deploy`
   symlinks the main checkout's `.env`. It holds `.zapzap-setup-in-progress` while running.
@@ -93,8 +94,8 @@ the tests — `zapzap-rust/tests/`, `tests/`, `*.test.js(x)`, `frontend-flutter/
 
 A change confined to `frontend-flutter/` is lane **A** unless it meets a B criterion (its
 size, most often). The PWA ships under `/app/` since #36 ([[Deployment]]), so its merge is
-deployed like any other (`ship-parallel` §4); the proxy does not depend on it, so a broken
-bundle takes down `/app/` and not the site. A change that also touches the backend, `nginx/`
+deployed like any other (`ship-parallel` §4); it is the only web client since 2026-09-29, so
+a broken bundle takes the web down, though not the API the Android app uses. A change that also touches the backend, `nginx/`
 or the compose files is judged on those. Since 2026-09-24 the backend a merge deploys is
 `zapzap-rust/` ([[Deployment]]).
 

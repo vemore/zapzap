@@ -51,14 +51,14 @@ SERVICES="$SANDBOX/services" # what `docker-compose config --services` answers
 FAILS="$SANDBOX/fails"       # one file per failing step: build, push, pull, down, up, config,
                              # wget (the backend image has none), backup; and the switches
                              # present (every image already on the NAS), fixeddate
-mkdir -p "$REPO/scripts" "$REPO/zapzap-rust" "$REPO/frontend" "$REPO/frontend-flutter" "$REPO/nginx" \
+mkdir -p "$REPO/scripts" "$REPO/zapzap-rust" "$REPO/frontend-flutter" "$REPO/nginx" \
     "$NAS/data" "$TOOLS" "$STATES" "$FAILS"
 REAL_PYTHON=$(command -v python3)
 REAL_DATE=$(command -v date)
 
 cp "$ROOT/scripts/deploy_nas.sh" "$REPO/scripts/"
 cp "$ROOT/docker-compose.prod.yml" "$REPO/"
-for d in zapzap-rust frontend frontend-flutter nginx; do echo "FROM scratch" > "$REPO/$d/Dockerfile"; done
+for d in zapzap-rust frontend-flutter nginx; do echo "FROM scratch" > "$REPO/$d/Dockerfile"; done
 git -C "$REPO" init -q
 git -C "$REPO" config user.email t@t
 git -C "$REPO" config user.name t
@@ -191,7 +191,7 @@ services() { printf '%s\n' "$@" > "$SERVICES"; }
 unhealthy() { rm -f "$STATES"/*; [ $# -eq 0 ] || echo "$2" > "$STATES/$1"; }
 site() { printf '#!/bin/sh\nexit %s\n' "$1" > "$TOOLS/curl"; chmod +x "$TOOLS/curl"; }
 failing() { rm -f "$FAILS"/*; for s in "$@"; do touch "$FAILS/$s"; done; }
-reset() { services backend frontend nginx frontend-flutter; unhealthy; site 0; failing; }
+reset() { services backend nginx frontend-flutter; unhealthy; site 0; failing; }
 
 # Runs the script with a clean environment of its own: the configuration comes only from
 # the variables given (NAME=value ...), never from the caller's deploy.env or shell.
@@ -222,7 +222,7 @@ backups() { find "$NAS/data" -name 'zapzap.db.bak-*' | wc -l | tr -d ' '; }
 # Which Compose the last run called (\"v2\", \"v1\", \"v1 v2\"), and its subcommands.
 bins() { cut -d' ' -f1 "$BINS" | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 verbs() { cut -d' ' -f2 "${1:-$BINS}" | sort -u | tr '\n' ' ' | sed 's/ $//'; }
-pinned() { printf 'reg.test:5050/zapzap-backend:%s reg.test:5050/zapzap-frontend:%s reg.test:5050/zapzap-frontend-flutter:%s reg.test:5050/zapzap-proxy:%s' "$1" "$1" "$1" "$1"; }
+pinned() { printf 'reg.test:5050/zapzap-backend:%s reg.test:5050/zapzap-frontend-flutter:%s reg.test:5050/zapzap-proxy:%s' "$1" "$1" "$1"; }
 commit_compose() {  # message, marker: a commit whose docker-compose.prod.yml carries the marker
     sed -i '/^# marker-/d' "$REPO/docker-compose.prod.yml"
     [ -z "$2" ] || echo "# marker-$2" >> "$REPO/docker-compose.prod.yml"
@@ -261,7 +261,7 @@ report "before anything is built"               0 "$(builds)"
 echo "VITE_GOOGLE_OAUTH_CLIENT_ID='from-dotenv'" > "$REPO/.env"   # gitignored in the real repo
 run "${CONF[@]:0:3}"; rc=$?
 report "the client id is read from the repository's .env" 0 "$rc"
-report "and passed to the React and Flutter builds" 2 "$(grep -cE 'GOOGLE(_OAUTH)?_CLIENT_ID=from-dotenv ' "$LOG")"
+report "and passed to the Flutter build"         1 "$(grep -cE 'GOOGLE(_OAUTH)?_CLIENT_ID=from-dotenv ' "$LOG")"
 rm -f "$REPO/.env"
 
 echo "== clean tree ================================================="
@@ -271,11 +271,11 @@ report "a modified tracked file is refused"     1 "$rc"
 has "naming the file"                           "docker-compose.prod.yml"
 report "before anything is built, pushed or sent" "" "$(cat "$LOG")"
 git -C "$REPO" checkout -q docker-compose.prod.yml
-echo "stray" > "$REPO/frontend/untracked.js"
+echo "stray" > "$REPO/frontend-flutter/untracked.dart"
 deploy; rc=$?
 report "an untracked file in a build context is refused" 1 "$rc"
 report "and nothing is built"                   "" "$(cat "$LOG")"
-rm -f "$REPO/frontend/untracked.js"
+rm -f "$REPO/frontend-flutter/untracked.dart"
 echo "notes" > "$REPO/notes.txt"
 deploy; rc=$?
 report "an untracked file outside the build contexts is not" 0 "$rc"
@@ -287,13 +287,13 @@ find "$NAS/data" -name '*.bak-*' -delete
 deploy; rc=$?
 report "the happy path exits 0"                 0 "$rc"
 report "the tag is the first 12 characters of the sha" 12 "${#SECOND}"
-report "builds the four images"                 4 "$(builds)"
+report "builds the three images"                3 "$(builds)"
 report "the backend with the bedrock feature"   1 "$(grep -c "^docker build --build-arg CARGO_FEATURES=bedrock .*-t reg.test:5050/zapzap-backend:$SECOND -t reg.test:5050/zapzap-backend:latest zapzap-rust$" "$LOG")"
 report "the proxy from nginx/"                  1 "$(grep -c "^docker build .*-t reg.test:5050/zapzap-proxy:$SECOND .* nginx$" "$LOG")"
 report "probes the backend image for wget before any push" \
     "docker run --rm --entrypoint sh reg.test:5050/zapzap-backend:$SECOND -c command -v wget" \
     "$(grep -m1 -E '^docker (run|push)' "$LOG")"
-report "pushes each as <sha> and latest"        8 "$(pushes)"
+report "pushes each as <sha> and latest"        6 "$(pushes)"
 report "the NAS compose pins every image to the sha" "$(pinned "$SECOND")" "$(image_tags)"
 report "and keeps it as composes/compose.<tag>.yaml" same \
     "$(cmp -s "$NAS/compose.yaml" "$NAS/composes/compose.$SECOND.yaml" && echo same || echo differs)"
@@ -316,7 +316,7 @@ git -C "$REPO" commit -q --allow-empty -m build-only
 before=$(cat "$NAS/compose.yaml")
 run REGISTRY=reg.test:5050 VITE_GOOGLE_OAUTH_CLIENT_ID=client-id -- --build-only; rc=$?
 report "--build-only needs only REGISTRY, and exits 0" 0 "$rc"
-report "builds and pushes"                      "4 8" "$(builds) $(pushes)"
+report "builds and pushes"                      "3 6" "$(builds) $(pushes)"
 report "and never reaches the NAS"              0 "$(grep -c '^ssh' "$LOG")"
 report "whose compose.yaml is unchanged"        "$before" "$(cat "$NAS/compose.yaml")"
 mv "$NAS/data/zapzap.db" "$NAS/data/zapzap.db.away"
@@ -362,12 +362,12 @@ report "a compose file docker-compose cannot read is refused" 1 "$rc"
 report "before the pull"                        "" "$(steps)"
 has "printing compose's reason"                 "JWT_SECRET must be set"
 failing
-services backend nginx frontend-flutter
+services backend nginx
 deploy; rc=$?
 report "a compose file missing an essential service is refused" 1 "$rc"
 report "before the pull"                        "" "$(steps)"
-has "naming the service"                        "expects a service named 'frontend'"
-services backend frontend nginx frontend-flutter
+has "naming the service"                        "expects a service named 'frontend-flutter'"
+services backend nginx frontend-flutter
 nbak=$(backups)
 failing backup
 deploy; rc=$?
@@ -437,14 +437,24 @@ has "naming the container and its state"        "backend(restarting)"
 has "with its logs"                             "last 30 lines of backend"
 has "calling it an outage"                      "production is DOWN"
 has "and naming the rollback command"           "deploy_nas.sh --rollback $FOURTH"
+# The PWA is the only web client since the React one was removed: essential.
 unhealthy frontend-flutter unhealthy
 deploy; rc=$?
-report "an unhealthy PWA is not an outage: exit 2" 2 "$rc"
+report "an unhealthy PWA is an outage: exit 1"  1 "$rc"
+has "naming the container and its state"        "frontend-flutter(unhealthy)"
+has "calling it an outage"                      "production is DOWN"
+# A service outside ESSENTIAL_SERVICES — the React client's `frontend`, which a compose file
+# from before 2026-09-29 still declares — is a degraded deploy, never an outage.
+services backend frontend nginx frontend-flutter
+unhealthy frontend unhealthy
+deploy; rc=$?
+report "an unhealthy non-essential service is not an outage: exit 2" 2 "$rc"
 hasnt "never saying production is down"         "production is DOWN"
-has "naming it in a warning"                    "frontend-flutter(unhealthy)"
-has "saying what it costs"                      "answers 502"
+has "naming it in a warning"                    "frontend(unhealthy)"
+has "saying what it costs"                      "Cost: whatever frontend serves"
 has "and that a rollback is optional"           "Rolling back is OPTIONAL"
 has "with a banner that is not a success"       "DEGRADED"
+services backend nginx frontend-flutter
 unhealthy
 site 7
 deploy; rc=$?
@@ -480,7 +490,7 @@ failing present pull
 rollback "$TAG_B"; rc=$?
 report "a rollback whose images are on the NAS works with the registry down" 0 "$rc"
 report "and does not pull"                      "down --remove-orphans|up -d" "$(steps)"
-report "after checking every image"             4 "$(grep -c '^docker image inspect' "$LOG")"
+report "after checking every image"             3 "$(grep -c '^docker image inspect' "$LOG")"
 failing
 
 # No compose stored for the tag: rendered from that commit's docker-compose.prod.yml.

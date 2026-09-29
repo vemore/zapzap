@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built, shipped through the registry and started,
 > where its data and secrets live, the Rust backend service, and the rollback.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -27,11 +27,10 @@ the NAS, built there; the clone and its images are deleted (history below).
 | Container | Image | Command | Mounts |
 |---|---|---|---|
 | `zapzap-backend` | built from `zapzap-rust/Dockerfile` with `CARGO_FEATURES=bedrock`: a static musl binary on `alpine:3.22` with `ca-certificates` only (29 MB), runs as uid 1000 | `/app/zapzap-backend` | `data/ → /app/data` |
-| `zapzap-frontend` | `zapzap-frontend`, built from `frontend/Dockerfile` | nginx serving the Vite build | — |
 | `zapzap-frontend-flutter` | `zapzap-frontend-flutter`, built from `frontend-flutter/Dockerfile` | nginx serving the Flutter web bundle under `/app/` | — |
 | `zapzap-proxy` | `zapzap-proxy`, built from `nginx/Dockerfile`: `nginx:alpine` with `nginx/nginx.conf` and `nginx/privacy.html` baked in | nginx | — |
 
-In production all four come from `docker-compose.prod.yml`, as
+In production all three come from `docker-compose.prod.yml`, as
 `192.168.1.25:5050/<image>:<first 12 characters of the sha>` — built on the dev machine, pulled by the NAS, never
 built there. The root `docker-compose.yml` builds the same images (the proxy from `nginx:alpine`
 with the conf and the privacy page mounted) for local use and CI. `zapzap-frontend-flutter` has served the
@@ -80,9 +79,8 @@ the development default: [[Backend]]), which production sets to
 `https://zapzap.ombivince.synology.me`: a preflight or request from that origin gets
 `access-control-allow-origin`, one from any other site does not, so a foreign page cannot read
 the API's answers. Nothing is refused server-side: requests without an `Origin` — the Android
-app, a same-origin `GET` — or with another one are served as before, and both web clients are
-same-origin under that domain (the React client on `/`, the PWA under `/app/`), so CORS never
-applies to them. The startup log says which behaviour runs: `CORS answers only the origins of
+app, a same-origin `GET` — or with another one are served as before, and the web client is
+same-origin under that domain (the PWA under `/app/`), so CORS never applies to it. The startup log says which behaviour runs: `CORS answers only the origins of
 ALLOWED_ORIGINS: …` (info), or `ALLOWED_ORIGINS not set: CORS answers every origin` (warn).
 
 **Ownership of `data/`.** The image runs as uid 1000 (`zapzap-rust/Dockerfile`, user
@@ -137,16 +135,15 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
 ### The Flutter PWA under `/app/`
 
 - `nginx/nginx.conf` sends `/app` to a relative 301 to `/app/`, and proxies `/app/` to the
-  `frontend-flutter` container with the URI unchanged (`nginx/nginx.conf:12-14`, `:91-113`).
-  The React client keeps `/`, the API keeps `/api/`: one domain, so the PWA reaches the API
-  without CORS.
+  `frontend-flutter` container with the URI unchanged (`nginx/nginx.conf:8-11`, `:111-138`).
+  The API keeps `/api/`: one domain, so the PWA reaches the API without CORS.
 - The image (`frontend-flutter/Dockerfile`) downloads the Flutter SDK **pinned to 3.47.2**
   and checks its sha256 (the version `.github/workflows/ci.yml` pins), runs
   `flutter build web --release --base-href /app/`, and copies the bundle into
   `/usr/share/nginx/html/app` behind `frontend-flutter/nginx.conf`. Its build argument
-  `GOOGLE_CLIENT_ID` is `VITE_GOOGLE_OAUTH_CLIENT_ID`, the key the React image already reads
+  `GOOGLE_CLIENT_ID` is `VITE_GOOGLE_OAUTH_CLIENT_ID`, the key the removed React image read
   (`docker-compose.yml`, service `frontend-flutter`; in production `scripts/deploy_nas.sh`
-  passes it from `scripts/deploy.env` or the dev machine's `.env`): no new key; empty, the PWA shows no Google button ([[FlutterAndroidPwa]]).
+  passes it from `scripts/deploy.env` or the dev machine's `.env`); empty, the PWA shows no Google button ([[FlutterAndroidPwa]]).
 - That conf: the SPA fallback `try_files $uri $uri/ /app/index.html` (a deep link such as
   `/app/parties` is served the app, never a 404); `index.html`, `flutter_bootstrap.js` and
   `flutter_service_worker.js` answer with `Cache-Control: no-cache, no-store,
@@ -160,18 +157,39 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   `/app/canvaskit/`, not from `www.gstatic.com`, so a client that cannot reach Google still
   gets an app rather than a blank page. The flag is in `frontend-flutter/Dockerfile` **and**
   in the CI `flutter` job, which must build what the image builds.
-- **The PWA cannot take the site down.** `location /app/` resolves `frontend-flutter`
+- **The PWA cannot take the API down.** `location /app/` resolves `frontend-flutter`
   through Docker's DNS (`resolver 127.0.0.11`) with the host in a variable, so nginx starts
-  whether or not the container exists and answers 502 on `/app/` alone. An `upstream` block
+  whether or not the container exists and answers 502 on the web alone. An `upstream` block
   would be resolved once at start-up and a missing container would stop nginx altogether
   (`host not found in upstream`), and a `depends_on: frontend-flutter: service_healthy`
   would hold `zapzap-proxy` in `Created` after the deploy has already stopped the old
-  containers — `/` and `/api/health` both unreachable, with `restart: unless-stopped`
-  powerless. Neither is used: there is deliberately **no** condition on `frontend-flutter`.
-  Should a proxy ever sit in `Created` after a failed dependency, `docker start
-  zapzap-proxy` restores `/` and `/api/` at once.
+  containers — `/api/`, hence the Android app, unreachable too, with `restart:
+  unless-stopped` powerless. Neither is used: there is deliberately **no** condition on
+  `frontend-flutter`, although the deploy calls it essential (below). Should a proxy ever
+  sit in `Created` after a failed dependency, `docker start zapzap-proxy` restores `/api/`
+  and `/app/` at once.
 - CI builds the image and runs `scripts/pwa_image_smoke.sh` against it (the `image` job):
   `/app/`, the deep links, the manifest scope, the icons, the cache headers.
+
+### The URLs of the removed React client
+
+The React client served `/` and its own paths until 2026-09-29 ([[Frontend]]). The proxy
+answers each with a **301**, relative (`absolute_redirect off` for the whole server: the
+public scheme and port are the Synology proxy's), query string kept (`nginx/nginx.conf:153-183`):
+
+| Old URL | Redirect |
+|---|---|
+| `/` | `/app/` |
+| `/party/<id>` (`[A-Za-z0-9_-]+`, trailing `/` allowed) | `/app/parties/<id>` |
+| `/create-party` | `/app/parties/new` |
+| `/account/delete` (the Play listing's deletion URL) | `/app/account` |
+| any other path — `/login`, `/register`, `/parties`, `/game/<id>`, `/history[/<id>]`, `/stats`, `/admin[/<tab>]` | `/app` + the path as sent (`$request_uri`) |
+
+`/api/`, `/suscribeupdate`, `/app`, `/app/`, `/privacy`, `/privacy.html` and `/nginx-health`
+keep their own locations. `//host` becomes `/app//host`, a path on this host, never an open
+redirect. `scripts/proxy_redirects_smoke.sh` (CI's `image` job) runs the real proxy image
+between a stub backend and a stub PWA and checks each redirect's status and `Location`, and
+that every unchanged path still reaches what it did.
 
 ### The privacy policy at `/privacy`
 
@@ -184,8 +202,8 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
   CI's `image` job runs it, [[Testing]]). Edit
   the Markdown, run the script, commit both; the next deploy of the proxy image publishes it.
   Nothing else is needed: no environment variable, no file in the deploy directory.
-- The web page for deleting an account (also asked by Play, named in the policy) is the React
-  client's `/account/delete` ([[Frontend]]).
+- The web page for deleting an account (also asked by Play, named in the policy) is
+  `/account/delete`, a 301 to the PWA's account page (above).
 
 ### How a deploy happens
 
@@ -195,13 +213,12 @@ configured by the untracked `scripts/deploy.env` (`REGISTRY`, `NAS_SSH`, `NAS_DE
 
 1. **refuse** a missing `REGISTRY`, `NAS_SSH` or `NAS_DEPLOY_DIR` (naming it), a modified
    tracked file or an untracked file in a build context, and a missing
-   `VITE_GOOGLE_OAUTH_CLIENT_ID` (the Google client id of both web clients, from
+   `VITE_GOOGLE_OAUTH_CLIENT_ID` (the Google client id of the PWA, from
    `deploy.env` or the repository's `.env`);
 2. **check the NAS** before building: the deploy directory, its `.env`, `data/zapzap.db`, and
    uid 1000 owning `data/` — the refusals print the fix;
-3. `docker build` HEAD's four images — `zapzap-backend` (`CARGO_FEATURES=bedrock`),
-   `zapzap-frontend`, `zapzap-frontend-flutter` (both with the client id),
-   `zapzap-proxy` — tagged with the first 12 characters of the sha (a fixed length, unlike
+3. `docker build` HEAD's three images — `zapzap-backend` (`CARGO_FEATURES=bedrock`),
+   `zapzap-frontend-flutter` (with the client id), `zapzap-proxy` — tagged with the first 12 characters of the sha (a fixed length, unlike
    `--short`) and `latest`, labelled `org.opencontainers.image.revision`; **refuse** a backend
    image without `wget` (`docker run --entrypoint sh … -c 'command -v wget'`), which the
    production health check runs and only the Alpine image of #106 carries; `docker push`
@@ -217,7 +234,7 @@ configured by the untracked `scripts/deploy.env` (`REGISTRY`, `NAS_SSH`, `NAS_DE
 6. `down --remove-orphans` with the **running** compose file; only after it succeeded
    `compose.yaml` → `compose.yaml.prev`, `.next` → `compose.yaml`, and a copy kept as
    `composes/compose.<tag>.yaml` (the last 10); a failed `down` restarts the running file,
-   never the unchecked images; then `up -d`, and **wait until `backend`, `frontend` and `nginx` are
+   never the unchecked images; then `up -d`, and **wait until `backend`, `frontend-flutter` and `nginx` are
    `healthy` (or `running`) and `/api/health` answers 200**, polling every 2 s for up to 90 s;
    then a 60 s grace for the other services, `ps` and the health payload.
 
@@ -241,8 +258,8 @@ both, with the labels v2 checks. On the NAS, 2026-09-28, before any v2 deploy, `
 -p zapzap -f compose.yaml ps` listed the four v1 containers (label `version=1.29.2`) healthy,
 and `port nginx 80` answered one line, `0.0.0.0:8092`. What v2 changes:
 
-- **`depends_on: condition: service_healthy` holds `up -d`** until `backend` and `frontend`
-  are healthy; if one turns unhealthy, `up -d` exits 1 (`dependency failed to start`) and
+- **`depends_on: condition: service_healthy` holds `up -d`** until `backend` is healthy
+  (`frontend` too before 2026-09-29); if it turns unhealthy, `up -d` exits 1 (`dependency failed to start`) and
   leaves `zapzap-proxy` in `Created` (checked locally, 5.5.1). `START FAILED` then names each
   essential container not healthy, its state and last 30 log lines. (The 2026-09-23 entry
   recorded v1.29.2 as ignoring the condition.)
@@ -252,18 +269,19 @@ and `port nginx 80` answered one line, `0.0.0.0:8092`. What v2 changes:
 
 ### What the script calls essential, and what it does not
 
-`ESSENTIAL_SERVICES` is `backend frontend nginx` — the proxy plus the two services its
-`depends_on: condition: service_healthy` waits on, which are what `nginx/nginx.conf` proxies
-`/`, `/api/` and `/suscribeupdate` to. `PROXY_SERVICE` is `nginx`, and the published port
-comes from `port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
+`ESSENTIAL_SERVICES` is `backend frontend-flutter nginx` — the proxy, the service its
+`depends_on: condition: service_healthy` waits on (`backend`, what `/api/` and
+`/suscribeupdate` reach), and since 2026-09-29 the PWA, the only web client, what `/app/`
+reaches and every old React URL redirects to. nginx still resolves the PWA per request, so
+an unhealthy one leaves `/api/` (the Android app) serving — but the web has nothing else,
+so the deploy calls it an outage and names the rollback. `PROXY_SERVICE` is `nginx`, and the
+published port comes from `port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
 Both names live in one place in the script, with a comment tying them to the two other files.
 
-**`frontend-flutter` is deliberately outside that set.** nginx resolves it per request
-(`nginx/nginx.conf:99-108`), so a PWA container that never becomes healthy costs `/app/` a
-502 and nothing else — the design decision of #36, and treating it as essential would undo
-it at exactly the wrong moment, since on the deploy that first carries the PWA that
-container is the newest and likeliest to misbehave. So the verdict is split, and so is the
-exit status:
+Any other service is **not** essential. `docker-compose.prod.yml` declares none today, but a
+rollback to a compose file from before 2026-09-29 carries the React client's `frontend`,
+which the current script does not wait on. So the verdict stays split, and so does the exit
+status:
 
 | Exit | Meaning |
 |---|---|
@@ -272,9 +290,9 @@ exit status:
 | `2` | deployed and serving, but a non-essential service is not healthy |
 
 Exit 2 prints a `⚠ WARNING` naming the container and its state, says which services *are*
-serving and that `/`, `/api/` and `/suscribeupdate` are unaffected, spells out the cost
-(`/app/` answers 502), shows the container's last 30 log lines, says a rollback is
-**optional**, and ends with `⚠ Deployed, DEGRADED: …` instead of `✨ Deployment complete!`.
+serving and that `/app/`, `/api/` and `/suscribeupdate` are unaffected, shows the
+container's last 30 log lines, says a rollback is **optional**, and ends with `⚠ Deployed,
+DEGRADED: …` instead of `✨ Deployment complete!`.
 Non-zero so no script can miss it, distinct so no script mistakes it for an outage.
 
 **Everything that can fail slowly happens before the `down`**: the build and the push on the
@@ -297,7 +315,7 @@ leave nothing running.
 otherwise survives, and the `down` then reports `Network ... Resource is still in use` —
 reproduced locally on Compose v2, what the NAS runs since 2026-09-28; v1 1.29.2 only warned.
 
-`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 196 cases): a
+`scripts/deploy_nas_selftest.sh` pins all of this offline (the `hooks` CI job, 199 cases): a
 sandbox repository and deploy directory, `ssh` stubbed to run the remote half locally, and
 `docker`, `curl`, `jq` and `sleep` stubbed, the `docker` stub answering a state per service.
 Compose is one stub behind `docker compose` (v2, its `ps` hiding a `Created` container
@@ -328,61 +346,31 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   resolves its API base from `Uri.base.origin` and nothing about CORS changes
   ([[FrontendFlutter]]). The bundle is built in an image of its own rather than copied into
   the React one, so each client is built, deployed and rolled back on its own.
-- **Build before `down` (2026-09-23).** `deploy.sh` used to stop the four containers and
-  *then* build, so every build failure was an outage lasting the whole fix-or-rollback
-  cycle — and the Flutter PWA image multiplied the ways a build can fail (a 700 MB SDK
-  download, ~3.6 GB of storage, `dart2js` wanting 2 GB of RAM on a NAS that has little
-  spare). Building first costs nothing: `docker-compose build` does not touch running
-  containers, and building against the *new* compose file while the *old* containers serve
-  is exactly the wanted behaviour. Planned downtime went from minutes to ~3 s, and an
-  unplanned one from "the site is down" to "the deploy did nothing".
-  The two refusals added with it — a tracked `data/zapzap.db`, and a pull that would not
-  fast-forward — both stop before anything is built or stopped, because both mean the clone
-  is not in a state anyone should deploy from.
+- **Build before `down` (2026-09-23).** `deploy.sh` stopped the containers and *then*
+  built, so every build failure — and the PWA image added many: a 700 MB SDK, ~3.6 GB of
+  storage, 2 GB of RAM for `dart2js` — was an outage for the whole fix-or-rollback cycle.
+  Building against the new compose file while the old containers serve costs nothing:
+  planned downtime went from minutes to ~3 s, an unplanned one to "the deploy did nothing".
 - **A deploy is not over until the site answers (2026-09-23, same change, after review).**
-  The first version of the above still reported success over a dead deploy: `up -d` returns
-  0 for a container that crash-loops, and the old health check could not fail (no `pipefail`,
-  so the pipeline's status was `jq`'s, and `jq` is happy with empty input). It printed a
-  downtime figure and "Deployment complete" while the site had been unreachable for 27 s and
-  counting. Hence the health wait, `pipefail`, and guards on `down` and `up -d`: the script
-  now refuses to claim a downtime it cannot see the end of. The same review found the
-  database guard failing **open** — `git ls-files` was read relative to `$PWD`, so a run from
-  a subdirectory printed "✓ Not tracked" about a path that does not exist and pulled, which
-  deleted `data/`. The `cd` to the script's directory and the fail-closed check are that fix;
-  both are pinned by `scripts/hooks_selftest.sh`.
+  The first version reported "Deployment complete" over a site unreachable for 27 s: `up -d`
+  returns 0 for a crash-looping container, and the health check could not fail (no
+  `pipefail`). Hence the health wait and the guards on `down` and `up -d`. The same review
+  found the database guard failing **open** (`git ls-files` read relative to `$PWD`), fixed
+  and pinned by `scripts/hooks_selftest.sh`.
 - **The health gate is split, because the services are not equal (2026-09-23, same change,
-  second review).** Requiring *every* service to be healthy would have made an unhealthy
-  `frontend-flutter` print "production is DOWN" and exit 1 — false, and an invitation to roll
-  back a site that is serving, on the very deploy where that container is newest. #36 made
-  the PWA non-essential on purpose (nginx resolves it per request, no `depends_on` on it),
-  and the deploy script now agrees with the proxy: essential means "the proxy and what it
-  cannot start without", everything else is a warning and exit 2. The two service names are
-  named once in the script instead of being spread through it, and the script refuses before
-  building if the compose file stops declaring one of them — the cheapest guard against the
-  set going stale.
-- **Rust not yet deployed (2026-09-22).** The user named `zapzap-rust/` as the target backend,
-  and CI gates it, but the switch is a separate decision with known gaps (schema bootstrap,
-  Google login, bot creation, authorization) — tracked in `wip/`. They closed one by one:
-  the schema bootstrap on 2026-09-23 (the Rust backend creates the Node schema itself, a
-  no-op on the production file, [[Backend]]); Google login and bot creation/deletion on
-  2026-09-24 ([[Api]]; the Rust compose passes `GOOGLE_OAUTH_CLIENT_ID`); authorization the
-  same day (fix/rust-security). That fix added two preconditions of its own: a private
-  `JWT_SECRET` (the Rust binary and `zapzap-rust/docker-compose.yml` refuse to start without
-  one), and a database opened once by the Node app after its entrypoint script (since
-  removed) rebuilt `users` — the Rust schema step does not port Node's `ADD COLUMN` upgrades
-  and refuses to start, leaving the file untouched, on a `users` table without `google_id`.
-  Last, the React `GameBoard` and `PartyLobby` had to pass `?token=` to `/suscribeupdate`,
-  because Rust sends a game's moves and a private party's events only to its players'
-  streams; #94 did (2026-09-24), and production switched (the entry below).
-- **Production switches to the Rust backend (2026-09-24).** The user decided the switch once
-  the gaps above were closed: the root compose's `backend` service builds `zapzap-rust/`
-  with the Bedrock feature, under the same service and container names so that nginx and
-  `deploy.sh` stay as they are. The Node backend is kept, buildable and gated in CI, as the
-  rollback, because its database is the same file and Rust writes it in Node's formats —
-  password hashes excepted until fix/rust-keeps-bcrypt (#100) made Rust keep bcrypt. `deploy.sh` gained one refusal:
-  a compose file `docker-compose` cannot read (a `.env` without `JWT_SECRET`) stops the
-  deploy before the build, with compose's reason.
-- **2026-09-25 (chore/switch-prod-to-rust, after review).** CORS noted (Rust answers every origin, Node restricted `ALLOWED_ORIGINS`); the Argon2 caveat found by the local rehearsal is void since fix/rust-keeps-bcrypt (#100: Rust keeps bcrypt, user decision); the deploy skill's rehearsal got exact commands for both halves, a schema snapshot before and after, and a post-switch check that Rust serves.
+  second review).** Requiring every service healthy would have called an unhealthy PWA
+  "production is DOWN" on the very deploy where it was newest, while React served `/`: the
+  PWA was made non-essential (exit 2), until the React client went (2026-09-29, below). The
+  service names live once in the script, which refuses a compose file that stops declaring one.
+- **Production switches to the Rust backend (2026-09-22 → 2026-09-25).** The user named
+  `zapzap-rust/` the target on 2026-09-22 and decided the switch once its gaps had closed:
+  the schema bootstrap (2026-09-23), Google login, bot creation and authorization, a private
+  `JWT_SECRET`, and the React client passing `?token=` to `/suscribeupdate` (#94), all by
+  2026-09-24. The root compose's `backend` service then built `zapzap-rust/` (Bedrock
+  feature) under the same names, so nginx and `deploy.sh` stayed as they were; Node stayed
+  one day as the rollback (Rust keeps its bcrypt hashes, #100). The switch added one refusal:
+  a compose file Compose cannot read (a `.env` without `JWT_SECRET`) stops the deploy before
+  the build. The step-by-step account is this page at `055c288`.
 - **CORS restricted to the production origin (2026-09-27, fix/rust-cors-allow-list).** Rust
   had answered every origin since the switch (`CorsLayer::permissive()`), where Node had
   honoured `ALLOWED_ORIGINS`; tower-http documents the permissive layer as unfit for
@@ -429,4 +417,12 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   holds. The script probes for v2 and falls back to v1 rather than switching outright, so
   either NAS deploys; `COMPOSE_PROJECT_NAME=zapzap` stays, the running containers' label. The
   `export PATH=$PATH:/usr/local/bin` prefix went: the NAS's ssh PATH already holds it.
+- **The React client is removed; the PWA becomes essential (2026-09-29,
+  chore/remove-react-client).** Three images instead of four; the proxy's `location /` became
+  the redirects above and its `depends_on` lost `frontend`. The PWA joined
+  `ESSENTIAL_SERVICES`, reversing the split of 2026-09-23 for it: that split protected `/`,
+  which the React client served, and there is no other web client left to protect. The
+  per-request resolution stays, for `/api/`. 301 rather than 302: the old URLs are gone for
+  good, and bookmarks should learn the new ones. Nothing to change in the deploy directory;
+  `docker image prune` on the NAS may drop the old `zapzap-frontend` images.
 - 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.

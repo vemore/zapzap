@@ -8,9 +8,9 @@
 #                                                the compose file it ran with
 #        scripts/deploy_nas.sh --help
 #
-# Runs on the dev machine, from a clean checkout of the commit to deploy. It builds four
-# images from HEAD — zapzap-backend (CARGO_FEATURES=bedrock), zapzap-frontend,
-# zapzap-frontend-flutter and zapzap-proxy (nginx/Dockerfile) —, tags each with the first
+# Runs on the dev machine, from a clean checkout of the commit to deploy. It builds three
+# images from HEAD — zapzap-backend (CARGO_FEATURES=bedrock), zapzap-frontend-flutter and
+# zapzap-proxy (nginx/Dockerfile) —, tags each with the first
 # 12 characters of the commit sha and `latest`, pushes them to $REGISTRY, writes
 # docker-compose.prod.yml to $NAS_DEPLOY_DIR/compose.yaml with the registry and the tag
 # written in, and has the NAS pull and start them. The NAS holds no clone and builds
@@ -19,7 +19,8 @@
 #
 # Configuration: scripts/deploy.env (gitignored; copy scripts/deploy.env.example), or the
 # same variables in the environment: REGISTRY, NAS_SSH, NAS_DEPLOY_DIR, PUBLIC_URL, and
-# VITE_GOOGLE_OAUTH_CLIENT_ID (else read from the repository's .env).
+# VITE_GOOGLE_OAUTH_CLIENT_ID (else read from the repository's .env; the PWA's Google
+# client id, under the name the removed React build gave it).
 #
 # The part that runs on the NAS is this same file, sent over ssh and run as
 # `deploy_nas.sh --remote <check|deploy|rollback> <dir> [tag]`. Its order is what makes a
@@ -33,8 +34,9 @@
 # when it answers, else `docker-compose` — and every compose call goes through it.
 #
 # Exit status: 0 deployed, every container healthy; 1 refused (nothing stopped) or an
-# outage (the message says which); 2 deployed and serving, but a non-essential service —
-# frontend-flutter — is not healthy.
+# outage (the message says which); 2 deployed and serving, but a non-essential service is
+# not healthy — none in docker-compose.prod.yml today, but a rollback to a compose file
+# from before 2026-09-29 carries the React client's `frontend`, which is one.
 #
 # Procedure and why: .claude/skills/deploy/SKILL.md, .llmwiki/Deployment.md
 # Self-test: scripts/deploy_nas_selftest.sh
@@ -45,17 +47,19 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]
 
 # Which services serve the site, and which one is the reverse proxy. Both are tied to two
 # other files: `nginx` is the proxy service of docker-compose.prod.yml, whose published port
-# the health wait asks for and whose health decides the site; `backend` and `frontend` are
-# its `depends_on: condition: service_healthy` entries, what nginx/nginx.conf proxies `/`,
-# `/api/` and `/suscribeupdate` to. Everything else is NOT essential, deliberately:
-# nginx resolves `frontend-flutter` per request, so an unhealthy PWA costs `/app/` a 502
-# and nothing else (#36). Renaming or adding a service means changing
-# docker-compose.prod.yml, nginx/nginx.conf and this line together.
+# the health wait asks for and whose health decides the site; `backend` is its
+# `depends_on: condition: service_healthy` entry, what nginx/nginx.conf proxies `/api/` and
+# `/suscribeupdate` to; `frontend-flutter` is the only web client since the React one went
+# (2026-09-29), what `/app/` proxies to and every other path redirects to. nginx still
+# resolves it per request, so an unhealthy PWA leaves `/api/` — the Android app — serving,
+# but the web has nothing else: the deploy calls it an outage. Anything else is NOT
+# essential. Renaming or adding a service means changing docker-compose.prod.yml,
+# nginx/nginx.conf and this line together.
 PROXY_SERVICE=nginx
-ESSENTIAL_SERVICES="backend frontend $PROXY_SERVICE"
+ESSENTIAL_SERVICES="backend frontend-flutter $PROXY_SERVICE"
 
 # The images, by compose service: <service>:<image name>:<build context>
-IMAGES="backend:zapzap-backend:zapzap-rust frontend:zapzap-frontend:frontend frontend-flutter:zapzap-frontend-flutter:frontend-flutter nginx:zapzap-proxy:nginx"
+IMAGES="backend:zapzap-backend:zapzap-rust frontend-flutter:zapzap-frontend-flutter:frontend-flutter nginx:zapzap-proxy:nginx"
 
 # How many deployed compose files the NAS keeps (composes/), hence how far back a rollback
 # can restore the exact compose file a tag ran with.
@@ -325,7 +329,7 @@ remote() {  # mode, deploy dir, [tag]
 
     echo "🚀 Starting containers..."
     # Compose v2 honours the proxy's `depends_on: condition: service_healthy`: `up -d` waits
-    # for backend and frontend, and fails when one turns unhealthy, leaving zapzap-proxy in
+    # for the backend, and fails when it turns unhealthy, leaving zapzap-proxy in
     # Created. Which container, in which state, and its logs, are then what to act on.
     if ! dc up -d; then
         local failed
@@ -337,7 +341,7 @@ remote() {  # mode, deploy dir, [tag]
         fi
         die "" "✗ START FAILED — production is DOWN. Act now:" \
             "  - \`docker ps -a\`: if zapzap-proxy sits in Created, \`docker start zapzap-proxy\`" \
-            "    restores / and /api/ at once." \
+            "    restores /api/ and /app/ at once." \
             "  - Otherwise roll back: scripts/deploy_nas.sh --rollback ${previous:-<previous tag>}."
     fi
     echo "✓ Containers started"
@@ -376,7 +380,7 @@ remote() {  # mode, deploy dir, [tag]
             fi
             die "" "  Roll back: scripts/deploy_nas.sh --rollback ${previous:-<previous tag>}" \
                 "  (.claude/skills/deploy/SKILL.md §4). If zapzap-proxy sits in Created," \
-                "  \`docker start zapzap-proxy\` restores / and /api/ at once."
+                "  \`docker start zapzap-proxy\` restores /api/ and /app/ at once."
         fi
         sleep 2
     done
@@ -396,18 +400,11 @@ remote() {  # mode, deploy dir, [tag]
     if [ -n "$degraded" ]; then
         echo "⚠  WARNING — the site is up, but a non-essential service is not:$degraded" >&2
         echo "   Serving normally: $ESSENTIAL_SERVICES are healthy and $health_url" >&2
-        echo "   answered 200, so \`/\` (the React client), \`/api/\` and \`/suscribeupdate\`" >&2
-        echo "   are unaffected." >&2
+        echo "   answered 200, so \`/app/\` (the PWA), \`/api/\` and \`/suscribeupdate\` are" >&2
+        echo "   unaffected." >&2
         for entry in $degraded; do
-            case "${entry%%(*}" in
-                frontend-flutter)
-                    echo "   Cost: \`/app/\` — the Flutter PWA — answers 502 until that container is" >&2
-                    echo "   healthy. nginx resolves it per request (nginx/nginx.conf), which is why" >&2
-                    echo "   it cannot take the rest of the site with it." >&2 ;;
-                *)
-                    echo "   Cost: whatever ${entry%%(*} serves. It is not on the path to \`/\` or" >&2
-                    echo "   \`/api/\`, so those keep working." >&2 ;;
-            esac
+            echo "   Cost: whatever ${entry%%(*} serves. It is not on the path to \`/app/\` or" >&2
+            echo "   \`/api/\`, so those keep working." >&2
         done
         log_tails "$degraded" >&2
         echo "" >&2
@@ -529,7 +526,7 @@ fi
 # A deploy is of HEAD, exactly: a modified tracked file anywhere, or an untracked one in a
 # build context, would ship code that no commit holds.
 dirty=$(git status --porcelain --untracked-files=no)
-dirty="$dirty$(git status --porcelain -- zapzap-rust frontend frontend-flutter nginx docker-compose.prod.yml | grep '^??')"
+dirty="$dirty$(git status --porcelain -- zapzap-rust frontend-flutter nginx docker-compose.prod.yml | grep '^??')"
 if [ -n "$dirty" ]; then
     printf '%s\n' "✗ REFUSING TO DEPLOY: the working tree is not clean, so the images would not be HEAD's:" >&2
     printf '%s\n' "$dirty" | sed 's/^/    /' >&2
@@ -540,7 +537,7 @@ fi
 if [ -z "${VITE_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -f "$REPO/.env" ]; then
     VITE_GOOGLE_OAUTH_CLIENT_ID=$(sed -nE 's/^VITE_GOOGLE_OAUTH_CLIENT_ID=["'\'']?([^"'\'']*)["'\'']?[[:space:]]*$/\1/p' "$REPO/.env" | tail -1)
 fi
-[ -n "${VITE_GOOGLE_OAUTH_CLIENT_ID:-}" ] || die "✗ VITE_GOOGLE_OAUTH_CLIENT_ID is not set: the React and Flutter images would" \
+[ -n "${VITE_GOOGLE_OAUTH_CLIENT_ID:-}" ] || die "✗ VITE_GOOGLE_OAUTH_CLIENT_ID is not set: the Flutter PWA image would" \
     "  have no Google sign-in. Set it in scripts/deploy.env or the repository's .env. Nothing was built."
 
 revision=$(git rev-parse HEAD) || die "✗ cannot read HEAD."
@@ -563,7 +560,6 @@ for entry in $IMAGES; do
     args=()
     case "$image" in
         zapzap-backend) args=(--build-arg CARGO_FEATURES=bedrock) ;;
-        zapzap-frontend) args=(--build-arg "VITE_GOOGLE_OAUTH_CLIENT_ID=$VITE_GOOGLE_OAUTH_CLIENT_ID") ;;
         zapzap-frontend-flutter) args=(--build-arg "GOOGLE_CLIENT_ID=$VITE_GOOGLE_OAUTH_CLIENT_ID") ;;
     esac
     echo "🔨 Building $REGISTRY/$image:$tag from $context/"

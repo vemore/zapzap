@@ -50,8 +50,8 @@ COPY --chown=builder:builder . .
 # (.github/workflows/ci.yml).
 #
 # GOOGLE_CLIENT_ID: the web OAuth client id (docker-compose.yml passes the .env's
-# VITE_GOOGLE_OAUTH_CLIENT_ID, as for the React image). A client id is not a secret; empty
-# builds a bundle without the Google button (lib/services/google_sign_in_service.dart).
+# VITE_GOOGLE_OAUTH_CLIENT_ID, the name the removed React image read). A client id is not
+# a secret; empty builds a bundle without the Google button (lib/services/google_sign_in_service.dart).
 # Declared here, after the SDK and pub layers, so a new id only rebuilds the bundle.
 ARG GOOGLE_CLIENT_ID=
 RUN flutter gen-l10n \

@@ -17,6 +17,6 @@ assert_not "GameRules.md no longer states 4-10 in Golden Score" \
 assert_not "README.md (its copy of the rules) no longer states 4-10" \
     grep -Eq '4 ?(-|–|to) ?10[^0-9].*Golden Score' "$WT/README.md"
 assert_only_paths "only the rule's code, docs and clients changed" \
-    'GAME_RULES\.md' 'README\.md' 'zapzap-rust/' 'frontend/' 'frontend-flutter/' 'native/' '\.llmwiki/'
+    'GAME_RULES\.md' 'README\.md' 'zapzap-rust/' 'frontend-flutter/' 'native/' '\.llmwiki/'
 assert_committed
 ev_done

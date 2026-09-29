@@ -78,7 +78,7 @@ echo "== commit detection =========================================="
 commit_field "plain commit"                    false '.commit.all'   'git commit -m x'
 commit_field "commit -am stages tracked files" true  '.commit.all'   'git commit -am wip'
 commit_field "--amend rewrites the last one"   true  '.commit.amend' 'git commit --amend --no-edit'
-commit_field "git -C still commits"            false '.commit.all'   'git -C frontend commit -m x'
+commit_field "git -C still commits"            false '.commit.all'   'git -C zapzap-rust commit -m x'
 commit_field "commit after add in one line"    false '.commit.all'   'git add -A && git commit -m "x"'
 commit_field "-i adds the staged files"        true  '.commit.include' 'git commit -i -m x f'
 commit_field "no -i, a pathspec commit is --only" false '.commit.include' 'git commit -m x f'
@@ -436,32 +436,13 @@ stub_tool cargo 1
 stage "scripts/train-native.js"
 tree_commit "a path outside every gated tree runs no gate" 0
 unstage "scripts/train-native.js"
-# A README edit or a deletion cannot break lint or build, so neither needs node_modules.
-stage "frontend/README.md"
-tree_commit "a frontend README-only commit, tree never set up" 0
-unstage "frontend/README.md"
-stage "frontend/src/old.jsx"
-git -C "$TREE" -c user.email=t@t -c user.name=t commit -qm "old.jsx" >/dev/null 2>&1
-git -C "$TREE" rm -rq frontend
-tree_commit "a frontend deletion-only commit, tree never set up" 0
-git -C "$TREE" reset -q --hard HEAD~1 2>/dev/null
-stage "frontend/src/App.jsx"
-tree_commit "a frontend change in a tree never set up" 2 "npm ci --prefix"
-mkdir -p "$TREE/frontend/node_modules"
-stub_npm() {  # lint exit code, build exit code
-    printf '#!/bin/sh\necho "stub npm $*"\ncase "$2" in\n    lint) exit %s ;;\n    build) exit %s ;;\nesac\nexit 0\n' "$1" "$2" > "$TOOLS/npm"
-    chmod +x "$TOOLS/npm"
-}
-stub_npm 0 0
-tree_commit "a frontend change whose lint and build pass" 0
-stub_npm 1 0
-tree_commit "a frontend change whose lint fails" 2 "npm run lint (frontend)"
-stub_npm 0 1
-tree_commit "a frontend change whose build fails" 2 "npm run build (frontend)"
+# The React client's frontend/ is gone, and its gate with it: a path there runs none.
 stub_tool npm 1
-git -C "$TREE" rm -q --cached frontend/src/App.jsx && rm -rf "$TREE/frontend"
+stage "frontend/package.json"
+tree_commit "a frontend/ path runs no gate (the React client is removed)" 0
+git -C "$TREE" rm -q --cached frontend/package.json && rm -rf "$TREE/frontend"
 # The Flutter client. npm and cargo stay red from here on: a frontend-flutter/ change must
-# not select the frontend/ gate (`^frontend/` needs the slash) nor a cargo one.
+# not select a cargo gate.
 stub_flutter() {  # pub get exit code, analyze exit code, [gen-l10n exit code], [1: pub get rewrites the lock]
     printf '#!/bin/sh\necho "stub flutter $*"\ncase "$1" in\n    pub) [ "%s" = 1 ] && echo "changed" >> pubspec.lock; exit %s ;;\n    analyze) echo "error - invalid_assignment - lib/main.dart:9:9"; exit %s ;;\n    gen-l10n) exit %s ;;\nesac\nexit 0\n' "${4:-0}" "$1" "$2" "${3:-0}" > "$TOOLS/flutter"
     chmod +x "$TOOLS/flutter"
@@ -792,15 +773,15 @@ rm -rf "$WIPREPO/wip"
 mkdir -p "$WIPREPO/frontend-flutter" && touch "$WIPREPO/frontend-flutter/pubspec.yaml"
 cp "$ROOT/scripts/worktree_setup.sh" "$WIPREPO/scripts/"
 printf '#!/bin/sh\necho "$*" >> "%s/flutter.log"\n' "$SANDBOX" > "$TOOLS/flutter" && chmod +x "$TOOLS/flutter"
-(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust >/dev/null 2>&1)
+(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-rust >/dev/null 2>&1)
 report "worktree_setup.sh runs flutter pub get"  "pub get" "$(cat "$SANDBOX/flutter.log" 2>/dev/null)"
 rm -f "$SANDBOX/flutter.log"
-(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust --no-flutter >/dev/null 2>&1)
+(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-rust --no-flutter >/dev/null 2>&1)
 report "worktree_setup.sh --no-flutter skips it" "none" "$(cat "$SANDBOX/flutter.log" 2>/dev/null || echo none)"
 # A failed flutter step (no network, a package missing from the cache) must not leave the
 # setup marker behind, or cleanup_local.sh keeps the worktree forever.
 printf '#!/bin/sh\nexit 1\n' > "$TOOLS/flutter"
-err=$(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-frontend --no-rust 2>&1 >/dev/null)
+err=$(cd "$WIPREPO" && PATH="$TOOLS:$PATH" scripts/worktree_setup.sh --no-rust 2>&1 >/dev/null)
 report "worktree_setup.sh: a failed flutter step exits non-zero" 1 "$?"
 report "worktree_setup.sh: and clears its setup marker" gone \
     "$([ -e "$WIPREPO/.zapzap-setup-in-progress" ] && echo kept || echo gone)"
@@ -811,10 +792,10 @@ report "worktree_setup.sh: and names the command to rerun" named "$got"
 # copies them, and without the flag links nothing.
 echo "JWT_SECRET=x" > "$WIPREPO/.env"
 echo "REGISTRY=r:1" > "$WIPREPO/scripts/deploy.env"
-"$WIPREPO/scripts/worktree_setup.sh" --no-frontend --no-rust --no-flutter "$SANDBOX/wipwt" >/dev/null 2>&1
+"$WIPREPO/scripts/worktree_setup.sh" --no-rust --no-flutter "$SANDBOX/wipwt" >/dev/null 2>&1
 report "worktree_setup.sh without --deploy links no deploy.env" none \
     "$([ -e "$SANDBOX/wipwt/scripts/deploy.env" ] && echo linked || echo none)"
-"$WIPREPO/scripts/worktree_setup.sh" --no-frontend --no-rust --no-flutter --deploy "$SANDBOX/wipwt" >/dev/null 2>&1
+"$WIPREPO/scripts/worktree_setup.sh" --no-rust --no-flutter --deploy "$SANDBOX/wipwt" >/dev/null 2>&1
 report "worktree_setup.sh --deploy links scripts/deploy.env" "$WIPREPO/scripts/deploy.env" \
     "$(readlink "$SANDBOX/wipwt/scripts/deploy.env" 2>/dev/null)"
 report "worktree_setup.sh --deploy links .env" "$WIPREPO/.env" "$(readlink "$SANDBOX/wipwt/.env" 2>/dev/null)"

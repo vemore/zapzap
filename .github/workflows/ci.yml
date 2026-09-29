@@ -33,7 +33,6 @@ jobs:
     outputs:
       rust: ${{ steps.flags.outputs.rust }}
       native: ${{ steps.flags.outputs.native }}
-      frontend: ${{ steps.flags.outputs.frontend }}
       image: ${{ steps.flags.outputs.image }}
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
@@ -58,7 +57,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nfrontend=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\n'
+          all='rust=true\nnative=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -137,36 +136,24 @@ jobs:
       - run: cargo test
 
   frontend:
-    # Branch protection requires this exact check name: rename it there first.
+    # The React client (frontend/) was removed on 2026-09-29, and with it everything this job
+    # built. Branch protection still requires this exact check name, so the job stays,
+    # always skipped: a job skipped by `if:` reports Success (above). Delete it once
+    # "Frontend — build" is dropped from master's required checks — not before, or every
+    # pull request waits for a check that never reports.
     name: Frontend — build
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.frontend != 'false' }}
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      # The job's `name:` stays "Frontend — build": branch protection pins it (see `image`).
-      - name: Lint
-        run: npm run lint
-      - name: Unit tests (vitest)
-        run: npx vitest run
-      - run: npm run build
+      - run: echo "frontend/ was removed; this job only keeps a required check name"
 
   image:
     # This `name:` is the check context `master`'s branch protection requires, character
     # for character. Rename it and the required context never reports: every pull request
     # is then blocked from merging for ever, with no failing check to point at. The job
-    # builds the Flutter PWA image and validates the proxy configuration too — say that in
-    # a step name, never here. Same warning in .llmwiki/Testing.md.
+    # builds the Flutter PWA image and validates the proxy configuration too, and no React
+    # image since 2026-09-29 — say that in a step name, never here. Same warning in
+    # .llmwiki/Testing.md.
     name: Images — backend and frontend build
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.image != 'false' }}
@@ -193,9 +180,13 @@ jobs:
       - name: Proxy image builds and its configuration is valid
         run: |
           docker build -t zapzap-proxy:ci nginx
-          docker run --rm \
-            --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 \
-            zapzap-proxy:ci nginx -t
+          docker run --rm --add-host backend:127.0.0.1 zapzap-proxy:ci nginx -t
+      # The proxy's routing, on the real configuration between a stub backend and a stub
+      # PWA: every URL of the removed React client answers a relative 301 to its page under
+      # /app/, query string kept, and /api/, /suscribeupdate, /app/, /privacy and
+      # /nginx-health are served as before.
+      - name: Proxy routes — React URLs redirect to the PWA, the rest unchanged
+        run: scripts/proxy_redirects_smoke.sh zapzap-proxy:ci
       # Both compose files parse, and their backend service still requires JWT_SECRET:
       # production's .env provides it, and the Rust backend has no default. The root one
       # builds (local use, CI); docker-compose.prod.yml is what the NAS runs, registry
@@ -231,8 +222,6 @@ jobs:
           SMOKE_CACHE_FROM: type=gha,scope=zapzap-backend-image
           SMOKE_CACHE_TO: type=gha,scope=zapzap-backend-image,mode=max
         run: scripts/backend_image_smoke.sh
-      - name: Frontend image
-        run: docker build -t zapzap-frontend:ci frontend
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
       # is the one the flutter job pins (frontend-flutter/Dockerfile).
       - name: Flutter PWA image

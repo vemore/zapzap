@@ -340,19 +340,13 @@ if printf '%s\n' "$paths" | grep -qE '^native/'; then
         env CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$MAIN/native/target}" bash -c "cd '$ROOT/native' && cargo clippy --all-targets --quiet -- -D warnings"
 fi
 
-# A client gate (frontend/, frontend-flutter/) runs only for a file the commit leaves in
-# the tree and that is not a `.md`: a README edit or a deletion (`git rm -r frontend`
-# included) cannot break lint, build or the analyzer, so it runs no gate and needs no setup.
+# The client gate runs only for a file the commit leaves in the tree and that is not a
+# `.md`: a README edit or a deletion cannot break the analyzer, so it runs no gate and
+# needs no setup.
 gate_paths() {  # directory
     printf '%s\n' "$paths" | grep -E "^$1/" | grep -vE '\.md$' \
         | while read -r f; do [ -e "$ROOT/$f" ] && echo "$f"; done
 }
-
-if [ -n "$(gate_paths frontend)" ]; then
-    [ -d "$ROOT/frontend/node_modules" ] || needs_setup "frontend/node_modules is missing (this tree was never set up)" "npm ci --prefix $ROOT/frontend"
-    run_gate "npm run lint (frontend)" bash -c "cd '$ROOT/frontend' && npm run lint --silent"
-    run_gate "npm run build (frontend)" bash -c "cd '$ROOT/frontend' && npm run build --silent"
-fi
 
 # The Flutter client: the formatter and the analyzer only (seconds); tests and builds are
 # the `flutter` CI job. An offline pub get (no network, from the pub cache the setup
