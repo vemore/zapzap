@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
 import 'playing_card.dart';
+import 'victory_confetti.dart';
 
 /// One player as the end of a round shows them — plain data, so the widget
 /// knows nothing of the provider (as [GameSeat] for the player table).
@@ -73,6 +74,7 @@ class GameRoundEnd extends StatelessWidget {
     this.gameFinished = false,
     this.winnerName,
     this.winnerScore,
+    this.winnerIsMe = false,
     this.busy = false,
   });
 
@@ -114,6 +116,10 @@ class GameRoundEnd extends StatelessWidget {
   final String? winnerName;
   final int? winnerScore;
 
+  /// The winner is the player holding this device: confetti and a popping
+  /// banner, nothing new for the others.
+  final bool winnerIsMe;
+
   /// A move is in flight: the button waits.
   final bool busy;
 
@@ -136,7 +142,8 @@ class GameRoundEnd extends StatelessWidget {
     final stacked =
         MediaQuery.textScalerOf(context).scale(10) / 10 > stackedTextScale;
 
-    return Column(
+    final celebrate = gameFinished && winnerIsMe && animate;
+    final content = Column(
       key: const Key('roundOver'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -174,6 +181,15 @@ class GameRoundEnd extends StatelessWidget {
         _footer(l10n),
       ],
     );
+    if (!celebrate) return content;
+    return Stack(
+      children: [
+        content,
+        const Positioned.fill(
+          child: VictoryConfetti(key: Key('victoryAnimation')),
+        ),
+      ],
+    );
   }
 
   /// "Round over · Round n", or the end of the game with its winner banner.
@@ -204,51 +220,54 @@ class GameRoundEnd extends StatelessWidget {
         ),
         if (winnerName != null) ...[
           const SizedBox(height: 12),
-          Container(
-            key: const Key('winnerBanner'),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.amber600.withValues(alpha: 0.15),
-              border: Border.all(color: AppColors.amber400, width: 2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.workspace_premium,
-                      color: AppColors.amber400,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        l10n.gameWinnerLabel,
-                        style: const TextStyle(
-                          color: AppColors.amber400,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
+          _popIfMine(
+            context,
+            Container(
+              key: const Key('winnerBanner'),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.amber600.withValues(alpha: 0.15),
+                border: Border.all(color: AppColors.amber400, width: 2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.workspace_premium,
+                        color: AppColors.amber400,
+                        size: 20,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.gameOverWinner(winnerName!),
-                  style: titles.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                if (winnerScore != null)
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          l10n.gameWinnerLabel,
+                          style: const TextStyle(
+                            color: AppColors.amber400,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    l10n.gameFinalScore(winnerScore!),
-                    style: const TextStyle(color: AppColors.amber400),
+                    l10n.gameOverWinner(winnerName!),
+                    style: titles.titleMedium,
                     textAlign: TextAlign.center,
                   ),
-              ],
+                  if (winnerScore != null)
+                    Text(
+                      l10n.gameFinalScore(winnerScore!),
+                      style: const TextStyle(color: AppColors.amber400),
+                      textAlign: TextAlign.center,
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -261,6 +280,12 @@ class GameRoundEnd extends StatelessWidget {
       ],
     );
   }
+
+  /// The winner banner of the winner's own device pops in.
+  Widget _popIfMine(BuildContext context, Widget banner) =>
+      winnerIsMe && !MediaQuery.of(context).disableAnimations
+      ? VictoryPop(child: banner)
+      : banner;
 
   /// The ZapZap in one sentence: it held (green) and why, or it was
   /// counteracted (red), by whom, on which values, and the penalty.
