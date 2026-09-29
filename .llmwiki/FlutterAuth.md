@@ -16,23 +16,52 @@
   `logout`, `rename(username)` (`PATCH /auth/me`: the new token and user replace the
   session and are stored, as a sign-in's are), `changePassword({newPassword,
   currentPassword, credential})` (the session goes on; a Google account without a password
-  is stored as having one since), `deleteAccount({password, credential})` (the call, then `logout`: the stored
-  session erased and the router on the login screen; a refusal throws, still signed in). It keeps `ApiClient.token` in step and owns `ApiClient.onUnauthorized`.
+  is stored as having one since; the answer's user replaces the stored one, so a guest's
+  claim is known at once), `deleteAccount({password, credential})` (the call, then `logout`: the stored
+  session erased and the router on the login screen; a refusal throws, still signed in),
+  `playAsGuest()`, `isGuest`, `guestPassword` (below). It keeps `ApiClient.token` in step and owns `ApiClient.onUnauthorized`.
   `logout` is idempotent — the first of several parallel 401s does the work, the others
   return — clears the storage, and signs out of Google (`GoogleSignInService.signOut`, not
   awaited and its failure only logged: the session is closed either way). Other state that depends on the session (the SSE
   connection) listens to it and follows `token`; this provider knows nothing of SSE.
+- **Guest play** (« Jouer sans compte » on the home screen, `home-guest`; `POST
+  /auth/guest`, [[Api]] § Guest accounts): `playAsGuest()` signs the device's stored guest
+  back in when there is one, else creates one and stores its credentials — id, username,
+  the generated password, answered once, and `active` — under the key `guest`
+  (`GuestCredentials`), apart from the session: `clear()` (an expired or refused session)
+  keeps them. A new guest replaces a stored one **only when the backend refused its
+  credentials** (`INVALID_CREDENTIALS`, which erases them); any other failure of the sign-in
+  again (no network, a 5xx) is thrown, shown as the home screen's error, and the
+  credentials kept. A 429
+  `RATE_LIMITED` shows `homeGuestErrorRateLimited` under the button (`home-guest-error`,
+  `guestErrorText`). **Silent sign-in again**: when the guest's token has expired at
+  start-up, or a call is answered 401, the provider signs in with `/login` and the stored
+  credentials before anything else; parallel 401s share one attempt (`_resuming`). The
+  backend refusing them (`INVALID_CREDENTIALS`: the account deleted) erases them; no answer
+  keeps them for the next start, the player meanwhile on the login screen. **The start-up
+  signs the guest back in only when it was the last account signed in on this device**
+  (`GuestCredentials.active`, rewritten by every sign-in: true for the guest's, false for
+  any other account's). So after another account signs in — and out, or expires — the
+  device starts on the login screen, the guest's credentials kept inactive: « Jouer sans
+  compte » still brings that guest back, rather than a new one. The credentials follow a rename, and
+  are erased by the claim (the first password change, `isGuest` false in its answer), by
+  `logout` (the menu warns first: the account is then lost) and by `deleteAccount`.
+  `User.isGuest` comes with every account shape; a session stored before it reads false.
+  Tests: `test/auth_provider_test.dart` group `guest`, `test/guest_play_test.dart`.
 - **Start-up**: `restore()` reads the stored session; an expired, undecodable or
-  `exp`-less token, or an unreadable user, is erased (`utils/jwt.dart`: payload decoded
+  `exp`-less token, or an unreadable user, is erased (a guest's first signed back in, above) (`utils/jwt.dart`: payload decoded
   without checking the signature — the backend does that). Until it is done the router
   holds on `/splash`.
 - **Storage** (`TokenStorage.platform()`, conditional import on `dart.library.js_interop`):
   `flutter_secure_storage` on Android (`token_storage_io.dart`), `shared_preferences` on
   the web (`token_storage_web.dart`, localStorage, keys prefixed `flutter.` by the plugin —
   so the removed React client's own `token` on the same origin was never read: its players
-  sign in once more in the PWA). Keys `token` and `user` (JSON of `User.toJson()`). `MemoryTokenStorage` for tests.
-  `User.hasPassword`, `isGoogleUser` and `email` come from `/auth/login`, `/auth/google`
-  and `PATCH /auth/me`, which answer one user shape; register proves a password, and a session stored before the field reads it as "not a Google account".
+  sign in once more in the PWA). Keys `token` and `user` (JSON of `User.toJson()`), and
+  `guest` (a guest's credentials, JSON; on the web in localStorage, so the account lives in
+  that browser). `MemoryTokenStorage` for tests.
+  `User.hasPassword`, `isGoogleUser`, `isGuest` and `email` come from `/auth/login`,
+  `/auth/google`, `/auth/guest`, `PATCH /auth/me` and `PUT /auth/me/password`, which answer
+  one user shape; register proves a password, and a session stored before the field reads it as "not a Google account".
 - **Screens**: login (`Login.jsx`) only requires both fields — as React, so an account
   that predates the rules still signs in; register (`Register.jsx`) checks the rules of
   `auth.js:42-88` (`utils/validators.dart`: username trimmed, 3-30,
@@ -138,6 +167,7 @@
 
 ## Decisions & History
 
+- **Guest play (2026-09-29, `feat/guest-play`).** A newcomer had to fill a form before a first game. The JWT lives 7 days with no refresh, so the device keeps the guest's generated password and signs in again with it, rather than only the token, which would lose the guest after a week. The credentials are stored apart from the session and outlive `clear()`, so a refused token or a failed sign-in again does not lose the account; they hold the user id so a 401 of another account never signs the guest in, and the username so a sign-in works with no session left. Secure storage on Android; on the web localStorage, which the warning names. « Jouer sans compte » resumes a stored guest before creating another, so a device does not pile up accounts. Explicit sign-out erases them (confirmed with the loss spelled out) rather than keeping them for later: on a shared device the next person must not land in the previous guest's account.
 - **Google sign-in with the web client id on both platforms (2026-09-24,
   `feat/flutter-google-signin`).** The backend accepts one audience, the web client; asking
   Android for a token issued to `serverClientId` keeps both backends unchanged, and the

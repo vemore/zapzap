@@ -2696,5 +2696,50 @@
         "type": "int"
       }
     }
+  },
+  "homeGuestButton": "Jouer sans compte",
+  "@homeGuestButton": {
+    "description": "Button on the landing screen: play at once under a guest account, no form"
+  },
+  "homeGuestErrorRateLimited": "Trop de comptes invités ont été créés depuis ce réseau. Réessaie plus tard, ou crée un compte.",
+  "@homeGuestErrorRateLimited": {
+    "description": "Error under the guest button when the server refuses more guest accounts from this network for now (429 RATE_LIMITED)"
+  },
+  "guestBanner": "Enregistre ton compte et mets un mot de passe pour garder tes parties d'un appareil à l'autre.",
+  "@guestBanner": {
+    "description": "Lasting warning to a guest (parties screen, account page): the account is only on this device until a password is set"
+  },
+  "guestBannerWeb": "Ce compte n'existe que dans ce navigateur : il sera perdu si ses données sont effacées.",
+  "@guestBannerWeb": {
+    "description": "Second sentence of the guest warning, web build only: the account lives in the browser storage"
+  },
+  "guestBannerButton": "Enregistrer mon compte",
+  "@guestBannerButton": {
+    "description": "Button of the guest warning, opens the account page"
+  },
+  "accountSignInGuest": "Compte invité, gardé sur cet appareil",
+  "@accountSignInGuest": {
+    "description": "Account page, how a guest signs in: the device keeps its generated credentials"
+  },
+  "accountGuestPasswordHint": "Choisis un mot de passe : ton compte sera enregistré, et tu pourras te connecter avec ton pseudo sur n'importe quel appareil.",
+  "@accountGuestPasswordHint": {
+    "description": "Account page, password section of a guest: what choosing a password does"
+  },
+  "accountGuestClaimed": "Compte enregistré. Connecte-toi avec ton pseudo et ce mot de passe sur tes autres appareils.",
+  "@accountGuestClaimed": {
+    "description": "Snackbar after a guest set their own password: the account is now a full one"
+  },
+  "logoutGuestConfirmBody": "Tu joues sans compte enregistré : si tu te déconnectes, ce compte et tes parties seront perdus. Pour les garder, choisis d'abord un mot de passe dans « {account} ».",
+  "@logoutGuestConfirmBody": {
+    "description": "Sign-out confirmation of a guest: the account is lost; {account} is the name of the account page",
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "logoutGuestConfirmButton": "Me déconnecter et perdre le compte",
+  "@logoutGuestConfirmButton": {
+    "description": "Destructive button of the guest sign-out confirmation"
   }
 }

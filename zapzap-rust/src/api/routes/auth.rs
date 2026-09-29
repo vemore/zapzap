@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use std::net::SocketAddr;
+
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, StatusCode},
     middleware,
     routing::{delete, post, put},
     Extension, Json, Router,
@@ -11,14 +13,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{auth_middleware, Claims};
 use crate::application::auth::{
-    ChangePassword, ChangePasswordError, ChangePasswordInput, ConfirmError, DeleteAccount,
-    DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput, LoginWithGoogle,
-    RegisterUser, RegisterUserInput, RenameError, RenameUser,
+    ChangePassword, ChangePasswordError, ChangePasswordInput, ConfirmError, CreateGuest,
+    DeleteAccount, DeleteAccountError, DeleteAccountInput, LoginUser, LoginUserInput,
+    LoginWithGoogle, RegisterUser, RegisterUserInput, RenameError, RenameUser,
 };
 use crate::application::bot::spawn_bot_turns;
 use crate::domain::entities::User;
 use crate::domain::repositories::{ForfeitOutcome, SeatForfeit};
 use crate::infrastructure::app_state::{AppState, GameEvent};
+use crate::infrastructure::client_ip::client_ip;
 
 /// Create auth router
 pub fn create_auth_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
@@ -27,6 +30,7 @@ pub fn create_auth_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/register", post(register_handler))
         .route("/login", post(login_handler))
         .route("/google", post(google_handler))
+        .route("/guest", post(guest_handler))
         .route(
             "/me",
             delete(delete_me_handler)
@@ -96,6 +100,8 @@ pub struct AccountUserInfo {
     is_google_user: bool,
     /// A Google account may have set a password since (`PUT /me/password`)
     has_password: bool,
+    /// A guest account (`POST /guest`), until it sets a password of its own
+    is_guest: bool,
 }
 
 impl From<&User> for AccountUserInfo {
@@ -107,8 +113,26 @@ impl From<&User> for AccountUserInfo {
             is_admin: user.is_admin,
             is_google_user: user.google_id.is_some(),
             has_password: user.password_hash.is_some(),
+            is_guest: user.is_guest,
         }
     }
+}
+
+/// `POST /guest`: the new guest, its token, and its password, which the client keeps to
+/// sign in again once the token has expired
+#[derive(Serialize)]
+pub struct GuestResponse {
+    success: bool,
+    user: AccountUserInfo,
+    token: String,
+    password: String,
+}
+
+/// `PUT /me/password`: the account as it now is (a guest's is claimed)
+#[derive(Serialize)]
+pub struct PasswordChangedResponse {
+    success: bool,
+    user: AccountUserInfo,
 }
 
 /// `PATCH /me`: the renamed user and a token carrying the name
@@ -117,11 +141,6 @@ pub struct RenameResponse {
     success: bool,
     user: AccountUserInfo,
     token: String,
-}
-
-#[derive(Serialize)]
-pub struct SuccessResponse {
-    success: bool,
 }
 
 #[derive(Serialize)]
@@ -372,6 +391,67 @@ async fn google_handler(
     }
 }
 
+/// POST /api/auth/guest - play without an account: a guest user under a random name
+/// (`Guest_` and eight digits) and a random password, answered once for the client to
+/// keep. At most `GUEST_PER_IP` per client address and `GUEST_GLOBAL` in all per hour
+/// (`RateLimiter::guest`); the address is `client_ip`'s, behind the proxies.
+async fn guest_handler(
+    State(state): State<Arc<AppState>>,
+    peer: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<GuestResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let client = client_ip(
+        &headers,
+        peer.map(|ConnectInfo(addr)| addr),
+        state.trusted_proxy_hops,
+    );
+    if !state.guest_limiter.try_acquire(&client.ip) {
+        tracing::warn!("Guest account refused to {}: rate limited", client.ip);
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ErrorResponse {
+                error: "Too many guest accounts, try again later".to_string(),
+                code: "RATE_LIMITED".to_string(),
+                details: None,
+            }),
+        ));
+    }
+
+    let use_case = CreateGuest::new(state.user_repo.clone(), state.jwt_service.clone());
+    match use_case.execute().await {
+        Ok(guest) => {
+            // The address and the entries of X-Forwarded-For tell, after a deploy, whether
+            // the hop count names the client (`TRUSTED_PROXY_HOPS`). Never the password
+            tracing::info!(
+                "Guest account created: {} ({}) for {} ({} X-Forwarded-For entries)",
+                guest.user.username,
+                guest.user.id,
+                client.ip,
+                client.forwarded_entries
+            );
+            Ok((
+                StatusCode::CREATED,
+                Json(GuestResponse {
+                    success: true,
+                    user: AccountUserInfo::from(&guest.user),
+                    token: guest.token,
+                    password: guest.password,
+                }),
+            ))
+        }
+        Err(e) => {
+            // No account was created: the attempt does not count against the client
+            state.guest_limiter.release(&client.ip);
+            Err(refusal(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "GUEST_ERROR",
+                &e,
+                "Guest account creation failed",
+            ))
+        }
+    }
+}
+
 /// What follows an account deletion, by the player or by an admin: the account's live
 /// session goes and its event streams end; each game it forfeited a seat in hears of it,
 /// and its bots play on when the game goes on (`SeatForfeit`).
@@ -561,12 +641,13 @@ async fn rename_me_handler(
 
 /// PUT /api/auth/me/password - a player changes their password (`{newPassword}`),
 /// confirmed as a deletion is: `currentPassword`, or for an account without one a fresh
-/// Google ID token (`credential`), which sets its first password.
+/// Google ID token (`credential`), which sets its first password. A guest's account is the
+/// player's own from then on: the answer's user says `isGuest` false.
 async fn change_password_handler(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     body: Option<Json<serde_json::Value>>,
-) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<PasswordChangedResponse>, (StatusCode, Json<ErrorResponse>)> {
     let field = |name: &str| {
         body.as_ref()
             .and_then(|Json(b)| b.get(name))
@@ -581,7 +662,10 @@ async fn change_password_handler(
 
     let use_case = ChangePassword::new(state.user_repo.clone(), state.google_oauth.clone());
     match use_case.execute(&claims.user_id, input).await {
-        Ok(()) => Ok(Json(SuccessResponse { success: true })),
+        Ok(user) => Ok(Json(PasswordChangedResponse {
+            success: true,
+            user: AccountUserInfo::from(&user),
+        })),
         Err(e) => {
             let (status, code) = match &e {
                 ChangePasswordError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),

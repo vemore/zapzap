@@ -2,12 +2,14 @@
 //! current password, or for an account created with Google by a fresh Google ID token of
 //! that account — which sets its first password. The new one follows sign-up's rules
 //! (`validate_password`). Tokens already issued stay valid: the JWT does not carry the
-//! password.
+//! password. A guest's account (`CreateGuest`) becomes the player's own here: its password
+//! is one the player chose (`update_password_hash` clears `is_guest`).
 
 use std::sync::Arc;
 
 use super::confirm_identity::{confirm_identity, ConfirmError};
 use super::register_user::validate_password;
+use crate::domain::entities::User;
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::PasswordService;
 use crate::infrastructure::services::GoogleOAuthService;
@@ -35,14 +37,14 @@ impl ChangePassword {
         Self { user_repo, google }
     }
 
-    /// Replaces the password of `user_id`
+    /// Replaces the password of `user_id`; answers the user as it now is
     pub async fn execute(
         &self,
         user_id: &str,
         input: ChangePasswordInput,
-    ) -> Result<(), ChangePasswordError> {
+    ) -> Result<User, ChangePasswordError> {
         validate_password(&input.new_password).map_err(ChangePasswordError::Validation)?;
-        let user = self
+        let mut user = self
             .user_repo
             .find_by_id(user_id)
             .await?
@@ -61,16 +63,23 @@ impl ChangePassword {
             return Err(ChangePasswordError::NotFound);
         }
         tracing::info!(
-            "Password {} for {} ({})",
+            "Password {} for {} ({}){}",
             if user.password_hash.is_some() {
                 "changed"
             } else {
                 "set"
             },
             user.username,
-            user.id
+            user.id,
+            if user.is_guest {
+                ", guest account claimed"
+            } else {
+                ""
+            }
         );
-        Ok(())
+        user.password_hash = Some(hash);
+        user.is_guest = false;
+        Ok(user)
     }
 }
 

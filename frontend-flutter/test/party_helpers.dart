@@ -142,6 +142,26 @@ class FakeLobbyBackend {
   /// The token `PATCH /auth/me` hands back.
   final String renamedToken = jwtExpiringIn(const Duration(hours: 12));
 
+  /// The guest account `POST /auth/guest` creates: its token and password.
+  final String guestToken = jwtExpiringIn(
+    const Duration(days: 7),
+    userId: 'g1',
+  );
+  static const guestPassword = 'Gen3ratedGuestPassw0rd42';
+  static const guestUser = {
+    'id': 'g1',
+    'username': 'Guest_12345',
+    'email': null,
+    'isAdmin': false,
+    'isGoogleUser': false,
+    'hasPassword': true,
+    'isGuest': true,
+  };
+
+  /// The user `PUT /auth/me/password` answers; `null` answers `{success}`
+  /// alone, as a backend from before the guest accounts.
+  JsonMap? passwordChangedUser;
+
   /// `'<METHOD> <path>'` (`'POST /api/party/p1/join'`) to the refusal that
   /// route answers instead.
   final Map<String, ({int status, JsonMap body})> failures = {};
@@ -237,6 +257,18 @@ class FakeLobbyBackend {
         'party': {'id': createdPartyId, 'status': 'playing'},
         'round': {'id': 'r1', 'roundNumber': 1, 'status': 'active'},
       });
+    }
+    if (path == '/api/auth/guest' && request.method == 'POST') {
+      return _json({
+        'success': true,
+        'user': guestUser,
+        'token': guestToken,
+        'password': guestPassword,
+      }, 201);
+    }
+    if (path == '/api/auth/me/password' && request.method == 'PUT') {
+      final user = passwordChangedUser;
+      return _json({'success': true, 'user': ?user});
     }
     // A rename answers the account as `/auth/google` describes one, with a
     // new token.

@@ -22,6 +22,13 @@ abstract class TokenStorage {
   static const tokenKey = 'token';
   static const userKey = 'user';
 
+  /// A guest account's credentials ([GuestCredentials], JSON): the password
+  /// the backend answered once, which signs the guest back in when its token
+  /// has expired. Kept apart from the session: an expired or refused session
+  /// is erased ([clear]), the guest's way back in is not — only signing out,
+  /// deleting the account or claiming it ([clearGuest]) erases it.
+  static const guestKey = 'guest';
+
   /// The raw value under [key], `null` when absent.
   Future<String?> readKey(String key);
   Future<void> writeKey(String key, String value);
@@ -50,10 +57,88 @@ abstract class TokenStorage {
     await writeKey(userKey, jsonEncode(session.user.toJson()));
   }
 
+  /// Erases the session; the guest's credentials stay.
   Future<void> clear() async {
     await deleteKey(tokenKey);
     await deleteKey(userKey);
   }
+
+  /// The stored guest credentials, `null` when there are none or they are
+  /// unreadable.
+  Future<GuestCredentials?> readGuest() async {
+    final text = await readKey(guestKey);
+    if (text == null) return null;
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) return null;
+      return GuestCredentials.fromJson(decoded.cast<String, dynamic>());
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> writeGuest(GuestCredentials guest) =>
+      writeKey(guestKey, jsonEncode(guest.toJson()));
+
+  Future<void> clearGuest() => deleteKey(guestKey);
+}
+
+/// How a guest account signs in: its id (whose account they are), its
+/// current username (a rename follows) and the password the backend
+/// generated. Secure storage on Android; on the web, the browser's
+/// localStorage — the account lives only in that browser.
+class GuestCredentials {
+  const GuestCredentials({
+    required this.userId,
+    required this.username,
+    required this.password,
+    this.active = true,
+  });
+
+  factory GuestCredentials.fromJson(Map<String, dynamic> json) {
+    final userId = json['userId'];
+    final username = json['username'];
+    final password = json['password'];
+    if (userId is! String || username is! String || password is! String) {
+      throw const FormatException('Incomplete guest credentials');
+    }
+    return GuestCredentials(
+      userId: userId,
+      username: username,
+      password: password,
+      active: json['active'] != false,
+    );
+  }
+
+  final String userId;
+  final String username;
+  final String password;
+
+  /// The guest was the last account signed in on this device: the start-up
+  /// signs it back in. Another account's sign-in clears it, and only « Jouer
+  /// sans compte » brings the guest back ([AuthProvider.playAsGuest]).
+  final bool active;
+
+  GuestCredentials renamed(String username) => GuestCredentials(
+    userId: userId,
+    username: username,
+    password: password,
+    active: active,
+  );
+
+  GuestCredentials withActive(bool active) => GuestCredentials(
+    userId: userId,
+    username: username,
+    password: password,
+    active: active,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'username': username,
+    'password': password,
+    'active': active,
+  };
 }
 
 /// A [TokenStorage] that forgets everything on restart; for tests.

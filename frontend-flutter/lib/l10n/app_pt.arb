@@ -488,5 +488,15 @@
   "tutorialZapZap": "Sua mão vale {points} pontos: {threshold} ou menos! Em vez de jogar, anuncie ZapZap.",
   "tutorialZapZapHint": "Não jogue: toque em ZapZap e confirme.",
   "tutorialHeld": "ZapZap certeiro: sua mão é a mais baixa, você marca 0. {player} marca os pontos da mão.",
-  "tutorialEnd": "Se outro jogador tiver uma mão menor ou igual à sua, seu ZapZap é rebatido: você marca sua mão mais 5 por cada outro jogador. Acima de {limit} pontos, o jogador é eliminado."
+  "tutorialEnd": "Se outro jogador tiver uma mão menor ou igual à sua, seu ZapZap é rebatido: você marca sua mão mais 5 por cada outro jogador. Acima de {limit} pontos, o jogador é eliminado.",
+  "homeGuestButton": "Jogar sem conta",
+  "homeGuestErrorRateLimited": "Muitas contas de convidado foram criadas a partir desta rede. Tente mais tarde ou crie uma conta.",
+  "guestBanner": "Registre sua conta e defina uma senha para manter suas partidas de um aparelho para outro.",
+  "guestBannerWeb": "Esta conta só existe neste navegador: ela será perdida se os dados dele forem apagados.",
+  "guestBannerButton": "Registrar minha conta",
+  "accountSignInGuest": "Conta de convidado, guardada neste aparelho",
+  "accountGuestPasswordHint": "Escolha uma senha: sua conta ficará registrada e você poderá entrar com seu usuário em qualquer aparelho.",
+  "accountGuestClaimed": "Conta registrada. Entre com seu usuário e esta senha nos seus outros aparelhos.",
+  "logoutGuestConfirmBody": "Você está jogando sem uma conta registrada: se sair, perderá esta conta e suas partidas. Para mantê-las, escolha primeiro uma senha em “{account}”.",
+  "logoutGuestConfirmButton": "Sair e perder a conta"
 }

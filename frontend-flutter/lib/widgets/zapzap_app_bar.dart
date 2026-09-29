@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../router.dart';
+import '../utils/app_theme.dart';
 import 'connected_players.dart';
 import 'connection_indicator.dart';
 import 'rules_sheet.dart';
@@ -182,9 +183,13 @@ class _NavigationMenu extends StatelessWidget {
 
 /// Asks before signing out (`logout-dialog`): Cancel keeps the session and
 /// the screen, Sign out calls [AuthProvider.logout] (Google signed out too).
-/// No navigation: the router follows [AuthProvider] to the login screen.
+/// A guest ([AuthProvider.isGuest]) is warned harder: signing out erases the
+/// credentials this device keeps, so the account is lost; the way to keep it
+/// is a password, on the account page. No navigation: the router follows
+/// [AuthProvider] to the login screen.
 Future<void> confirmLogout(BuildContext context) async {
   final auth = context.read<AuthProvider>();
+  final guest = auth.isGuest;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) {
@@ -192,7 +197,12 @@ Future<void> confirmLogout(BuildContext context) async {
       return AlertDialog(
         key: const Key('logout-dialog'),
         title: Text(l10n.logoutConfirmTitle),
-        content: Text(l10n.logoutConfirmBody),
+        content: Text(
+          guest
+              ? l10n.logoutGuestConfirmBody(l10n.accountTitle)
+              : l10n.logoutConfirmBody,
+          key: const Key('logout-body'),
+        ),
         actions: [
           TextButton(
             key: const Key('logout-cancel'),
@@ -202,7 +212,15 @@ Future<void> confirmLogout(BuildContext context) async {
           FilledButton(
             key: const Key('logout-confirm'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.logoutButton),
+            style: guest
+                ? FilledButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                  )
+                : null,
+            child: Text(
+              guest ? l10n.logoutGuestConfirmButton : l10n.logoutButton,
+            ),
           ),
         ],
       );

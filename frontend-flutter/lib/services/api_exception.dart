@@ -38,6 +38,7 @@ abstract final class ApiErrorCode {
   static const missingConfirmation = 'MISSING_CONFIRMATION';
   static const activeParty = 'ACTIVE_PARTY';
   static const lastAdmin = 'LAST_ADMIN';
+  static const rateLimited = 'RATE_LIMITED'; // 429, POST /auth/guest
 
   /// The code for a status when the body did not carry one.
   static String fromStatus(int status) => switch (status) {

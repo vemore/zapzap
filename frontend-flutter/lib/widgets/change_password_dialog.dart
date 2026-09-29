@@ -15,7 +15,9 @@ import 'google_confirmation.dart';
 /// ([User.hasPassword]), or for any Google account ([User.isGoogleUser]) by
 /// a fresh Google ID token ([GoogleConfirmation]) — which sets a Google
 /// account's first password, and replaces one it has forgotten. The new
-/// password follows the sign-up form's rules ([validatePassword]).
+/// password follows the sign-up form's rules ([validatePassword]). A guest's
+/// generated password ([AuthProvider.guestPassword]) confirms without being
+/// asked: the player chooses a password and the account is theirs.
 ///
 /// `true` once the password is changed; a refusal stays in the dialog.
 Future<bool> showChangePasswordDialog(BuildContext context) async =>
@@ -39,6 +41,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   late final AuthProvider _auth;
   late final bool _hasPassword;
 
+  /// The guest's generated password, which confirms unseen; `null` for any
+  /// other account.
+  late final String? _guestPassword;
+
   /// Google can confirm: whatever the password, the account is Google's.
   late final bool _isGoogle;
 
@@ -51,6 +57,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   void initState() {
     super.initState();
     _auth = context.read<AuthProvider>();
+    _guestPassword = _auth.guestPassword;
     _hasPassword = _auth.user?.hasPassword ?? true;
     _isGoogle = _auth.user?.isGoogleUser ?? false;
   }
@@ -65,7 +72,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
 
   bool get _newValid => validatePassword(_new.text) == null;
 
-  bool get _canSubmit => !_busy && _current.text.isNotEmpty && _newValid;
+  bool get _canSubmit =>
+      !_busy &&
+      (_guestPassword != null || _current.text.isNotEmpty) &&
+      _newValid;
 
   Future<void> _submit({String? credential}) async {
     if (_busy) return;
@@ -84,7 +94,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
         newPassword: _new.text,
         // Google's confirmation stands alone: a password sent beside it is
         // the one the backend would check, and it may be the forgotten one.
-        currentPassword: credential == null ? _current.text : null,
+        currentPassword: credential == null
+            ? _guestPassword ?? _current.text
+            : null,
         credential: credential,
       );
       if (mounted) Navigator.of(context).pop(true);
@@ -109,7 +121,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     return AlertDialog(
       key: const Key('change-password-dialog'),
       title: Text(
-        _hasPassword ? l10n.accountPasswordChange : l10n.accountPasswordSet,
+        _hasPassword && _guestPassword == null
+            ? l10n.accountPasswordChange
+            : l10n.accountPasswordSet,
       ),
       content: SingleChildScrollView(
         child: AutofillGroup(
@@ -117,7 +131,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_hasPassword) ...[
+              if (_hasPassword && _guestPassword == null) ...[
                 TextField(
                   key: const Key('change-password-current'),
                   controller: _current,

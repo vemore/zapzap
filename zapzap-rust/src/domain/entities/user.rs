@@ -97,6 +97,10 @@ pub struct User {
     pub email: Option<String>,
     pub last_login_at: Option<i64>,
     pub total_play_time_seconds: i64,
+    /// A guest account (`new_guest`): created without a form, under a random name and
+    /// password the player's device keeps, until the player sets a password of their own
+    #[serde(default)]
+    pub is_guest: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -116,6 +120,7 @@ impl User {
             email: None,
             last_login_at: None,
             total_play_time_seconds: 0,
+            is_guest: false,
             created_at: now,
             updated_at: now,
         }
@@ -135,8 +140,17 @@ impl User {
             email: Some(email),
             last_login_at: None,
             total_play_time_seconds: 0,
+            is_guest: false,
             created_at: now,
             updated_at: now,
+        }
+    }
+
+    /// Create a new guest: a human with a generated name and password (`CreateGuest`)
+    pub fn new_guest(id: String, username: String, password_hash: String) -> Self {
+        Self {
+            is_guest: true,
+            ..Self::new_human(id, username, password_hash)
         }
     }
 
@@ -154,6 +168,7 @@ impl User {
             email: None,
             last_login_at: None,
             total_play_time_seconds: 0,
+            is_guest: false,
             created_at: now,
             updated_at: now,
         }

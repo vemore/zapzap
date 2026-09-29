@@ -11,7 +11,9 @@ import 'google_confirmation.dart';
 /// Asks for the confirmation of `DELETE /auth/me` and sends it
 /// ([AuthProvider.deleteAccount]). An account with a password confirms with
 /// it; a Google account (`User.isGoogleUser`) with a fresh Google ID token
-/// ([GoogleConfirmation]), or a notice when Google cannot give one. Opened
+/// ([GoogleConfirmation]), or a notice when Google cannot give one; a guest
+/// with the password this device keeps for it ([AuthProvider.guestPassword]),
+/// which the player never saw — nothing to type. Opened
 /// from the account page ([AccountScreen]): Google Play wants deletion
 /// reachable in the app.
 ///
@@ -34,6 +36,9 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   final _password = TextEditingController();
   late final AuthProvider _auth;
   late final bool _isGoogle;
+
+  /// A guest's generated password, which confirms unseen.
+  late final String? _guestPassword;
   bool _busy = false;
   String? _error;
 
@@ -42,6 +47,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
     super.initState();
     _auth = context.read<AuthProvider>();
     _isGoogle = _auth.user?.isGoogleUser ?? false;
+    _guestPassword = _auth.guestPassword;
   }
 
   @override
@@ -78,7 +84,9 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final canSubmitPassword = !_busy && _password.text.isNotEmpty;
+    final guestPassword = _guestPassword;
+    final canSubmitPassword =
+        !_busy && (guestPassword != null || _password.text.isNotEmpty);
     return AlertDialog(
       key: const Key('delete-account-dialog'),
       title: Text(l10n.deleteAccountTitle),
@@ -99,7 +107,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 onCredential: (token) => _delete(credential: token),
                 onError: _refused,
               )
-            else
+            else if (guestPassword == null)
               TextField(
                 key: const Key('delete-account-password'),
                 controller: _password,
@@ -135,7 +143,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
           TextButton(
             key: const Key('delete-account-confirm'),
             onPressed: canSubmitPassword
-                ? () => _delete(password: _password.text)
+                ? () => _delete(password: guestPassword ?? _password.text)
                 : null,
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: Text(l10n.deleteAccountConfirm),

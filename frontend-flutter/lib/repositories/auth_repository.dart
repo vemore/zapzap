@@ -1,3 +1,4 @@
+import '../models/json.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
 
@@ -42,6 +43,13 @@ class AuthRepository {
         ),
       );
 
+  /// `POST /auth/guest`, no body: a new guest account under a random name,
+  /// and its password, answered once → 429 `RATE_LIMITED` past the backend's
+  /// limit (per network address and in all).
+  Future<GuestSession> createGuest() async => GuestSession.fromJson(
+    await _api.post('/auth/guest', authenticated: false),
+  );
+
   /// `PATCH /auth/me`, signed in: the account takes [username] (sign-up's
   /// rules) and the answer a new token carrying it → 409 `USERNAME_EXISTS`,
   /// 400 `VALIDATION_ERROR`.
@@ -54,19 +62,24 @@ class AuthRepository {
   /// without one by a fresh Google ID token ([credential]), which sets its
   /// first password. Never a 401 for a wrong confirmation: 403
   /// `INVALID_PASSWORD` or `GOOGLE_AUTH_FAILED`, 400 `MISSING_CONFIRMATION`
-  /// or `VALIDATION_ERROR`.
-  Future<void> changePassword({
+  /// or `VALIDATION_ERROR`. Answers the account as it now is — a guest's is
+  /// claimed (`isGuest` false) —, `null` from a backend that does not say.
+  Future<User?> changePassword({
     required String newPassword,
     String? currentPassword,
     String? credential,
-  }) => _api.put(
-    '/auth/me/password',
-    body: {
-      'newPassword': newPassword,
-      'currentPassword': ?currentPassword,
-      'credential': ?credential,
-    },
-  );
+  }) async {
+    final answer = await _api.put(
+      '/auth/me/password',
+      body: {
+        'newPassword': newPassword,
+        'currentPassword': ?currentPassword,
+        'credential': ?credential,
+      },
+    );
+    final user = Json.map(answer, 'user');
+    return user == null ? null : User.fromJson(user);
+  }
 
   /// `DELETE /auth/me`, signed in, confirmed by the account's [password] or,
   /// for a Google account, a fresh Google ID token ([credential]). A refusal

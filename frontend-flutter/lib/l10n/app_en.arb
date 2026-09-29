@@ -488,5 +488,15 @@
   "tutorialZapZap": "Your hand is worth {points} points: {threshold} or less! Instead of playing, call ZapZap.",
   "tutorialZapZapHint": "Don't play: tap ZapZap, then confirm.",
   "tutorialHeld": "ZapZap held: your hand is the lowest, you score 0. {player} scores the points in their hand.",
-  "tutorialEnd": "If another player's hand is lower than or equal to yours, your ZapZap is counteracted: you score your hand plus 5 for each other player. Above {limit} points, a player is eliminated."
+  "tutorialEnd": "If another player's hand is lower than or equal to yours, your ZapZap is counteracted: you score your hand plus 5 for each other player. Above {limit} points, a player is eliminated.",
+  "homeGuestButton": "Play without an account",
+  "homeGuestErrorRateLimited": "Too many guest accounts have been created from this network. Try again later, or create an account.",
+  "guestBanner": "Register your account and set a password to keep your games from one device to another.",
+  "guestBannerWeb": "This account exists only in this browser: it is lost if the browser's data is cleared.",
+  "guestBannerButton": "Register my account",
+  "accountSignInGuest": "Guest account, kept on this device",
+  "accountGuestPasswordHint": "Choose a password: your account is registered, and you can sign in with your username on any device.",
+  "accountGuestClaimed": "Account registered. Sign in with your username and this password on your other devices.",
+  "logoutGuestConfirmBody": "You are playing without a registered account: if you sign out, this account and your games are lost. To keep them, choose a password in “{account}” first.",
+  "logoutGuestConfirmButton": "Sign out and lose the account"
 }

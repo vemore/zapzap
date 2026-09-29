@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../repositories/auth_repository.dart';
 import '../services/api_client.dart';
+import '../services/api_exception.dart';
 import '../services/google_sign_in_service.dart';
 import '../services/token_storage.dart';
 import '../utils/jwt.dart';
@@ -14,6 +15,11 @@ import '../utils/jwt.dart';
 /// a 401 on an authenticated call signs out, and the router — which listens
 /// to this notifier — sends the user to the login screen. Others (the SSE
 /// connection) follow [token] the same way.
+///
+/// A guest ([playAsGuest]) is signed back in without a word when its token
+/// has expired or is refused: its credentials stay stored
+/// ([TokenStorage.guestKey]) until the player signs out, deletes the account
+/// or claims it with a password of their own ([changePassword]).
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
     required this._repository,
@@ -23,7 +29,7 @@ class AuthProvider extends ChangeNotifier {
     DateTime Function()? clock,
   }) : _api = apiClient,
        _clock = clock ?? DateTime.now {
-    _api.onUnauthorized = (_) => logout();
+    _api.onUnauthorized = (_) => _unauthorized();
   }
 
   final AuthRepository _repository;
@@ -35,6 +41,15 @@ class AuthProvider extends ChangeNotifier {
   User? _user;
   String? _token;
   bool _isRestored = false;
+
+  /// This device's guest account, `null` when it has none.
+  GuestCredentials? _guest;
+
+  /// The guest sign-in under way, which parallel 401s share.
+  Future<bool>? _resuming;
+
+  /// Why the last guest sign-in failed, when it did.
+  Object? _resumeFailure;
 
   /// The signed-in user, `null` when signed out.
   User? get user => _user;
@@ -48,12 +63,26 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isAdmin => isAuthenticated && _user!.isAdmin;
 
+  /// Signed in as a guest account, not yet claimed.
+  bool get isGuest => _user?.isGuest ?? false;
+
+  /// The password the backend generated for the signed-in guest account:
+  /// what confirms a password change or a deletion in its name, the player
+  /// never having seen it. `null` when this device keeps none for it.
+  String? get guestPassword {
+    final guest = _guest;
+    return guest != null && guest.userId == _user?.id ? guest.password : null;
+  }
+
   /// `false` until [restore] has read the stored session: the router waits
   /// for it before deciding where a start-up path leads.
   bool get isRestored => _isRestored;
 
   /// Reloads the session saved by a previous run. An expired or unreadable
-  /// one is erased.
+  /// one is erased; the guest's is replaced by a new sign-in with its stored
+  /// credentials, when the backend answers — only when the guest was the
+  /// last account signed in on this device ([GuestCredentials.active]):
+  /// after another account's session, the start-up is that account's.
   Future<void> restore() async {
     AuthSession? session;
     try {
@@ -61,10 +90,21 @@ class AuthProvider extends ChangeNotifier {
     } catch (error) {
       debugPrint('Session not restored: $error');
     }
+    try {
+      _guest = await _storage.readGuest();
+    } catch (error) {
+      debugPrint('Guest account not read: $error');
+    }
     if (session != null && Jwt.isValid(session.token, now: _clock())) {
       _setSession(session);
-    } else if (session != null) {
-      await _clearStorage();
+    } else {
+      if (session != null) await _clearStorage();
+      final guest = _guest;
+      if (guest != null &&
+          guest.active &&
+          (session == null || session.user.id == guest.userId)) {
+        await _resumeGuest();
+      }
     }
     _isRestored = true;
     notifyListeners();
@@ -84,33 +124,69 @@ class AuthProvider extends ChangeNotifier {
   Future<void> loginWithGoogle(String credential) async =>
       _signIn(await _repository.loginWithGoogle(credential));
 
+  /// Plays without an account: signs this device's guest account back in,
+  /// or creates one (`POST /auth/guest`) and keeps its credentials. A new
+  /// one only when there is none, or the backend refused the stored
+  /// credentials (`INVALID_CREDENTIALS`, which erases them): any other
+  /// failure to sign the stored guest in (no network, a 5xx) is thrown and
+  /// the credentials kept, so the account is not replaced for a passing
+  /// fault. Throws the [ApiException] of a refusal (`RATE_LIMITED`...).
+  Future<void> playAsGuest() async {
+    if (_guest != null) {
+      if (await _resumeGuest()) return;
+      final failure = _resumeFailure;
+      if (_guest != null && failure != null) throw failure;
+    }
+    final guest = await _repository.createGuest();
+    final user = guest.session.user;
+    _guest = GuestCredentials(
+      userId: user.id,
+      username: user.username,
+      password: guest.password,
+    );
+    await _writeGuest();
+    await _signIn(guest.session);
+  }
+
   /// Renames the signed-in account. The token names the user, so the new one
-  /// the backend answers replaces it, stored as a sign-in's is. Throws the
-  /// [ApiException] of a refusal (`USERNAME_EXISTS`, `VALIDATION_ERROR`),
-  /// unchanged.
-  Future<void> rename(String username) async =>
-      _signIn(await _repository.rename(username));
+  /// the backend answers replaces it, stored as a sign-in's is; a guest's
+  /// stored credentials follow the new name. Throws the [ApiException] of a
+  /// refusal (`USERNAME_EXISTS`, `VALIDATION_ERROR`), unchanged.
+  Future<void> rename(String username) async {
+    final session = await _repository.rename(username);
+    final guest = _guest;
+    if (guest != null && guest.userId == session.user.id) {
+      _guest = guest.renamed(session.user.username);
+      await _writeGuest();
+    }
+    await _signIn(session);
+  }
 
   /// Sets the signed-in account's password to [newPassword], confirmed by
-  /// [currentPassword] or, for a Google account without one, a fresh Google
-  /// ID token ([credential]); the session goes on, and remembers the account
-  /// has a password now. Throws the [ApiException] of a refusal
+  /// [currentPassword] (a guest's: [guestPassword]) or, for a Google account
+  /// without one, a fresh Google ID token ([credential]); the session goes
+  /// on, and remembers the account has a password now. A guest's account is
+  /// claimed: the player's own from now on, its generated password erased
+  /// from the device. Throws the [ApiException] of a refusal
   /// (`INVALID_PASSWORD`, `GOOGLE_AUTH_FAILED`...), unchanged.
   Future<void> changePassword({
     required String newPassword,
     String? currentPassword,
     String? credential,
   }) async {
-    await _repository.changePassword(
+    final answered = await _repository.changePassword(
       newPassword: newPassword,
       currentPassword: currentPassword,
       credential: credential,
     );
     final user = _user;
     final token = _token;
-    if (user != null && token != null && !user.hasPassword) {
-      await _signIn(AuthSession(user: user.withPassword(), token: token));
-    }
+    if (user == null || token == null) return;
+    final updated =
+        answered ??
+        (user.hasPassword && !user.isGuest ? user : user.withPassword());
+    if (_guest?.userId == user.id && !updated.isGuest) await _forgetGuest();
+    await _signIn(AuthSession(user: updated, token: token));
   }
 
   /// Deletes the signed-in account, confirmed by its [password] or, for a
@@ -124,9 +200,53 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Signs out, of Google too: on a shared device the next person is not
-  /// offered this Google account. Idempotent: several 401s in flight each
-  /// call it, and only the first does anything.
+  /// offered this Google account. A guest's credentials are erased: the
+  /// account is lost to this device (the menu warns first). Idempotent:
+  /// only the first of several calls does anything.
   Future<void> logout() async {
+    final user = _user;
+    if (user != null && user.id == _guest?.userId) await _forgetGuest();
+    await _endSession();
+  }
+
+  /// A 401: the session is over. The guest's is signed back in with its
+  /// stored credentials; any other ends, a guest's credentials kept.
+  Future<void> _unauthorized() async {
+    final user = _user;
+    if (user != null && user.id == _guest?.userId && await _resumeGuest()) {
+      return;
+    }
+    await _endSession();
+  }
+
+  /// Signs the guest back in with its stored credentials (`POST
+  /// /auth/login`); `true` when it is. Credentials the backend refuses
+  /// (`INVALID_CREDENTIALS`: the account deleted by an admin) are erased; a
+  /// network failure keeps them for the next try.
+  Future<bool> _resumeGuest() =>
+      _resuming ??= _signInAsGuest().whenComplete(() => _resuming = null);
+
+  Future<bool> _signInAsGuest() async {
+    final guest = _guest;
+    if (guest == null) return false;
+    _resumeFailure = null;
+    try {
+      await _signIn(await _repository.login(guest.username, guest.password));
+      return true;
+    } catch (error) {
+      debugPrint('Guest not signed back in: $error');
+      _resumeFailure = error;
+      if (error is ApiException &&
+          error.code == ApiErrorCode.invalidCredentials) {
+        await _forgetGuest();
+      }
+      return false;
+    }
+  }
+
+  /// Idempotent: several 401s in flight each call it, and only the first
+  /// does anything.
+  Future<void> _endSession() async {
     if (_token == null && _user == null) return;
     _user = null;
     _token = null;
@@ -147,6 +267,14 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _signIn(AuthSession session) async {
     _setSession(session);
     notifyListeners();
+    // Whose session this device holds: the guest's comes back at start-up
+    // only when it was the last one.
+    final guest = _guest;
+    final active = guest?.userId == session.user.id;
+    if (guest != null && guest.active != active) {
+      _guest = guest.withActive(active);
+      await _writeGuest();
+    }
     try {
       await _storage.write(session);
     } catch (error) {
@@ -159,6 +287,24 @@ class AuthProvider extends ChangeNotifier {
     _user = session.user;
     _token = session.token;
     _api.token = session.token;
+  }
+
+  Future<void> _writeGuest() async {
+    try {
+      await _storage.writeGuest(_guest!);
+    } catch (error) {
+      // Signed in for this run all the same.
+      debugPrint('Guest account not saved: $error');
+    }
+  }
+
+  Future<void> _forgetGuest() async {
+    _guest = null;
+    try {
+      await _storage.clearGuest();
+    } catch (error) {
+      debugPrint('Guest account not erased: $error');
+    }
   }
 
   Future<void> _clearStorage() async {

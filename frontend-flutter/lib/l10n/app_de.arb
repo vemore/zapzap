@@ -488,5 +488,15 @@
   "tutorialZapZap": "Deine Hand ist {points} Punkte wert: {threshold} oder weniger! Statt zu spielen, ruf ZapZap.",
   "tutorialZapZapHint": "Nicht spielen: Tippe auf ZapZap und bestätige.",
   "tutorialHeld": "ZapZap gelungen: Deine Hand ist die niedrigste, du bekommst 0. {player} bekommt die Punkte seiner Hand.",
-  "tutorialEnd": "Hat ein anderer Spieler eine niedrigere oder gleich hohe Hand wie du, ist dein ZapZap gekontert: Du bekommst deine Hand plus 5 für jeden anderen Spieler. Mit mehr als {limit} Punkten scheidet ein Spieler aus."
+  "tutorialEnd": "Hat ein anderer Spieler eine niedrigere oder gleich hohe Hand wie du, ist dein ZapZap gekontert: Du bekommst deine Hand plus 5 für jeden anderen Spieler. Mit mehr als {limit} Punkten scheidet ein Spieler aus.",
+  "homeGuestButton": "Ohne Konto spielen",
+  "homeGuestErrorRateLimited": "Von diesem Netzwerk aus wurden zu viele Gastkonten erstellt. Versuch es später noch einmal oder erstelle ein Konto.",
+  "guestBanner": "Registriere dein Konto und lege ein Passwort fest, um deine Partien auf jedem Gerät zu behalten.",
+  "guestBannerWeb": "Dieses Konto gibt es nur in diesem Browser: Es geht verloren, wenn seine Daten gelöscht werden.",
+  "guestBannerButton": "Mein Konto registrieren",
+  "accountSignInGuest": "Gastkonto, auf diesem Gerät gespeichert",
+  "accountGuestPasswordHint": "Wähle ein Passwort: Dein Konto wird registriert, und du kannst dich auf jedem Gerät mit deinem Benutzernamen anmelden.",
+  "accountGuestClaimed": "Konto registriert. Melde dich auf deinen anderen Geräten mit deinem Benutzernamen und diesem Passwort an.",
+  "logoutGuestConfirmBody": "Du spielst ohne registriertes Konto: Wenn du dich abmeldest, gehen dieses Konto und deine Partien verloren. Um sie zu behalten, wähle zuerst ein Passwort unter „{account}“.",
+  "logoutGuestConfirmButton": "Abmelden und Konto verlieren"
 }

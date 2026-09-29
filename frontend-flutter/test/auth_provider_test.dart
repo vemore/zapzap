@@ -256,6 +256,413 @@ void main() {
     });
   });
 
+  group('guest', () {
+    const guestPassword = 'Gen3ratedGuestPassw0rd42';
+    const guestUser = {
+      'id': 'g1',
+      'username': 'Guest_12345',
+      'email': null,
+      'isAdmin': false,
+      'isGoogleUser': false,
+      'hasPassword': true,
+      'isGuest': true,
+    };
+    final freshToken = jwtExpiringIn(const Duration(days: 7), userId: 'g1');
+
+    http.Response json(Object body, [int status = 200]) =>
+        http.Response(jsonEncode(body), status);
+
+    http.Response signedIn(String token, [Map<String, Object?>? user]) =>
+        json({'success': true, 'user': user ?? guestUser, 'token': token});
+
+    Map<String, Object> credentials({
+      String username = 'Guest_12345',
+      bool active = true,
+    }) => {
+      'userId': 'g1',
+      'username': username,
+      'password': guestPassword,
+      'active': active,
+    };
+
+    /// A storage holding the guest's session under [token] and its
+    /// credentials.
+    MemoryTokenStorage guestStorage(String token) => MemoryTokenStorage({
+      TokenStorage.tokenKey: token,
+      TokenStorage.userKey: jsonEncode(guestUser),
+      TokenStorage.guestKey: jsonEncode(credentials()),
+    });
+
+    Map<String, dynamic>? storedGuest(MemoryTokenStorage storage) {
+      final text = storage.values[TokenStorage.guestKey];
+      return text == null
+          ? null
+          : (jsonDecode(text) as Map).cast<String, dynamic>();
+    }
+
+    test('playAsGuest creates the account and keeps its credentials', () async {
+      final requests = <http.Request>[];
+      final api = fakeApi(
+        (_) async => json({
+          'success': true,
+          'user': guestUser,
+          'token': freshToken,
+          'password': guestPassword,
+        }, 201),
+        requests: requests,
+      );
+      final storage = MemoryTokenStorage();
+      final auth = providerWith(api, storage);
+
+      await auth.playAsGuest();
+
+      expect(requests.single.method, 'POST');
+      expect(requests.single.url.path, '/api/auth/guest');
+      expect(requests.single.headers['Authorization'], isNull);
+      expect(auth.isAuthenticated, isTrue);
+      expect(auth.isGuest, isTrue);
+      expect(auth.guestPassword, guestPassword);
+      expect(storage.values[TokenStorage.tokenKey], freshToken);
+      expect(storedGuest(storage), credentials());
+    });
+
+    test('with an expired token and a stored guest password, the start-up '
+        'signs back in silently', () async {
+      final requests = <http.Request>[];
+      final api = fakeApi(
+        (_) async => signedIn(freshToken),
+        requests: requests,
+      );
+      final storage = guestStorage(expiredToken);
+      final auth = providerWith(api, storage);
+
+      await auth.restore();
+
+      expect(requests.single.url.path, '/api/auth/login');
+      expect(jsonDecode(requests.single.body), {
+        'username': 'Guest_12345',
+        'password': guestPassword,
+      });
+      expect(auth.isRestored, isTrue);
+      expect(auth.isAuthenticated, isTrue);
+      expect(auth.isGuest, isTrue);
+      expect(api.token, freshToken);
+      expect(storage.values[TokenStorage.tokenKey], freshToken);
+      expect(storedGuest(storage), credentials());
+    });
+
+    test(
+      'a 401 signs the guest back in rather than out, once for many',
+      () async {
+        var logins = 0;
+        final unauthorized = errorFixture('error_invalid_token');
+        final api = fakeApi((request) async {
+          if (request.url.path == '/api/auth/login') {
+            logins++;
+            return signedIn(freshToken);
+          }
+          return http.Response(unauthorized.body, unauthorized.status);
+        });
+        final refused = jwtExpiringIn(const Duration(hours: 1), userId: 'g1');
+        final auth = providerWith(api, guestStorage(refused));
+        await auth.restore();
+        expect(auth.token, refused);
+
+        await Future.wait([
+          for (var i = 0; i < 3; i++)
+            api.get('/party').then((_) {}, onError: (_) {}),
+        ]);
+        await pumpEventQueue();
+
+        expect(logins, 1);
+        expect(auth.isAuthenticated, isTrue);
+        expect(auth.token, freshToken);
+        expect(api.token, freshToken);
+      },
+    );
+
+    test('credentials the backend refuses are erased, and the guest is '
+        'signed out', () async {
+      final error = errorFixture('error_invalid_credentials');
+      final api = fakeApi((_) async => http.Response(error.body, error.status));
+      final storage = guestStorage(expiredToken);
+      final auth = providerWith(api, storage);
+
+      await auth.restore();
+
+      expect(auth.isAuthenticated, isFalse);
+      expect(storage.values, isEmpty);
+    });
+
+    test(
+      'a network failure keeps the credentials for the next start',
+      () async {
+        var online = false;
+        final api = fakeApi((_) async {
+          if (!online) throw http.ClientException('offline');
+          return signedIn(freshToken);
+        });
+        final storage = guestStorage(expiredToken);
+
+        final offline = providerWith(api, storage);
+        await offline.restore();
+        expect(offline.isAuthenticated, isFalse);
+        expect(storage.values[TokenStorage.tokenKey], isNull);
+        expect(storedGuest(storage), credentials());
+
+        online = true;
+        final next = providerWith(api, storage);
+        await next.restore();
+        expect(next.isAuthenticated, isTrue);
+        expect(next.user!.id, 'g1');
+      },
+    );
+
+    test(
+      "another account's expired session does not sign the guest in",
+      () async {
+        final storage = storedSession(expiredToken)
+          ..values[TokenStorage.guestKey] = jsonEncode(credentials());
+        final auth = providerWith(unusedApi(), storage);
+
+        await auth.restore();
+
+        expect(auth.isAuthenticated, isFalse);
+        expect(storedGuest(storage), credentials());
+      },
+    );
+
+    test('« Jouer sans compte » with stored credentials signs that account '
+        'back in instead of creating one', () async {
+      var online = false;
+      final requests = <http.Request>[];
+      final api = fakeApi((_) async {
+        if (!online) throw http.ClientException('offline');
+        return signedIn(freshToken);
+      }, requests: requests);
+      final storage = MemoryTokenStorage({
+        TokenStorage.guestKey: jsonEncode(credentials()),
+      });
+      final auth = providerWith(api, storage);
+      await auth.restore();
+      expect(auth.isAuthenticated, isFalse);
+
+      online = true;
+      requests.clear();
+      await auth.playAsGuest();
+
+      expect(requests.map((r) => r.url.path), ['/api/auth/login']);
+      expect(auth.user!.id, 'g1');
+      expect(auth.isGuest, isTrue);
+    });
+
+    test('a rename carries the stored credentials along', () async {
+      final api = fakeApi(
+        (_) async => signedIn(freshToken, {...guestUser, 'username': 'Zoe'}),
+      );
+      final storage = guestStorage(validToken);
+      final auth = providerWith(api, storage);
+      await auth.restore();
+
+      await auth.rename('Zoe');
+
+      expect(storedGuest(storage), credentials(username: 'Zoe'));
+      expect(auth.isGuest, isTrue);
+    });
+
+    test('a claim erases the stored guest password', () async {
+      final requests = <http.Request>[];
+      final api = fakeApi(
+        (_) async => json({
+          'success': true,
+          'user': {...guestUser, 'isGuest': false},
+        }),
+        requests: requests,
+      );
+      final storage = guestStorage(validToken);
+      final auth = providerWith(api, storage);
+      await auth.restore();
+
+      await auth.changePassword(
+        newPassword: 'mon-secret',
+        currentPassword: auth.guestPassword,
+      );
+
+      expect(jsonDecode(requests.single.body), {
+        'newPassword': 'mon-secret',
+        'currentPassword': guestPassword,
+      });
+      expect(auth.isGuest, isFalse);
+      expect(auth.guestPassword, isNull);
+      expect(storedGuest(storage), isNull);
+      expect(
+        (jsonDecode(storage.values[TokenStorage.userKey]!) as Map)['isGuest'],
+        isFalse,
+      );
+      // A 401 now signs out, as any account's
+      final unauthorized = errorFixture('error_invalid_token');
+      final after = fakeApi(
+        (_) async => http.Response(unauthorized.body, unauthorized.status),
+      );
+      final next = providerWith(after, storage);
+      await next.restore();
+      await after.get('/party').then((_) {}, onError: (_) {});
+      await pumpEventQueue();
+      expect(next.isAuthenticated, isFalse);
+    });
+
+    test('a sign-in again failing on the network neither creates a new '
+        'guest nor loses the stored password', () async {
+      final requests = <http.Request>[];
+      final api = fakeApi((_) async {
+        throw http.ClientException('offline');
+      }, requests: requests);
+      final storage = MemoryTokenStorage({
+        TokenStorage.guestKey: jsonEncode(credentials()),
+      });
+      final auth = providerWith(api, storage);
+      await auth.restore();
+      requests.clear();
+
+      await expectLater(
+        auth.playAsGuest(),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.isConnectivity,
+            'isConnectivity',
+            isTrue,
+          ),
+        ),
+      );
+
+      expect(requests.map((r) => r.url.path), ['/api/auth/login']);
+      expect(auth.isAuthenticated, isFalse);
+      expect(storedGuest(storage), credentials());
+    });
+
+    test(
+      'a 5xx on the sign-in again is thrown too, the password kept',
+      () async {
+        final requests = <http.Request>[];
+        final api = fakeApi(
+          (_) async =>
+              json({'error': 'Login failed', 'code': 'LOGIN_ERROR'}, 500),
+          requests: requests,
+        );
+        final storage = MemoryTokenStorage({
+          // Not the last account: the start-up leaves it alone
+          TokenStorage.guestKey: jsonEncode(credentials(active: false)),
+        });
+        final auth = providerWith(api, storage);
+        await auth.restore();
+
+        await expectLater(auth.playAsGuest(), throwsA(isA<ApiException>()));
+
+        expect(requests.map((r) => r.url.path), ['/api/auth/login']);
+        expect(storedGuest(storage), credentials(active: false));
+      },
+    );
+
+    test(
+      'stored credentials the backend refuses give way to a new guest',
+      () async {
+        final requests = <http.Request>[];
+        final invalid = errorFixture('error_invalid_credentials');
+        final api = fakeApi((request) async {
+          if (request.url.path == '/api/auth/login') {
+            return http.Response(invalid.body, invalid.status);
+          }
+          return json({
+            'success': true,
+            'user': {...guestUser, 'id': 'g2', 'username': 'Guest_87654321'},
+            'token': jwtExpiringIn(const Duration(days: 7), userId: 'g2'),
+            'password': 'An0therGeneratedPassw0rd',
+          }, 201);
+        }, requests: requests);
+        final storage = MemoryTokenStorage({
+          // Not the last account: the start-up leaves it alone
+          TokenStorage.guestKey: jsonEncode(credentials(active: false)),
+        });
+        final auth = providerWith(api, storage);
+        await auth.restore();
+
+        await auth.playAsGuest();
+
+        expect(requests.map((r) => r.url.path), [
+          '/api/auth/login',
+          '/api/auth/guest',
+        ]);
+        expect(auth.user!.id, 'g2');
+        expect(storedGuest(storage), {
+          'userId': 'g2',
+          'username': 'Guest_87654321',
+          'password': 'An0therGeneratedPassw0rd',
+          'active': true,
+        });
+      },
+    );
+
+    test('after another account signs in and out, the start-up lands on the '
+        'login screen, not the guest', () async {
+      var online = false;
+      final api = fakeApi((request) async {
+        if (!online) throw http.ClientException('offline');
+        return signedIn(validToken, {
+          'id': 'u1',
+          'username': 'Vincent',
+          'isAdmin': false,
+        });
+      });
+      final storage = guestStorage(expiredToken);
+
+      // The guest's sign-in again fails on the network: its credentials stay
+      final offline = providerWith(api, storage);
+      await offline.restore();
+      expect(offline.isAuthenticated, isFalse);
+      expect(storedGuest(storage), credentials());
+
+      // Another account signs in on the device, then out
+      online = true;
+      await offline.login('Vincent', 'secret1');
+      expect(storedGuest(storage), credentials(active: false));
+      await offline.logout();
+      expect(storedGuest(storage), credentials(active: false));
+
+      // The next start-up asks nothing of the backend: to the login screen
+      final asked = <http.Request>[];
+      final next = providerWith(
+        fakeApi((_) async => signedIn(freshToken), requests: asked),
+        storage,
+      );
+      await next.restore();
+      expect(asked, isEmpty);
+      expect(next.isRestored, isTrue);
+      expect(next.isAuthenticated, isFalse);
+
+      // « Jouer sans compte » still brings that guest back, the last one again
+      final back = providerWith(
+        fakeApi((_) async => signedIn(freshToken)),
+        storage,
+      );
+      await back.restore();
+      expect(back.isAuthenticated, isFalse);
+      await back.playAsGuest();
+      expect(back.user!.id, 'g1');
+      expect(storedGuest(storage), credentials());
+    });
+
+    test('signing out erases the credentials: the account is lost', () async {
+      final storage = guestStorage(validToken);
+      final auth = providerWith(unusedApi(), storage);
+      await auth.restore();
+
+      await auth.logout();
+
+      expect(auth.isAuthenticated, isFalse);
+      expect(storage.values, isEmpty);
+    });
+  });
+
   group('PreferencesTokenStorage (the web storage)', () {
     test('round-trips a session through shared_preferences', () async {
       SharedPreferences.setMockInitialValues({});
@@ -278,6 +685,33 @@ void main() {
       await storage.clear();
       expect(await storage.read(), isNull);
       expect(prefs.getKeys(), isEmpty);
+    });
+
+    test("keeps a guest's credentials apart from the session", () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = PreferencesTokenStorage();
+      const guest = GuestCredentials(
+        userId: 'g1',
+        username: 'Guest_12345',
+        password: 'Gen3ratedGuestPassw0rd42',
+      );
+      await storage.write(
+        AuthSession(
+          token: validToken,
+          user: const User(id: 'g1', username: 'Guest_12345', isGuest: true),
+        ),
+      );
+      await storage.writeGuest(guest);
+
+      expect((await storage.read())!.user.isGuest, isTrue);
+      await storage.clear();
+      expect(await storage.read(), isNull);
+      final kept = await storage.readGuest();
+      expect(kept!.toJson(), guest.toJson());
+
+      await storage.clearGuest();
+      expect(await storage.readGuest(), isNull);
+      expect((await SharedPreferences.getInstance()).getKeys(), isEmpty);
     });
   });
 }
