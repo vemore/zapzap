@@ -109,8 +109,22 @@ void main() {
       expect(party.playerCount, 3);
       expect(party.maxPlayers, 3);
       expect(party.isMember, isTrue);
+      expect(party.isMyTurn, isFalse);
       expect(party.inviteCode, 'BGJARGH7');
       expect(party.createdAt, utc(1790094174));
+    });
+
+    test('a list row says whether the game waits for my move, false when '
+        'it does not say', () {
+      final row = fixture('party_list')['parties'][0] as JsonMap;
+      expect(
+        PartySummary.fromJson({...row, 'isMyTurn': true}).isMyTurn,
+        isTrue,
+      );
+      expect(
+        PartySummary.fromJson({...row}..remove('isMyTurn')).isMyTurn,
+        isFalse,
+      );
     });
 
     test('list paging sits at the top level', () {

@@ -17,11 +17,13 @@ import '../widgets/party_card.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The public parties (`PartyList.jsx`), in two sections: "My games" — a
-/// running game first, with an "In progress" badge and Resume — then
+/// game waiting for my move first ("Your turn"), then the other running
+/// ones ("In progress"), each with Resume — then
 /// "Available games", which ends on an invitation to create one when there
 /// is none; above them, a guest's warning ([GuestBanner]).
 /// Skeleton cards while the first answer is on its way; the event stream
-/// keeps the list current, and pulling down refreshes it by hand.
+/// keeps the list current, coming back from a party screen reloads it, and
+/// pulling down refreshes it by hand.
 class PartiesScreen extends StatefulWidget {
   const PartiesScreen({super.key});
 
@@ -47,6 +49,27 @@ class _PartiesScreenState extends State<PartiesScreen> {
     )..load();
   }
 
+  /// A party screen — a lobby, a game, the form — was opened over the list,
+  /// which reloads once it is on top again ([didChangeDependencies]).
+  bool _away = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Called whenever the route on top of the list changes. Back on top
+    // after a game, the list loaded before it may be stale, and it must not
+    // depend on an event to be right: the zapzap that ends a game sends no
+    // `gameFinished`, and an event sent while the stream was down is never
+    // replayed. However the screen above went — a pop, the browser's Back,
+    // a lobby that became the game on the way (`replaceWith`, whose `push`
+    // future never completes) —, the list reloads once it is on top.
+    final onTop = ModalRoute.isCurrentOf(context) ?? true;
+    if (onTop && _away) {
+      _away = false;
+      _parties.load(showSpinner: false);
+    }
+  }
+
   @override
   void dispose() {
     _parties.dispose();
@@ -55,7 +78,12 @@ class _PartiesScreenState extends State<PartiesScreen> {
 
   // `push` rather than `go` everywhere below: the lobby, the game and the
   // form go on top of the list, so the Android system Back returns to it.
-  void _open(PartySummary party) => context.push(
+  void _push(String location) {
+    _away = true;
+    context.push(location);
+  }
+
+  void _open(PartySummary party) => _push(
     party.status == PartyStatus.playing
         ? AppRoutes.gamePath(party.id)
         : AppRoutes.partyPath(party.id),
@@ -63,11 +91,11 @@ class _PartiesScreenState extends State<PartiesScreen> {
 
   Future<void> _join(PartySummary party) async {
     if (await _parties.join(party.id) && mounted) {
-      context.push(AppRoutes.partyPath(party.id));
+      _push(AppRoutes.partyPath(party.id));
     }
   }
 
-  void _create() => context.push(AppRoutes.createParty);
+  void _create() => _push(AppRoutes.createParty);
 
   @override
   Widget build(BuildContext context) {

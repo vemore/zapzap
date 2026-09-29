@@ -11,7 +11,7 @@
 
 The server side is fixed ([[Architecture]]): `GET /suscribeupdate[?token=]`. The backend filters
 per user ([[Backend]]): events without a party and
-a public party's lifecycle events (`playerJoined`, `playerLeft`, `partyStarted`,
+a public party's lifecycle events (`partyCreated`, `playerJoined`, `playerLeft`, `partyStarted`,
 `partyDeleted`, `gameFinished`, what `PartyListProvider` reloads on, with `playerReplaced` and `playerForfeited` from the players' own streams) go to every stream, a
 game's moves and every event of a private party only to its players' streams — so the
 token matters; an initial `event: connected`, then every broadcast as `event:

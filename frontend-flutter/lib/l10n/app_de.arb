@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "Eigene erstellen",
   "partiesPullToRefresh": "Zum Aktualisieren nach unten ziehen.",
   "partyInProgressBadge": "Läuft",
+  "partyYourTurnBadge": "Du bist dran",
   "partyCardHost": "du bist Host",
   "partyResumeButton": "Fortsetzen",
   "partyLobbyButton": "Lobby",

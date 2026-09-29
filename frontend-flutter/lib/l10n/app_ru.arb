@@ -85,6 +85,7 @@
   "partiesEmptyCreate": "Создай свою",
   "partiesPullToRefresh": "Потяни вниз, чтобы обновить.",
   "partyInProgressBadge": "Идёт игра",
+  "partyYourTurnBadge": "Твой ход",
   "partyCardHost": "ты хозяин",
   "partyResumeButton": "Продолжить",
   "partyLobbyButton": "Лобби",

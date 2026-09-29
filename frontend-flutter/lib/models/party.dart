@@ -118,6 +118,7 @@ class PartySummary {
     required this.playerCount,
     required this.maxPlayers,
     required this.isMember,
+    this.isMyTurn = false,
     this.inviteCode,
     this.visibility,
     this.createdAt,
@@ -131,6 +132,7 @@ class PartySummary {
     playerCount: Json.integer(json, 'playerCount'),
     maxPlayers: _maxPlayers(json),
     isMember: Json.boolean(json, 'isMember'),
+    isMyTurn: Json.boolean(json, 'isMyTurn'),
     inviteCode: Json.stringOrNull(json, 'inviteCode'),
     visibility: Json.stringOrNull(json, 'visibility'),
     createdAt: Json.timestamp(json, 'createdAt'),
@@ -158,6 +160,12 @@ class PartySummary {
 
   /// The caller is in this party (`false` when the call was anonymous).
   final bool isMember;
+
+  /// The game waits for the caller's move: a member, the party playing, the
+  /// round not finished and the turn the caller's seat
+  /// (`zapzap-rust/src/application/party/list_parties.rs`). `false` when the
+  /// backend does not send it.
+  final bool isMyTurn;
   final String? inviteCode;
   final String? visibility;
   final DateTime? createdAt;
