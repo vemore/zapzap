@@ -40,6 +40,7 @@ use zapzap_backend::infrastructure::database::repositories::{
     SqlitePartyRepository, SqliteUserRepository,
 };
 use zapzap_backend::infrastructure::database::schema::ensure_schema;
+use zapzap_backend::infrastructure::services::{LlmError, LlmService};
 
 async fn test_app() -> (Router, Arc<AppState>) {
     test_app_with(|_| {}).await
@@ -1197,6 +1198,83 @@ async fn test_a_bot_move_that_loses_the_race_to_a_forfeit_is_played_again() {
     assert!(gs.hands[1].is_empty());
     assert_eq!((gs.current_turn, gs.current_action), (0, GameAction::Play));
     assert_eq!(gs.hands[2].len(), 4, "the bot played one card and drew one");
+
+    state.db.close().await;
+    let _ = std::fs::remove_file(&path);
+}
+
+/// An LLM that answers nothing a bot can use (the bot plays its fallback) and notes when
+/// it was asked
+#[derive(Default)]
+struct TimedLlm {
+    asked: std::sync::Mutex<Vec<tokio::time::Instant>>,
+}
+
+#[async_trait::async_trait]
+impl LlmService for TimedLlm {
+    async fn invoke(&self, _system: &str, _user: &str) -> Result<String, LlmError> {
+        self.asked.lock().unwrap().push(tokio::time::Instant::now());
+        Ok("?".to_string())
+    }
+
+    async fn health_check(&self) -> bool {
+        true
+    }
+}
+
+#[tokio::test]
+async fn test_a_bot_move_that_loses_a_race_pauses_before_asking_its_llm_again() {
+    let delay = Duration::from_millis(600);
+    let llm = Arc::new(TimedLlm::default());
+    let (mut app, state, path) = test_app_on_file_with("llmrace", |s| {
+        s.bot_runner = Arc::new(BotRunner::with_action_delay(delay));
+        s.llm_service = Some(llm.clone() as Arc<dyn LlmService>);
+    })
+    .await;
+    // Seats: the owner 0, a human 1, an LLM bot 2, to play a hand too high for a ZapZap:
+    // its LLM is asked for the play only
+    let (party_id, _) = started_party(&mut app, &state, "llmrace", 1, &[BotDifficulty::Llm]).await;
+    let mut gs = game_state(&state, &party_id).await;
+    set_hands(
+        &mut gs,
+        &[&[1, 2, 3, 4], &[14, 15, 16, 17], &[9, 23, 37, 51]],
+    );
+    gs.current_turn = 2;
+    gs.current_action = GameAction::Play;
+    save_game_state(&state, &party_id, &gs).await;
+
+    // Seat 1 forfeits while the bot's play is under way: the play loses the race
+    let tx = forfeit_held_open(&state, &party_id, 1).await;
+    let bots = {
+        let (state, party_id) = (state.clone(), party_id.clone());
+        tokio::spawn(async move { run_bot_turns_now(&state, &party_id).await })
+    };
+    tokio::time::sleep(TO_REACH_THE_WRITE).await;
+    let lost_at = tokio::time::Instant::now();
+    tx.commit().await.unwrap();
+    let actions = bots
+        .await
+        .unwrap()
+        .expect("the bot loop goes on after the conflict");
+    assert_eq!(actions, 2, "a play and a draw");
+
+    // The play was asked for once before the race; after it, the loop paused an action
+    // delay before it read the state again and asked for the play anew
+    let asked = llm.asked.lock().unwrap().clone();
+    assert_eq!(
+        asked.iter().filter(|t| **t < lost_at).count(),
+        1,
+        "{asked:?}"
+    );
+    let asked_again = *asked
+        .iter()
+        .find(|t| **t >= lost_at)
+        .expect("the play asked for again");
+    let waited = asked_again - lost_at;
+    assert!(
+        waited >= delay,
+        "asked again {waited:?} after the lost race"
+    );
 
     state.db.close().await;
     let _ = std::fs::remove_file(&path);

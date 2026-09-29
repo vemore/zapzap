@@ -39,24 +39,32 @@ Ported from the React client's `components/Party/{PartyList,CreateParty,PartyLob
 - **`PartyListProvider`** (`providers/party_provider.dart`): `GET /party`, pull-to-refresh
   (`load(showSpinner: false)`), and `join` — which answers `true` on `ALREADY_IN_PARTY`
   too, because React navigates to the lobby on it (`PartyList.jsx:37-39`). **The event
-  stream keeps the list current** (React waits for a reload): `playerJoined`, `playerLeft`,
+  stream keeps the list current** (React waits for a reload): `partyCreated`, `playerJoined`, `playerLeft`,
   `playerReplaced`, `playerForfeited`, `partyStarted`, `partyDeleted` and `gameFinished`
-  (`refreshingActions`), about any party,
+  (`refreshingActions`), about any party, and `draw`, `zapzap` and `roundStarted`
+  (`turnActions`, the moves after which the turn may be mine) about a running game of mine,
   reload it without a spinner `refreshDelay` (1 s) after the last one, so a burst of bot
-  joins is one `GET /party`; a game move reloads nothing. Only the newest load's answer is
+  joins is one `GET /party`; any other move, or a move in someone else's game, reloads
+  nothing. Only the newest load's answer is
   kept (`_loadGeneration`, as in the lobby), so a pull and an event answering out of order
-  never show the older list. Dispose cancels the pending reload and the subscription. No
-  event announces a party being created: a new one appears with the next event about any
-  party, or on pull-to-refresh. **The screen has two sections** (`screens/parties_screen.dart`):
-  "My games" (`myParties`: the caller's, `isMember` — a running game first, then the
-  lobbies, then the finished ones, each in the backend's order) and "Available games"
+  never show the older list. Dispose cancels the pending reload and the subscription.
+  **Coming back to the list reloads it too**, without waiting for an event: a lobby, a game
+  or the form opened from it (`_push`, `_away`) and gone again, however it went — a pop,
+  the browser's Back, a lobby that became the game on the way (`replaceWith`, whose `push`
+  future never completes) — reloads it once it is the top route again
+  (`ModalRoute.isCurrentOf` in `didChangeDependencies`); a menu or a dialog over it does
+  not. The zapzap that ends a game sends no `gameFinished` (§ Decisions & History,
+  2026-09-29). **The screen has two sections** (`screens/parties_screen.dart`):
+  "My games" (`myParties`: the caller's, `isMember` — a game waiting for my move first
+  (`isMyTurn`), then the other running ones, then the
+  lobbies, then the finished ones, each in the backend's order) and "Available games""
   (`openParties`, the heading `partiesHeading`). **A card is two lines**
   (`widgets/party_card.dart`): the name and a badge, then "seats · status · you host" and
   one button. A running game of mine has an amber border, an "In progress" badge and the
-  only filled button, Resume; my lobby is green-bordered, Joined, with an outlined Lobby;
+  only filled button, Resume — the badge reads « C'est ton tour » (`your-turn-<id>`,
+  `partyYourTurnBadge`) when `GET /party` says `isMyTurn` ([[Api]]); my lobby is green-bordered, Joined, with an outlined Lobby;
   someone else's party has an outlined Join (disabled when full, playing or finished).
-  There is **no "your turn" badge**: `GET /party` does not say whose turn it
-  is. While the first answer is on its way the list shows three skeleton cards; an empty
+  While the first answer is on its way the list shows three skeleton cards; an empty
   "Available games" ends on an invitation (create yours — `push`es `/parties/new` —, or
   pull down to refresh), worded "no game available" when I have none either. The list
   ends with `PartiesScreen.fabClearance` (88 px) so the amber Create button never covers
@@ -223,6 +231,7 @@ Ported from the React client's `components/Party/{PartyList,CreateParty,PartyLob
 
 ## Decisions & History
 
+- 2026-09-29 (fix/flutter-parties-list): a finished game stayed « En cours » with Resume on the list the game-over screen popped back to. Root cause, reproduced on the PWA against a local Rust backend: **the zapzap that ends a game broadcasts `zapzap` only** — the use case finishes the party there, and the `gameFinished` of `nextRound` (`game.rs`, bot `runner.rs`) is unreachable in normal play ([[Api]] § nextRound) —, and the list reloaded on no move. Neither the SSE gap nor a cache: the stream stayed up and delivered that one `zapzap`. The list now reloads when it is on top again after a party screen, which needs no event and also covers one lost while the stream reconnects; `ModalRoute.isCurrentOf` rather than `context.push(...).then`, because the lobby's `replaceWith` of the game drops the future the list awaited, and rather than a `RouteObserver`, because the browser's Back removes the page without a `didPop`. `turnActions` came with « C'est ton tour »: without them the badge would go stale while the list is on screen; limited to a running game of mine, so another table's moves still reload nothing. `partyCreated` joined `refreshingActions` (the Rust backend sends it since 2026-09-24). Left for the backend: other players' lists, which get no `zapzap` of a public game they are not in, still keep a finished game until the next event.
 - 2026-09-29 (feat/guest-play): a guest's warning on the parties screen and the account page rather than a one-time dialog: the account is at risk for as long as it is a guest, and the user asked for a lasting one. It leads to the account page rather than to a dedicated claim form, because claiming is the password change the page already has. Sign-out is where a guest loses the account, so its confirmation says so, in red; the deletion and the password change confirm with the stored generated password, which the player never saw and could not type.
 - 2026-09-29 (feat/account-page): « Mon compte » replaced « Supprimer mon compte » in the ⋮ menu, placed just above Sign out, where the deletion was; the deletion moved one screen deeper, onto the account page, still in the app as Google Play asks. A routed page, not a dialog: it holds three independent actions, and the PWA gets `/app/account`, where a later change will redirect the old web URL `/account/delete`. The username is edited in place with the sign-up form's rules (stricter than the backend's), the password in a dialog, because a Google account's first password needs the Google confirmation the deletion uses. Four keys lost their deletion-only names (`deleteAccountMenu` → `deleteAccountButton`, `deleteAccountGoogleButton` → `googleConfirmButton`, `deleteAccountErrorPassword` → `errorWrongPassword`, `deleteAccountErrorGoogle` → `errorGoogleConfirmation`), the password dialog using them too. Its width is a local `ConstrainedBox`; the wide-screen work may swap it for a shared widget.
 - 2026-09-28 (fix/flutter-list-refresh-on-ejection): the list also reloads on `playerReplaced` and `playerForfeited`. A player ejected by the turn clock was popped back to the list loaded before the game, which still said `isMember` and offered « Reprendre » to a seat now a bot's (`Tu n'as pas de place à cette table`). The ejected player's own stream carries `playerReplaced` ([[Backend]] § Turn timer).
@@ -293,7 +302,7 @@ Ported from the React client's `components/Party/{PartyList,CreateParty,PartyLob
   list with nothing to do. The study's "your turn" badge was dropped at refinement: the
   list does not carry the current player, and one state call per running party was not
   worth it (`wip/todo_nr/2026-09-23-party-list-current-turn.md`), so the badge says "In
-  progress". The second section keeps the "Available games" heading rather than the
+  progress". Reversed on 2026-09-29, once `GET /party` carried `isMyTurn` (above). The second section keeps the "Available games" heading rather than the
   mockup's "Open games": the auth tests land on that text, and the meaning is the same.
   The player count is an icon rather than the word, so the line fits beside the button on
   a phone; the P1–P4 tests load Roboto, as the felt test does, because the test font's

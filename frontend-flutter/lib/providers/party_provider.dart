@@ -41,13 +41,12 @@ const int partyNameMaxLength = 50;
 
 /// The public party list (`GET /party`), what the parties screen shows.
 ///
-/// The event stream keeps it current: a party filled, emptied, started,
-/// finished or deleted by someone else reloads the list without a spinner,
-/// [refreshDelay] after the last such event, so a burst of bot joins is one
-/// `GET /party`. React has no stream there and waits for a reload.
-///
-/// No event announces a party being created, so a new one shows up with the
-/// next event about any party, or on pull-to-refresh.
+/// The event stream keeps it current: a party created, filled, emptied,
+/// started, finished or deleted by someone else reloads the list without a
+/// spinner, [refreshDelay] after the last such event, so a burst of bot
+/// joins is one `GET /party`; so does a move that passes the turn in a game
+/// of mine ([turnActions]), which may make it my turn. React has no stream
+/// there and waits for a reload.
 class PartyListProvider extends ChangeNotifier {
   PartyListProvider(
     this._repository, {
@@ -68,6 +67,7 @@ class PartyListProvider extends ChangeNotifier {
   /// `isMember` changes for that human, whose list is still in memory when
   /// the game screen pops back to it.
   static const refreshingActions = {
+    'partyCreated',
     'playerJoined',
     'playerLeft',
     'playerReplaced',
@@ -76,6 +76,14 @@ class PartyListProvider extends ChangeNotifier {
     'partyDeleted',
     'gameFinished',
   };
+
+  /// The moves after which the turn may be someone else's: a draw ends a
+  /// turn, a zapzap ends the round — and, the game's last, the game: the
+  /// backend sends no `gameFinished` then —, and a new round starts on any
+  /// seat. They reload the list only for a running game of mine, the row
+  /// whose [PartySummary.isMyTurn] they may change; other moves, and moves
+  /// of anyone else's game, reload nothing.
+  static const turnActions = {'draw', 'zapzap', 'roundStarted'};
 
   StreamSubscription<SseEvent>? _subscription;
   Timer? _refresh;
@@ -90,17 +98,16 @@ class PartyListProvider extends ChangeNotifier {
 
   List<PartySummary> get parties => _parties;
 
-  /// The parties the caller is in, the "My games" section: a running game
-  /// first, then the lobbies, then the finished ones, each in the
+  /// The parties the caller is in, the "My games" section: a game waiting
+  /// for the caller's move first ([PartySummary.isMyTurn]), then the other
+  /// running games, then the lobbies, then the finished ones, each in the
   /// backend's order.
-  ///
-  /// Not "your turn first": neither backend's `GET /party` says whose turn
-  /// it is, and one state call per party is not worth it.
   List<PartySummary> get myParties {
     int rank(PartySummary party) => switch (party.status) {
-      PartyStatus.playing => 0,
-      PartyStatus.finished => 2,
-      _ => 1,
+      PartyStatus.playing when party.isMyTurn => 0,
+      PartyStatus.playing => 1,
+      PartyStatus.finished => 3,
+      _ => 2,
     };
     final mine = _parties.where((party) => party.isMember).toList();
     // `List.sort` is not stable: sort on (rank, index).
@@ -150,10 +157,22 @@ class PartyListProvider extends ChangeNotifier {
   }
 
   void _onEvent(SseEvent event) {
-    if (_disposed || !refreshingActions.contains(event.action)) return;
+    if (_disposed) return;
+    final action = event.action;
+    final refreshes =
+        refreshingActions.contains(action) ||
+        (turnActions.contains(action) && _isMyRunningGame(event.partyId));
+    if (!refreshes) return;
     _refresh?.cancel();
     _refresh = Timer(refreshDelay, () => load(showSpinner: false));
   }
+
+  bool _isMyRunningGame(String? partyId) => _parties.any(
+    (party) =>
+        party.id == partyId &&
+        party.isMember &&
+        party.status == PartyStatus.playing,
+  );
 
   /// Joins [partyId]. `true` when its lobby may be opened — a seat was
   /// taken, or the caller already had one; `false` leaves the refusal in

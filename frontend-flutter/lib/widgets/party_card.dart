@@ -17,8 +17,9 @@ String partyStatusText(AppLocalizations l10n, String status) =>
 /// (`PartyList.jsx:160-220`, made compact).
 ///
 /// A running game of mine is the card that stands out: an amber border, an
-/// "In progress" badge and the only filled button, Resume. Its lobby and
-/// someone else's party get an outlined button, Lobby or Join.
+/// "In progress" badge — "Your turn" when the game waits for my move — and
+/// the only filled button, Resume. Its lobby and someone else's party get an
+/// outlined button, Lobby or Join.
 class PartyCard extends StatelessWidget {
   const PartyCard({
     super.key,
@@ -88,7 +89,14 @@ class PartyCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (resume)
+                if (resume && party.isMyTurn)
+                  _Badge(
+                    key: Key('your-turn-${party.id}'),
+                    text: l10n.partyYourTurnBadge,
+                    color: AppColors.slate900,
+                    background: AppColors.amber400,
+                  )
+                else if (resume)
                   _Badge(
                     key: Key('in-progress-${party.id}'),
                     text: l10n.partyInProgressBadge,

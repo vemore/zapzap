@@ -166,6 +166,69 @@ void main() {
       });
     });
 
+    test('a move that passes the turn in a running game of mine reloads; in '
+        "a lobby of mine or someone else's game it does not", () {
+      for (final action in PartyListProvider.turnActions) {
+        fakeAsync((async) {
+          final backend = FakeLobbyBackend(
+            parties: [
+              partySummaryJson(id: 'mine', status: 'playing', isMember: true),
+              partySummaryJson(id: 'lobby', isMember: true),
+              partySummaryJson(id: 'theirs', status: 'playing'),
+            ],
+          );
+          final events = StreamController<SseEvent>.broadcast();
+          final list = PartyListProvider(
+            repositoryOf(backend),
+            events: events.stream,
+          )..load();
+          async.flushMicrotasks();
+          expect(listRequests(backend), 1);
+
+          for (final other in ['lobby', 'theirs', 'unknown']) {
+            events.add(SseEvent({'partyId': other, 'action': action}));
+          }
+          async.elapse(const Duration(seconds: 2));
+          expect(listRequests(backend), 1, reason: '$action elsewhere');
+
+          events.add(SseEvent({'partyId': 'mine', 'action': action}));
+          async.elapse(const Duration(seconds: 1));
+          expect(listRequests(backend), 2, reason: action);
+          list.dispose();
+          events.close();
+        });
+      }
+    });
+
+    test('a party created elsewhere reloads the list', () {
+      expect(PartyListProvider.refreshingActions, contains('partyCreated'));
+    });
+
+    test('a game waiting for my move comes first among mine', () async {
+      final backend = FakeLobbyBackend(
+        parties: [
+          partySummaryJson(id: 'done', status: 'finished', isMember: true),
+          partySummaryJson(id: 'lobby', isMember: true),
+          partySummaryJson(id: 'waits', status: 'playing', isMember: true),
+          partySummaryJson(
+            id: 'turn',
+            status: 'playing',
+            isMember: true,
+            isMyTurn: true,
+          ),
+          partySummaryJson(id: 'theirs'),
+        ],
+      );
+      final list = PartyListProvider(repositoryOf(backend));
+      await list.load();
+      expect(list.myParties.map((party) => party.id), [
+        'turn',
+        'waits',
+        'lobby',
+        'done',
+      ]);
+    });
+
     test('every party-changing action reloads', () {
       for (final action in PartyListProvider.refreshingActions) {
         fakeAsync((async) {
