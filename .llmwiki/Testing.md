@@ -172,7 +172,11 @@
   non-required one and change the Dockerfile production builds from. The R8 build runs on a
   flag of its own, `android` (the Android project, `pubspec.*`, every push to master), since R8
   reads no Dart code. The `flutter` job kept its `name:` although it no longer builds web or
-  APKs: not a required check, but the rule against renames is kept whole. Not done: `cargo-chef`
+  APKs: not a required check, but the rule against renames is kept whole. Measured on #185
+  (run 36551441329, every job run since it changed `ci.yml`): 4m25s for the run, against
+  507–591 s before; `flutter` 2m38s (`test` 112 s), `flutter-apk` 3m47s (setup 69 s, debug
+  APK 143 s), `flutter-release` 4m13s (setup 74 s, R8 168 s), `image` 3m27s (the PWA image
+  2m29s). A Dart-only pull request waits for `flutter-apk` or `image`, ~4 min. Not done: `cargo-chef`
   or sccache for the backend image, whose 340 s on a Rust change are now the longest job of a
   Rust pull request.
 - **2026-09-29 (chore/remove-react-client): the React client is removed, and its suites with it.** vitest (294 tests), the lint and build gates, the `frontend` scope flag and the React image build of the `image` job are gone; a path under frontend/ now runs everything. The `frontend` job stays with its pinned `name:`, skipped, until branch protection drops it. The proxy's routes gained a test of their own, `scripts/proxy_redirects_smoke.sh`, in the `image` job: a test on the real image rather than a copy of the conf, since the redirects are the only thing left of the client. The React suites' notes (the flaky-test fix of 2026-09-24, the lint and vitest made green on 2026-09-23) are in this page at `055c288`.
