@@ -102,6 +102,12 @@ impl UserRepository for RacingUserRepo {
         }
         self.inner.exists_by_username(username).await
     }
+    async fn exists_by_username_ci(&self, username: &str) -> Result<bool, RepositoryError> {
+        if Self::take(&self.stale_username_checks) {
+            return Ok(false);
+        }
+        self.inner.exists_by_username_ci(username).await
+    }
     async fn find_all_bots(
         &self,
         difficulty: Option<BotDifficulty>,

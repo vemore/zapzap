@@ -99,6 +99,9 @@ pub trait UserRepository: Send + Sync {
     /// Check if username exists
     async fn exists_by_username(&self, username: &str) -> Result<bool, RepositoryError>;
 
+    /// Check if username exists, whatever the case (`LOWER(username) = LOWER(?)`)
+    async fn exists_by_username_ci(&self, username: &str) -> Result<bool, RepositoryError>;
+
     /// Find all bots, optionally filtered by difficulty
     async fn find_all_bots(
         &self,

@@ -5546,7 +5546,10 @@ async fn test_change_password_needs_the_current_one() {
     let (status, body) =
         change(json!({"currentPassword": "password123", "newPassword": "abc"})).await;
     assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
-    assert_eq!(body["error"], "Password must be at least 4 characters");
+    assert_eq!(body["error"], "Password must be at least 6 characters");
+    let (status, body) =
+        change(json!({"currentPassword": "password123", "newPassword": "12345"})).await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
     assert_eq!(
         login_status(&mut app, "changespw", "password123").await,
         StatusCode::OK
@@ -5610,15 +5613,9 @@ async fn test_reserved_names_are_refused_at_sign_up_and_rename() {
     let (mut app, state) = create_test_app_with_state().await;
     let (token, _) = register(&mut app, "ordinary").await;
 
-    // "admin" and the deleted player's names, whatever their case: taken, for the player
-    for name in [
-        "admin",
-        "ADMIN",
-        " Admin ",
-        "Joueur supprimé",
-        "JOUEUR SUPPRIMÉ",
-        "deleted player",
-    ] {
+    // "admin", whatever its case: taken, for the player. The deleted player's names have
+    // spaces or accents: the username rules refuse them before the reserved list is asked
+    for name in ["admin", "ADMIN", " Admin "] {
         let (status, body) = post_json(
             &mut app,
             "/api/auth/register",
@@ -5664,16 +5661,107 @@ async fn test_reserved_names_are_refused_at_sign_up_and_rename() {
         assert_eq!(status, StatusCode::OK, "{name}: {body}");
         assert_eq!(body["user"]["username"], name);
     }
-    // But not another reserved one
+    for name in ["Joueur supprimé", "Deleted player"] {
+        for path_token in [&token, &admin_token] {
+            let (status, body) = send_me(
+                &mut app,
+                "PATCH",
+                "/api/auth/me",
+                path_token,
+                json!({ "username": name }),
+            )
+            .await;
+            assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+        }
+    }
+}
+
+/// The clients' username and password rules hold at sign-up, rename and password change
+#[tokio::test]
+async fn test_username_and_password_rules_at_sign_up_rename_and_change() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (bob_token, _) = register(&mut app, "bob").await;
+    let (other_token, _) = register(&mut app, "other").await;
+
+    for name in [
+        "a".repeat(31),
+        "a b c".to_string(),
+        "ab".to_string(),
+        "é_é_é".to_string(),
+    ] {
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/register",
+            json!({"username": name, "password": "password123"}),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &other_token,
+            json!({ "username": name }),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+    }
+    // 30 characters and the allowed punctuation are fine
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/register",
+        json!({"username": format!("{}-_", "a".repeat(28)), "password": "password123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // A short password is refused at sign-up
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/register",
+        json!({"username": "shortpw", "password": "12345"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::BAD_REQUEST, "VALIDATION_ERROR");
+
+    // A case-variant of an existing name is taken, at sign-up and on a rename
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/register",
+        json!({"username": "BOB", "password": "password123"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
     let (status, body) = send_me(
         &mut app,
         "PATCH",
         "/api/auth/me",
-        &admin_token,
-        json!({"username": "Deleted player"}),
+        &other_token,
+        json!({"username": "Bob"}),
     )
     .await;
     assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+
+    // Bob may change the case of his own name
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &bob_token,
+        json!({"username": "Bob"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["username"], "Bob");
+
+    // An account whose name breaks the rules signs in all the same
+    let old = User::new_human(
+        "u-old".into(),
+        "x".into(),
+        zapzap_backend::infrastructure::auth::PasswordService::hash("pw").unwrap(),
+    );
+    state.user_repo.save(&old).await.unwrap();
+    assert_eq!(login_status(&mut app, "x", "pw").await, StatusCode::OK);
 }
 
 #[tokio::test]
