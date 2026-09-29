@@ -135,18 +135,6 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
-  frontend:
-    # The React client (frontend/) was removed on 2026-09-29, and with it everything this job
-    # built. Branch protection still requires this exact check name, so the job stays,
-    # always skipped: a job skipped by `if:` reports Success (above). Delete it once
-    # "Frontend — build" is dropped from master's required checks — not before, or every
-    # pull request waits for a check that never reports.
-    name: Frontend — build
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "frontend/ was removed; this job only keeps a required check name"
-
   image:
     # This `name:` is the check context `master`'s branch protection requires, character
     # for character. Rename it and the required context never reports: every pull request
