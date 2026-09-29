@@ -192,6 +192,21 @@ impl BotRunner {
         self.action_delay
     }
 
+    /// What a bot's write came to: `Some` when it went through, `None` when it lost a race
+    /// (`read_again`), after a pause of `action_delay`, and its other errors as they are.
+    /// This is the one place a bot write decides "lost race: read again": on `None` the
+    /// loop reads the state again, and the pause keeps it from asking its brain (a paid
+    /// request, for an LLM bot) again at once while the contention lasts.
+    async fn settle<T, E: BotWriteError>(&self, written: Result<T, E>) -> Result<Option<T>, E> {
+        match written {
+            Err(e) if e.repository().is_some_and(read_again) => {
+                tokio::time::sleep(self.action_delay).await;
+                Ok(None)
+            }
+            written => written.map(Some),
+        }
+    }
+
     /// Drop the bots of a deleted party. A loop that runs meanwhile finds no game state
     /// at its next action and ends.
     pub fn drop_party(&self, party_id: &str) {
@@ -372,18 +387,15 @@ async fn deal_next_round(
         return Ok(RoundEnd::Waiting);
     };
     tokio::time::sleep(state.bot_runner.action_delay() * RESULTS_PAUSES).await;
-    let dealt = match NextRound::new(state.party_repo.clone())
+    let written = NextRound::new(state.party_repo.clone())
         .execute(NextRoundInput {
             party_id: party_id.to_string(),
             user_id: dealer.clone(),
         })
-        .await
-    {
-        Ok(dealt) => dealt,
-        Err(NextRoundError::RoundNotFinished) => return Ok(RoundEnd::DealtElsewhere),
-        Err(NextRoundError::Repository(e)) if read_again(&e) => {
-            return Ok(RoundEnd::DealtElsewhere)
-        }
+        .await;
+    let dealt = match state.bot_runner.settle(written).await {
+        Ok(Some(dealt)) => dealt,
+        Ok(None) | Err(NextRoundError::RoundNotFinished) => return Ok(RoundEnd::DealtElsewhere),
         // The ZapZap that ended the game finished the party, or the party is gone
         Err(
             NextRoundError::PartyNotPlaying
@@ -419,11 +431,43 @@ fn read_again(e: &RepositoryError) -> bool {
     e.is_conflict() || e.is_not_found()
 }
 
+/// The error of a write the bot loop makes: the repository error under it, if any
+trait BotWriteError {
+    fn repository(&self) -> Option<&RepositoryError>;
+}
+
+impl BotWriteError for RepositoryError {
+    fn repository(&self) -> Option<&RepositoryError> {
+        Some(self)
+    }
+}
+
+macro_rules! bot_write_error {
+    ($($error:ty),*) => {$(
+        impl BotWriteError for $error {
+            fn repository(&self) -> Option<&RepositoryError> {
+                match self {
+                    Self::Repository(e) => Some(e),
+                    _ => None,
+                }
+            }
+        }
+    )*};
+}
+
+bot_write_error!(
+    SelectHandSizeError,
+    CallZapZapError,
+    PlayCardsError,
+    DrawCardError,
+    NextRoundError
+);
+
 /// Play bot moves until a human is to move, a round ends while a human is still in the
 /// game, or the game ends; the caller holds the party's roster, so no other loop runs for
 /// this party meanwhile. A move whose write loses a race with another write of the game
-/// state (a forfeit, a human's request) wrote nothing: the loop reads the state again and
-/// decides afresh (`read_again`).
+/// state (a forfeit, a human's request) wrote nothing: the loop pauses, reads the state
+/// again and decides afresh (`BotRunner::settle`).
 async fn run_bot_loop(
     state: &Arc<AppState>,
     party_id: &str,
@@ -518,13 +562,12 @@ async fn run_bot_loop(
             }
             let mut updated = game_state.clone();
             updated.current_turn = next_turn;
-            match state
+            let written = state
                 .party_repo
                 .update_game_state(party_id, &updated, version)
-                .await
-            {
-                Err(e) if !read_again(&e) => tracing::error!("Failed to update game state: {}", e),
-                _ => {}
+                .await;
+            if let Err(e) = state.bot_runner.settle(written).await {
+                tracing::error!("Failed to update game state: {}", e);
             }
             continue;
         }
@@ -539,16 +582,16 @@ async fn run_bot_loop(
             GameAction::SelectHandSize => {
                 let hand_size = brain.select_hand_size(&game_state, player_index);
                 tracing::info!("Bot {} selecting hand size {}", user.username, hand_size);
-                match SelectHandSize::new(state.party_repo.clone())
+                let written = SelectHandSize::new(state.party_repo.clone())
                     .execute(SelectHandSizeInput {
                         party_id: party_id.to_string(),
                         user_id: user_id.clone(),
                         hand_size,
                     })
-                    .await
-                {
-                    Err(SelectHandSizeError::Repository(e)) if read_again(&e) => continue,
-                    result => result.map_err(|e| e.to_string())?,
+                    .await;
+                let settled = state.bot_runner.settle(written).await;
+                let Some(_) = settled.map_err(|e| e.to_string())? else {
+                    continue;
                 };
                 broadcast_bot_event(
                     state,
@@ -561,15 +604,15 @@ async fn run_bot_loop(
             GameAction::Play => {
                 if brain.should_call_zapzap(&game_state, player_index).await {
                     tracing::info!("Bot {} calling ZapZap", user.username);
-                    let result = match CallZapZap::new(state.party_repo.clone())
+                    let written = CallZapZap::new(state.party_repo.clone())
                         .execute(CallZapZapInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                         })
-                        .await
-                    {
-                        Err(CallZapZapError::Repository(e)) if read_again(&e) => continue,
-                        result => result.map_err(|e| e.to_string())?,
+                        .await;
+                    let settled = state.bot_runner.settle(written).await;
+                    let Some(result) = settled.map_err(|e| e.to_string())? else {
+                        continue;
                     };
                     broadcast_bot_event(
                         state,
@@ -592,16 +635,16 @@ async fn run_bot_loop(
                         return Err(format!("Bot {} has no valid play", user.username));
                     }
                     tracing::info!("Bot {} playing {:?}", user.username, cards);
-                    match PlayCards::new(state.party_repo.clone())
+                    let written = PlayCards::new(state.party_repo.clone())
                         .execute(PlayCardsInput {
                             party_id: party_id.to_string(),
                             user_id: user_id.clone(),
                             card_ids: cards.clone(),
                         })
-                        .await
-                    {
-                        Err(PlayCardsError::Repository(e)) if read_again(&e) => continue,
-                        result => result.map_err(|e| e.to_string())?,
+                        .await;
+                    let settled = state.bot_runner.settle(written).await;
+                    let Some(_) = settled.map_err(|e| e.to_string())? else {
+                        continue;
                     };
                     broadcast_bot_event(
                         state,
@@ -628,21 +671,21 @@ async fn run_bot_loop(
                     })
                     .await;
                 // A discard pick that fails falls back to the deck
-                let source = match drawn {
-                    Ok(_) => source,
-                    Err(DrawCardError::Repository(e)) if read_again(&e) => continue,
+                let source = match state.bot_runner.settle(drawn).await {
+                    Ok(Some(_)) => source,
+                    Ok(None) => continue,
                     Err(_) => {
-                        match DrawCard::new(state.party_repo.clone())
+                        let written = DrawCard::new(state.party_repo.clone())
                             .execute(DrawCardInput {
                                 party_id: party_id.to_string(),
                                 user_id: user_id.clone(),
                                 source: "deck".to_string(),
                                 card_id: None,
                             })
-                            .await
-                        {
-                            Err(DrawCardError::Repository(e)) if read_again(&e) => continue,
-                            result => result.map_err(|e| e.to_string())?,
+                            .await;
+                        let settled = state.bot_runner.settle(written).await;
+                        let Some(_) = settled.map_err(|e| e.to_string())? else {
+                            continue;
                         };
                         "deck"
                     }
@@ -792,6 +835,50 @@ mod tests {
         assert_eq!(action_delay_from(Some("fast".into())), DEFAULT_ACTION_DELAY);
         assert_eq!(action_delay_from(Some("".into())), DEFAULT_ACTION_DELAY);
         assert_eq!(DEFAULT_ACTION_DELAY, Duration::from_millis(1000));
+    }
+
+    #[tokio::test]
+    async fn test_a_lost_race_pauses_before_reading_again() {
+        let delay = Duration::from_millis(150);
+        let runner = BotRunner::with_action_delay(delay);
+        let conflict = || RepositoryError::Conflict("game_state".into());
+
+        // A lost race, as a move's error or a bare write's: read again, after the pause
+        let started = tokio::time::Instant::now();
+        let written = runner
+            .settle::<(), _>(Err(PlayCardsError::Repository(conflict())))
+            .await;
+        assert!(matches!(written, Ok(None)));
+        assert!(started.elapsed() >= delay, "{:?}", started.elapsed());
+        let gone = RepositoryError::NotFound("game_state".into());
+        let written = runner
+            .settle::<(), _>(Err(DrawCardError::Repository(gone)))
+            .await;
+        assert!(matches!(written, Ok(None)));
+        let written = runner.settle::<(), _>(Err(conflict())).await;
+        assert!(matches!(written, Ok(None)));
+
+        // A write that went through, or failed for another reason, returns at once
+        let started = tokio::time::Instant::now();
+        assert!(matches!(
+            runner.settle(Ok::<_, SelectHandSizeError>(7)).await,
+            Ok(Some(7))
+        ));
+        assert!(matches!(
+            runner
+                .settle::<(), _>(Err(CallZapZapError::Repository(RepositoryError::Database(
+                    "disk".into()
+                ))))
+                .await,
+            Err(CallZapZapError::Repository(RepositoryError::Database(_)))
+        ));
+        assert!(matches!(
+            runner
+                .settle::<(), _>(Err(NextRoundError::RoundNotFinished))
+                .await,
+            Err(NextRoundError::RoundNotFinished)
+        ));
+        assert!(started.elapsed() < delay, "{:?}", started.elapsed());
     }
 
     #[test]
