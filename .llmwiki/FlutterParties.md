@@ -174,9 +174,11 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   without one), which opens `widgets/change_password_dialog.dart`
   (`change-password-dialog`): the current password (`change-password-current`) and the new
   one (`change-password-new`, the sign-up form's six characters), `change-password-confirm`
-  active once both pass — or, for a Google account without a password, the new one and the
-  Google confirmation (`change-password-google`, active once the new one passes; a token
-  from Google's own web button before that is not sent) —, then a snack bar « Mot de passe
+  active once both pass; and for any Google account the Google confirmation
+  (`change-password-google`, active once the new one passes; a token from Google's own web
+  button before that is not sent) — alone for one without a password, which sets its first
+  one, and under « Mot de passe oublié ? » for one with a password, which replaces the
+  forgotten one: the current password is then not sent —, then a snack bar « Mot de passe
   enregistré »; 403 `INVALID_PASSWORD` / `GOOGLE_AUTH_FAILED` stay in the dialog
   (`change-password-error`, `changePasswordErrorText`). Last, in red,
   **Supprimer mon compte / Delete my account** (`account-delete`), which opens

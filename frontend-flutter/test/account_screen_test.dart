@@ -371,8 +371,70 @@ void main() {
 
       await tester.tap(find.byKey(const Key('account-password')));
       await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('change-password-current')),
+        'secret1',
+      );
+      await tester.enterText(
+        find.byKey(const Key('change-password-new')),
+        'brandnew',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('change-password-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(backend.bodyOf('PUT', '/api/auth/me/password'), {
+        'newPassword': 'brandnew',
+        'currentPassword': 'secret1',
+      });
+    });
+
+    testWidgets('a Google account that forgot its password resets it with '
+        'Google, the current one left out', (tester) async {
+      final backend = FakeLobbyBackend();
+      final google = FakeGoogleSignIn()..nextToken = 'fresh-google-token';
+      await pumpApp(
+        tester,
+        backend: backend,
+        storage: session(google: true, hasPassword: true),
+        google: google,
+      );
+      await openAccount(tester);
+
+      await tester.tap(find.byKey(const Key('account-password')));
+      await tester.pumpAndSettle();
+      // Both ways are offered.
       expect(find.byKey(const Key('change-password-current')), findsOneWidget);
-      expect(find.byKey(const Key('change-password-google')), findsNothing);
+      expect(find.byKey(const Key('change-password-confirm')), findsOneWidget);
+      expect(
+        find.text(
+          'Mot de passe oublié ? Confirme plutôt avec ton compte Google.',
+        ),
+        findsOneWidget,
+      );
+      final googleButton = find.byKey(const Key('change-password-google'));
+      expect(tester.widget<OutlinedButton>(googleButton).onPressed, isNull);
+
+      // A stale guess in the current field is not sent beside Google's token.
+      await tester.enterText(
+        find.byKey(const Key('change-password-current')),
+        'forgotten',
+      );
+      await tester.enterText(
+        find.byKey(const Key('change-password-new')),
+        'brandnew',
+      );
+      await tester.pump();
+      await tester.tap(googleButton);
+      await tester.pumpAndSettle();
+
+      expect(google.signIns, 1);
+      expect(backend.bodyOf('PUT', '/api/auth/me/password'), {
+        'newPassword': 'brandnew',
+        'credential': 'fresh-google-token',
+      });
+      expect(find.byKey(const Key('change-password-dialog')), findsNothing);
+      expect(find.text('Mot de passe enregistré'), findsOneWidget);
     });
   });
 

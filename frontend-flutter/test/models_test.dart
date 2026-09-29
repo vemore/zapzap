@@ -26,7 +26,30 @@ void main() {
       expect(session.user.id, 'a8891da0-2bf8-4e72-ba71-8aa2e3f20f4e');
       expect(session.user.username, 'Vincent');
       expect(session.user.isAdmin, isFalse);
+      expect(session.user.isGoogleUser, isFalse);
+      expect(session.user.hasPassword, isTrue);
+      expect(session.user.email, isNull);
       expect(session.isNewUser, isFalse);
+    });
+
+    test('login of a Google account by its password: stored as the Google '
+        'account it is', () {
+      // `/login` answers `/google`'s user shape since the account page.
+      final json = fixture('auth_login');
+      json['user'] = {
+        ...(json['user'] as Map<String, dynamic>),
+        'email': 'vincent@example.com',
+        'isGoogleUser': true,
+        'hasPassword': true,
+      };
+      final user = AuthSession.fromJson(json).user;
+      expect(user.isGoogleUser, isTrue);
+      expect(user.hasPassword, isTrue);
+      expect(user.email, 'vincent@example.com');
+      final stored = User.fromJson(user.toJson());
+      expect(stored.isGoogleUser, isTrue);
+      expect(stored.hasPassword, isTrue);
+      expect(stored.email, 'vincent@example.com');
     });
 
     test('register: createdAt in Unix seconds, no isAdmin', () {

@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "Aktuelles Passwort",
   "accountPasswordNewLabel": "Neues Passwort",
   "accountPasswordGoogleHint": "Bestätige mit deinem Google-Konto, um dieses Passwort zu speichern.",
+  "accountPasswordForgotGoogleHint": "Passwort vergessen? Bestätige stattdessen mit deinem Google-Konto.",
   "accountPasswordGoogleUnavailable": "Google ist von hier aus nicht erreichbar, daher kann dieses Passwort nicht bestätigt werden. Versuche es später erneut.",
   "accountPasswordSaved": "Passwort gespeichert",
   "menuRules": "Regeln",

@@ -31,8 +31,8 @@
   the web (`token_storage_web.dart`, localStorage, keys prefixed `flutter.` by the plugin —
   no clash with the React client's own `token` on the same origin). Keys `token` and `user`
   (JSON of `User.toJson()`), those of the React client. `MemoryTokenStorage` for tests.
-  `User.hasPassword` comes from `/auth/google` and `PATCH /auth/me`; login and register
-  prove one, and a session stored before the field reads it as "not a Google account".
+  `User.hasPassword`, `isGoogleUser` and `email` come from `/auth/login`, `/auth/google`
+  and `PATCH /auth/me`, which answer one user shape; register proves a password, and a session stored before the field reads it as "not a Google account".
 - **Screens**: login (`Login.jsx`) only requires both fields — as React, so an account
   that predates the rules still signs in; register (`Register.jsx`) checks the rules of
   `auth.js:42-88` (`utils/validators.dart`: username trimmed, 3-30,

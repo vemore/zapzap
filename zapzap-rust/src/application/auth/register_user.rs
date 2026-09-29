@@ -2,9 +2,22 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::domain::entities::User;
+use crate::domain::entities::{User, DELETED_PLAYER_NAME};
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::{JwtService, PasswordService};
+
+/// Names no player may take, whatever their case: the default admin's, whose row the admin
+/// screens protect by its name, and the names the clients give a deleted player
+/// (`DELETED_PLAYER_NAME`, "Deleted player"), which a live player must not pass for
+pub const RESERVED_USERNAMES: &[&str] = &["admin", DELETED_PLAYER_NAME, "Deleted player"];
+
+/// Whether `username` is one of `RESERVED_USERNAMES`, compared trimmed and case-insensitively
+pub fn is_reserved_username(username: &str) -> bool {
+    let wanted = username.trim().to_lowercase();
+    RESERVED_USERNAMES
+        .iter()
+        .any(|reserved| reserved.to_lowercase() == wanted)
+}
 
 /// A username's rules, at sign-up and on a rename (`RenameUser`): the message of the
 /// first one broken
@@ -59,6 +72,9 @@ impl RegisterUser {
         // Validate input
         validate_username(&input.username).map_err(RegisterError::Validation)?;
         validate_password(&input.password).map_err(RegisterError::Validation)?;
+        if is_reserved_username(&input.username) {
+            return Err(RegisterError::Reserved);
+        }
 
         // Check if username exists
         if self.user_repo.exists_by_username(&input.username).await? {
@@ -93,6 +109,8 @@ pub enum RegisterError {
     Validation(String),
     #[error("Username already exists")]
     UsernameExists,
+    #[error("Username is reserved")]
+    Reserved,
     #[error("Internal error: {0}")]
     Internal(String),
     #[error("Repository error: {0}")]

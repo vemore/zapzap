@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "كلمة المرور الحالية",
   "accountPasswordNewLabel": "كلمة المرور الجديدة",
   "accountPasswordGoogleHint": "أكِّد بحسابك على Google لحفظ كلمة المرور هذه.",
+  "accountPasswordForgotGoogleHint": "نسيت كلمة المرور؟ أكِّد بحسابك على Google بدلاً من ذلك.",
   "accountPasswordGoogleUnavailable": "لا يمكن الوصول إلى Google من هنا، لذلك لا يمكنه تأكيد كلمة المرور هذه. حاول لاحقاً.",
   "accountPasswordSaved": "تم حفظ كلمة المرور",
   "menuRules": "القواعد",

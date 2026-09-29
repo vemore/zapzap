@@ -2775,8 +2775,19 @@ mod google_and_bot_admin {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
 
-        // The account now signs in either way, and says it has a password
-        assert_eq!(login_status("firstone").await, StatusCode::OK);
+        // The account now signs in either way, and says it has a password. `/login`
+        // describes it as `/google` does: a Google account, with its e-mail
+        let (status, by_password) = post_json(
+            &mut app.clone(),
+            "/api/auth/login",
+            json!({"username": username, "password": "firstone"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{by_password}");
+        assert_eq!(by_password["user"]["isGoogleUser"], true, "{by_password}");
+        assert_eq!(by_password["user"]["hasPassword"], true, "{by_password}");
+        assert_eq!(by_password["user"]["email"], "ada@example.com");
+        assert_eq!(by_password["user"]["id"], login["user"]["id"]);
         let (_, again) = post_json(
             &mut app,
             "/api/auth/google",
@@ -5563,4 +5574,124 @@ async fn test_change_password_needs_the_current_one() {
     );
     let (status, _) = get_auth(&mut app, "/api/history", &token).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_rename_never_extends_the_session() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (_, user_id) = register(&mut app, "expiring").await;
+    // A session with an hour left, not the 7 days a fresh token gets
+    let exp = chrono::Utc::now().timestamp() as usize + 3600;
+    let token = state
+        .jwt_service
+        .sign_until(&user_id, "expiring", false, exp)
+        .unwrap();
+
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &token,
+        json!({"username": "stillexpiring"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let renamed = state
+        .jwt_service
+        .verify(body["token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(renamed.username, "stillexpiring");
+    assert_eq!(renamed.exp, exp);
+    assert_eq!(renamed.exp, state.jwt_service.verify(&token).unwrap().exp);
+}
+
+#[tokio::test]
+async fn test_reserved_names_are_refused_at_sign_up_and_rename() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (token, _) = register(&mut app, "ordinary").await;
+
+    // "admin" and the deleted player's names, whatever their case: taken, for the player
+    for name in [
+        "admin",
+        "ADMIN",
+        " Admin ",
+        "Joueur supprimé",
+        "JOUEUR SUPPRIMÉ",
+        "deleted player",
+    ] {
+        let (status, body) = post_json(
+            &mut app,
+            "/api/auth/register",
+            json!({"username": name, "password": "password123"}),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+        assert_eq!(body["error"], "Username is reserved", "{name}");
+
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &token,
+            json!({ "username": name }),
+        )
+        .await;
+        assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+        assert_eq!(body["error"], "Username is reserved", "{name}");
+    }
+    assert_eq!(
+        login_status(&mut app, "ordinary", "password123").await,
+        StatusCode::OK
+    );
+
+    // The default admin keeps its own name, and may change its case
+    let admin = User::new_human(
+        "u-admin".into(),
+        "admin".into(),
+        zapzap_backend::infrastructure::auth::PasswordService::hash("adminpw").unwrap(),
+    );
+    state.user_repo.save(&admin).await.unwrap();
+    let admin_token = state.jwt_service.sign(&admin.id, "admin", false).unwrap();
+    for name in ["admin", "Admin"] {
+        let (status, body) = send_me(
+            &mut app,
+            "PATCH",
+            "/api/auth/me",
+            &admin_token,
+            json!({ "username": name }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{name}: {body}");
+        assert_eq!(body["user"]["username"], name);
+    }
+    // But not another reserved one
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        &admin_token,
+        json!({"username": "Deleted player"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::CONFLICT, "USERNAME_EXISTS");
+}
+
+#[tokio::test]
+async fn test_login_answers_the_account_shape() {
+    let mut app = create_test_app().await;
+    let (_, user_id) = register(&mut app, "shapely").await;
+    let (status, body) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": "shapely", "password": "password123"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["user"],
+        json!({
+            "id": user_id, "username": "shapely", "email": null, "isAdmin": false,
+            "isGoogleUser": false, "hasPassword": true
+        })
+    );
 }

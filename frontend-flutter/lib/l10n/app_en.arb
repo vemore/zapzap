@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "Current password",
   "accountPasswordNewLabel": "New password",
   "accountPasswordGoogleHint": "Confirm with your Google account to save this password.",
+  "accountPasswordForgotGoogleHint": "Forgot your password? Confirm with your Google account instead.",
   "accountPasswordGoogleUnavailable": "Google cannot be reached from here, so it cannot confirm this password. Try again later.",
   "accountPasswordSaved": "Password saved",
   "menuRules": "Rules",

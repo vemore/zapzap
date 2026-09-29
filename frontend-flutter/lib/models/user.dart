@@ -2,8 +2,8 @@ import 'json.dart';
 
 /// The signed-in user, as `/auth/login`, `/auth/register`, `/auth/google`
 /// and `PATCH /auth/me` return it. Register sends `createdAt` and no
-/// `isAdmin`; login sends `isAdmin`; Google and the rename add `email`,
-/// `isGoogleUser` and `hasPassword`.
+/// `isAdmin`; login, Google and the rename send one shape: `isAdmin`,
+/// `email`, `isGoogleUser` and `hasPassword`.
 class User {
   const User({
     required this.id,
@@ -34,7 +34,7 @@ class User {
   final String? email;
   final bool isGoogleUser;
 
-  /// Signs in with a password. Login and register do not say: they prove
+  /// Signs in with a password. Register does not say: it proves
   /// one. Absent (a session stored before the field), it is taken to be the
   /// case of every account but a Google one, which may have set one since
   /// (`PUT /auth/me/password`).

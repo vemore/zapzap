@@ -2391,6 +2391,10 @@
   "@accountPasswordGoogleHint": {
     "description": "Password dialog of a Google account: it confirms the new password with Google"
   },
+  "accountPasswordForgotGoogleHint": "Mot de passe oublié ? Confirme plutôt avec ton compte Google.",
+  "@accountPasswordForgotGoogleHint": {
+    "description": "Password dialog of a Google account that has a password: Google can confirm the new one instead of the forgotten current one"
+  },
   "accountPasswordGoogleUnavailable": "Google est injoignable d'ici : il ne peut pas confirmer ce mot de passe. Réessaie plus tard.",
   "@accountPasswordGoogleUnavailable": {
     "description": "Password dialog of a Google account: Google did not get ready (script blocked, no route to Google)"

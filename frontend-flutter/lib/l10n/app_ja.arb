@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "現在のパスワード",
   "accountPasswordNewLabel": "新しいパスワード",
   "accountPasswordGoogleHint": "Google アカウントで確認してこのパスワードを保存してください。",
+  "accountPasswordForgotGoogleHint": "パスワードをお忘れですか？代わりに Google アカウントで確認してください。",
   "accountPasswordGoogleUnavailable": "ここから Google に接続できないため、このパスワードを確認できません。時間をおいて再度お試しください。",
   "accountPasswordSaved": "パスワードを保存しました",
   "menuRules": "ルール",

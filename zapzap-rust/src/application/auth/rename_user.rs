@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use super::register_user::validate_username;
+use super::register_user::{is_reserved_username, validate_username};
 use crate::domain::entities::User;
 use crate::domain::repositories::UserRepository;
 use crate::infrastructure::auth::JwtService;
@@ -29,11 +29,14 @@ impl RenameUser {
         }
     }
 
-    /// Renames `user_id` to `username`; its own current name is accepted and changes nothing
+    /// Renames `user_id` to `username`; its own current name is accepted and changes nothing.
+    /// The new token expires at `exp` (Unix seconds), the one of the token it replaces: a
+    /// rename never extends a session.
     pub async fn execute(
         &self,
         user_id: &str,
         username: &str,
+        exp: usize,
     ) -> Result<RenameUserOutput, RenameError> {
         validate_username(username).map_err(RenameError::Validation)?;
         let mut user = self
@@ -41,6 +44,14 @@ impl RenameUser {
             .find_by_id(user_id)
             .await?
             .ok_or(RenameError::NotFound)?;
+
+        // A reserved name is refused unless it is this account's own, whatever its case (the
+        // default admin keeps "admin")
+        if is_reserved_username(username)
+            && username.trim().to_lowercase() != user.username.trim().to_lowercase()
+        {
+            return Err(RenameError::Reserved);
+        }
 
         if user.username != username {
             if self.user_repo.exists_by_username(username).await? {
@@ -64,7 +75,7 @@ impl RenameUser {
 
         let token = self
             .jwt_service
-            .sign(&user.id, &user.username, user.is_admin)
+            .sign_until(&user.id, &user.username, user.is_admin, exp)
             .map_err(|e| RenameError::Internal(e.to_string()))?;
         Ok(RenameUserOutput { user, token })
     }
@@ -77,6 +88,8 @@ pub enum RenameError {
     Validation(String),
     #[error("Username already exists")]
     UsernameExists,
+    #[error("Username is reserved")]
+    Reserved,
     #[error("User not found")]
     NotFound,
     #[error("Internal error: {0}")]
@@ -103,7 +116,7 @@ mod tests {
 
         // The lookup misses "bob", as if he had signed up just after it
         repo.stale_username_checks.store(1, Ordering::SeqCst);
-        let err = use_case.execute("u1", "bob").await.err().unwrap();
+        let err = use_case.execute("u1", "bob", 0).await.err().unwrap();
         assert!(matches!(err, RenameError::UsernameExists), "{err}");
         assert_eq!(
             repo.find_by_id("u1").await.unwrap().unwrap().username,

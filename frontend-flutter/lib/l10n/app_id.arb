@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "Kata sandi saat ini",
   "accountPasswordNewLabel": "Kata sandi baru",
   "accountPasswordGoogleHint": "Konfirmasi dengan akun Google-mu untuk menyimpan kata sandi ini.",
+  "accountPasswordForgotGoogleHint": "Lupa kata sandi? Konfirmasi dengan akun Google-mu sebagai gantinya.",
   "accountPasswordGoogleUnavailable": "Google tidak dapat dihubungi dari sini, jadi kata sandi ini tidak bisa dikonfirmasi. Coba lagi nanti.",
   "accountPasswordSaved": "Kata sandi disimpan",
   "menuRules": "Aturan",

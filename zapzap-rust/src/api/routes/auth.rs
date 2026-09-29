@@ -71,30 +71,24 @@ pub struct RegisterUserInfo {
 #[serde(rename_all = "camelCase")]
 pub struct LoginResponse {
     success: bool,
-    user: LoginUserInfo,
+    user: AccountUserInfo,
     token: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoginUserInfo {
-    id: String,
-    username: String,
-    is_admin: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleLoginResponse {
     success: bool,
-    user: GoogleUserInfo,
+    user: AccountUserInfo,
     token: String,
     is_new_user: bool,
 }
 
+/// The signed-in account as `/login`, `/google` and `PATCH /me` describe it: one shape, so
+/// a Google account signing in with its password is stored as the Google account it is
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GoogleUserInfo {
+pub struct AccountUserInfo {
     id: String,
     username: String,
     email: Option<String>,
@@ -104,7 +98,7 @@ pub struct GoogleUserInfo {
     has_password: bool,
 }
 
-impl From<&User> for GoogleUserInfo {
+impl From<&User> for AccountUserInfo {
     fn from(user: &User) -> Self {
         Self {
             id: user.id.clone(),
@@ -117,11 +111,11 @@ impl From<&User> for GoogleUserInfo {
     }
 }
 
-/// `PATCH /me`: the renamed user, as `/google` describes one, and a token carrying the name
+/// `PATCH /me`: the renamed user and a token carrying the name
 #[derive(Serialize)]
 pub struct RenameResponse {
     success: bool,
-    user: GoogleUserInfo,
+    user: AccountUserInfo,
     token: String,
 }
 
@@ -201,6 +195,12 @@ async fn register_handler(
                     "USERNAME_EXISTS",
                     "Username already exists".to_string(),
                 ),
+                // Taken, as far as the player is concerned: the clients say so
+                crate::application::auth::RegisterError::Reserved => (
+                    StatusCode::CONFLICT,
+                    "USERNAME_EXISTS",
+                    "Username is reserved".to_string(),
+                ),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "REGISTRATION_ERROR",
@@ -257,11 +257,7 @@ async fn login_handler(
     match use_case.execute(input).await {
         Ok(output) => Ok(Json(LoginResponse {
             success: true,
-            user: LoginUserInfo {
-                id: output.user.id.clone(),
-                username: output.user.username.clone(),
-                is_admin: output.user.is_admin,
-            },
+            user: AccountUserInfo::from(&output.user),
             token: output.token,
         })),
         Err(e) => {
@@ -340,7 +336,7 @@ async fn google_handler(
             );
             Ok(Json(GoogleLoginResponse {
                 success: true,
-                user: GoogleUserInfo::from(&output.user),
+                user: AccountUserInfo::from(&output.user),
                 token: output.token,
                 is_new_user: output.is_new_user,
             }))
@@ -531,7 +527,10 @@ async fn rename_me_handler(
         .unwrap_or_default();
 
     let use_case = RenameUser::new(state.user_repo.clone(), state.jwt_service.clone());
-    match use_case.execute(&claims.user_id, username).await {
+    match use_case
+        .execute(&claims.user_id, username, claims.exp)
+        .await
+    {
         Ok(output) => {
             // Who is online names them by the new name, from now on
             state
@@ -539,14 +538,17 @@ async fn rename_me_handler(
                 .rename_user(&output.user.id, &output.user.username);
             Ok(Json(RenameResponse {
                 success: true,
-                user: GoogleUserInfo::from(&output.user),
+                user: AccountUserInfo::from(&output.user),
                 token: output.token,
             }))
         }
         Err(e) => {
             let (status, code) = match &e {
                 RenameError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-                RenameError::UsernameExists => (StatusCode::CONFLICT, "USERNAME_EXISTS"),
+                // A reserved name reads as taken, as at sign-up
+                RenameError::UsernameExists | RenameError::Reserved => {
+                    (StatusCode::CONFLICT, "USERNAME_EXISTS")
+                }
                 RenameError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
                 RenameError::Internal(_) | RenameError::Repository(_) => {
                     (StatusCode::INTERNAL_SERVER_ERROR, "ACCOUNT_UPDATE_ERROR")

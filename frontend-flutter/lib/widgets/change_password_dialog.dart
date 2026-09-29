@@ -11,9 +11,10 @@ import 'auth_form.dart';
 import 'google_confirmation.dart';
 
 /// Asks for a new password and sends it ([AuthProvider.changePassword]),
-/// confirmed as the account deletion is: by the current password, or for a
-/// Google account without one ([User.hasPassword]) by a fresh Google ID
-/// token ([GoogleConfirmation]), which sets its first password. The new
+/// confirmed as the account deletion is: by the current password
+/// ([User.hasPassword]), or for any Google account ([User.isGoogleUser]) by
+/// a fresh Google ID token ([GoogleConfirmation]) — which sets a Google
+/// account's first password, and replaces one it has forgotten. The new
 /// password follows the sign-up form's rules ([validatePassword]).
 ///
 /// `true` once the password is changed; a refusal stays in the dialog.
@@ -38,6 +39,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   late final AuthProvider _auth;
   late final bool _hasPassword;
 
+  /// Google can confirm: whatever the password, the account is Google's.
+  late final bool _isGoogle;
+
   /// The new password was edited: its refusal may show.
   bool _touched = false;
   bool _busy = false;
@@ -48,6 +52,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     super.initState();
     _auth = context.read<AuthProvider>();
     _hasPassword = _auth.user?.hasPassword ?? true;
+    _isGoogle = _auth.user?.isGoogleUser ?? false;
   }
 
   @override
@@ -77,7 +82,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     try {
       await _auth.changePassword(
         newPassword: _new.text,
-        currentPassword: _hasPassword ? _current.text : null,
+        // Google's confirmation stands alone: a password sent beside it is
+        // the one the backend would check, and it may be the forgotten one.
+        currentPassword: credential == null ? _current.text : null,
         credential: credential,
       );
       if (mounted) Navigator.of(context).pop(true);
@@ -142,10 +149,12 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   if (_hasPassword && _canSubmit) _submit();
                 },
               ),
-              if (!_hasPassword) ...[
+              if (_isGoogle) ...[
                 const SizedBox(height: 16),
                 GoogleConfirmation(
-                  hint: l10n.accountPasswordGoogleHint,
+                  hint: _hasPassword
+                      ? l10n.accountPasswordForgotGoogleHint
+                      : l10n.accountPasswordGoogleHint,
                   unavailable: l10n.accountPasswordGoogleUnavailable,
                   buttonKey: const Key('change-password-google'),
                   unavailableKey: const Key(

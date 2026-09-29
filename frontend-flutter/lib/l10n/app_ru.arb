@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "Текущий пароль",
   "accountPasswordNewLabel": "Новый пароль",
   "accountPasswordGoogleHint": "Подтверди новый пароль своим аккаунтом Google.",
+  "accountPasswordForgotGoogleHint": "Забыл пароль? Подтверди вместо этого своим аккаунтом Google.",
   "accountPasswordGoogleUnavailable": "Google отсюда недоступен, поэтому не может подтвердить этот пароль. Попробуй позже.",
   "accountPasswordSaved": "Пароль сохранён",
   "menuRules": "Правила",

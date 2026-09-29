@@ -434,6 +434,7 @@
   "accountPasswordCurrentLabel": "Senha atual",
   "accountPasswordNewLabel": "Nova senha",
   "accountPasswordGoogleHint": "Confirme com sua conta Google para salvar esta senha.",
+  "accountPasswordForgotGoogleHint": "Esqueceu sua senha? Confirme com sua conta Google no lugar dela.",
   "accountPasswordGoogleUnavailable": "Não é possível acessar o Google daqui, então ele não pode confirmar esta senha. Tente novamente mais tarde.",
   "accountPasswordSaved": "Senha salva",
   "menuRules": "Regras",
