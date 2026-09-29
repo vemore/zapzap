@@ -8,7 +8,7 @@ use rand::RngExt;
 use super::{BotAction, BotStrategy, DrawSource};
 use crate::domain::value_objects::GameState;
 use crate::infrastructure::bot::card_analyzer::{
-    calculate_hand_value, can_call_zapzap, find_all_valid_plays, get_card_points,
+    calculate_hand_value, can_call_zapzap, find_plays_without_lone_jokers, get_card_points,
     would_complete_pair,
 };
 
@@ -70,7 +70,7 @@ impl BotStrategy for MediumBotStrategy {
 
     fn select_cards(&self, state: &GameState, player_index: u8) -> Vec<u8> {
         let hand = state.get_hand(player_index);
-        let plays = find_all_valid_plays(hand);
+        let plays = find_plays_without_lone_jokers(hand);
 
         if plays.is_empty() {
             return Vec::new();
@@ -146,5 +146,33 @@ impl BotStrategy for MediumBotStrategy {
         }
 
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn never_plays_only_jokers_while_holding_other_cards() {
+        let bot = MediumBotStrategy::new();
+        let mut state = GameState::new(2);
+        state.hands[0] = smallvec::smallvec![12, 15, 52]; // K♠, 3♥, Joker
+        for _ in 0..500 {
+            let cards = bot.select_cards(&state, 0);
+            assert!(!cards.is_empty());
+            assert!(
+                cards.iter().any(|&c| c < 52),
+                "played only jokers: {cards:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_hand_of_only_jokers_still_plays() {
+        let bot = MediumBotStrategy::new();
+        let mut state = GameState::new(2);
+        state.hands[0] = smallvec::smallvec![52, 53];
+        assert!(!bot.select_cards(&state, 0).is_empty());
     }
 }

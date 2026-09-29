@@ -296,6 +296,17 @@ pub fn find_all_valid_plays(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
     plays
 }
 
+/// Valid plays minus those made only of jokers (a lone joker, a joker pair): dumping a joker
+/// on its own throws away the card that completes any set or run. A hand of nothing but
+/// jokers keeps its plays, so the bot never has no move.
+pub fn find_plays_without_lone_jokers(hand: &[u8]) -> Vec<SmallVec<[u8; 8]>> {
+    let mut plays = find_all_valid_plays(hand);
+    if hand.iter().any(|&c| !is_joker(c)) {
+        plays.retain(|play| play.iter().any(|&c| !is_joker(c)));
+    }
+    plays
+}
+
 /// Find the play that removes the most points from hand
 pub fn find_max_point_play(hand: &[u8]) -> Option<SmallVec<[u8; 8]>> {
     let plays = find_all_valid_plays(hand);
@@ -463,6 +474,15 @@ pub fn is_pair_viable(card: u8, hand: &[u8], drawable_count: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_plays_without_lone_jokers() {
+        let plays = find_plays_without_lone_jokers(&[12, 15, 52]);
+        assert!(!plays.is_empty());
+        assert!(plays.iter().all(|p| p.iter().any(|&c| !is_joker(c))));
+        // Only jokers: still a move.
+        assert!(!find_plays_without_lone_jokers(&[52, 53]).is_empty());
+    }
 
     #[test]
     fn test_get_card_points() {
