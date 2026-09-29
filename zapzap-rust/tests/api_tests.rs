@@ -5884,6 +5884,36 @@ async fn test_guest_accounts_are_rate_limited_per_client_address() {
 }
 
 #[tokio::test]
+async fn test_a_client_cannot_choose_its_guest_rate_limit_key() {
+    use zapzap_backend::infrastructure::rate_limit::GUEST_PER_IP;
+    let mut app = create_test_app().await;
+
+    // A hop missing (one entry, which the client may have written): a new forged address
+    // each time still counts against the one key of the connection
+    for n in 0..GUEST_PER_IP {
+        let forged = format!("203.0.113.{n}");
+        let (status, body) = post_guest(&mut app, Some(&forged)).await;
+        assert_eq!(status, StatusCode::CREATED, "guest {n}: {body}");
+    }
+    let (status, body) = post_guest(&mut app, Some("203.0.113.200")).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+    // So does an entry that is not an address, in the client's place
+    let (status, body) = post_guest(&mut app, Some("not-an-ip, 192.168.1.25")).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+
+    // An IPv6 client is one key for its whole /64
+    for n in 0..GUEST_PER_IP {
+        let client = via_proxies(&format!("2001:db8:7:7::{n:x}"));
+        let (status, body) = post_guest(&mut app, Some(&client)).await;
+        assert_eq!(status, StatusCode::CREATED, "guest {n}: {body}");
+    }
+    let (status, body) = post_guest(&mut app, Some(&via_proxies("2001:db8:7:7:ab::1"))).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+    let (status, body) = post_guest(&mut app, Some(&via_proxies("2001:db8:7:8::1"))).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
 async fn test_guest_accounts_have_a_global_cap() {
     use zapzap_backend::infrastructure::rate_limit::RateLimiter;
     std::env::set_var("DATABASE_URL", "sqlite::memory:");
