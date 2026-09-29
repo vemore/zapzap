@@ -48,7 +48,7 @@ Load this file first. Then read only the pages your task touches.
 
 | Page | Summary | Updated |
 |---|---|---|
-| [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, Compose v2, the four containers, their environment and `data/`, `scripts/deploy_nas.sh`, `--rollback <sha>` | 2026-09-28 |
+| [[Deployment]] | The NAS deploy directory (no clone), the LAN registry, Compose v2, the four containers, their environment and `data/`, `scripts/deploy_nas.sh`, `--rollback <sha>` | 2026-09-29 |
 | [[Testing]] | Each suite, what CI runs and skips, the `scope` job, the Flutter end-to-end procedure | 2026-09-28 |
 | [[Hooks]] | What Claude Code refuses mechanically, the commit gates, what is not covered | 2026-09-28 |
 | [[ParallelDelivery]] | `master` protection, worktrees, shared browser, scratch directory and `gh` pitfalls, lanes A–D, size count, model routing, merged-not-deployed, cleanup, `wip/`, metrics | 2026-09-28 |

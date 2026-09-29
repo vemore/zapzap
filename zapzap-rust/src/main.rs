@@ -120,7 +120,13 @@ async fn serve() -> anyhow::Result<()> {
     tracing::info!("Starting ZapZap backend on {}", addr);
 
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    // The connection's address: the client's when no proxy stands in front (the guest
+    // rate limit, `infrastructure::client_ip`)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

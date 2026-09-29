@@ -27,6 +27,10 @@ pub const MIGRATIONS: &[&str] = &[
     // users of one `google_id` fails this step and the server refuses to start, unchanged
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id_unique ON users(google_id) \
      WHERE google_id IS NOT NULL",
+    // 3: a guest account, created without a form (`POST /api/auth/guest`, `CreateGuest`)
+    // under a random name and password the device keeps; cleared when the player sets a
+    // password of their own (`update_password_hash`). Existing users are not guests (0)
+    "ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0",
 ];
 
 /// Create every table and index that does not exist yet, then run the migrations the

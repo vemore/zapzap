@@ -9,8 +9,10 @@ use tokio::sync::RwLock;
 use crate::application::bot::BotRunner;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::bot::llm_memory::LlmBotMemory;
+use crate::infrastructure::client_ip::trusted_proxy_hops_from;
 use crate::infrastructure::cors::AllowedOrigins;
 use crate::infrastructure::database::repositories::{SqlitePartyRepository, SqliteUserRepository};
+use crate::infrastructure::rate_limit::RateLimiter;
 use crate::infrastructure::services::{
     probe_within, Clock, GoogleOAuthService, LlmService, OllamaConfig, OllamaService,
     SessionManager, SystemClock, STARTUP_PROBE_TIMEOUT,
@@ -85,6 +87,11 @@ pub struct AppState {
     /// The time of the turn clock: the repositories stamp turn deadlines with it, the turn
     /// timer compares them with it (`use_clock` sets both)
     pub clock: Arc<dyn Clock>,
+    /// The limit on guest accounts (`POST /api/auth/guest`), per client address and in all
+    pub guest_limiter: Arc<RateLimiter>,
+    /// `TRUSTED_PROXY_HOPS`: the proxies whose `X-Forwarded-For` entries name the client
+    /// (`client_ip`, `zapzap-rust/src/infrastructure/client_ip.rs`)
+    pub trusted_proxy_hops: usize,
 }
 
 impl AppState {
@@ -209,6 +216,8 @@ impl AppState {
             google_oauth,
             allowed_origins,
             clock: Arc::new(SystemClock),
+            guest_limiter: Arc::new(RateLimiter::guest()),
+            trusted_proxy_hops: trusted_proxy_hops_from(std::env::var("TRUSTED_PROXY_HOPS").ok()),
         })
     }
 

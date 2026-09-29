@@ -1,9 +1,9 @@
 import 'json.dart';
 
-/// The signed-in user, as `/auth/login`, `/auth/register`, `/auth/google`
-/// and `PATCH /auth/me` return it. Register sends `createdAt` and no
-/// `isAdmin`; login, Google and the rename send one shape: `isAdmin`,
-/// `email`, `isGoogleUser` and `hasPassword`.
+/// The signed-in user, as `/auth/login`, `/auth/register`, `/auth/google`,
+/// `/auth/guest`, `PATCH /auth/me` and `PUT /auth/me/password` return it.
+/// Register sends `createdAt` and no `isAdmin`; the others send one shape:
+/// `isAdmin`, `email`, `isGoogleUser`, `hasPassword` and `isGuest`.
 class User {
   const User({
     required this.id,
@@ -12,6 +12,7 @@ class User {
     this.email,
     this.isGoogleUser = false,
     bool? hasPassword,
+    this.isGuest = false,
     this.createdAt,
   }) : hasPassword = hasPassword ?? !isGoogleUser;
 
@@ -24,6 +25,7 @@ class User {
       email: Json.stringOrNull(json, 'email'),
       isGoogleUser: isGoogleUser,
       hasPassword: Json.boolOrNull(json, 'hasPassword'),
+      isGuest: Json.boolean(json, 'isGuest'),
       createdAt: Json.timestamp(json, 'createdAt'),
     );
   }
@@ -39,9 +41,16 @@ class User {
   /// case of every account but a Google one, which may have set one since
   /// (`PUT /auth/me/password`).
   final bool hasPassword;
+
+  /// A guest account (`POST /auth/guest`): a random name and password this
+  /// device keeps, until the player sets a password of their own — the claim,
+  /// after which it is an account like any other. Absent (a session stored
+  /// before the field): not a guest.
+  final bool isGuest;
   final DateTime? createdAt;
 
-  /// This user with a password set ([AuthProvider.changePassword]).
+  /// This user with a password the player chose ([AuthProvider.changePassword]
+  /// against a backend that does not answer the user): no longer a guest.
   User withPassword() => User(
     id: id,
     username: username,
@@ -60,8 +69,23 @@ class User {
     if (email != null) 'email': email,
     'isGoogleUser': isGoogleUser,
     'hasPassword': hasPassword,
+    'isGuest': isGuest,
     if (createdAt != null) 'createdAt': createdAt!.millisecondsSinceEpoch,
   };
+}
+
+/// A new guest account (`POST /auth/guest`): its session, and its password,
+/// which the backend answers once and the device keeps to sign in again.
+class GuestSession {
+  const GuestSession({required this.session, required this.password});
+
+  factory GuestSession.fromJson(JsonMap json) => GuestSession(
+    session: AuthSession.fromJson(json),
+    password: Json.string(json, 'password'),
+  );
+
+  final AuthSession session;
+  final String password;
 }
 
 /// A successful authentication: `{success, user, token, isNewUser?}`.

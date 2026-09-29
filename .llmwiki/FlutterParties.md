@@ -1,8 +1,8 @@
 # FlutterParties
 
 > Scope: the Flutter parties list, create-party form and lobby, back navigation, presence in the
-> app bar, the app-bar menu (rules sheet, confirmed sign-out), and the account page
-> (username, password, account deletion).
+> app bar, the app-bar menu (rules sheet, confirmed sign-out), the account page
+> (username, password, account deletion), and a guest's warning.
 > Related: [[FrontendFlutter]] · [[FlutterRealtime]] · [[FlutterGameBoard]] · [[FlutterAuth]] · [[Api]]
 > Updated: 2026-09-29
 
@@ -158,14 +158,26 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   **Mon compte / My account** (`menu-account`), which pushes the account page
   (`/account`, below), then **Se déconnecter / Sign out** (`menu-logout`), which asks first (`confirmLogout`,
   `logout-dialog`: « Se déconnecter ? », `logout-cancel` keeps the session and the screen,
-  `logout-confirm` calls `AuthProvider.logout`, Google signed out too). No « Supprimer mon
+  `logout-confirm` calls `AuthProvider.logout`, Google signed out too). A guest
+  (`AuthProvider.isGuest`) reads the stronger warning instead (`logout-body`,
+  `logoutGuestConfirmBody`: this account and its games are lost, choose a password in
+  « Mon compte » first) and a red « Me déconnecter et perdre le compte »: signing out
+  erases the credentials the device keeps ([[FlutterAuth]]). No « Supprimer mon
   compte » entry any more: the deletion is on the account page.
+- **A guest's warning** (`widgets/guest_banner.dart`, `GuestBanner`, `guest-banner`): an
+  amber card for a guest only — « Enregistre ton compte et mets un mot de passe pour garder
+  tes parties d'un appareil à l'autre » (`guestBanner`), plus on the web build (`kIsWeb`,
+  the `web` parameter in tests) that the account lives only in this browser and is lost
+  with its data (`guestBannerWeb`) — and a button « Enregistrer mon compte »
+  (`guest-banner-register`) that pushes the account page. Above the lists of the parties
+  screen, and at the top of the account page without the button. Tests:
+  `test/guest_play_test.dart`.
 - **The account page** (`screens/account_screen.dart`, `AppRoutes.account` = `/account`,
   `/app/account` on the PWA; a deep link, its back button `popOrGo`es to the parties; at
   most `AccountScreen.maxWidth` (560 px) wide): a card with the username
   (`account-current-username`), how the account signs in (`account-sign-in-method`:
-  password, Google, or Google and a password — `User.hasPassword`) and a Google account's
-  e-mail; then **the username** (`account-username`, the sign-up form's rules of
+  password, Google, or Google and a password — `User.hasPassword` —, or « Compte invité,
+  gardé sur cet appareil » for a guest) and a Google account's e-mail; then **the username** (`account-username`, the sign-up form's rules of
   `utils/validators.dart`, its refusal shown once edited; `account-username-save` active
   once the trimmed name differs and passes) — `AuthProvider.rename`, a snack bar
   « Pseudo modifié », 409 `USERNAME_EXISTS` under the field (`account-username-error`,
@@ -179,7 +191,10 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   button before that is not sent) — alone for one without a password, which sets its first
   one, and under « Mot de passe oublié ? » for one with a password, which replaces the
   forgotten one: the current password is then not sent —, then a snack bar « Mot de passe
-  enregistré »; 403 `INVALID_PASSWORD` / `GOOGLE_AUTH_FAILED` stay in the dialog
+  enregistré ». **A guest claims its account here**: « Choisir un mot de passe », a line
+  on what it gives (`accountGuestPasswordHint`), a dialog without the current-password
+  field — `AuthProvider.guestPassword`, the generated one, confirms unseen —, then
+  « Compte enregistré » (`accountGuestClaimed`) and the warning gone. 403 `INVALID_PASSWORD` / `GOOGLE_AUTH_FAILED` stay in the dialog
   (`change-password-error`, `changePasswordErrorText`). Last, in red,
   **Supprimer mon compte / Delete my account** (`account-delete`), which opens
   `widgets/delete_account_dialog.dart` (`delete-account-dialog`): the warning (irreversible;
@@ -187,7 +202,8 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
   (`delete-account-password`, `delete-account-confirm` enabled once it is filled) — or, for a
   Google account (`User.isGoogleUser`, stored with the session), a "Confirmer avec Google"
   button (`delete-account-google`; Google's own button on the web) whose fresh ID token is
-  sent as `credential`, the login screen's way. Both dialogs take the Google confirmation
+  sent as `credential`, the login screen's way; for a guest, nothing to type: the confirm
+  button sends the stored generated password. Both dialogs take the Google confirmation
   from `widgets/google_confirmation.dart` (`GoogleConfirmation`): Google that does not get ready (script
   blocked, no route to Google, no client id) is given up on as the login screen does it
   (`GoogleSignInSection.watchReady`, `readyTimeout`, shared per service): the button gives
@@ -206,6 +222,7 @@ The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty
 
 ## Decisions & History
 
+- 2026-09-29 (feat/guest-play): a guest's warning on the parties screen and the account page rather than a one-time dialog: the account is at risk for as long as it is a guest, and the user asked for a lasting one. It leads to the account page rather than to a dedicated claim form, because claiming is the password change the page already has. Sign-out is where a guest loses the account, so its confirmation says so, in red; the deletion and the password change confirm with the stored generated password, which the player never saw and could not type.
 - 2026-09-29 (feat/account-page): « Mon compte » replaced « Supprimer mon compte » in the ⋮ menu, placed just above Sign out, where the deletion was; the deletion moved one screen deeper, onto the account page, still in the app as Google Play asks. A routed page, not a dialog: it holds three independent actions, and the PWA gets `/app/account`, where a later change will redirect the old web URL `/account/delete`. The username is edited in place with the sign-up form's rules (stricter than the backend's), the password in a dialog, because a Google account's first password needs the Google confirmation the deletion uses. Four keys lost their deletion-only names (`deleteAccountMenu` → `deleteAccountButton`, `deleteAccountGoogleButton` → `googleConfirmButton`, `deleteAccountErrorPassword` → `errorWrongPassword`, `deleteAccountErrorGoogle` → `errorGoogleConfirmation`), the password dialog using them too. Its width is a local `ConstrainedBox`; the wide-screen work may swap it for a shared widget.
 - 2026-09-28 (fix/flutter-list-refresh-on-ejection): the list also reloads on `playerReplaced` and `playerForfeited`. A player ejected by the turn clock was popped back to the list loaded before the game, which still said `isMember` and offered « Reprendre » to a seat now a bot's (`Tu n'as pas de place à cette table`). The ejected player's own stream carries `playerReplaced` ([[Backend]] § Turn timer).
 

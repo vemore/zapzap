@@ -3,7 +3,7 @@
 > Scope: where production runs, how it is built, shipped through the registry and started,
 > where its data and secrets live, the Rust backend service, and the rollback.
 > Procedure: the `deploy` skill. Related: [[Architecture]] · [[ParallelDelivery]] · [[Backend]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -104,8 +104,13 @@ backend refusing to start with the file unchanged, if two users share a `google_
 2026-09-27; the read-only check is the query `SELECT google_id FROM users WHERE google_id IS
 NOT NULL GROUP BY google_id HAVING COUNT(*) > 1`). If it fails anyway, `scripts/deploy_nas.sh
 --rollback <previous sha>` restores service on the untouched file; find the duplicate users
-with that read-only query, remove or merge the extra one, then redeploy. They are additive,
-so an older image rolled back to reads and writes the migrated file as before.
+with that read-only query, remove or merge the extra one, then redeploy. The first start of
+feat/guest-play adds `users.is_guest` (existing users 0), which no data can make fail. They are
+additive, so an older image rolled back to reads and writes the migrated file as before.
+
+**After the deploy of feat/guest-play**, create one guest from a phone on mobile data and
+read `docker compose logs backend | grep "Guest account created"`: the address must be the
+phone's, not DSM's LAN one — the check of the proxy assumption in [[Api]] § Guest accounts.
 
 `CI`'s `image` job builds this very service (`scripts/backend_image_smoke.sh`: `docker buildx
 bake` on the root compose file with a GitHub Actions layer cache, `docker compose build backend`

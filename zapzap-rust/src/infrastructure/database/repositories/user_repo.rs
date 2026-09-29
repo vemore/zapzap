@@ -205,6 +205,7 @@ impl SqliteUserRepository {
             email: row.get("email"),
             last_login_at: row.get("last_login_at"),
             total_play_time_seconds: row.get::<i64, _>("total_play_time_seconds"),
+            is_guest: row.get::<i64, _>("is_guest") != 0,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         }
@@ -316,8 +317,8 @@ impl UserRepository for SqliteUserRepository {
 
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, is_admin, google_id, email, last_login_at, total_play_time_seconds, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, password_hash, user_type, bot_difficulty, is_admin, google_id, email, last_login_at, total_play_time_seconds, is_guest, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 username = excluded.username,
                 password_hash = excluded.password_hash,
@@ -328,6 +329,7 @@ impl UserRepository for SqliteUserRepository {
                 email = excluded.email,
                 last_login_at = excluded.last_login_at,
                 total_play_time_seconds = excluded.total_play_time_seconds,
+                is_guest = excluded.is_guest,
                 updated_at = ?
             "#,
         )
@@ -341,6 +343,7 @@ impl UserRepository for SqliteUserRepository {
         .bind(&user.email)
         .bind(user.last_login_at)
         .bind(user.total_play_time_seconds)
+        .bind(user.is_guest as i32)
         .bind(user.created_at)
         .bind(user.updated_at)
         .bind(now)
@@ -539,13 +542,16 @@ impl UserRepository for SqliteUserRepository {
         id: &str,
         password_hash: &str,
     ) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
-            .bind(password_hash)
-            .bind(chrono::Utc::now().timestamp())
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        // A password the player chose: a guest's account is theirs from now on
+        let result = sqlx::query(
+            "UPDATE users SET password_hash = ?, is_guest = 0, updated_at = ? WHERE id = ?",
+        )
+        .bind(password_hash)
+        .bind(chrono::Utc::now().timestamp())
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         Ok(result.rows_affected() > 0)
     }

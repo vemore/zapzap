@@ -488,5 +488,15 @@
   "tutorialZapZap": "Tanganmu bernilai {points} poin: {threshold} atau kurang! Alih-alih bermain, serukan ZapZap.",
   "tutorialZapZapHint": "Jangan bermain: sentuh ZapZap, lalu konfirmasi.",
   "tutorialHeld": "ZapZap berhasil: tanganmu yang terendah, kamu mendapat 0. {player} mendapat poin tangannya.",
-  "tutorialEnd": "Jika tangan pemain lain lebih rendah atau sama dengan tanganmu, ZapZap-mu ditangkis: kamu mendapat poin tanganmu ditambah 5 untuk setiap pemain lain. Di atas {limit} poin, pemain tersingkir."
+  "tutorialEnd": "Jika tangan pemain lain lebih rendah atau sama dengan tanganmu, ZapZap-mu ditangkis: kamu mendapat poin tanganmu ditambah 5 untuk setiap pemain lain. Di atas {limit} poin, pemain tersingkir.",
+  "homeGuestButton": "Main tanpa akun",
+  "homeGuestErrorRateLimited": "Terlalu banyak akun tamu dibuat dari jaringan ini. Coba lagi nanti, atau buat akun.",
+  "guestBanner": "Daftarkan akunmu dan pasang kata sandi agar permainanmu tetap ada di perangkat mana pun.",
+  "guestBannerWeb": "Akun ini hanya ada di browser ini: akun akan hilang jika data browser dihapus.",
+  "guestBannerButton": "Daftarkan akun saya",
+  "accountSignInGuest": "Akun tamu, disimpan di perangkat ini",
+  "accountGuestPasswordHint": "Pilih kata sandi: akunmu akan terdaftar, dan kamu bisa masuk dengan nama penggunamu di perangkat mana pun.",
+  "accountGuestClaimed": "Akun terdaftar. Masuk dengan nama pengguna dan kata sandi ini di perangkatmu yang lain.",
+  "logoutGuestConfirmBody": "Kamu bermain tanpa akun terdaftar: jika keluar, akun ini dan permainanmu akan hilang. Untuk menyimpannya, pilih dulu kata sandi di “{account}”.",
+  "logoutGuestConfirmButton": "Keluar dan kehilangan akun"
 }

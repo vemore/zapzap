@@ -5426,7 +5426,7 @@ async fn test_rename_answers_a_token_carrying_the_new_name() {
         body["user"],
         json!({
             "id": user_id, "username": "renamed", "email": null, "isAdmin": false,
-            "isGoogleUser": false, "hasPassword": true
+            "isGoogleUser": false, "hasPassword": true, "isGuest": false
         })
     );
     let token = body["token"].as_str().unwrap();
@@ -5564,7 +5564,10 @@ async fn test_change_password_needs_the_current_one() {
     let (status, body) =
         change(json!({"currentPassword": "password123", "newPassword": "brandnew"})).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body, json!({"success": true}));
+    assert_eq!(body["success"], true);
+    assert_eq!(body["user"]["username"], "changespw");
+    assert_eq!(body["user"]["hasPassword"], true);
+    assert_eq!(body["user"]["isGuest"], false);
 
     // The new password signs in, the old one does not; the session goes on
     assert_eq!(
@@ -5779,7 +5782,187 @@ async fn test_login_answers_the_account_shape() {
         body["user"],
         json!({
             "id": user_id, "username": "shapely", "email": null, "isAdmin": false,
-            "isGoogleUser": false, "hasPassword": true
+            "isGoogleUser": false, "hasPassword": true, "isGuest": false
         })
+    );
+}
+
+// ========== Guest accounts (POST /api/auth/guest) ==========
+
+/// `POST /api/auth/guest`, no body, with `forwarded_for` as `X-Forwarded-For` (`None`:
+/// no such header)
+async fn post_guest(app: &mut Router, forwarded_for: Option<&str>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method("POST").uri("/api/auth/guest");
+    if let Some(xff) = forwarded_for {
+        builder = builder.header("X-Forwarded-For", xff);
+    }
+    let response = ServiceExt::<Request<Body>>::ready(app)
+        .await
+        .unwrap()
+        .call(builder.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// What DSM then nginx make of a request from `client`: DSM appends the client's address,
+/// nginx DSM's
+fn via_proxies(client: &str) -> String {
+    format!("{client}, 192.168.1.25")
+}
+
+#[tokio::test]
+async fn test_guest_account_has_a_guest_name_and_a_password_that_signs_in() {
+    use zapzap_backend::application::auth::validate_username;
+    let mut app = create_test_app().await;
+
+    let (status, first) = post_guest(&mut app, Some(&via_proxies("198.51.100.1"))).await;
+    assert_eq!(status, StatusCode::CREATED, "{first}");
+    assert_eq!(first["success"], true);
+    let username = first["user"]["username"].as_str().unwrap();
+    assert!(username.starts_with("Guest_"), "{username}");
+    validate_username(username).unwrap();
+    assert_eq!(
+        first["user"],
+        json!({
+            "id": first["user"]["id"], "username": username, "email": null,
+            "isAdmin": false, "isGoogleUser": false, "hasPassword": true, "isGuest": true
+        })
+    );
+    let password = first["password"].as_str().unwrap();
+    assert!(password.len() >= 24, "{password}");
+
+    // Its token is a session, and its password signs it in again, still a guest
+    let token = first["token"].as_str().unwrap();
+    let (status, _) = get_auth(&mut app, "/api/history", token).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, login) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": username, "password": password}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{login}");
+    assert_eq!(login["user"]["id"], first["user"]["id"]);
+    assert_eq!(login["user"]["isGuest"], true);
+
+    // Another call, another account
+    let (status, second) = post_guest(&mut app, Some(&via_proxies("198.51.100.1"))).await;
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    assert_ne!(second["user"]["id"], first["user"]["id"]);
+    assert_ne!(second["user"]["username"], first["user"]["username"]);
+    assert_ne!(second["password"], first["password"]);
+    assert_eq!(
+        login_status(&mut app, username, second["password"].as_str().unwrap()).await,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn test_guest_accounts_are_rate_limited_per_client_address() {
+    let mut app = create_test_app().await;
+    let client = via_proxies("198.51.100.7");
+    for n in 0..zapzap_backend::infrastructure::rate_limit::GUEST_PER_IP {
+        let (status, body) = post_guest(&mut app, Some(&client)).await;
+        assert_eq!(status, StatusCode::CREATED, "guest {n}: {body}");
+    }
+
+    let (status, body) = post_guest(&mut app, Some(&client)).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+    // An address the client puts in front itself changes nothing: DSM's entry counts
+    let (status, body) = post_guest(&mut app, Some(&format!("203.0.113.9, {client}"))).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+
+    // Another client still gets through
+    let (status, body) = post_guest(&mut app, Some(&via_proxies("198.51.100.8"))).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn test_guest_accounts_have_a_global_cap() {
+    use zapzap_backend::infrastructure::rate_limit::RateLimiter;
+    std::env::set_var("DATABASE_URL", "sqlite::memory:");
+    std::env::set_var("JWT_SECRET", "test-secret-key");
+    let mut state = AppState::new().await.unwrap();
+    state.guest_limiter = Arc::new(RateLimiter::new(5, 2, std::time::Duration::from_secs(3600)));
+    let mut app = api::build_app(Arc::new(state));
+
+    for client in ["198.51.100.1", "198.51.100.2"] {
+        let (status, body) = post_guest(&mut app, Some(&via_proxies(client))).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let (status, body) = post_guest(&mut app, Some(&via_proxies("198.51.100.3"))).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+    // Without the header (and, in a test, without a connection) every request shares
+    // one address, under the same cap
+    let (status, body) = post_guest(&mut app, None).await;
+    assert_error(status, &body, StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED");
+}
+
+#[tokio::test]
+async fn test_a_guest_is_claimed_by_setting_its_own_password() {
+    let (mut app, state) = create_test_app_with_state().await;
+    let (_, guest) = post_guest(&mut app, None).await;
+    let token = guest["token"].as_str().unwrap();
+    let password = guest["password"].as_str().unwrap();
+    let user_id = guest["user"]["id"].as_str().unwrap();
+
+    // A rename alone does not claim the account
+    let (status, body) = send_me(
+        &mut app,
+        "PATCH",
+        "/api/auth/me",
+        token,
+        json!({"username": "Nouveau_joueur"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["isGuest"], true);
+    let token = body["token"].as_str().unwrap().to_string();
+
+    // A wrong current password is refused and leaves it a guest
+    let (status, body) = send_me(
+        &mut app,
+        "PUT",
+        "/api/auth/me/password",
+        &token,
+        json!({"currentPassword": "not-the-one", "newPassword": "mon-secret"}),
+    )
+    .await;
+    assert_error(status, &body, StatusCode::FORBIDDEN, "INVALID_PASSWORD");
+    let stored = state.user_repo.find_by_id(user_id).await.unwrap().unwrap();
+    assert!(stored.is_guest);
+
+    // A password of the player's own, confirmed by the generated one: claimed
+    let (status, body) = send_me(
+        &mut app,
+        "PUT",
+        "/api/auth/me/password",
+        &token,
+        json!({"currentPassword": password, "newPassword": "mon-secret"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["isGuest"], false);
+    assert_eq!(body["user"]["username"], "Nouveau_joueur");
+    let stored = state.user_repo.find_by_id(user_id).await.unwrap().unwrap();
+    assert!(!stored.is_guest);
+
+    let (status, login) = post_json(
+        &mut app,
+        "/api/auth/login",
+        json!({"username": "Nouveau_joueur", "password": "mon-secret"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{login}");
+    assert_eq!(login["user"]["isGuest"], false);
+    assert_eq!(
+        login_status(&mut app, "Nouveau_joueur", password).await,
+        StatusCode::UNAUTHORIZED
     );
 }

@@ -6,7 +6,8 @@
     "email": null,
     "isAdmin": false,
     "isGoogleUser": false,
-    "hasPassword": true
+    "hasPassword": true,
+    "isGuest": false
   },
   "token": "test-token-auth_login"
 }

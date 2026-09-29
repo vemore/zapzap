@@ -136,7 +136,9 @@ pub trait UserRepository: Send + Sync {
     /// constraint (`RepositoryError::is_unique_violation`); `false` when no row matched
     async fn update_username(&self, id: &str, username: &str) -> Result<bool, RepositoryError>;
 
-    /// Replace a user's password hash, that column only; `false` when no row matched
+    /// Replace a user's password hash with one the player chose, which also makes a guest's
+    /// account a full one (`is_guest` cleared: the claim, [`User::new_guest`]); `false`
+    /// when no row matched
     async fn update_password_hash(
         &self,
         id: &str,

@@ -12,13 +12,14 @@ import '../router.dart';
 import '../utils/app_theme.dart';
 import '../widgets/content_column.dart';
 import '../widgets/error_banner.dart';
+import '../widgets/guest_banner.dart';
 import '../widgets/party_card.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The public parties (`PartyList.jsx`), in two sections: "My games" — a
 /// running game first, with an "In progress" badge and Resume — then
 /// "Available games", which ends on an invitation to create one when there
-/// is none.
+/// is none; above them, a guest's warning ([GuestBanner]).
 /// Skeleton cards while the first answer is on its way; the event stream
 /// keeps the list current, and pulling down refreshes it by hand.
 class PartiesScreen extends StatefulWidget {
@@ -103,6 +104,11 @@ class _PartiesScreenState extends State<PartiesScreen> {
         // Pull to refresh works on a list shorter than the screen.
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          if (context.select<AuthProvider, bool>((auth) => auth.isGuest))
+            SliverPadding(
+              padding: sides.copyWith(top: 16),
+              sliver: const SliverToBoxAdapter(child: GuestBanner()),
+            ),
           if (error != null)
             SliverPadding(
               padding: sides.copyWith(top: 16),

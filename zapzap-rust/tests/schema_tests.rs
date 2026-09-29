@@ -44,6 +44,13 @@ const NODE_GAME_STATE_COLUMNS: &str = "updated_at INTEGER NOT NULL, FOREIGN KEY"
 const MIGRATED_GAME_STATE_COLUMNS: &str =
     "updated_at INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 0, FOREIGN KEY";
 
+/// `users` as the Node DDL declares it ends, whitespace collapsed
+const NODE_USERS_END: &str = "updated_at INTEGER NOT NULL )";
+/// The same once migration 3 added `is_guest` (SQLite splices it in before the closing
+/// parenthesis, after the whitespace the DDL left there)
+const MIGRATED_USERS_END: &str =
+    "updated_at INTEGER NOT NULL , is_guest INTEGER NOT NULL DEFAULT 0)";
+
 /// Give `db` the schema of a Node-built database.
 async fn build_node_schema(db: &SqlitePool) {
     sqlx::raw_sql(NODE_BUILT_SCHEMA).execute(db).await.unwrap();
@@ -84,7 +91,7 @@ const GOOGLE_ID_UNIQUE_INDEX: &str = "CREATE UNIQUE INDEX idx_users_google_id_un
                                       ON users(google_id) WHERE google_id IS NOT NULL";
 
 /// `objects` as the migrations leave them: `game_state` gains its `version` column, and
-/// `users` its partial unique index on `google_id`.
+/// `users` its partial unique index on `google_id` and its `is_guest` column.
 fn migrated(
     objects: Vec<(String, String, String, String)>,
 ) -> Vec<(String, String, String, String)> {
@@ -94,6 +101,10 @@ fn migrated(
             if kind == "table" && name == "game_state" {
                 assert!(sql.contains(NODE_GAME_STATE_COLUMNS), "{sql}");
                 let sql = sql.replace(NODE_GAME_STATE_COLUMNS, MIGRATED_GAME_STATE_COLUMNS);
+                (kind, name, table, sql)
+            } else if kind == "table" && name == "users" {
+                assert!(sql.ends_with(NODE_USERS_END), "{sql}");
+                let sql = sql.replace(NODE_USERS_END, MIGRATED_USERS_END);
                 (kind, name, table, sql)
             } else {
                 (kind, name, table, sql)
@@ -274,13 +285,13 @@ async fn schema_step_upgrades_a_node_built_database_and_keeps_every_row() {
     let rows_upgraded = dump_rows(&state.db).await;
     ensure_schema(&state.db).await.unwrap();
 
-    // The migrations changed what they change, and nothing else: every row is kept, and
-    // the existing game state starts at version 0
+    // The migrations changed what they change, and nothing else: every row is kept, the
+    // existing game state starts at version 0, and no existing user is a guest
     assert_eq!(objects_upgraded, migrated(objects_before));
     let rows_expected: Vec<_> = rows_before
         .into_iter()
         .map(|(table, row)| {
-            let row = if table == "game_state" {
+            let row = if table == "game_state" || table == "users" {
                 format!("{row}|0")
             } else {
                 row
@@ -290,6 +301,11 @@ async fn schema_step_upgrades_a_node_built_database_and_keeps_every_row() {
         .collect();
     assert_eq!(rows_upgraded, rows_expected);
     assert_eq!(user_version(&state.db).await, MIGRATIONS.len() as i64);
+    let guests: Vec<i64> = sqlx::query_scalar("SELECT is_guest FROM users ORDER BY rowid")
+        .fetch_all(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(guests, [0, 0]);
 
     // A second run is a no-op: no migration runs twice
     assert_eq!(schema_objects(&state.db).await, objects_upgraded);

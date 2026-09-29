@@ -12,6 +12,7 @@ import '../utils/validators.dart';
 import '../widgets/auth_form.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/delete_account_dialog.dart';
+import '../widgets/guest_banner.dart';
 import '../widgets/zapzap_app_bar.dart';
 
 /// The signed-in player's account ([AppRoutes.account], from the ⋮ menu):
@@ -20,7 +21,9 @@ import '../widgets/zapzap_app_bar.dart';
 /// ([showChangePasswordDialog]: change it, or for a Google account set a
 /// first one), and the account deletion ([showDeleteAccountDialog]), which
 /// Google Play wants reachable in the app. The React client has no such page
-/// (`.llmwiki/Api.md`).
+/// (`.llmwiki/Api.md`). A guest ([AuthProvider.isGuest]) reads the guest
+/// warning ([GuestBanner]) first, and claims the account by choosing a
+/// password: the generated one confirms it, unseen.
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
@@ -80,9 +83,14 @@ class _AccountScreenState extends State<AccountScreen> {
   Future<void> _changePassword() async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final wasGuest = context.read<AuthProvider>().isGuest;
     if (await showChangePasswordDialog(context)) {
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.accountPasswordSaved)),
+        SnackBar(
+          content: Text(
+            wasGuest ? l10n.accountGuestClaimed : l10n.accountPasswordSaved,
+          ),
+        ),
       );
     }
   }
@@ -114,6 +122,10 @@ class _AccountScreenState extends State<AccountScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (user.isGuest) ...[
+                          const GuestBanner(showButton: false),
+                          const SizedBox(height: 12),
+                        ],
                         _identity(l10n, user),
                         const SizedBox(height: 12),
                         _usernameSection(l10n, auth, user),
@@ -141,7 +153,9 @@ class _AccountScreenState extends State<AccountScreen> {
 
   /// Who is signed in, and how they sign in.
   Widget _identity(AppLocalizations l10n, User user) {
-    final method = !user.isGoogleUser
+    final method = user.isGuest
+        ? l10n.accountSignInGuest
+        : !user.isGoogleUser
         ? l10n.accountSignInPassword
         : user.hasPassword
         ? l10n.accountSignInGoogleAndPassword
@@ -214,7 +228,10 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget _passwordSection(AppLocalizations l10n, User user) => _Section(
     title: l10n.authPasswordLabel,
     children: [
-      if (!user.hasPassword) ...[
+      if (user.isGuest) ...[
+        Text(l10n.accountGuestPasswordHint),
+        const SizedBox(height: 12),
+      ] else if (!user.hasPassword) ...[
         Text(l10n.accountPasswordSetHint),
         const SizedBox(height: 12),
       ],
@@ -225,7 +242,7 @@ class _AccountScreenState extends State<AccountScreen> {
           onPressed: _changePassword,
           icon: const Icon(Icons.lock),
           label: Text(
-            user.hasPassword
+            user.hasPassword && !user.isGuest
                 ? l10n.accountPasswordChange
                 : l10n.accountPasswordSet,
           ),
