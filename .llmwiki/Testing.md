@@ -105,16 +105,16 @@
 | `flutter-release` | `android != 'false'` | the shared setup with `android: 'true'`, `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
 
-- **A job's `name:` is its check context, and five of them are pinned by branch
+- **A job's `name:` is its check context, and four of them are pinned by branch
   protection**: `Rust backend — fmt, clippy, test`, `Native engine — fmt, build, test`,
-  `Frontend — build`, `Images — backend and frontend build`, `Hooks — self-test`
+  `Images — backend and frontend build`, `Hooks — self-test`
   ([[ParallelDelivery]]). Renaming one is not cosmetic: the required context stops
   reporting, and every pull request is `BLOCKED` for ever with no failing check to show
   why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
-  `native`. A job that lost its purpose keeps its name too: `Frontend — build` stays, always
-  skipped, since the React client went (2026-09-29), until the user drops it from the
-  required checks; then the job can go. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
+  `native`. A job that lost its purpose keeps its name until the user drops it from the required
+  checks, and only then goes: `Frontend — build` was kept, always skipped, from the React
+  client's removal until both happened (2026-09-29). A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The
   `flutter` job's name and the `flutter-e2e` job's `Flutter end to end — a round against
   the Rust backend` are not pinned: adding them to branch protection is the user's

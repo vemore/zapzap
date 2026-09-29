@@ -19,8 +19,8 @@
   `c=$(git log -1 --format=%h -- frontend/)^`, then `git show "$c":frontend/src/App.jsx` or
   `git ls-tree -r --name-only "$c" frontend` (`055c288` holds it too).
   The Flutter pages name it "React" where a screen was ported from one of its components.
-- The CI job **"Frontend — build"** stays, always skipped, only because `master`'s branch
-  protection requires that check name ([[Testing]]).
+- Its CI job, **"Frontend — build"**, was dropped from `master`'s required checks, then
+  deleted from `ci.yml` (2026-09-29).
 
 ## Decisions & History
 
