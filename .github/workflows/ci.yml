@@ -37,6 +37,7 @@ jobs:
       hooks: ${{ steps.flags.outputs.hooks }}
       flutter: ${{ steps.flags.outputs.flutter }}
       e2e: ${{ steps.flags.outputs.e2e }}
+      android: ${{ steps.flags.outputs.android }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +58,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          all='rust=true\nnative=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\n'
+          all='rust=true\nnative=true\nimage=true\nhooks=true\nflutter=true\ne2e=true\nandroid=true\n'
           if [ "$EVENT" != pull_request ]; then
             printf "$all" | tee -a "$GITHUB_OUTPUT"
             exit 0
@@ -223,8 +224,11 @@ jobs:
           SMOKE_CACHE_TO: type=gha,scope=zapzap-backend-image,mode=max
         run: scripts/backend_image_smoke.sh
       # The Flutter SDK is downloaded and checksum-checked inside the image; the version
-      # is the one the flutter job pins (frontend-flutter/Dockerfile).
-      - name: Flutter PWA image
+      # is the one the Flutter jobs pin (frontend-flutter/Dockerfile). This is CI's only
+      # release build of the web bundle (`flutter build web --base-href /app/
+      # --no-web-resources-cdn`; flutter-e2e compiles a debug one), so a Dart change that
+      # breaks the web build fails here.
+      - name: Flutter PWA image (CI's release web build)
         run: docker build -t zapzap-frontend-flutter:ci frontend-flutter
       # The acceptance of the PWA deploy: the image serves /app/ and a deep link under it,
       # and never lets a browser keep the entry points.
@@ -285,7 +289,16 @@ jobs:
       - name: ARB checker tests — arb_keys.py
         run: uv run --no-project --with pytest pytest -q scripts/test_arb_keys.py
 
+  # The Flutter client in three parallel jobs, so a Flutter pull request waits for the
+  # longest of them rather than for their sum (one serial job took ~9 min, 2026-09-29):
+  # analyze and test here, the debug APK in `flutter-apk`, the R8 release build in
+  # `flutter-release`. The web bundle has no build of its own: the `image` job's Flutter
+  # PWA image builds it, with the flags production uses, on every change under
+  # frontend-flutter/. Their shared setup is .github/actions/flutter-setup.
   flutter:
+    # Not a required check, but its name is kept verbatim all the same (the rule of the
+    # pinned names, .llmwiki/Testing.md): it no longer builds the web bundle nor the APKs,
+    # which the `image` job and the two jobs below do.
     name: Flutter client — analyze, test, build web and apk
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
@@ -296,63 +309,33 @@ jobs:
         working-directory: frontend-flutter
     steps:
       - uses: actions/checkout@v4
-      # The Android Gradle plugin (frontend-flutter/android) needs a JDK 17+; the
-      # runner's default may change under us, so it is set here. The Android SDK is
-      # the runner's preinstalled one ($ANDROID_HOME), with the packages the build needs
-      # installed below rather than trusted to the image.
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-          cache-dependency-path: |
-            frontend-flutter/android/*.gradle*
-            frontend-flutter/android/gradle/wrapper/gradle-wrapper.properties
-      # android/gradle.properties asks for -Xmx8G -XX:MaxMetaspaceSize=4G, more than a
-      # standard runner has. The gradle.properties of GRADLE_USER_HOME takes precedence
-      # over the project's, so this caps the heap without touching the committed file.
-      # Written after setup-java, whose cache covers only ~/.gradle/caches and wrapper.
-      - name: Cap the Gradle heap for CI
-        run: |
-          mkdir -p "$HOME/.gradle"
-          {
-            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError"
-            echo "kotlin.daemon.jvmargs=-Xmx2g"
-            echo "org.gradle.workers.max=2"
-          } >> "$HOME/.gradle/gradle.properties"
-      # Flutter 3.47's Gradle plugin compiles against SDK 36 (flutter.compileSdkVersion)
-      # with build-tools 36.0.0. Accepting the licences also lets the Android Gradle
-      # plugin download the pinned NDK if the image lacks it.
-      - name: Install pinned Android SDK packages
-        run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
-      # Pinned with the SDK the client is written against (.llmwiki/FrontendFlutter.md):
-      # a newer analyzer is a red build.
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.47.2
-          channel: stable
-          cache: true
-      - run: flutter --version
-      # --enforce-lockfile: a pubspec.yaml change committed without its pubspec.lock fails
-      # here instead of resolving afresh and passing.
-      - run: flutter pub get --enforce-lockfile
-      # lib/l10n/app_localizations*.dart are not committed, and a pub get does not always
-      # write them: generated explicitly, or analyze reports every AppLocalizations use.
-      - run: if [ -f l10n.yaml ]; then flutter gen-l10n; fi
+      # No JDK and no Android SDK: analyze and test need neither.
+      - name: Flutter SDK, pub get, gen-l10n
+        uses: ./.github/actions/flutter-setup
       # The commit hook runs the same check (.llmwiki/Hooks.md); fix with `dart format lib test`.
       - name: dart format --set-exit-if-changed
         run: dart format --output=none --set-exit-if-changed lib test $([ -d integration_test ] && echo integration_test)
       - run: flutter analyze
       - run: flutter test
-      # The PWA is served under /app/ on the API's own domain, CanvasKit included: the same
-      # flags the image builds with (frontend-flutter/Dockerfile), so this job fails on
-      # whatever the image would fail on.
-      - run: flutter build web --base-href /app/ --no-web-resources-cdn
-      # The debug APK is the one uploaded: CI holds no upload key (.llmwiki/FrontendFlutter.md
-      # § Android). It talks to production over HTTPS by default (lib/services/api_config.dart).
+
+  # The debug APK, on every Flutter change: the one the flutter-device-test skill
+  # installs. CI holds no upload key (.llmwiki/FrontendFlutter.md § Android). It talks to
+  # production over HTTPS by default (lib/services/api_config.dart).
+  flutter-apk:
+    name: Flutter Android — debug APK (artifact app-debug)
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.flutter != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend-flutter
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 17, Android SDK packages, Flutter SDK, pub get, gen-l10n
+        uses: ./.github/actions/flutter-setup
+        with:
+          android: "true"
       - run: flutter build apk --debug
       # The APK to try on a phone: the run's page → Artifacts → app-debug (a zip holding
       # app-debug.apk), or `gh run download <run id> -n app-debug`.
@@ -363,6 +346,26 @@ jobs:
           path: frontend-flutter/build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 14
           if-no-files-found: error
+
+  # The release build and its signing rules, on the `android` flag only: a change under
+  # frontend-flutter/android/ (Gradle, the R8 keep rules, the manifest), to pubspec.yaml
+  # or pubspec.lock (a plugin's Android code), and every push to master. R8 shrinks the
+  # Java and Kotlin classes, not the Dart code, which the two jobs above cover.
+  flutter-release:
+    name: Flutter Android — R8 release build, unsigned bundle refused
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.android != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend-flutter
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 17, Android SDK packages, Flutter SDK, pub get, gen-l10n
+        uses: ./.github/actions/flutter-setup
+        with:
+          android: "true"
       # The release build with R8 (minify, shrink, android/app/proguard-rules.pro), and with
       # no android/key.properties here: it must fall back to the debug key and still build.
       - name: Release build without key.properties (R8, debug-key fallback)
