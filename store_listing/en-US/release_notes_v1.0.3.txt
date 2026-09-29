@@ -1,0 +1,6 @@
+• New: "Play without an account" — play right away, pick a password later.
+• New My account page: rename, change or set your password, delete your account.
+• Better fit on tablets and PCs.
+• The games list follows new games and puts your turn first.
+• Confetti when you win, animations at the end of a round.
+• Smarter bots and several fixes.

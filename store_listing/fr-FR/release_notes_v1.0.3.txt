@@ -1,0 +1,6 @@
+• Nouveau : « Jouer sans compte » — joue tout de suite, choisis un mot de passe plus tard.
+• Nouvelle page Mon compte : renommer, changer ou définir le mot de passe, supprimer le compte.
+• Mieux adapté aux tablettes et aux PC.
+• La liste des parties suit les nouvelles parties et met ton tour en premier.
+• Confettis quand tu gagnes, animations en fin de manche.
+• Bots plus malins et plusieurs corrections.
