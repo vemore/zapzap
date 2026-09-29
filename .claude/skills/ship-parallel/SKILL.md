@@ -81,7 +81,7 @@ behind each choice: `.llmwiki/ParallelDelivery.md`.
    The go-ahead covers the loop, merges and deploys included; it does not stand in for lane
    C's go-ahead in §3.
 
-Four agents at a time at most: each worktree costs an `npm ci` and cargo builds.
+Four agents at a time at most: each worktree costs a `flutter pub get` and cargo builds.
 
 ## 2. Launch one agent per pull request
 

@@ -174,15 +174,16 @@ an earlier deploy pushed; the images the old NAS clone built are not in the regi
 ### The URLs of the removed React client
 
 The React client served `/` and its own paths until 2026-09-29 ([[Frontend]]). The proxy
-answers each with a **301**, relative (`absolute_redirect off` for the whole server: the
-public scheme and port are the Synology proxy's), query string kept (`nginx/nginx.conf:153-183`):
+answers each with a **301** — `/` alone with a **302** —, relative (`absolute_redirect off`
+for the whole server: the public scheme and port are the Synology proxy's), query string kept
+(`nginx/nginx.conf:153-186`):
 
 | Old URL | Redirect |
 |---|---|
-| `/` | `/app/` |
+| `/` (302) | `/app/` |
 | `/party/<id>` (`[A-Za-z0-9_-]+`, trailing `/` allowed) | `/app/parties/<id>` |
-| `/create-party` | `/app/parties/new` |
-| `/account/delete` (the Play listing's deletion URL) | `/app/account` |
+| `/create-party`, `/create-party/` | `/app/parties/new` |
+| `/account/delete`, `/account/delete/` (the Play listing's deletion URL) | `/app/account` |
 | any other path — `/login`, `/register`, `/parties`, `/game/<id>`, `/history[/<id>]`, `/stats`, `/admin[/<tab>]` | `/app` + the path as sent (`$request_uri`) |
 
 `/api/`, `/suscribeupdate`, `/app`, `/app/`, `/privacy`, `/privacy.html` and `/nginx-health`
@@ -278,10 +279,11 @@ so the deploy calls it an outage and names the rollback. `PROXY_SERVICE` is `ngi
 published port comes from `port "$PROXY_SERVICE" 80` rather than being assumed to be 80.
 Both names live in one place in the script, with a comment tying them to the two other files.
 
-Any other service is **not** essential. `docker-compose.prod.yml` declares none today, but a
-rollback to a compose file from before 2026-09-29 carries the React client's `frontend`,
-which the current script does not wait on. So the verdict stays split, and so does the exit
-status:
+Any other service is **not** essential. `docker-compose.prod.yml` declares none today; the
+split stays for one added later outside the proxy's `depends_on`. (A rollback to a compose
+file from before 2026-09-29 is not such a case: its proxy `depends_on` the React client's
+`frontend` being healthy, so under Compose v2 an unhealthy `frontend` fails `up -d` —
+`START FAILED`, exit 1.) The exit status:
 
 | Exit | Meaning |
 |---|---|
@@ -422,7 +424,9 @@ backup, never overwritten); prune old backups by hand. Backups are gitignored (`
   the redirects above and its `depends_on` lost `frontend`. The PWA joined
   `ESSENTIAL_SERVICES`, reversing the split of 2026-09-23 for it: that split protected `/`,
   which the React client served, and there is no other web client left to protect. The
-  per-request resolution stays, for `/api/`. 301 rather than 302: the old URLs are gone for
-  good, and bookmarks should learn the new ones. Nothing to change in the deploy directory;
-  `docker image prune` on the NAS may drop the old `zapzap-frontend` images.
+  per-request resolution stays, for `/api/`. 301 rather than 302 for the old React paths:
+  they are gone for good, and bookmarks should learn the new ones; `/` answers a 302 (after
+  review), so the root stays free for a later landing page or a single image serving both.
+  Nothing to change in the deploy directory; the old `zapzap-frontend` images are tagged, so
+  `docker image prune` keeps them: remove them by tag (the `deploy` skill, "Disk on the NAS").
 - 2026-09-25 (feat/delete-own-account): the privacy policy is baked into the proxy image rather than served by the React image or mounted from the deploy directory: the NAS holds no clone, and the proxy is the one image that owns the site's own paths (`/app`, `/nginx-health`). A policy change is then an ordinary deploy.

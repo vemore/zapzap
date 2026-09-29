@@ -72,7 +72,9 @@ gone, and production's `.env` holds only keys the Rust stack reads. How it went:
   previous tags, which is what makes a rollback a pull-free restart. Prune old tags now and
   then, never the last two deploys': `docker images | grep 192.168.1.25:5050/zapzap`. The
   `zapzap-frontend` images (the React client, removed 2026-09-29) can all go once no
-  rollback target predates that day.
+  rollback target predates that day; they are tagged, so `docker image prune` keeps them —
+  remove them by tag: `docker images --format '{{.Repository}}:{{.Tag}}' | grep
+  '/zapzap-frontend:' | xargs -r docker rmi`.
 
 The script checks the rest itself, on the NAS, before building: the deploy directory, its
 `.env`, `data/zapzap.db`, and that **uid 1000** (the backend image's user) owns `data/`, the
@@ -132,9 +134,10 @@ never contacts the NAS.
 - **`frontend-flutter` is essential since the React client went (2026-09-29)**: it is the
   only web client, so an unhealthy PWA is an outage for the web (exit 1, roll back), though
   nginx resolves it per request and `/api/` — the Android app — keeps serving. A service
-  outside `ESSENTIAL_SERVICES` — the React client's `frontend`, after a rollback to a compose
-  file from before 2026-09-29 — only warns: the script says a rollback is optional, ends with
-  `⚠ Deployed <sha>, DEGRADED: …` and exits 2. If `docker ps -a` ever shows `zapzap-proxy` in
+  outside `ESSENTIAL_SERVICES` and the proxy's `depends_on` (none today) only warns: the
+  script says a rollback is optional, ends with `⚠ Deployed <sha>, DEGRADED: …` and exits 2.
+  A rollback to a compose file from before 2026-09-29 is not that case: its proxy waits on
+  the React client's `frontend`, so an unhealthy one fails `up -d` (`START FAILED`, exit 1). If `docker ps -a` ever shows `zapzap-proxy` in
   `Created`, `docker start zapzap-proxy` restores `/api/` and `/app/` at once.
 - **An ssh drop mid-deploy** exits 1 saying what production runs is unknown: look
   (`docker ps -a` on the NAS) before anything else.
@@ -146,7 +149,7 @@ never contacts the NAS.
 
 ```bash
 curl -fsS https://zapzap.ombivince.synology.me/api/health
-# The removed React client's URLs: relative 301s to the PWA, query kept.
+# The removed React client's URLs: relative redirects to the PWA (`/` a 302, the rest 301), query kept.
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://zapzap.ombivince.synology.me/
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' 'https://zapzap.ombivince.synology.me/party/abc?x=1'
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://zapzap.ombivince.synology.me/account/delete
@@ -159,8 +162,8 @@ ssh vemore@192.168.1.147 'docker logs --tail 50 zapzap-backend'
 ```
 
 The three containers run `192.168.1.25:5050/zapzap-*:<the sha deployed>` and are `healthy`;
-the redirects answer `301 https://zapzap.ombivince.synology.me/app/`, `…/app/parties/abc?x=1`
-and `…/app/account`.
+the redirects answer `302 https://zapzap.ombivince.synology.me/app/`, `301 …/app/parties/abc?x=1`
+and `301 …/app/account`.
 The backend logs are the Rust ones (`RUST_LOG`, `info` by default): a `Starting ZapZap backend
 on 0.0.0.0:9999` line, and `AWS Bedrock LLM service initialized` when the LLM bots are on.
 
@@ -201,7 +204,7 @@ the bot quietly playing like Hard — means the LLM service is broken or off
 (`AWS Bedrock LLM service initialized` missing at start-up). The site still serves: fix it in
 a new pull request, not by a rollback, unless the user wants the LLM bots back at once.
 
-All three containers `healthy`, health answers 200, `/` answers a 301 to `/app/`, `/app/`
+All three containers `healthy`, health answers 200, `/` answers a 302 to `/app/`, `/app/`
 carries the `/app/` base href, `/app/parties` answers 200, no error at startup. Then drive
 the path the change touched in a browser (Playwright on
 `https://zapzap.ombivince.synology.me/`); for the PWA, sign in at `/app/` and check Chrome

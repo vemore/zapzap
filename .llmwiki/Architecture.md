@@ -26,7 +26,7 @@ browser ──> zapzap-proxy (nginx:alpine, :80)
               ├─ /suscribeupdate -> backend:9999          (SSE, unbuffered, 86400s timeouts, nginx/nginx.conf:65-104)
               ├─ /app/*          -> frontend-flutter:80   (Flutter PWA, base href /app/, nginx/nginx.conf:111-138)
               ├─ /privacy, /nginx-health                  (served by the proxy itself)
-              └─ / and the rest  -> 301 /app/...          (the removed React client's URLs, nginx/nginx.conf:153-183)
+              └─ / and the rest  -> 302 /app/ (/), 301 /app/... (the rest)          (the removed React client's URLs, nginx/nginx.conf:153-186)
 ```
 
 - Backend router: `/api` nested router, `/suscribeupdate` SSE, `/health`; a CORS layer granting the origins of `ALLOWED_ORIGINS`, every origin when unset ([[Backend]]) (`build_app`, `zapzap-rust/src/api/mod.rs:21-35`, served by `main.rs`). Binds `0.0.0.0:$PORT`, default 9999 (`zapzap-rust/src/main.rs:45-50`). Route list: [[Api]].

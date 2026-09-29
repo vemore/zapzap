@@ -5,8 +5,9 @@
 # Runs the real configuration, baked into the image, between two stubs on a Docker network
 # of its own: `backend` (port 9999) and `frontend-flutter` (port 80), each an nginx that
 # answers "stub-<name> <request URI>". It then checks, request by request:
-#   - every URL of the removed React client answers a relative 301 to its page in the PWA,
-#     query string kept (.llmwiki/Deployment.md, "The URLs of the removed React client");
+#   - every URL of the removed React client answers a relative 301 to its page in the PWA
+#     (`/` a 302), query string kept (.llmwiki/Deployment.md, "The URLs of the removed React
+#     client");
 #   - /api/ and /suscribeupdate still reach the backend, /app/ the PWA, and /privacy,
 #     /privacy.html and /nginx-health are still served by the proxy itself.
 #
@@ -43,12 +44,12 @@ fetch() {  # path
     rm -f "$headers" "$body"
 }
 
-# A permanent redirect to exactly this Location: relative, so the browser keeps the scheme
-# and port it used (the outer proxy's), never http://<host>:80.
-check_redirect() {  # path, expected Location
-    local got
+# A redirect to exactly this Location, permanent unless a status is given: relative, so the
+# browser keeps the scheme and port it used (the outer proxy's), never http://<host>:80.
+check_redirect() {  # path, expected Location, [status, default 301]
+    local got status="${3:-301}"
     got=$(fetch "$1" | head -1)
-    [ "$got" = "301 $2" ] && ok "$1 → 301 $2" || ko "$1 → 301 $2" "got: $got"
+    [ "$got" = "$status $2" ] && ok "$1 → $status $2" || ko "$1 → $status $2" "got: $got"
 }
 
 # Served, not redirected: the status, and a substring of the body saying who answered.
@@ -96,16 +97,21 @@ for _ in $(seq 1 30); do
 done
 
 echo "== the React client's URLs, redirected to the PWA =============="
-check_redirect /                               /app/
-check_redirect '/?ref=play'                    '/app/?ref=play'
+# The root is a temporary redirect: it stays free for a later landing page.
+check_redirect /                               /app/                   302
+check_redirect '/?ref=play'                    '/app/?ref=play'        302
 # The routes the PWA names differently (frontend-flutter/lib/router.dart, AppRoutes).
 check_redirect /party/abc                      /app/parties/abc
 check_redirect '/party/abc?x=1'                '/app/parties/abc?x=1'
 check_redirect /party/0b6f5c1e-9a2d-4c1b-8e3f-2a7d9c4e1f00/ /app/parties/0b6f5c1e-9a2d-4c1b-8e3f-2a7d9c4e1f00
 check_redirect /create-party                   /app/parties/new
 check_redirect '/create-party?x=1'             '/app/parties/new?x=1'
+check_redirect /create-party/                  /app/parties/new
+check_redirect '/create-party/?x=1'            '/app/parties/new?x=1'
 check_redirect /account/delete                 /app/account
 check_redirect '/account/delete?from=play'     '/app/account?from=play'
+check_redirect /account/delete/                /app/account
+check_redirect '/account/delete/?from=play'    '/app/account?from=play'
 # Every other React route is the PWA's own, under /app.
 for p in /login /register /parties /game/abc /history /history/abc /stats /admin \
          /admin/users /admin/parties /admin/statistics; do

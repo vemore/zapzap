@@ -443,15 +443,15 @@ deploy; rc=$?
 report "an unhealthy PWA is an outage: exit 1"  1 "$rc"
 has "naming the container and its state"        "frontend-flutter(unhealthy)"
 has "calling it an outage"                      "production is DOWN"
-# A service outside ESSENTIAL_SERVICES — the React client's `frontend`, which a compose file
-# from before 2026-09-29 still declares — is a degraded deploy, never an outage.
-services backend frontend nginx frontend-flutter
-unhealthy frontend unhealthy
+# A service outside ESSENTIAL_SERVICES (none in docker-compose.prod.yml today; the stub
+# compose declares one, `sidecar`) is a degraded deploy, never an outage.
+services backend nginx frontend-flutter sidecar
+unhealthy sidecar unhealthy
 deploy; rc=$?
 report "an unhealthy non-essential service is not an outage: exit 2" 2 "$rc"
 hasnt "never saying production is down"         "production is DOWN"
-has "naming it in a warning"                    "frontend(unhealthy)"
-has "saying what it costs"                      "Cost: whatever frontend serves"
+has "naming it in a warning"                    "sidecar(unhealthy)"
+has "saying what it costs"                      "Cost: whatever sidecar serves"
 has "and that a rollback is optional"           "Rolling back is OPTIONAL"
 has "with a banner that is not a success"       "DEGRADED"
 services backend nginx frontend-flutter

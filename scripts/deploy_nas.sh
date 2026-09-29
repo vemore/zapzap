@@ -35,8 +35,9 @@
 #
 # Exit status: 0 deployed, every container healthy; 1 refused (nothing stopped) or an
 # outage (the message says which); 2 deployed and serving, but a non-essential service is
-# not healthy — none in docker-compose.prod.yml today, but a rollback to a compose file
-# from before 2026-09-29 carries the React client's `frontend`, which is one.
+# not healthy — none in docker-compose.prod.yml today. (A rollback to a compose file from
+# before 2026-09-29 is not one: its proxy depends on the React client's `frontend` being
+# healthy, so under Compose v2 an unhealthy one fails `up -d` — START FAILED, exit 1.)
 #
 # Procedure and why: .claude/skills/deploy/SKILL.md, .llmwiki/Deployment.md
 # Self-test: scripts/deploy_nas_selftest.sh

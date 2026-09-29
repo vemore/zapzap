@@ -12,11 +12,12 @@
   and `scripts/worktree_setup.sh --no-frontend` are gone. The Flutter client is the only
   client: the Android app and the PWA under `/app/` ([[FrontendFlutter]]).
 - **Its URLs still answer**: the proxy sends each one a relative 301 to its page in the PWA,
-  query string kept — `/` → `/app/`, `/party/<id>` → `/app/parties/<id>`, `/create-party` →
+  query string kept — `/` → `/app/` (a 302), `/party/<id>` → `/app/parties/<id>`, `/create-party` →
   `/app/parties/new`, `/account/delete` → `/app/account`, any other path → `/app` + the same
   path ([[Deployment]] § The URLs of the removed React client).
-- **Its code** can still be read at `055c288`, the last `master` commit holding it:
-  `git show 055c288:frontend/src/App.jsx`, `git ls-tree -r --name-only 055c288 frontend`.
+- **Its code** can still be read in the parent of the commit that removed it:
+  `c=$(git log -1 --format=%h -- frontend/)^`, then `git show "$c":frontend/src/App.jsx` or
+  `git ls-tree -r --name-only "$c" frontend` (`055c288` holds it too).
   The Flutter pages name it "React" where a screen was ported from one of its components.
 - The CI job **"Frontend — build"** stays, always skipped, only because `master`'s branch
   protection requires that check name ([[Testing]]).
