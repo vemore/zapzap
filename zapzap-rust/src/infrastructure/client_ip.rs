@@ -8,9 +8,12 @@
 //! DSM appends only through a custom header on its zapzap rule (`.llmwiki/Deployment.md`).
 //! nginx's `X-Real-IP` is DSM's address, the same for every client: not used.
 //!
-//! The key is never an entry the client could have chosen: a header with fewer entries
-//! than the hop count (a proxy did not append, so its leftmost entry may be the client's
-//! own), or an entry that is not an IP address, falls back to the connection's peer. An
+//! Once every trusted proxy appends (DSM needs its custom header), the key is never an
+//! entry the client could have chosen: a header with fewer entries than the hop count (a
+//! proxy did not append, so its leftmost entry may be the client's own), or an entry that
+//! is not an IP address, falls back to the connection's peer. Until DSM appends, a client
+//! that sends `X-Forwarded-For: <forged>` reaches the backend as `[<forged>, DSM]`: the
+//! count matches, and no hop count tells it from `[client, DSM]`. An
 //! IPv6 address is keyed by its /64, the block one subscriber gets; an IPv4-mapped one by
 //! its IPv4.
 
@@ -188,7 +191,8 @@ mod tests {
         assert_eq!(got.key, "172.18.0.5");
         assert_eq!(got.forwarded_entries, 2);
         assert_eq!(client_ip(&HeaderMap::new(), None, 2).key, "unknown");
-        // One hop (nginx alone, locally): nginx's entry names the client
+        // With `TRUSTED_PROXY_HOPS=1` (nginx alone in front, set by hand; the default is
+        // 2 everywhere), nginx's entry names the client
         assert_eq!(
             client_ip(&headers(&["203.0.113.7"]), peer(), 1).key,
             "203.0.113.7"
