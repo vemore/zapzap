@@ -39,6 +39,7 @@ impl RenameUser {
         exp: usize,
     ) -> Result<RenameUserOutput, RenameError> {
         validate_username(username).map_err(RenameError::Validation)?;
+        let username = username.trim();
         let mut user = self
             .user_repo
             .find_by_id(user_id)
@@ -54,7 +55,10 @@ impl RenameUser {
         }
 
         if user.username != username {
-            if self.user_repo.exists_by_username(username).await? {
+            // Unique whatever the case, unless the only match is this account's own name
+            // (bob -> Bob); older case-duplicates stay, they are not checked again
+            let own_case_change = user.username.to_lowercase() == username.to_lowercase();
+            if !own_case_change && self.user_repo.exists_by_username_ci(username).await? {
                 return Err(RenameError::UsernameExists);
             }
             // A name taken between the check and the write fails on the UNIQUE constraint

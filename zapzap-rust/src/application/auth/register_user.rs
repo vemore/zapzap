@@ -19,22 +19,39 @@ pub fn is_reserved_username(username: &str) -> bool {
         .any(|reserved| reserved.to_lowercase() == wanted)
 }
 
-/// A username's rules, at sign-up and on a rename (`RenameUser`): the message of the
-/// first one broken
+/// A username's rules, at sign-up and on a rename (`RenameUser`), those of the Flutter
+/// client (`validators.dart`): trimmed, 3 to 30 characters of `[a-zA-Z0-9_-]`. The message
+/// of the first one broken
 pub fn validate_username(username: &str) -> Result<(), String> {
-    if username.trim().is_empty() {
+    let username = username.trim();
+    if username.is_empty() {
         return Err("Username is required".into());
     }
-    if username.len() < 3 {
+    let len = username.chars().count();
+    if len < 3 {
         return Err("Username must be at least 3 characters".into());
+    }
+    if len > 30 {
+        return Err("Username must be at most 30 characters".into());
+    }
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err("Username may only contain letters, digits, underscores and hyphens".into());
     }
     Ok(())
 }
 
-/// A password's rules, at sign-up and on a change (`ChangePassword`)
+/// A password's rules, at sign-up and on a change (`ChangePassword`): 6 to 100 characters,
+/// not trimmed
 pub fn validate_password(password: &str) -> Result<(), String> {
-    if password.len() < 4 {
-        return Err("Password must be at least 4 characters".into());
+    let len = password.chars().count();
+    if len < 6 {
+        return Err("Password must be at least 6 characters".into());
+    }
+    if len > 100 {
+        return Err("Password must be at most 100 characters".into());
     }
     Ok(())
 }
@@ -77,7 +94,8 @@ impl RegisterUser {
         }
 
         // Check if username exists
-        if self.user_repo.exists_by_username(&input.username).await? {
+        let username = input.username.trim().to_string();
+        if self.user_repo.exists_by_username_ci(&username).await? {
             return Err(RegisterError::UsernameExists);
         }
 
@@ -87,7 +105,7 @@ impl RegisterUser {
 
         // Create user
         let user_id = Uuid::new_v4().to_string();
-        let user = User::new_human(user_id, input.username.clone(), password_hash);
+        let user = User::new_human(user_id, username, password_hash);
 
         // Save user
         self.user_repo.save(&user).await?;

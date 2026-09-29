@@ -278,6 +278,17 @@ impl UserRepository for SqliteUserRepository {
         Ok(count > 0)
     }
 
+    async fn exists_by_username_ci(&self, username: &str) -> Result<bool, RepositoryError> {
+        let count: i32 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(?)")
+                .bind(username)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(count > 0)
+    }
+
     async fn find_all_bots(
         &self,
         difficulty: Option<BotDifficulty>,
