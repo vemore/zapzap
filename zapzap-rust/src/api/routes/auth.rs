@@ -394,7 +394,7 @@ async fn google_handler(
 /// POST /api/auth/guest - play without an account: a guest user under a random name
 /// (`Guest_` and eight digits) and a random password, answered once for the client to
 /// keep. At most `GUEST_PER_IP` per client address and `GUEST_GLOBAL` in all per hour
-/// (`RateLimiter::guest`); the address is `client_ip`'s, behind the proxies.
+/// (`RateLimiter::guest`); the address is `client_ip`'s key, behind the proxies.
 async fn guest_handler(
     State(state): State<Arc<AppState>>,
     peer: Option<ConnectInfo<SocketAddr>>,
@@ -405,8 +405,8 @@ async fn guest_handler(
         peer.map(|ConnectInfo(addr)| addr),
         state.trusted_proxy_hops,
     );
-    if !state.guest_limiter.try_acquire(&client.ip) {
-        tracing::warn!("Guest account refused to {}: rate limited", client.ip);
+    if !state.guest_limiter.try_acquire(&client.key) {
+        tracing::warn!("Guest account refused to {}: rate limited", client.key);
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             Json(ErrorResponse {
@@ -420,13 +420,14 @@ async fn guest_handler(
     let use_case = CreateGuest::new(state.user_repo.clone(), state.jwt_service.clone());
     match use_case.execute().await {
         Ok(guest) => {
-            // The address and the entries of X-Forwarded-For tell, after a deploy, whether
-            // the hop count names the client (`TRUSTED_PROXY_HOPS`). Never the password
+            // The key and the entries of X-Forwarded-For tell, after a deploy, whether the
+            // hop count names the client (`TRUSTED_PROXY_HOPS`): fewer entries than hops
+            // mean the key is the peer's. Never the password
             tracing::info!(
                 "Guest account created: {} ({}) for {} ({} X-Forwarded-For entries)",
                 guest.user.username,
                 guest.user.id,
-                client.ip,
+                client.key,
                 client.forwarded_entries
             );
             Ok((
@@ -441,7 +442,7 @@ async fn guest_handler(
         }
         Err(e) => {
             // No account was created: the attempt does not count against the client
-            state.guest_limiter.release(&client.ip);
+            state.guest_limiter.release(&client.key);
             Err(refusal(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "GUEST_ERROR",
