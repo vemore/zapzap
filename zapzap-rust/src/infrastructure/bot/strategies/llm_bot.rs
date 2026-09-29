@@ -138,8 +138,8 @@ impl LlmBotStrategy {
 - On your turn you play one combination from your hand, then draw one card: the top of the deck (unseen), or any one of the cards the previous player just played (seen by all).
 - Combinations: one card; two or more cards of the same rank; three or more cards of one suit that follow each other (A is low: A 2 3, never Q K A). A joker stands for any card of a combination.
 - ZapZap: at the start of your turn, instead of playing, you may call ZapZap if your hand is worth 5 points or less (jokers 0). The round ends and every hand is counted, jokers 0:
-  - if another player's hand is worth as much as yours or less, you are counteracted: you score your hand, each joker counting 25, plus {penalty} points per other player still in the game;
-  - otherwise the lowest hand scores 0 (every hand tied at the lowest too), and every other player scores their hand, each joker counting 25.
+  - the lowest hand scores 0, and so does every hand tied with it; every other player scores their hand, each joker counting 25;
+  - if another player's hand is worth as much as yours or less, you are counteracted: whatever the other hands, you score your hand, each joker counting 25, plus {penalty} points per other player still in the game, even when tied at the lowest.
 - Scores add up over the rounds. A player past 100 points is out; the last player in wins the game.
 - Golden Score: with two players left, the next ZapZap ends the game. The lowest hand wins it; a counteracted caller (tied hands included) loses it.
 - The deck holds about 6.7 points a card on average."#,
@@ -327,18 +327,25 @@ Each turn lists the plays you may make and the cards you may draw, each with a n
         }
     }
 
-    /// The JSON object an answer holds: the text from its first `{` to its last `}` (a
-    /// code fence or a sentence around it is left out), which must parse as one object
+    /// The JSON object an answer holds: the last object in the text that parses (a code
+    /// fence, a sentence, or an example object before the answer is left out). Objects
+    /// are read from left to right, each skipped whole, so an object nested in another
+    /// is never taken for the answer.
     fn answer_object(text: &str) -> Option<Map<String, Value>> {
-        let start = text.find('{')?;
-        let end = text.rfind('}')?;
-        if end < start {
-            return None;
+        let mut last = None;
+        let mut from = 0;
+        while let Some(offset) = text[from..].find('{') {
+            let start = from + offset;
+            let mut values = serde_json::Deserializer::from_str(&text[start..]).into_iter();
+            match values.next() {
+                Some(Ok(Value::Object(object))) => {
+                    last = Some(object);
+                    from = start + values.byte_offset();
+                }
+                _ => from = start + 1,
+            }
         }
-        match serde_json::from_str(&text[start..=end]) {
-            Ok(Value::Object(object)) => Some(object),
-            _ => None,
-        }
+        last
     }
 
     /// The item numbered `value` (from 1) of `count`: an integer in range, or a string of
@@ -530,7 +537,9 @@ Each turn lists the plays you may make and the cards you may draw, each with a n
             return DrawSource::Deck;
         }
 
-        let plan = self.turn_memo().draw.take();
+        // Read, not taken: a draw write that loses its race comes back here on the same
+        // state, and must find the same plan (a new play replaces it)
+        let plan = self.turn_memo().draw.clone();
         let mut hand = state.get_hand(player_index).to_vec();
         hand.sort_unstable();
         let planned = plan
@@ -779,6 +788,55 @@ mod tests {
             assert_eq!(answer.play, None, "{text}");
             assert_eq!(answer.draw, None, "{text}");
         }
+    }
+
+    #[test]
+    fn test_answer_object_is_the_last_object_of_the_text() {
+        let state = table(&[KS, KH, AS], &[FIVE_S, SIX_S]);
+        let question = LlmBotStrategy::turn_question(&state, 0);
+
+        // An example object in the prose before the real answer
+        let text = r#"The form is {"play": <n>, "draw": "deck"}, e.g. {"play": 99, "draw": 7}.
+Answer: {"play": 1, "draw": 2}"#;
+        let answer = LlmBotStrategy::parse_turn_answer(text, &question);
+        assert_eq!(answer.play, Some(question.plays[0].clone()));
+        assert_eq!(answer.draw, Some(DrawChoice::Card(SIX_S)));
+
+        // An object nested in the answer is not the answer
+        let object = LlmBotStrategy::answer_object(r#"{"play": 1, "why": {"play": 2}}"#).unwrap();
+        assert_eq!(object["play"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_a_draw_that_loses_its_race_is_decided_again_from_the_plan() {
+        // The previous player played 7H 7C; the model takes the 7C, which HardBot would
+        // not (it pairs nothing): the draw write loses a race and the loop asks again on
+        // the same state
+        let hand = [TWO_S, KS, KH, NINE_D];
+        let question = LlmBotStrategy::turn_question(&table(&hand, &[SEVEN_H, SEVEN_C]), 0);
+        let kings = question
+            .plays
+            .iter()
+            .position(|p| *p == vec![KS, KH])
+            .unwrap()
+            + 1;
+        let llm = Counted::new(&format!(r#"{{"play": {kings}, "draw": 2}}"#));
+        let strategy = LlmBotStrategy::with_service(llm.clone());
+        let mut state = table(&hand, &[SEVEN_H, SEVEN_C]);
+        let cards = strategy.select_cards_async(&state, 0).await;
+        execute_play(&mut state, &cards).unwrap();
+        assert_eq!(
+            HardBotStrategy::new().decide_draw_source(&state, 0),
+            DrawSource::Deck
+        );
+
+        for _ in 0..2 {
+            assert_eq!(
+                strategy.decide_draw_source_async(&state, 0).await,
+                DrawSource::Discard(SEVEN_C)
+            );
+        }
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
