@@ -202,6 +202,7 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   once `gameFinished`, Back to games, the winner banner (`winner.username`, its final
   score) heading the page. X is the seat after this round's `startingPlayer`, skipping
   whoever is out (`GAME_RULES.md` "Subsequent Rounds").
+- **A win is celebrated** (`widgets/victory_confetti.dart`): when `winnerIsMe` (the winner seat is mine), a one-shot confetti burst (`Key('victoryAnimation'`, two bottom-corner cannons, ~110 pieces, 2.4 s, a `Stack` overlay so the table does not move) and the winner banner scales in with an overshoot (`VictoryPop`). Nothing for the others, and nothing when `MediaQuery.disableAnimations`. `test/victory_confetti_test.dart`.
 - Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that
   sizes itself to its children hands an unbounded width to its text, which then runs off a
   360 px phone at a 1.5 text scale. `test/game_round_end_test.dart` proves F1–F5 at 360x740
