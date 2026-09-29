@@ -61,6 +61,7 @@ SAME_AS_ENGLISH_OK = {
     "appTitle": ALL_LOCALES,  # "ZapZap"
     "gameZapZapBadge": ALL_LOCALES,  # "ZapZap"
     "gameZapZapButton": ALL_LOCALES,  # "ZapZap!"
+    "gameFxZapZap": ALL_LOCALES,  # "ZAPZAP!", the round end's word in capitals
     "rulesZapZapTitle": ALL_LOCALES,  # "ZapZap"
     "standingsZapzaps": ALL_LOCALES,  # "{successful}/{total} ZapZap"
     "goldenScore": ALL_LOCALES,  # "Golden Score"
