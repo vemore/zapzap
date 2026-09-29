@@ -10,19 +10,17 @@
 
 ### `master` and its protection
 
-- CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `frontend` (always
-  skipped since the React client went, 2026-09-29: it only keeps a required name), `image`,
-  `hooks`, `flutter`, `flutter-apk`, `flutter-release`, `flutter-e2e`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
+- CI: `.github/workflows/ci.yml`, jobs `scope`, `rust`, `native`, `image`, `hooks`, `flutter`, `flutter-apk`, `flutter-release`, `flutter-e2e`; the `scope` job decides which run ([[Testing]]). A job skipped by its `if:`
   reports Success, so a docs-only pull request satisfies required checks.
 - Branch protection is set once the harness is merged (2026-09-22, after #21–#23): required
-  checks = the five build jobs `rust` … `hooks` (not `scope`, and not yet the Flutter jobs, added
+  checks = the four build jobs `rust`, `native`, `image`, `hooks` (not `scope`, and not yet the Flutter jobs, added
   after them: until they are listed, a red Flutter job does not stop a merge — only the
   "green or skipped" rule of the lanes does), `strict` (up to date before merging → merges
   are **serial**), linear history (**squash**), no force-push; `enforce_admins` off, so the
   hook refuses `--admin` instead. Read it with `gh api repos/vemore/zapzap/branches/master/protection`.
 - Merged branches are deleted on GitHub; the local copy then reads `[gone]` and the hook
   refuses commits on it.
-- The required contexts are the five job **names**, verbatim, so a workflow that renames a
+- The required contexts are the four job **names**, verbatim, so a workflow that renames a
   job blocks every pull request until the name comes back ([[Testing]]). A pull request
   therefore never renames a job's `name:`; renaming is a separate step the user takes in
   the protection settings. A comment above each required job's `name:` in `ci.yml` says so,
@@ -214,6 +212,27 @@ tokens raw, 79 M weighted; 36.2 h active, 8.4 h waiting on the user.
   31 % under no skill.
 - **Time:** `gh pr checks` 26.1 % of tool time, `sleep` 17.0 %; hooks that leave a record
   about 4 min.
+
+Pruning pass for 1.0.3, measured 2026-09-29 on `origin/master` at `7679693`, since the
+1.0.2+3 tag's date (the window starts 09-28 00:00, so 16 changes merged before the tag,
+#135 and #162–#176, count too; every change of 09-29 is under 48 h old — rework and CFR are floors):
+
+| Window | Changes | `fix:` | Rework | Deploys | CFR | 1st-run green | Size p50 / p90 / max |
+|---|---|---|---|---|---|---|---|
+| 2026-09-28..09-30 | 33 | 13 (39.4 %) | 36.4 % | 28 | 42.9 % | 93.9 % | 122 / 1248 / 2757 |
+
+`wip/` on 2026-09-29: `todo` 1 open (max 2 d), `todo_nr` 78 (median 1 d, max 7 d); 38
+closed in the window, median age at close 0 d, max 6 d.
+
+Cost, `--since 2026-09-28` (11 sessions, 3 788 model calls, 120 MB of transcripts): 630 M
+tokens raw, 93 M weighted; 32.2 h active, 8.8 h waiting on the user.
+- Cache reads 66 %, cache writes 30 %, output 4 %. `implementer-complex` 64 %, main 23 %,
+  `general-purpose` 10 %, `implementer-simple` 3 %.
+- **By skill:** `ship-parallel` 31 %, `deploy` 22 %, `code-review` 3 %,
+  `flutter-device-test` 2 %; 39 % under no skill.
+- **Time:** `gh pr checks` 24.8 % of tool time, `sleep` 17.2 %; hooks that leave a record
+  about 4 min. Since the tag: 1 refusal by `guard-bash.sh` (unknown repository), 0 Stop
+  blocks, 25 refusals by the harness's worktree check.
 
 ## Decisions & History
 
