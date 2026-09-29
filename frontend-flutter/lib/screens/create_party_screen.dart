@@ -12,6 +12,7 @@ import '../utils/app_theme.dart';
 import '../utils/field_touch.dart';
 import '../utils/navigation.dart';
 import '../utils/turn_timer.dart';
+import '../widgets/content_column.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/zapzap_app_bar.dart';
 
@@ -87,154 +88,156 @@ class _CreatePartyScreenState extends State<CreatePartyScreen> {
           onPressed: () => context.popOrGo(AppRoutes.parties),
         ),
       ),
-      body: ListenableBuilder(
-        listenable: _create,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextField(
-              key: const Key('party-name'),
-              controller: _name,
-              focusNode: _nameTouch.focus,
-              enabled: !_create.busy,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                labelText: l10n.createPartyNameLabel,
-                hintText: l10n.createPartyNameHint,
-                border: const OutlineInputBorder(),
-                errorText: nameError,
+      body: ContentColumn(
+        builder: (context, padding) => ListenableBuilder(
+          listenable: _create,
+          builder: (context, _) => ListView(
+            padding: padding,
+            children: [
+              TextField(
+                key: const Key('party-name'),
+                controller: _name,
+                focusNode: _nameTouch.focus,
+                enabled: !_create.busy,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: l10n.createPartyNameLabel,
+                  hintText: l10n.createPartyNameHint,
+                  border: const OutlineInputBorder(),
+                  errorText: nameError,
+                ),
+                onChanged: (_) => _nameTouch.edited(),
+                onSubmitted: (_) => _submit(),
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(partyNameMaxLength),
+                ],
               ),
-              onChanged: (_) => _nameTouch.edited(),
-              onSubmitted: (_) => _submit(),
-              inputFormatters: [
-                LengthLimitingTextInputFormatter(partyNameMaxLength),
-              ],
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              key: const Key('player-count'),
-              initialValue: _create.playerCount,
-              decoration: InputDecoration(
-                labelText: l10n.createPartyPlayerCountLabel,
-                helperText: l10n.createPartyPlayerCountHelper(
-                  minPartyPlayers,
-                  maxPartyPlayers,
-                ),
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: _create.busy
-                  ? null
-                  : (value) {
-                      if (value != null) _create.setPlayerCount(value);
-                    },
-              items: [
-                for (
-                  var count = minPartyPlayers;
-                  count <= maxPartyPlayers;
-                  count++
-                )
-                  DropdownMenuItem(value: count, child: Text('$count')),
-              ],
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              key: const Key('visibility'),
-              initialValue: _create.visibility,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: l10n.createPartyVisibilityLabel,
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: _create.busy
-                  ? null
-                  : (value) {
-                      if (value != null) _create.setVisibility(value);
-                    },
-              items: [
-                DropdownMenuItem(
-                  value: 'public',
-                  child: Text(l10n.createPartyVisibilityPublic),
-                ),
-                DropdownMenuItem(
-                  value: 'private',
-                  child: Text(l10n.createPartyVisibilityPrivate),
-                ),
-              ],
-              // The options explain themselves in full in the menu; closed,
-              // the field only has one line.
-              selectedItemBuilder: (context) => [
-                Text(
-                  l10n.createPartyVisibilityPublic,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  l10n.createPartyVisibilityPrivate,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Always offered: who will be human is only known in the lobby.
-            // The backend runs the clock only for a game that starts with
-            // two humans or more, which the helper says.
-            DropdownButtonFormField<int>(
-              key: const Key('turn-time-limit'),
-              initialValue: _create.turnTimeLimit,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: l10n.createPartyTurnTimerLabel,
-                helperText: l10n.createPartyTurnTimerHelper,
-                helperMaxLines: 4,
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: _create.busy
-                  ? null
-                  : (value) {
-                      if (value != null) _create.setTurnTimeLimit(value);
-                    },
-              items: [
-                for (final seconds in turnTimeLimits)
-                  DropdownMenuItem(
-                    key: Key('turn-time-limit-$seconds'),
-                    value: seconds,
-                    child: Text(l10n.turnTimeLimitText(seconds)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              key: const Key('create-seats-hint'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.smart_toy_outlined,
-                  size: 18,
-                  color: AppColors.slate400,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    l10n.createPartySeatsHint,
-                    style: const TextStyle(color: AppColors.slate400),
-                  ),
-                ),
-              ],
-            ),
-            if (_create.error != null) ...[
               const SizedBox(height: 16),
-              ErrorBanner(message: partyErrorText(l10n, _create.error!)),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              key: const Key('create-submit'),
-              onPressed: _create.busy ? null : _submit,
-              child: Text(
-                _create.busy
-                    ? l10n.createPartySubmitting
-                    : l10n.createPartySubmit,
+              DropdownButtonFormField<int>(
+                key: const Key('player-count'),
+                initialValue: _create.playerCount,
+                decoration: InputDecoration(
+                  labelText: l10n.createPartyPlayerCountLabel,
+                  helperText: l10n.createPartyPlayerCountHelper(
+                    minPartyPlayers,
+                    maxPartyPlayers,
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _create.busy
+                    ? null
+                    : (value) {
+                        if (value != null) _create.setPlayerCount(value);
+                      },
+                items: [
+                  for (
+                    var count = minPartyPlayers;
+                    count <= maxPartyPlayers;
+                    count++
+                  )
+                    DropdownMenuItem(value: count, child: Text('$count')),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                key: const Key('visibility'),
+                initialValue: _create.visibility,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: l10n.createPartyVisibilityLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _create.busy
+                    ? null
+                    : (value) {
+                        if (value != null) _create.setVisibility(value);
+                      },
+                items: [
+                  DropdownMenuItem(
+                    value: 'public',
+                    child: Text(l10n.createPartyVisibilityPublic),
+                  ),
+                  DropdownMenuItem(
+                    value: 'private',
+                    child: Text(l10n.createPartyVisibilityPrivate),
+                  ),
+                ],
+                // The options explain themselves in full in the menu; closed,
+                // the field only has one line.
+                selectedItemBuilder: (context) => [
+                  Text(
+                    l10n.createPartyVisibilityPublic,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    l10n.createPartyVisibilityPrivate,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Always offered: who will be human is only known in the lobby.
+              // The backend runs the clock only for a game that starts with
+              // two humans or more, which the helper says.
+              DropdownButtonFormField<int>(
+                key: const Key('turn-time-limit'),
+                initialValue: _create.turnTimeLimit,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: l10n.createPartyTurnTimerLabel,
+                  helperText: l10n.createPartyTurnTimerHelper,
+                  helperMaxLines: 4,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _create.busy
+                    ? null
+                    : (value) {
+                        if (value != null) _create.setTurnTimeLimit(value);
+                      },
+                items: [
+                  for (final seconds in turnTimeLimits)
+                    DropdownMenuItem(
+                      key: Key('turn-time-limit-$seconds'),
+                      value: seconds,
+                      child: Text(l10n.turnTimeLimitText(seconds)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                key: const Key('create-seats-hint'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.smart_toy_outlined,
+                    size: 18,
+                    color: AppColors.slate400,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.createPartySeatsHint,
+                      style: const TextStyle(color: AppColors.slate400),
+                    ),
+                  ),
+                ],
+              ),
+              if (_create.error != null) ...[
+                const SizedBox(height: 16),
+                ErrorBanner(message: partyErrorText(l10n, _create.error!)),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(
+                key: const Key('create-submit'),
+                onPressed: _create.busy ? null : _submit,
+                child: Text(
+                  _create.busy
+                      ? l10n.createPartySubmitting
+                      : l10n.createPartySubmit,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

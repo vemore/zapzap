@@ -9,6 +9,7 @@ import '../repositories/admin_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
 import 'admin_common.dart';
+import 'content_column.dart';
 import 'error_banner.dart';
 import 'stats_common.dart';
 
@@ -87,131 +88,135 @@ class _AdminStatisticsViewState extends State<AdminStatisticsView> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: _load,
-            child: ListView(
-              key: const Key('admin-stats-list'),
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                if (error != null) ...[
-                  ErrorBanner(
-                    key: const Key('admin-stats-error'),
-                    message: adminErrorText(l10n, error),
-                    onRetry: _load,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                StatTileGrid(
-                  key: const Key('admin-stats-cards'),
-                  tiles: [
-                    StatTile(
-                      key: const Key('admin-stats-users'),
-                      icon: Icons.people,
-                      label: l10n.adminStatsUsers,
-                      value: '${stats.totalUsers}',
-                      color: AppColors.amber400,
+            child: ContentColumn(
+              top: 12,
+              bottom: 24,
+              builder: (context, padding) => ListView(
+                key: const Key('admin-stats-list'),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: padding,
+                children: [
+                  if (error != null) ...[
+                    ErrorBanner(
+                      key: const Key('admin-stats-error'),
+                      message: adminErrorText(l10n, error),
+                      onRetry: _load,
                     ),
-                    StatTile(
-                      key: const Key('admin-stats-parties'),
-                      icon: Icons.sports_esports,
-                      label: l10n.adminStatsParties,
-                      value: '${stats.totalParties}',
-                      color: StatsColors.info,
-                    ),
-                    StatTile(
-                      key: const Key('admin-stats-rounds'),
-                      icon: Icons.adjust,
-                      label: l10n.adminStatsRounds,
-                      value: '${stats.totalRounds}',
-                      color: StatsColors.success,
-                    ),
-                    StatTile(
-                      key: const Key('admin-stats-completion'),
-                      icon: Icons.trending_up,
-                      label: l10n.adminStatsCompletion,
-                      // The backend does not round it.
-                      value: '${Formats.number(stats.completionRate)}%',
-                      color: StatsColors.zapzap,
-                    ),
+                    const SizedBox(height: 12),
                   ],
-                ),
-                const SizedBox(height: 16),
-                SectionCard(
-                  key: const Key('admin-stats-breakdown'),
-                  icon: Icons.donut_small,
-                  title: l10n.adminStatsBreakdown,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final (key, label, value, color) in [
-                        (
-                          'waiting',
-                          l10n.partyStatusWaiting,
-                          stats.waitingParties,
-                          AppColors.amber400,
-                        ),
-                        (
-                          'playing',
-                          l10n.partyStatusPlaying,
-                          stats.playingParties,
-                          StatsColors.success,
-                        ),
-                        (
-                          'finished',
-                          l10n.partyStatusFinished,
-                          stats.finishedParties,
-                          AppColors.slate400,
-                        ),
-                      ])
-                        Expanded(
-                          child: MiniStat(
-                            key: Key('admin-stats-$key'),
-                            label: label,
-                            value: '$value',
-                            color: color,
-                          ),
-                        ),
+                  StatTileGrid(
+                    key: const Key('admin-stats-cards'),
+                    tiles: [
+                      StatTile(
+                        key: const Key('admin-stats-users'),
+                        icon: Icons.people,
+                        label: l10n.adminStatsUsers,
+                        value: '${stats.totalUsers}',
+                        color: AppColors.amber400,
+                      ),
+                      StatTile(
+                        key: const Key('admin-stats-parties'),
+                        icon: Icons.sports_esports,
+                        label: l10n.adminStatsParties,
+                        value: '${stats.totalParties}',
+                        color: StatsColors.info,
+                      ),
+                      StatTile(
+                        key: const Key('admin-stats-rounds'),
+                        icon: Icons.adjust,
+                        label: l10n.adminStatsRounds,
+                        value: '${stats.totalRounds}',
+                        color: StatsColors.success,
+                      ),
+                      StatTile(
+                        key: const Key('admin-stats-completion'),
+                        icon: Icons.trending_up,
+                        label: l10n.adminStatsCompletion,
+                        // The backend does not round it.
+                        value: '${Formats.number(stats.completionRate)}%',
+                        color: StatsColors.zapzap,
+                      ),
                     ],
                   ),
-                ),
-                SectionCard(
-                  key: const Key('admin-stats-chart-card'),
-                  icon: Icons.bar_chart,
-                  title: l10n.adminStatsChartTitle(DailyGamesChart.span),
-                  child: days.every((d) => d.count == 0)
-                      ? Text(
-                          l10n.adminStatsChartEmpty,
-                          key: const Key('admin-stats-chart-empty'),
-                          style: const TextStyle(color: AppColors.slate400),
-                        )
-                      : DailyGamesChart(
-                          key: const Key('admin-stats-chart'),
-                          days: days,
-                        ),
-                ),
-                SectionCard(
-                  key: const Key('admin-stats-active'),
-                  icon: Icons.emoji_events,
-                  iconColor: AppColors.amber400,
-                  title: l10n.adminStatsMostActive,
-                  child: stats.mostActiveUsers.isEmpty
-                      ? Text(
-                          l10n.adminStatsNoActive,
-                          key: const Key('admin-stats-no-active'),
-                          style: const TextStyle(color: AppColors.slate400),
-                        )
-                      : Column(
-                          children: [
-                            for (final (i, user)
-                                in stats.mostActiveUsers.indexed)
-                              _ActiveUserRow(
-                                key: Key('admin-stats-user-${user.userId}'),
-                                rank: i + 1,
-                                user: user,
-                              ),
-                          ],
-                        ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    key: const Key('admin-stats-breakdown'),
+                    icon: Icons.donut_small,
+                    title: l10n.adminStatsBreakdown,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final (key, label, value, color) in [
+                          (
+                            'waiting',
+                            l10n.partyStatusWaiting,
+                            stats.waitingParties,
+                            AppColors.amber400,
+                          ),
+                          (
+                            'playing',
+                            l10n.partyStatusPlaying,
+                            stats.playingParties,
+                            StatsColors.success,
+                          ),
+                          (
+                            'finished',
+                            l10n.partyStatusFinished,
+                            stats.finishedParties,
+                            AppColors.slate400,
+                          ),
+                        ])
+                          Expanded(
+                            child: MiniStat(
+                              key: Key('admin-stats-$key'),
+                              label: label,
+                              value: '$value',
+                              color: color,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  SectionCard(
+                    key: const Key('admin-stats-chart-card'),
+                    icon: Icons.bar_chart,
+                    title: l10n.adminStatsChartTitle(DailyGamesChart.span),
+                    child: days.every((d) => d.count == 0)
+                        ? Text(
+                            l10n.adminStatsChartEmpty,
+                            key: const Key('admin-stats-chart-empty'),
+                            style: const TextStyle(color: AppColors.slate400),
+                          )
+                        : DailyGamesChart(
+                            key: const Key('admin-stats-chart'),
+                            days: days,
+                          ),
+                  ),
+                  SectionCard(
+                    key: const Key('admin-stats-active'),
+                    icon: Icons.emoji_events,
+                    iconColor: AppColors.amber400,
+                    title: l10n.adminStatsMostActive,
+                    child: stats.mostActiveUsers.isEmpty
+                        ? Text(
+                            l10n.adminStatsNoActive,
+                            key: const Key('admin-stats-no-active'),
+                            style: const TextStyle(color: AppColors.slate400),
+                          )
+                        : Column(
+                            children: [
+                              for (final (i, user)
+                                  in stats.mostActiveUsers.indexed)
+                                _ActiveUserRow(
+                                  key: Key('admin-stats-user-${user.userId}'),
+                                  rank: i + 1,
+                                  user: user,
+                                ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

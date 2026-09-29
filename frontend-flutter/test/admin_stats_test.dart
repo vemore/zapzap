@@ -9,6 +9,7 @@ import 'package:zapzap/widgets/admin_stats.dart';
 import 'admin_helpers.dart';
 import 'fixtures.dart';
 import 'history_helpers.dart' show phoneSize;
+import 'wide_screen_helpers.dart';
 
 /// A canvas that counts the bars (`drawRect`) and the grid lines, and
 /// ignores the rest (the text).
@@ -224,6 +225,34 @@ void main() {
         );
         expect(find.byKey(const Key('admin-stats-active')), findsOneWidget);
       });
+    }
+  });
+
+  group('wide screen', () {
+    for (final MapEntry(key: name, value: size) in wideScreens.entries) {
+      for (final scale in wideTextScales) {
+        testWidgets('the statistics tab lies in the content column at $name, '
+            'text x$scale', (tester) async {
+          await pumpStats(tester, size: size, textScale: scale);
+
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('admin-stats-cards')),
+            windowWidth: size.width,
+          );
+          await scrollTo(
+            tester,
+            find.byKey(Key('admin-stats-user-$vincentId')),
+            listKey: 'admin-stats-list',
+          );
+          expectInContentColumn(
+            tester,
+            find.byKey(const Key('admin-stats-active')),
+            windowWidth: size.width,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
   });
 }

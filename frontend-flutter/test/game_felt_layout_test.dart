@@ -298,4 +298,45 @@ void main() {
       AppColors.slate900,
     );
   });
+
+  // The wide board on a laptop (found evaluating the PWA at 1366x768,
+  // 2026-09-29): the hand and the moves took their whole height, and the
+  // felt kept what was left — too little for a played card over the pile,
+  // whose cards were cut at the felt's edge.
+  group('wide screen', () {
+    const sizes = [
+      Size(1366, 768),
+      Size(1280, 800),
+      Size(1920, 1080),
+      Size(800, 1280),
+    ];
+    for (final size in sizes) {
+      final name = '${size.width.toInt()}x${size.height.toInt()}';
+      for (final entry in boards.entries) {
+        for (final action in const ['play', 'draw']) {
+          testWidgets('${action == 'play' ? 'Jouer' : 'Piocher'} at $name, '
+              '${entry.key}: the whole felt shows, content and all', (
+            tester,
+          ) async {
+            await pumpGame(
+              tester,
+              board(
+                currentAction: action,
+                played: entry.value.played,
+                pile: entry.value.pile,
+              ),
+              size: size,
+              textScale: 1,
+            );
+
+            expect(shownRect(tester, felt), tester.getRect(felt));
+            expect(feltScrollExtent(tester), 0);
+            final fan = find.byType(CardFan);
+            expect(shownRect(tester, fan), tester.getRect(fan));
+            expect(tester.takeException(), isNull);
+          });
+        }
+      }
+    }
+  });
 }

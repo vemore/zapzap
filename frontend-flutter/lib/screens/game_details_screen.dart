@@ -11,6 +11,7 @@ import '../utils/player_name.dart';
 import '../utils/date_format.dart';
 import '../utils/navigation.dart';
 import '../widgets/async_section.dart';
+import '../widgets/content_column.dart';
 import '../widgets/history_rounds_table.dart';
 import '../widgets/history_standings.dart';
 import '../widgets/stats_common.dart';
@@ -79,24 +80,26 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
         future: _details!,
         errorMessage: (error) => _errorMessage(error, l10n),
         onRetry: _reload,
-        builder: (context, details) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _Summary(game: details.game),
-            SectionCard(
-              icon: Icons.leaderboard,
-              title: l10n.standingsTitle,
-              child: HistoryStandings(players: details.players),
-            ),
-            SectionCard(
-              icon: Icons.table_chart,
-              title: l10n.roundsTitle,
-              child: HistoryRoundsTable(
-                players: details.players,
-                rounds: details.rounds,
+        builder: (context, details) => ContentColumn(
+          builder: (context, padding) => ListView(
+            padding: padding,
+            children: [
+              _Summary(game: details.game),
+              SectionCard(
+                icon: Icons.leaderboard,
+                title: l10n.standingsTitle,
+                child: HistoryStandings(players: details.players),
               ),
-            ),
-          ],
+              SectionCard(
+                icon: Icons.table_chart,
+                title: l10n.roundsTitle,
+                child: HistoryRoundsTable(
+                  players: details.players,
+                  rounds: details.rounds,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -333,7 +333,9 @@ class _GameScreenState extends State<GameScreen> {
   Widget _tableArea({
     double cardWidth = CardSizes.tablePhone,
     double? drawPlayedWidth,
+    bool playedBeside = false,
   }) => GameTableArea(
+    playedBeside: playedBeside,
     cardsPlayed: _game.cardsPlayed,
     lastCardsPlayed: _game.lastCardsPlayed,
     lastAction: _game.lastAction,
@@ -432,7 +434,12 @@ class _GameScreenState extends State<GameScreen> {
             children: [
               // The felt fills the height the hand leaves, and scrolls
               // inside its own edge past it (`GameTableArea`).
-              Expanded(child: _tableArea(cardWidth: CardSizes.tableWide)),
+              Expanded(
+                child: _tableArea(
+                  cardWidth: CardSizes.tableWide,
+                  playedBeside: true,
+                ),
+              ),
               const SizedBox(height: 12),
               Flexible(child: _scroll(_hand())),
               const SizedBox(height: 12),

@@ -9,6 +9,7 @@ import '../repositories/admin_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/date_format.dart';
 import 'admin_common.dart';
+import 'content_column.dart';
 import 'error_banner.dart';
 
 /// The users tab of the admin screen, the port of
@@ -193,66 +194,70 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       children: [
         if (_loading) const LinearProgressIndicator(minHeight: 2),
         Expanded(
-          child: ListView(
-            key: const Key('admin-users-list'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              Text(
-                l10n.adminUsersCount(total),
-                key: const Key('admin-users-count'),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key('admin-users-search'),
-                controller: _search,
-                decoration: InputDecoration(
-                  hintText: l10n.adminUsersSearch,
-                  prefixIcon: const Icon(Icons.search),
-                  isDense: true,
-                  border: const OutlineInputBorder(),
+          child: ContentColumn(
+            top: 12,
+            bottom: 24,
+            builder: (context, padding) => ListView(
+              key: const Key('admin-users-list'),
+              padding: padding,
+              children: [
+                Text(
+                  l10n.adminUsersCount(total),
+                  key: const Key('admin-users-count'),
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-              ),
-              const SizedBox(height: 12),
-              if (error != null) ...[
-                ErrorBanner(
-                  key: const Key('admin-users-error'),
-                  message: adminErrorText(l10n, error),
-                  onRetry: _load,
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (users.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Text(
-                    query.isEmpty
-                        ? l10n.adminUsersEmpty
-                        : l10n.adminUsersNoMatch,
-                    key: const Key('admin-users-empty'),
-                    textAlign: TextAlign.center,
+                const SizedBox(height: 8),
+                TextField(
+                  key: const Key('admin-users-search'),
+                  controller: _search,
+                  decoration: InputDecoration(
+                    hintText: l10n.adminUsersSearch,
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
-              for (final user in users)
-                AdminUserTile(
-                  key: Key('admin-user-${user.id}'),
-                  user: user,
-                  isSelf: user.id == myId,
-                  busy: _busy == user.id,
-                  onToggleAdmin: _busy == null
-                      ? () => _toggleAdmin(user)
-                      : null,
-                  onDelete: _busy == null ? () => _delete(user) : null,
-                ),
-              if (total > AdminUsersView.pageSize)
-                AdminPager(
-                  keyPrefix: 'admin-users',
-                  pageSize: AdminUsersView.pageSize,
-                  offset: _offset,
-                  total: total,
-                  onPage: _loading ? null : _goTo,
-                ),
-            ],
+                const SizedBox(height: 12),
+                if (error != null) ...[
+                  ErrorBanner(
+                    key: const Key('admin-users-error'),
+                    message: adminErrorText(l10n, error),
+                    onRetry: _load,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (users.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Text(
+                      query.isEmpty
+                          ? l10n.adminUsersEmpty
+                          : l10n.adminUsersNoMatch,
+                      key: const Key('admin-users-empty'),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                for (final user in users)
+                  AdminUserTile(
+                    key: Key('admin-user-${user.id}'),
+                    user: user,
+                    isSelf: user.id == myId,
+                    busy: _busy == user.id,
+                    onToggleAdmin: _busy == null
+                        ? () => _toggleAdmin(user)
+                        : null,
+                    onDelete: _busy == null ? () => _delete(user) : null,
+                  ),
+                if (total > AdminUsersView.pageSize)
+                  AdminPager(
+                    keyPrefix: 'admin-users',
+                    pageSize: AdminUsersView.pageSize,
+                    offset: _offset,
+                    total: total,
+                    onPage: _loading ? null : _goTo,
+                  ),
+              ],
+            ),
           ),
         ),
       ],
