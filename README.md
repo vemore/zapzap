@@ -405,7 +405,8 @@ dart format lib test && flutter analyze && flutter test
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login and get JWT token
 - `POST /api/auth/guest` - Create a guest account (random `Guest_` name and password,
-  answered once); rate limited: 5 per client address and 300 in all per hour
+  answered once); rate limited: 5 per client address (an IPv6 one by its /64) and 300 in
+  all per hour
 - `DELETE /api/auth/me` - Delete your own account (confirmed by the password, or a Google token)
 - `PATCH /api/auth/me` - Change your username (answers a new token)
 - `PUT /api/auth/me/password` - Change your password (confirmed as the deletion is; a Google
