@@ -1,8 +1,8 @@
 # Testing
 
 > Scope: every test suite in the repo, how to run it, its current state, and what CI (`.github/workflows/ci.yml`) runs, skips and why — including the `scope` job.
-> Related: [[Backend]] · [[NativeEngine]] · [[Frontend]] · [[Architecture]]
-> Updated: 2026-09-28
+> Related: [[Backend]] · [[NativeEngine]] · [[FrontendFlutter]] · [[Architecture]]
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -16,12 +16,9 @@
 | Rust backend turn timer tests (`zapzap-rust/tests/turn_timer_tests.rs`, 17 tests on 2026-09-28: the turn time limit, ejection, `playerReplaced`, the loss, the ejected players' ranking, one human runs no clock, the deadline in the state, the ejection's compare-and-swap, a restart's downtime, the last human's party; a `ManualClock`, no waiting) | `cargo test --test turn_timer_tests` | green | yes |
 | Native engine (`native/src`, 98 `#[test]`) | `cd native && cargo test` | green (2026-09-23) | yes, nothing skipped |
 | Native clippy | `cargo clippy --all-targets -- -D warnings` | clean (2026-09-23) | yes |
-| Frontend vitest (`frontend/src/**/__tests__`) | `cd frontend && npx vitest run` | green since 2026-09-23 (294 tests, 21 files) | yes |
-| Frontend lint | `npm run lint` | green since 2026-09-23 (0 errors, 9 `react-hooks/exhaustive-deps` warnings) | yes, and in the commit hook |
-| Frontend build | `npm run build` | green | yes |
 | Flutter client (`frontend-flutter/test`) | `cd frontend-flutter && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` | green | yes, with `build web`, `build apk --debug` and `build apk --release`; the format check and the analyzer also in the commit hook. `test/gis_script_guard_test.dart` runs headless Chrome (`CHROME_EXECUTABLE`, else `google-chrome` on the PATH, the runner's) |
 | Flutter end to end (`frontend-flutter/integration_test/`) | `scripts/flutter_e2e.sh` (the Rust backend on a fresh database, then `flutter drive`), or by hand, below | green (2026-09-24) | yes (`flutter-e2e` job) |
-| Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes; then uid 1000, the CA store and the size under 40 MB), `docker build frontend`, `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, the proxy image (`nginx/Dockerfile`) and `nginx -t` in it, `docker compose config` of both compose files | green | yes |
+| Docker images and the proxy config | `scripts/backend_image_smoke.sh` (the production compose's Rust `backend`, Bedrock feature, built and started until its health check passes; then uid 1000, the CA store and the size under 40 MB), `docker build frontend-flutter` + `scripts/pwa_image_smoke.sh`, the proxy image (`nginx/Dockerfile`), `nginx -t` in it and `scripts/proxy_redirects_smoke.sh` (its routes, below), `docker compose config` of both compose files | green | yes |
 
 ### Rust backend (`zapzap-rust/`)
 - Toolchain pinned to `1.92` with rustfmt + clippy — `zapzap-rust/rust-toolchain.toml:3-4`. The same version is used by CI (`dtolnay/rust-toolchain@1.92`, `rust` job) and the image's builder tag.
@@ -37,13 +34,6 @@
 - `native/package.json` `"test": "cargo test"`; `npm run build` = `napi build --platform --release` (needed only for `scripts/train-native.js` and `scripts/genetic-optimize-thibot.js`, not for tests).
 - `strategies::thibot::tests::test_zapzap_decision` was red until 2026-09-23: the test, not the strategy, was wrong. Its `GameState::new(4)` left every opponent with an empty hand, i.e. 0 points, which counteracts any call (GAME_RULES.md: lower *or equal*), so Thibot rightly refused a 3-point ZapZap. The fixture now deals the opponents five cards.
 - CI gate (`native` job): `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (no `--locked`: `native/Cargo.lock` is untracked). The two `erasing_op` findings were `0 * 45 + i` / `i * 128 + 0` in a diagnostic test that deliberately indexes neuron 0, not bugs.
-
-### Frontend (`frontend/`)
-- vitest config inside `frontend/vite.config.js:19-30` (`happy-dom`, globals, setup `src/test/setup.js` mocking `EventSource` and `localStorage`). Details in [[Frontend]].
-- Component and flow tests render the real components against a mocked `services/api` (`apiClient.get`/`post`), a mocked `useAuth` or a real `AuthProvider` over a mocked `services/auth`, and a mocked `useSSE`; `src/test/gameState.js` builds the `GET /game/:partyId/state` body the `GameBoard` and `GameFlow` tests serve.
-- A mocked state load resolves outside `act()`: React commits the DOM, then runs the passive effects (`useEffect`) in a later task, so a `findBy…` can return and a `fireEvent` land in between, first under CI load. A component must not undo, in an effect, what a click right after the first render did: `PlayerHand` resets its selection on a hand-size change during render (`frontend/src/components/Game/PlayerHand.jsx`), and `PlayerHand.test.jsx` › "should keep a card clicked as soon as the hand appears" reproduces the window without load. `fireEvent` itself is wrapped in `act()`, so an assertion right after it sees the synchronous state it set.
-- Lint: `npm run lint` exits 0; the 9 remaining findings are `react-hooks/exhaustive-deps` warnings, which do not fail it. Rule set and its JSX exceptions at `frontend/eslint.config.js`.
-- CI gate (`frontend` job): Node 24, `npm ci`, `npm run lint`, `npx vitest run`, `npm run build`. The job keeps its `name:` "Frontend — build", which branch protection pins.
 
 ### Flutter end to end (`frontend-flutter/integration_test/`)
 - `integration_test/play_round_test.dart`: the real client, no fake and no fixture, against
@@ -107,8 +97,8 @@
 | `scope` | always | self-test, then flags | 5 min |
 | `rust` | `needs.scope.outputs.rust != 'false'` | fmt, clippy -D warnings (default features, then `--features bedrock`), unit and integration tests | 30 min |
 | `native` | `native != 'false'` | fmt, clippy -D warnings, tests | 30 min |
-| `frontend` | `frontend != 'false'` | npm ci, lint, vitest, build | 15 min |
-| `image` | `image != 'false'` | `scripts/build_privacy_page.py --check` with pandoc at the version the script pins (the release `.deb` from GitHub): a committed `nginx/privacy.html` stale against `privacy_policy.md` fails the job ([[Deployment]] § The privacy policy); the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it; `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (the root compose's `backend` service — the production image, `CARGO_FEATURES=bedrock` — built by `docker buildx bake` from that compose file with a GitHub Actions layer cache, `type=gha,scope=zapzap-backend-image,mode=max`, on a docker-container builder of its own (`docker/setup-buildx-action` with `use: false`, so the job's plain `docker build`s keep the default builder; `crazy-max/ghaction-github-runtime` hands the cache token to the script): 8m51s cold, the cache export included, 19 s on an unchanged `zapzap-rust/` (#141); without the `SMOKE_CACHE_*` variables the script runs `docker compose build backend`; then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend:ci frontend`, `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
+| `frontend` | never (`if: ${{ false }}`): the React client is removed, the job only keeps a required check name | — | — |
+| `image` | `image != 'false'` | `scripts/build_privacy_page.py --check` with pandoc at the version the script pins (the release `.deb` from GitHub): a committed `nginx/privacy.html` stale against `privacy_policy.md` fails the job ([[Deployment]] § The privacy policy); the proxy image `docker build -t zapzap-proxy:ci nginx`, then `nginx -t` in it, then `scripts/proxy_redirects_smoke.sh` (the image between a stub backend and a stub PWA on a Docker network of its own: each URL of the removed React client answers a relative 301 to its PWA page, query kept, and `/api/`, `/suscribeupdate`, `/app/`, `/privacy`, `/privacy.html`, `/nginx-health` answer as before; [[Deployment]] § The URLs of the removed React client); `docker compose config` of the root compose file and of `docker-compose.prod.yml` (each valid with a `JWT_SECRET`, refused without one); `scripts/backend_image_smoke.sh` (the root compose's `backend` service — the production image, `CARGO_FEATURES=bedrock` — built by `docker buildx bake` from that compose file with a GitHub Actions layer cache, `type=gha,scope=zapzap-backend-image,mode=max`, on a docker-container builder of its own (`docker/setup-buildx-action` with `use: false`, so the job's plain `docker build`s keep the default builder; `crazy-max/ghaction-github-runtime` hands the cache token to the script): 8m51s cold, the cache export included, 19 s on an unchanged `zapzap-rust/` (#141); without the `SMOKE_CACHE_*` variables the script runs `docker compose build backend`; then the container on an empty scratch database, own project and container name, until its compose health check (busybox `wget`) is `healthy`; then uid 1000 asserted for the container and for the image's own user, the system CA store present, and the image under 40 MB); `docker build -t zapzap-frontend-flutter:ci frontend-flutter`, then `scripts/pwa_image_smoke.sh` (35 checks on the running PWA image: `/app/`, the deep-link fallback, a missing file's 404, the manifest, the icons and their content types, the exact cache headers, CanvasKit served locally) | 60 min |
 | `hooks` | `hooks != 'false'` | `scripts/hooks_selftest.sh` ([[Hooks]]), `scripts/deploy_nas_selftest.sh` ([[Deployment]]), `scripts/wiki_lint_selftest.sh` (the wiki lint on a fixture wiki; the lint itself is a report, not a gate: [[Documentation]] § Wiki lint), `scripts/wip_selftest.sh` (`scripts/wip.sh refine` on a fixture `wip/`: section spellings, the per-Area `todo/` count), `scripts/delivery_metrics_selftest.sh` (a throwaway history with a known answer, [[ParallelDelivery]] § Measuring delivery), `evals/selftest.sh` (each agent-eval check against its untouched tree, `good.sh` and `bad.sh`, no agent: [[AgentEvals]]); JDK 17 and `astral-sh/setup-uv`, then pytest on `scripts/test_play_publish.py` (a fake Google service) and `scripts/test_verify_aab.py` (fake bundles signed by throwaway keystores, `VERIFY_AAB_REQUIRE_TOOLS=1` so a missing JDK fails rather than skips) ([[Release]]); pytest on `scripts/test_arb_keys.py` (the ARB checker on fixture files, and the committed ARB files' key sets: [[FlutterI18n]]), and on `scripts/test_agent_metrics.py` (synthetic transcripts) | 10 min |
 | `flutter` | `flutter != 'false'` | JDK 17 (`actions/setup-java`, Gradle cache), Flutter 3.47.2 (`subosito/flutter-action@v2`, pub cache), `pub get --enforce-lockfile`, `gen-l10n`, `analyze`, `test`, `build web --base-href /app/ --no-web-resources-cdn` (the flags the PWA image uses), `build apk --debug` (runner's Android SDK, `platforms;android-36` and `build-tools;36.0.0` installed by `sdkmanager`, Gradle heap capped at 4 GB), uploaded as the artifact `app-debug` (14 days); `build apk --release` (R8, and the debug-key fallback since CI has no `key.properties`); `build appbundle --release`, which must fail naming `key.properties` | 30 min |
 | `flutter-e2e` | `e2e != 'false'` | Rust 1.92 (`Swatinem/rust-cache` on `zapzap-rust`), Flutter 3.47.2, `cargo build --locked` in `zapzap-rust`, `pub get --enforce-lockfile`, `gen-l10n`, `scripts/flutter_e2e.sh` (the runner's Chrome and chromedriver) | 30 min |
@@ -120,7 +110,9 @@
   reporting, and every pull request is `BLOCKED` for ever with no failing check to show
   why. What a job grew to do belongs in a step name or a comment, not in `name:`. This bit
   #36, whose `image` job had been renamed to mention the Flutter PWA, and #41, which renamed
-  `native`. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
+  `native`. A job that lost its purpose keeps its name too: `Frontend — build` stays, always
+  skipped, since the React client went (2026-09-29), until the user drops it from the
+  required checks; then the job can go. A comment above each pinned `name:` in `ci.yml` repeats the warning, and the
   ship-parallel agent prompt forbids the rename. The
   `flutter` job's name and the `flutter-e2e` job's `Flutter end to end — a round against
   the Rust backend` are not pinned: adding them to branch protection is the user's
@@ -132,7 +124,7 @@
 
 ### The scope job (`scripts/ci_scope.sh`)
 - On push/dispatch every flag is `true` (step "Which jobs this change needs"). On a PR it lists changed files with `gh api .../pulls/$PR/files --paginate`, including `previous_filename` so renames count on both sides; ≥ 3000 files → everything; otherwise pipes the list into `scripts/ci_scope.sh` — all in that step.
-- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= frontend= image= hooks= flutter= e2e=`, in the order `ci.yml` declares the jobs (`e2e` last: the `flutter-e2e` job). Per path, first match wins; the last case is the catch-all:
+- `scripts/ci_scope.sh` is a pure function of stdin paths → `rust= native= image= hooks= flutter= e2e=`, in the order `ci.yml` declares the jobs (`e2e` last: the `flutter-e2e` job). Per path, first match wins; the last case is the catch-all:
 
 | Pattern | Flags |
 |---|---|
@@ -141,7 +133,6 @@
 | `zapzap-rust/*` | rust, image, e2e (production's backend: its image, a round played through the Flutter client) |
 | `data/*` | rust (bot params; `zapzap-rust/data` → `../data`) |
 | `native/*` | native |
-| `frontend/*` | frontend, image |
 | `frontend-flutter/*` | flutter, image (the PWA image is built from it, [[Deployment]]), e2e |
 | `nginx/*` | image |
 | `.claude/hooks/*`, `.claude/settings.json`, the scripts `hooks_selftest.sh` drives, `scripts/deploy_nas.sh`, its self-test and `deploy.env.example`, `rebuild.sh`, `scripts/wiki_lint.sh`, its self-test and `scripts/lib/*`, `scripts/wip.sh` and `scripts/wip_selftest.sh`, `evals/*` (not its `*.md` prompts) | hooks |
@@ -149,22 +140,23 @@
 | `scripts/delivery_metrics.sh`, `scripts/agent_metrics.py`, their self-test and tests | hooks |
 | `scripts/arb_keys.py`, `scripts/test_arb_keys.py` | hooks |
 | `docker-compose.prod.yml` | image, hooks |
-| `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh` | image |
+| `scripts/pwa_image_smoke.sh`, `scripts/backend_image_smoke.sh`, `scripts/proxy_redirects_smoke.sh` | image |
 | `scripts/flutter_e2e.sh` | e2e |
 | `store_listing/*` (the Play Store listing), `scripts/generate_store_graphics.py`, `scripts/capture_store_screenshots.{sh,js}`, `scripts/compose_store_screenshots.py` | flutter (`frontend-flutter/test/store_listing_test.dart` checks the listing against Play's limits; the generators run by hand, `store_listing/README.md`) |
 | root `package.json`, `package-lock.json` (Playwright only, [[ParallelDelivery]]) | none |
-| anything else (`.github/`, `.claude/`, `scripts/`, new dirs) | everything |
+| anything else (`.github/`, `.claude/`, `scripts/`, new dirs, the removed frontend/) | everything |
 
-- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n f i h fl e2e>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
+- `scripts/ci_scope_selftest.sh` pins the classification with `check "<r n i h fl e2e>" <paths...>` cases and runs first in the `scope` job (step "Scope classifier self-test"): a broken classifier fails `scope`, which makes every job run.
 - Try locally: `git diff --name-only origin/master...HEAD | scripts/ci_scope.sh` (`ci_scope.sh:14`); `scripts/ci_scope_selftest.sh`.
 
 ### Tracked gaps (local wip entries, described)
 - Bot strategies with identical `if/else` branches (`vince_bot.rs` thresholds, `thibot.rs` `select_hand_size`) currently silenced with `#[allow(clippy::if_same_then_else)]` to keep the Rust clippy gate green.
 
 ### Pre-commit gate
-- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `npm run lint` and `npm run build` in `frontend`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
+- `.claude/hooks/guard-bash.sh` runs the fast static half of CI before a commit, chosen by path: `cargo fmt --check` + clippy in `zapzap-rust`, `cargo fmt --check` + clippy in `native`, `dart format --set-exit-if-changed` over `lib test` and `flutter analyze` (after an offline `pub get` and `gen-l10n`) in `frontend-flutter`. The test suites and the Flutter builds stay in CI. Table and setup refusals: [[Hooks]].
 
 ## Decisions & History
+- **2026-09-29 (chore/remove-react-client): the React client is removed, and its suites with it.** vitest (294 tests), the lint and build gates, the `frontend` scope flag and the React image build of the `image` job are gone; a path under frontend/ now runs everything. The `frontend` job stays with its pinned `name:`, skipped, until branch protection drops it. The proxy's routes gained a test of their own, `scripts/proxy_redirects_smoke.sh`, in the `image` job: a test on the real image rather than a copy of the conf, since the redirects are the only thing left of the client. The React suites' notes (the flaky-test fix of 2026-09-24, the lint and vitest made green on 2026-09-23) are in this page at `055c288`.
 - 2026-09-25 (chore/store-listing): the Play Store listing's limits are a Dart test in the `flutter` job (`frontend-flutter/test/store_listing_test.dart`), not a new CI job or step: `ci.yml` was another pull request's in parallel, and a new job's name would have had to join the branch protection. `scripts/ci_scope.sh` sends `store_listing/*` and its generators to `flutter` instead of the catch-all.
 - 2026-09-25 (fix/flutter-e2e-round-bounded): the Flutter end-to-end round no longer runs past its 5 min at random (#99, #102, #107, each green on rerun). Since the Rust backend honours `BOT_ACTION_DELAY_MS` (1000 ms by default) each bot turn took seconds, and the driver played the first card of its hand, whose points only drifted (47 after 58 turns on #102). The script starts the bots without a pause, and the driver deals four cards and plays the suggestion taking the most points off, so the round is held to a move budget rather than to a longer timeout.
 - **2026-09-25 (chore/remove-node-backend): the Node backend is removed, and its suites with it.** The jest suites (`tests/unit`, `tests/integration`), the Node vs Rust parity suite (`tests/parity`), the Playwright suite (`tests/e2e`), the `node` and `parity` CI jobs, their scope flags and the Node image build of the `image` job are gone; a path under the former Node directories now runs everything. They can still be read at `232f168` (the last master commit holding `src/`, e.g. `git show 232f168:tests/parity/parity.test.js`) and `0bfd407` (the last commit whose `docker-compose.yml` builds the Node backend, the former rollback target).
@@ -176,7 +168,6 @@
 - The legacy Node suites were excluded from CI (`scripts/ci_scope.sh`) on the premise that the Rust backend is the target. Production still ran Node, so its changes reached production ungated.
 - **2026-09-23: the Node backend is gated** (user decision). #39 went green and then failed to build on the NAS (npm 10 in `node:20-alpine` rejected a lockfile npm 11 accepted): the `image` job now builds the root `Dockerfile`. jest was 59/314 red on master, every failure test drift, none a bug in `src/`: messages translated to French, `handSize` moved out of `PartySettings` to a per-round choice, `JoinParty` no longer auto-starting a full party (commit 9712a26: the owner starts it), a single card being a legal play, mocks missing `updateLastLogin`/`recordGameAction`, and the repository suites opening the older `connection.js` whose schema lacks `users.user_type`. The tests were realigned with the code, none deleted or skipped, and the `node` job runs them. `deploy.sh` and `rebuild.sh` were classified as `hooks`, so a change to them no longer rebuilds every image.
 - 2026-09-23 (fix/rust-api-schema): `--tests` joined the `rust` job once the backend created its own schema; `api_tests` had also caught `POST /api/party` without `name` answering 422 instead of Node's 400 `MISSING_PARTY_NAME`, fixed in the handler rather than in the test.
-- **Frontend lint and vitest made green and gated (2026-09-23).** The 122 red tests were written against an older UI: English labels (the auth forms are French now), class-name hooks (`.player-card`, `.player-row`) that no longer exist, a prop-driven `GameBoard` that became the `/game/:partyId` route loading its own state, `ActionButtons`' `onDraw` split into `onDrawFromDeck`/`onDrawFromDiscard`, and a hand size that moved from party creation to `HandSizeSelector`. They were rewritten against the current components with their intent kept; the five counteract assertions were aligned on `GAME_RULES.md`'s `hand + (active players − 1) × 5`, which the code already applied. Only the three `CreateParty` hand-size tests were dropped (the field is gone), replaced by `HandSizeSelector.test.jsx`.
 - **2026-09-24 (test/backend-parity): the Rust backend is compared with the Node one in CI.**
   The switch to Rust needs to know every way Rust answers differently from production. The
   user decided: Node is the reference except where it is buggy (a 500 on a client error,
@@ -203,15 +194,6 @@
   and master): a backend change that breaks the client shows on master, and the parity
   suite covers the HTTP contract on every backend change. A deliberately failing assertion
   turned the job red before merge (the pull request cites the run).
-- **2026-09-24 (fix/react-flaky-tests): two React flakes were one component bug.** The
-  GameFlow full turn posted `cardIds: [13]` instead of `[0, 13]` (CI runs 35871008309,
-  36035892492) and GameBoard's selection test saw A♠ unselected (36021063517): the first
-  card clicked was lost. `PlayerHand` cleared its selection in a `useEffect` on
-  `hand.length`; after a load rendered outside `act()`, that mount effect could run after
-  the first click and wipe it (seen with a sequence counter: click, reset, click). The
-  reset moved into render, which runs before any click can; raising timeouts would not
-  have helped, since the lost click never comes back. Reproduced with 16 vitest processes
-  pinned to one CPU (`taskset -c 0`); 50 runs in a row of each file pass that way since.
 - **2026-09-24 (chore/switch-prod-to-rust): production runs the Rust backend, so CI tests the
   image production runs.** The `image` job used to build `zapzap-rust/` without the Bedrock
   feature, which is not what the root compose builds; it now builds the compose service

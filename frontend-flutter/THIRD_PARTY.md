@@ -45,5 +45,4 @@ Downloaded 2026-09-23 (61 589 and 29 523 bytes) and modified:
   0.02 % of pixels.
 
 Nothing else is changed: colours, drawing and the "JOKER" indices are the originals'. The
-same two files are shipped by the React client as `frontend/public/joker-red.svg` and
-`joker-black.svg` (`frontend/THIRD_PARTY.md`).
+React client, removed on 2026-09-29, shipped the same two files.

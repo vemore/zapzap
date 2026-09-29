@@ -4,7 +4,7 @@
 > agent configuration changes — what a case is, how a run is isolated, how to run a case
 > for real, when, and what it costs.
 > Related: [[Hooks]] · [[Documentation]] · [[ParallelDelivery]] · [[Testing]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -60,8 +60,7 @@ commit; `scripts/worktree_setup.sh` per `SETUP`; then `claude -p` with `evals/pr
 + the prompt, `--permission-mode dontAsk`, `--setting-sources project` (the project's
 configuration, hooks included, is what is under test, not the user's), a closed
 `--allowedTools` list (read, edit, `git add/mv/rm/commit`, `scripts/wip.sh list|themes`,
-`cargo fmt|clippy|test --manifest-path zapzap-rust/Cargo.toml`, `npm --prefix frontend run`,
-`dart format`) and a `--disallowedTools` list (`git push`, `gh`, `git
+`cargo fmt|clippy|test --manifest-path zapzap-rust/Cargo.toml`, `dart format`) and a `--disallowedTools` list (`git push`, `gh`, `git
 remote/config/fetch/switch/worktree/reset`, `scripts/deploy_nas.sh`, network tools,
 sub-agents). As a second fence the agent's environment has no GitHub credentials and a
 `remote.origin.pushurl` pointing at a missing directory; `run.sh` fails a case whose branch
@@ -97,7 +96,7 @@ about 0.25-0.35 USD per docs-sized case on the default model): `docs-only-wiki-f
 0.3 USD; `out-of-scope-finding` about 0.4 USD plus the cargo warm-up of the setup and the
 commit hook's clippy (minutes, no money); `rule-change-golden-hand-size` the most, about
 1-2 USD — the rule is restated in the Rust backend, `GAME_RULES.md`, `README.md`, several
-wiki pages, the React selector and the ten ARB files, and the setup is a full
+wiki pages and the ten ARB files, and the setup is a full
 `scripts/worktree_setup.sh`. The 3 USD budget caps any runaway.
 
 ### Runs

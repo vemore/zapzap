@@ -1,7 +1,7 @@
 //! Which browser origins the API answers cross-origin (`ALLOWED_ORIGINS`).
 //!
-//! Both production clients are same-origin (the React client on `/`, the Flutter PWA under
-//! `/app/`), and the Android app is no browser: it sends no `Origin`. CORS only decides
+//! The production web client is same-origin (the Flutter PWA under `/app/`), and the
+//! Android app is no browser: it sends no `Origin`. CORS only decides
 //! whether a page of *another* site may read the answers, so production names its own
 //! origin and nothing else (`docker-compose.prod.yml`). Unset, every origin is answered, as
 //! a development server needs (the Flutter web client on its own port).

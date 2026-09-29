@@ -9,7 +9,8 @@
 
 ### The game board (`screens/game_screen.dart`, `providers/game_provider.dart`, `widgets/game_*.dart`)
 
-The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,TableArea,PlayerHand,ActionButtons,HandSizeSelector}.jsx`.
+Ported from the React client's `components/Game/{GameBoard,PlayerTable,TableArea,PlayerHand,ActionButtons,HandSizeSelector}.jsx`
+(removed on 2026-09-29, [[Frontend]]); "React" below names that reference.
 
 - **`GameProvider`**, built and disposed by the screen as the lobby's providers are:
   `GET /game/:id/state`, then the event stream filtered on `partyId` — `play`, `draw`,
@@ -159,7 +160,7 @@ The React counterparts are `frontend/src/components/Game/{GameBoard,PlayerTable,
 
 ### The end of a round and of the game (`widgets/game_round_end.dart`)
 
-The port of `frontend/src/components/Game/RoundEnd.jsx`, fed by `GameBoard.jsx:374-400`.
+The port of the React client's `components/Game/RoundEnd.jsx`, fed by its `GameBoard.jsx`.
 `GameScreen._roundOver` builds it from `GameState` alone — never from the answer of
 `zapzap`, whose `scores` were the round's own points on Rust before 2026-09-24 and are the running
 totals since (API layer, [[FrontendFlutter]]). It is the `finished` mode of the board, not a route: the phase is

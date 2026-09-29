@@ -54,9 +54,9 @@ commit '2026-01-02T10:00:00' 'feat: a (#1)' frontend-flutter/lib/a.dart:100 \
 commit '2026-01-02T20:00:00' 'fix: a (#2)' frontend-flutter/lib/a.dart:3
 commit '2026-01-03T10:00:00' 'docs: readme (#3)' README.md:50 .llmwiki/X.md:5     # size 0, not deployed
 commit '2026-01-05T10:00:00' 'fix(api): b (#4)' zapzap-rust/src/b.rs:20 zapzap-rust/tests/b.rs:30
-commit '2026-01-06T10:00:00' 'feat: c (#5)' frontend/src/c.jsx:580 \
+commit '2026-01-06T10:00:00' 'feat: c (#5)' frontend/c.jsx:580 \
     frontend-flutter/lib/l10n/app_fr.arb:20 frontend-flutter/lib/l10n/app_de.arb:20  # its fix comes after 72 h
-commit '2026-01-09T10:00:00' 'fix: c (#6)' frontend/src/c.jsx:2
+commit '2026-01-09T10:00:00' 'fix: c (#6)' frontend/c.jsx:2
 commit '2026-01-14T10:00:00' 'chore: ci (#7)' .github/ci.yml:1600
 # After the window: a fix within 48 h of #7, which still makes #7 rework.
 commit '2026-01-15T12:00:00' 'fix: ci (#8)' .github/ci.yml:1

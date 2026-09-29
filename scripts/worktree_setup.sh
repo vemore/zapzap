@@ -2,13 +2,11 @@
 
 # ZapZap - make a git worktree ready to build, test and commit.
 #
-# A worktree is a fresh checkout: no node_modules, no frontend-flutter/.dart_tool, and
-# none of the untracked local files that only the main checkout holds. Without this, the
-# frontend and Flutter gates of the commit hook refuse every commit for a reason
-# unrelated to the change.
+# A worktree is a fresh checkout: no frontend-flutter/.dart_tool, and none of the
+# untracked local files that only the main checkout holds. Without this, the Flutter gate
+# of the commit hook refuses every commit for a reason unrelated to the change.
 #
 # Usage: scripts/worktree_setup.sh [worktree dir]   (default: the current repository)
-#        --no-frontend  skip `npm ci` in frontend/
 #        --no-rust      skip the cargo warm-up of zapzap-rust/
 #        --no-flutter   skip `flutter pub get` in frontend-flutter/
 #        --deploy       link the main checkout's .env and scripts/deploy.env (the deploy
@@ -22,20 +20,18 @@
 # commit hook does, so a worktree does not rebuild every dependency.
 #
 # While it runs, the worktree carries a `.zapzap-setup-in-progress` marker and
-# `scripts/cleanup_local.sh` refuses to remove a worktree that has one. A failed npm or
-# cargo step leaves the marker on purpose; rerun this script, or remove it once judged
+# `scripts/cleanup_local.sh` refuses to remove a worktree that has one. A failed cargo
+# step leaves the marker on purpose; rerun this script, or remove it once judged
 # stale. A failed flutter step clears it and names the command to rerun.
 
 set -euo pipefail
 
-frontend=1
 rust=1
 flutter=1
 LOCAL_ONLY=()
 dir=""
 for arg in "$@"; do
     case "$arg" in
-        --no-frontend) frontend=0 ;;
         --no-rust) rust=0 ;;
         --no-flutter) flutter=0 ;;
         --deploy) LOCAL_ONLY+=(.env scripts/deploy.env) ;;
@@ -65,10 +61,6 @@ if [ "$TREE" != "$MAIN" ]; then
             echo "linked $file"
         fi
     done
-fi
-
-if [ "$frontend" = 1 ]; then
-    npm ci --prefix frontend --no-audit --no-fund
 fi
 
 if [ "$rust" = 1 ] && command -v cargo >/dev/null 2>&1; then

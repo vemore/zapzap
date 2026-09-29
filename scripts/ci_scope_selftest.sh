@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ZapZap - self-test of scripts/ci_scope.sh. Each case: the changed paths, then
-# the expected flags as rust native frontend image hooks flutter e2e (1 = true).
+# the expected flags as rust native image hooks flutter e2e (1 = true).
 
 set -uo pipefail
 
@@ -9,7 +9,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fail=0
 n=0
 
-check() {  # expected "r n f i h fl e2e", then paths
+check() {  # expected "r n i h fl e2e", then paths
     local expected="$1"; shift
     local got
     got=$(printf '%s\n' "$@" | "$HERE/ci_scope.sh" | sed 's/.*=//' | sed 's/true/1/;s/false/0/' | tr '\n' ' ' | sed 's/ $//')
@@ -20,68 +20,68 @@ check() {  # expected "r n f i h fl e2e", then paths
     fi
 }
 
-check "0 0 0 0 0 0 0" "README.md"
-check "0 0 0 0 0 0 0" ".llmwiki/Api.md" "CLAUDE.md"
-check "0 0 0 0 0 0 0" ".claude/skills/ship-parallel/SKILL.md"
-check "1 0 0 1 0 0 1" "zapzap-rust/src/main.rs"
-check "1 0 0 1 0 0 1" "zapzap-rust/Cargo.lock"
-check "1 0 0 0 0 0 0" "data/thibot_genetic_params.json"
-check "0 1 0 0 0 0 0" "native/src/headless_engine.rs"
-check "0 0 1 1 0 0 0" "frontend/src/App.jsx"
-check "0 0 0 1 0 0 0" "nginx/nginx.conf"
-check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh"
-check "0 0 0 0 1 0 0" "rebuild.sh"
-check "0 0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "scripts/deploy.env.example" "rebuild.sh" "scripts/hooks_selftest.sh" "scripts/generate_keystore.sh"
+check "0 0 0 0 0 0" "README.md"
+check "0 0 0 0 0 0" ".llmwiki/Api.md" "CLAUDE.md"
+check "0 0 0 0 0 0" ".claude/skills/ship-parallel/SKILL.md"
+check "1 0 1 0 0 1" "zapzap-rust/src/main.rs"
+check "1 0 1 0 0 1" "zapzap-rust/Cargo.lock"
+check "1 0 0 0 0 0" "data/thibot_genetic_params.json"
+check "0 1 0 0 0 0" "native/src/headless_engine.rs"
+# The React client is gone: a path under frontend/ is unclassified, so everything runs.
+check "1 1 1 1 1 1" "frontend/package.json"
+check "0 0 1 0 0 0" "scripts/proxy_redirects_smoke.sh"
+check "0 0 1 0 0 0" "nginx/nginx.conf"
+check "0 0 0 1 0 0" "scripts/deploy_nas.sh"
+check "0 0 0 1 0 0" "rebuild.sh"
+check "0 0 0 1 0 0" "scripts/deploy_nas.sh" "scripts/deploy_nas_selftest.sh" "scripts/deploy.env.example" "rebuild.sh" "scripts/hooks_selftest.sh" "scripts/generate_keystore.sh"
 # The production compose file: parsed by the image job, read by the deploy self-test.
-check "0 0 0 1 1 0 0" "docker-compose.prod.yml"
-check "0 0 0 1 0 0 0" "nginx/Dockerfile"
+check "0 0 1 1 0 0" "docker-compose.prod.yml"
+check "0 0 1 0 0 0" "nginx/Dockerfile"
 # The privacy policy and its page: the image job checks the page against the policy.
-check "0 0 0 1 0 0 0" "privacy_policy.md"
-check "0 0 0 1 0 0 0" "nginx/privacy.html" "scripts/build_privacy_page.py"
-check "1 1 1 1 1 1 1" "docker-compose.yml"
-check "1 1 1 1 1 1 1" "some-root-script.sh"
-check "1 1 1 1 1 1 1" ".github/workflows/ci.yml"
-check "0 0 0 0 1 0 0" ".claude/hooks/guard-bash.sh"
+check "0 0 1 0 0 0" "privacy_policy.md"
+check "0 0 1 0 0 0" "nginx/privacy.html" "scripts/build_privacy_page.py"
+check "1 1 1 1 1 1" "docker-compose.yml"
+check "1 1 1 1 1 1" "some-root-script.sh"
+check "1 1 1 1 1 1" ".github/workflows/ci.yml"
+check "0 0 0 1 0 0" ".claude/hooks/guard-bash.sh"
 # The Play release scripts: their tests run in the hooks job.
-check "0 0 0 0 1 0 0" "scripts/verify_aab.sh" "scripts/play_publish.py" "scripts/test_verify_aab.py" "scripts/test_play_publish.py"
-check "0 0 0 0 1 0 0" "scripts/arb_keys.py" "scripts/test_arb_keys.py"
-check "1 1 1 1 1 1 1" "scripts/ci_scope.sh"
+check "0 0 0 1 0 0" "scripts/verify_aab.sh" "scripts/play_publish.py" "scripts/test_verify_aab.py" "scripts/test_play_publish.py"
+check "0 0 0 1 0 0" "scripts/arb_keys.py" "scripts/test_arb_keys.py"
+check "1 1 1 1 1 1" "scripts/ci_scope.sh"
 # The delivery and agent metrics: their self-test and tests run in the hooks job.
-check "0 0 0 0 1 0 0" "scripts/delivery_metrics.sh" "scripts/delivery_metrics_selftest.sh" "scripts/agent_metrics.py" "scripts/test_agent_metrics.py"
-check "0 0 0 0 0 0 1" "scripts/flutter_e2e.sh"
-check "1 1 1 1 1 1 1" "some-new-dir/file"
-check "1 0 1 1 0 0 1" "zapzap-rust/src/lib.rs" "frontend/package.json"
-check "0 0 0 0 1 0 0" ".claude/settings.json" "scripts/wip.sh" "scripts/wip_selftest.sh"
+check "0 0 0 1 0 0" "scripts/delivery_metrics.sh" "scripts/delivery_metrics_selftest.sh" "scripts/agent_metrics.py" "scripts/test_agent_metrics.py"
+check "0 0 0 0 0 1" "scripts/flutter_e2e.sh"
+check "1 1 1 1 1 1" "some-new-dir/file"
+check "0 0 0 1 0 0" ".claude/settings.json" "scripts/wip.sh" "scripts/wip_selftest.sh"
 # The wiki lint and the finder it shares with wip.sh: its self-test runs in the hooks job.
-check "0 0 0 0 1 0 0" "scripts/wiki_lint.sh" "scripts/wiki_lint_selftest.sh" "scripts/lib/dead_paths.sh"
-check "0 0 0 0 0 0 0" "docs/wip-README.md"
+check "0 0 0 1 0 0" "scripts/wiki_lint.sh" "scripts/wiki_lint_selftest.sh" "scripts/lib/dead_paths.sh"
+check "0 0 0 0 0 0" "docs/wip-README.md"
 # The agent evals: their self-test runs in the hooks job; a prompt is documentation.
-check "0 0 0 0 1 0 0" "evals/run.sh" "evals/cases/docs-only-wiki-fact/check.sh" "evals/cases/out-of-scope-finding/case.env"
-check "0 0 0 0 0 0 0" "evals/preamble.md" "evals/cases/docs-only-wiki-fact/prompt.md"
-check "0 0 0 1 0 0 0" "scripts/pwa_image_smoke.sh"
-check "0 0 0 1 0 0 0" "scripts/backend_image_smoke.sh"
-check "0 0 0 1 0 1 1" "frontend-flutter/lib/main.dart"
-check "0 0 0 1 0 1 1" "frontend-flutter/pubspec.yaml" "frontend-flutter/pubspec.lock"
-check "0 0 0 1 0 1 1" "frontend-flutter/android/app/build.gradle.kts" "frontend-flutter/lib/l10n/app_fr.arb"
-check "0 0 0 1 0 1 1" "frontend-flutter/Dockerfile" "frontend-flutter/nginx.conf"
-check "0 0 0 0 0 0 0" "frontend-flutter/README.md"
+check "0 0 0 1 0 0" "evals/run.sh" "evals/cases/docs-only-wiki-fact/check.sh" "evals/cases/out-of-scope-finding/case.env"
+check "0 0 0 0 0 0" "evals/preamble.md" "evals/cases/docs-only-wiki-fact/prompt.md"
+check "0 0 1 0 0 0" "scripts/pwa_image_smoke.sh"
+check "0 0 1 0 0 0" "scripts/backend_image_smoke.sh"
+check "0 0 1 0 1 1" "frontend-flutter/lib/main.dart"
+check "0 0 1 0 1 1" "frontend-flutter/pubspec.yaml" "frontend-flutter/pubspec.lock"
+check "0 0 1 0 1 1" "frontend-flutter/android/app/build.gradle.kts" "frontend-flutter/lib/l10n/app_fr.arb"
+check "0 0 1 0 1 1" "frontend-flutter/Dockerfile" "frontend-flutter/nginx.conf"
+check "0 0 0 0 0 0" "frontend-flutter/README.md"
 # The Play Store listing: its test is in the flutter job; its README is documentation.
-check "0 0 0 0 0 1 0" "store_listing/fr-FR/title.txt" "store_listing/assets/feature_graphic.png"
-check "0 0 0 0 0 1 0" "scripts/generate_store_graphics.py" "scripts/capture_store_screenshots.sh" "scripts/capture_store_screenshots.js" "scripts/compose_store_screenshots.py"
-check "0 0 0 0 0 0 0" "store_listing/README.md"
-check "0 0 1 1 0 1 1" "frontend/src/App.jsx" "frontend-flutter/lib/app.dart"
-check "1 0 0 1 0 1 1" "zapzap-rust/src/main.rs" "frontend-flutter/test/app_test.dart"
+check "0 0 0 0 1 0" "store_listing/fr-FR/title.txt" "store_listing/assets/feature_graphic.png"
+check "0 0 0 0 1 0" "scripts/generate_store_graphics.py" "scripts/capture_store_screenshots.sh" "scripts/capture_store_screenshots.js" "scripts/compose_store_screenshots.py"
+check "0 0 0 0 0 0" "store_listing/README.md"
+check "1 0 1 0 1 1" "zapzap-rust/src/main.rs" "frontend-flutter/test/app_test.dart"
 # The production backend's image (zapzap-rust/Dockerfile) and the production compose file.
-check "1 0 0 1 0 0 1" "zapzap-rust/Dockerfile"
-check "0 0 0 0 0 0 0" "zapzap-rust/README.md"
+check "1 0 1 0 0 1" "zapzap-rust/Dockerfile"
+check "0 0 0 0 0 0" "zapzap-rust/README.md"
 # The Rust password hashing and its bcrypt fixture: plain Rust backend paths.
-check "1 0 0 1 0 0 1" "zapzap-rust/src/infrastructure/auth/password.rs" "zapzap-rust/tests/fixtures/bcrypt_node_compat.json"
+check "1 0 1 0 0 1" "zapzap-rust/src/infrastructure/auth/password.rs" "zapzap-rust/tests/fixtures/bcrypt_node_compat.json"
 # The root package.json holds only Playwright, which no job installs.
-check "0 0 0 0 0 0 0" "package.json" "package-lock.json"
+check "0 0 0 0 0 0" "package.json" "package-lock.json"
 # The Node backend is gone: a path under its former directories is unclassified, so everything runs.
-check "1 1 1 1 1 1 1" "src/api/app.js"
-check "1 1 1 1 1 1 1" "tests/unit/use-cases/auth/LoginUser.test.js"
-check "0 0 0 0 0 0 0"   # no paths at all
+check "1 1 1 1 1 1" "src/api/app.js"
+check "1 1 1 1 1 1" "tests/unit/use-cases/auth/LoginUser.test.js"
+check "0 0 0 0 0 0"   # no paths at all
 
 echo "ci_scope: $((n - fail))/$n cases pass"
 [ "$fail" -eq 0 ]

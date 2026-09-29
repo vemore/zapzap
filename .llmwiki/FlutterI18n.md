@@ -3,7 +3,7 @@
 > Scope: the Flutter client's localisation: the ten ARB files, the glossary, the l10n tests,
 > generated code, and the "tu" voice.
 > Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterGameBoard]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -51,8 +51,8 @@
 - **Translated ARB files are not counted in a pull request's size** (`ship-parallel` §3.1:
   every `lib/l10n/app_*.arb` but `app_fr.arb` and `app_en.arb`).
 - **No user-facing string literal outside `lib/l10n/`**: every text goes through
-  `AppLocalizations.of(context)`. The React client mixes French and English; the port
-  unifies them in the ARB files.
+  `AppLocalizations.of(context)`. The React client it was ported from (removed 2026-09-29)
+  mixed French and English; the port unified them in the ARB files.
 - The generated `lib/l10n/app_localizations*.dart` are **not committed**
   (`frontend-flutter/.gitignore`): `flutter gen-l10n` writes them. A `flutter pub get`
   sometimes does too, but not reliably (not when it finds nothing to resolve), and `flutter

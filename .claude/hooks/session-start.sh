@@ -4,8 +4,8 @@
 #
 # SessionStart is one of the few events whose plain stdout is injected into the
 # conversation, so this says what is only actionable BEFORE work starts: whether
-# the tree is set up, whether the branch left over from the previous session is
-# safe to commit on, which worktrees are in flight, and the open wip/ entries.
+# the branch left over from the previous session is safe to commit on, which
+# worktrees are in flight, and the open wip/ entries.
 
 set -uo pipefail
 
@@ -15,9 +15,6 @@ ROOT=""
 [ -n "$cwd" ] && ROOT=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
 [ -z "$ROOT" ] && ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$ROOT" 2>/dev/null || exit 0
-
-[ -d frontend ] && [ ! -d frontend/node_modules ] && \
-    echo "frontend/node_modules is missing: run \`scripts/worktree_setup.sh $ROOT\` (or \`npm ci --prefix frontend\`) before a frontend commit."
 
 # A merged pull request whose base was not `master` merged into that base. If the base
 # was itself merged first, the child's work never reached master.

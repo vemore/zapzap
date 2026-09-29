@@ -3,9 +3,8 @@
 > Budget: ≤ 120 lines; anything past it moves to the wiki page that owns it.
 
 ZapZap is a multiplayer rummy-style card game: a Rust backend (`zapzap-rust/`, axum + SQLite,
-**what production runs**), a React + Vite frontend (`frontend/`), a Flutter client in the
-making (`frontend-flutter/`, Android + PWA), and a Rust simulation engine for bot training
-(`native/`).
+**what production runs**), a Flutter client (`frontend-flutter/`, Android + the PWA under
+`/app/`, the only client), and a Rust simulation engine for bot training (`native/`).
 
 ## Read the wiki first
 
@@ -69,10 +68,6 @@ cargo run -- seed --demo                         # bots + demo users (demo123); 
 cargo fmt && cargo clippy --all-targets -- -D warnings
 cargo test                                       # unit + API integration tests: .llmwiki/Testing.md
 
-# Frontend
-cd frontend && npm ci && npm run dev             # :5173, proxies /api to :9999
-npm run build
-
 # Flutter client (Android + PWA): .llmwiki/FrontendFlutter.md
 cd frontend-flutter && flutter analyze && flutter test
 flutter build web --base-href /app/ && flutter build apk --debug
@@ -92,7 +87,7 @@ Kill a local server by port, never by name: `lsof -ti:9999 | xargs kill`.
 ## Code style
 
 - Rust: `cargo fmt`, clippy clean with `-D warnings`; errors via `thiserror`/`anyhow`.
-- Frontend: React function components and hooks; API calls through `frontend/src/services/`.
+- Flutter: `dart format`, `flutter analyze` clean; API calls through `frontend-flutter/lib/repositories/`.
 - Match the surrounding code: its comment density, naming and idiom.
 
 ## Git
@@ -104,7 +99,7 @@ fetch, so the fetch is on you.
 ```bash
 git fetch --prune origin
 git worktree add ../zapzap-<short-topic> -b <type>/<short-topic> origin/master
-scripts/worktree_setup.sh ../zapzap-<short-topic>        # npm ci, cargo, flutter pub get; --deploy links .env
+scripts/worktree_setup.sh ../zapzap-<short-topic>        # cargo, flutter pub get; --deploy links .env
 ```
 
 An agent launched with `isolation: "worktree"` has its worktree already, and switches to

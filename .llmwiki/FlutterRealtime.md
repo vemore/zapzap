@@ -3,7 +3,7 @@
 > Scope: the Flutter client's real-time channel (SSE): parser, transports, `SseClient`,
 > `SseEvent`, `SseProvider`, and presence.
 > Related: [[FrontendFlutter]] · [[FlutterAuth]] · [[FlutterParties]] · [[Architecture]] · [[Backend]]
-> Updated: 2026-09-28
+> Updated: 2026-09-29
 
 ## Facts
 
@@ -33,7 +33,7 @@ event` + a JSON object, a `: heartbeat` comment every 20 s, and a `type` on ever
     own retry never runs alongside ours.
 - **`SseClient`** (`services/sse_client.dart`, plain Dart): `connect(token)` opens
   `<sseUri>?token=<jwt>` — with the token the backend registers the user as online, so
-  presence works (the React lobby and board connect tokenless, [[Frontend]]); the same token
+  presence works (the removed React client's lobby and board connected tokenless); the same token
   again is a no-op, a new one replaces the connection. On an error or end of stream it
   reopens **3 s** later (`defaultReconnectDelay`, React's `reconnectDelay`), until
   `disconnect()`. A generation counter drops late callbacks of a replaced connection.

@@ -4,7 +4,7 @@
 # Usage: ./rebuild.sh [service]
 # Examples:
 #   ./rebuild.sh          # Rebuild all services
-#   ./rebuild.sh frontend # Rebuild only frontend
+#   ./rebuild.sh frontend-flutter # Rebuild only the Flutter PWA
 #   ./rebuild.sh backend  # Rebuild only backend
 
 set -e

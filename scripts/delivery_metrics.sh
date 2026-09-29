@@ -17,7 +17,8 @@
 #   fix: share          commits on the ref whose subject starts with fix
 #   rework rate         changes followed within 48 h by a fix: touching one of their files
 #   deployments         changes whose paths ship-parallel §4 deploys (zapzap-rust/,
-#                       frontend/, frontend-flutter/, nginx/, docker-compose.prod.yml) --
+#                       frontend-flutter/, nginx/, docker-compose.prod.yml; and frontend/,
+#                       the React client removed on 2026-09-29, for the history before) --
 #                       derived, not read from the NAS
 #   change failure rate deployments followed within 48 h by a fix: touching their files
 #   first-run-green     merged pull requests whose first CI run succeeded (gh; a cancelled

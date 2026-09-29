@@ -10,7 +10,8 @@
 
 ### Parties, create-party and lobby
 
-The React counterparts are `frontend/src/components/Party/{PartyList,CreateParty,PartyLobby,ConnectedPlayers}.jsx`.
+Ported from the React client's `components/Party/{PartyList,CreateParty,PartyLobby,ConnectedPlayers}.jsx`
+(removed on 2026-09-29, [[Frontend]]); "React" below names that reference.
 
 - **Routes** (`router.dart`): `/parties` (the list), `/parties/new` (create — declared
   **before** `/parties/:id`, which would match it), `/parties/:id` (the lobby), `/game/:id`.

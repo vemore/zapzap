@@ -2,7 +2,7 @@
 
 > Scope: the Flutter client's session (`AuthProvider`, token storage), the login and register
 > screens, the routing guard, and Google sign-in on the web and on Android.
-> Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterAndroidPwa]] · [[Api]] · [[Frontend]]
+> Related: [[FrontendFlutter]] · [[FlutterParties]] · [[FlutterAndroidPwa]] · [[Api]]
 > Updated: 2026-09-29
 
 ## Facts
@@ -47,9 +47,10 @@
 - **Storage** (`TokenStorage.platform()`, conditional import on `dart.library.js_interop`):
   `flutter_secure_storage` on Android (`token_storage_io.dart`), `shared_preferences` on
   the web (`token_storage_web.dart`, localStorage, keys prefixed `flutter.` by the plugin —
-  no clash with the React client's own `token` on the same origin). Keys `token` and `user`
-  (JSON of `User.toJson()`), those of the React client, and `guest` (a guest's
-  credentials, JSON; on the web in localStorage, so the account lives in that browser). `MemoryTokenStorage` for tests.
+  so the removed React client's own `token` on the same origin was never read: its players
+  sign in once more in the PWA). Keys `token` and `user` (JSON of `User.toJson()`), and
+  `guest` (a guest's credentials, JSON; on the web in localStorage, so the account lives in
+  that browser). `MemoryTokenStorage` for tests.
   `User.hasPassword`, `isGoogleUser`, `isGuest` and `email` come from `/auth/login`,
   `/auth/google`, `/auth/guest`, `PATCH /auth/me` and `PUT /auth/me/password`, which answer
   one user shape; register proves a password, and a session stored before the field reads it as "not a Google account".
@@ -76,9 +77,8 @@
   `/parties`; `/admin` and `/admin/**` need `isAdmin`, else `/parties` (the admin screen,
   Admin in [[FlutterHistoryAdmin]]); `/tutorial` stays, signed in or out. `from` is only
   followed when it is a local path (`/x`, not `//host` or a scheme). An unknown path shows
-  the not-found screen, signed in or out (`test/app_test.dart`). React's
-  `ProtectedRoute` checks only that a token exists, never its expiry
-  (`frontend/src/components/Auth/ProtectedRoute.jsx:5`). On the web the route is the URL
+  the not-found screen, signed in or out (`test/app_test.dart`). The removed React client's
+  `ProtectedRoute` checked only that a token existed, never its expiry. On the web the route is the URL
   path under the base href (`/app/parties`): `lib/main.dart` calls `usePathUrlStrategy()`
   (`flutter_web_plugins`) before `runApp`, a no-op off the web; the browser path less
   `/app/` is go_router's initial route, which wins over `initialLocation`

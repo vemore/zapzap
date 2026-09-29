@@ -9,10 +9,10 @@ French first, then in English; both say the same thing.
 
 ## Français
 
-ZapZap est un jeu de cartes multijoueur : l'application Android, l'application web
-(<https://zapzap.ombivince.synology.me/app/>) et le site
-<https://zapzap.ombivince.synology.me/>. Elles parlent toutes au même serveur, exploité
-par le développeur de ZapZap.
+ZapZap est un jeu de cartes multijoueur : l'application Android et l'application web
+(<https://zapzap.ombivince.synology.me/app/>, où mène aussi
+<https://zapzap.ombivince.synology.me/>). Elles parlent toutes deux au même serveur,
+exploité par le développeur de ZapZap.
 
 ### Ce que ZapZap enregistre
 
@@ -72,8 +72,9 @@ nom « Joueur supprimé », sans lien avec toi.
 - **Dans l'application** (Android ou web) : menu ⋮ en haut à droite → **Mon compte** →
   **Supprimer mon compte**, puis confirme avec ton mot de passe (ou avec Google pour un
   compte Google).
-- **Depuis le web, sans l'application** :
-  <https://zapzap.ombivince.synology.me/account/delete> — connecte-toi, puis confirme.
+- **Depuis le web, sans installer l'application** :
+  <https://zapzap.ombivince.synology.me/account/delete> ouvre la page **Mon compte** de
+  l'application web — connecte-toi, puis **Supprimer mon compte** et confirme.
 - **Par e-mail** : écris à <scribio.ai@gmail.com> depuis l'adresse de ton compte Google, ou
   en donnant ton pseudo, et ton compte sera supprimé de la même façon.
 - Une partie en attente doit d'abord être quittée. Dans une partie en cours, tu abandonnes
@@ -87,9 +88,9 @@ Pour toute question ou demande sur tes données : <scribio.ai@gmail.com>.
 
 ## English
 
-ZapZap is a multiplayer card game: the Android app, the web app
-(<https://zapzap.ombivince.synology.me/app/>) and the site
-<https://zapzap.ombivince.synology.me/>. They all talk to the same server, run by
+ZapZap is a multiplayer card game: the Android app and the web app
+(<https://zapzap.ombivince.synology.me/app/>, where
+<https://zapzap.ombivince.synology.me/> also leads). Both talk to the same server, run by
 ZapZap's developer.
 
 ### What ZapZap stores
@@ -144,8 +145,9 @@ in the other players' history under the name "Deleted player", with no link to y
 
 - **In the app** (Android or web): the ⋮ menu at the top right → **My account** → **Delete
   my account**, then confirm with your password (or with Google for a Google account).
-- **From the web, without the app**:
-  <https://zapzap.ombivince.synology.me/account/delete> — sign in, then confirm.
+- **From the web, without installing the app**:
+  <https://zapzap.ombivince.synology.me/account/delete> opens the web app's **My account**
+  page — sign in, then **Delete my account** and confirm.
 - **By e-mail**: write to <scribio.ai@gmail.com> from your Google account's address, or
   giving your username, and your account will be deleted the same way.
 - A waiting game must be left first. In a game in progress you give up your seat: you are

@@ -12,9 +12,9 @@
 # name comes from COMPOSE_PROJECT_NAME=zapzap, which deploy_nas.sh exports. Every service
 # sets container_name, so v2 keeps the zapzap-* names v1 gave the running containers.
 #
-# Service names are load-bearing: nginx/nginx.conf proxies to `backend`, `frontend` and
+# Service names are load-bearing: nginx/nginx.conf proxies to `backend` and
 # `frontend-flutter`, and ESSENTIAL_SERVICES / PROXY_SERVICE in scripts/deploy_nas.sh name
-# `backend`, `frontend` and `nginx`. Rename them together or not at all.
+# `backend`, `frontend-flutter` and `nginx`. Rename them together or not at all.
 services:
   # The Rust backend (zapzap-rust/), built with CARGO_FEATURES=bedrock.
   backend:
@@ -28,7 +28,7 @@ services:
       - RUST_LOG=${RUST_LOG:-info}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       # The browser origins CORS answers (zapzap-rust/src/infrastructure/cors.rs): the
-      # production domain alone, which serves both clients same-origin; the Android app sends
+      # production domain alone, which serves the PWA same-origin; the Android app sends
       # no Origin. A default here, not in .env, so that no deploy runs permissive. .env can
       # override it (comma-separated origins).
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://zapzap.ombivince.synology.me}
@@ -58,21 +58,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # The React client, served on /
-  frontend:
-    image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-frontend:${ZAPZAP_TAG:-latest}
-    container_name: zapzap-frontend
-    restart: unless-stopped
-    networks:
-      - zapzap-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
-  # The Flutter PWA, served under /app/ by the proxy
+  # The Flutter PWA, served under /app/ by the proxy (the old React URLs redirect to it)
   frontend-flutter:
     image: ${ZAPZAP_REGISTRY:-192.168.1.25:5050}/zapzap-frontend-flutter:${ZAPZAP_TAG:-latest}
     container_name: zapzap-frontend-flutter
@@ -94,13 +80,12 @@ services:
     ports:
       - "${PROXY_PORT:-80}:80"
     # No condition on frontend-flutter, deliberately: a PWA that fails its health check
-    # would otherwise hold zapzap-proxy in Created and take the whole site down, since
-    # deploy_nas.sh has already stopped the old containers. The /app/ location resolves the
-    # PWA per request instead (nginx/nginx.conf), so a broken PWA is a 502 on /app/ only.
+    # would otherwise hold zapzap-proxy in Created and take /api/ — the Android app — down
+    # with the web client, since deploy_nas.sh has already stopped the old containers. The
+    # /app/ location resolves the PWA per request instead (nginx/nginx.conf), so a broken PWA
+    # is a 502 on the web alone; deploy_nas.sh still calls it an outage (ESSENTIAL_SERVICES).
     depends_on:
       backend:
-        condition: service_healthy
-      frontend:
         condition: service_healthy
     networks:
       - zapzap-network
