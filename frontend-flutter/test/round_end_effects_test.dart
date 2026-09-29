@@ -1,7 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapzap/l10n/app_localizations.dart';
 import 'package:zapzap/widgets/game_round_end.dart';
+import 'package:zapzap/widgets/round_end_effects/fx_core.dart';
 import 'package:zapzap/widgets/round_end_effects/round_end_effects.dart';
 
 /// The overlays of the round end (wip 2026-09-29, the styles the user chose
@@ -106,13 +109,14 @@ void main() {
     Widget child, {
     bool disableAnimations = false,
     double textScale = 1,
+    String locale = 'fr',
   }) async {
     tester.view.physicalSize = const Size(360, 740);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
-        locale: const Locale('fr'),
+        locale: Locale(locale),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: MediaQuery(
@@ -448,27 +452,254 @@ void main() {
     expect(find.byKey(elimination), findsNothing);
   });
 
-  testWidgets('an elimination far down a long table scrolls it into view', (
+  /// Eight players at twice the text size: the table scrolls.
+  List<RoundEndPlayer> longTable({Set<int> out = const {}}) => [
+    for (var i = 0; i < 8; i++)
+      RoundEndPlayer(
+        playerIndex: i,
+        name: 'Bot$i',
+        hand: const [4, 5, 6],
+        roundScore: i * 3,
+        totalScore: out.contains(i) ? 100 + i : 20 + i,
+        isEliminated: out.contains(i),
+        isZapZapCaller: i == 0,
+      ),
+  ];
+
+  testWidgets('eliminations far down a long table are all scrolled into view', (
     tester,
   ) async {
-    final players = [
-      for (var i = 0; i < 8; i++)
-        RoundEndPlayer(
-          playerIndex: i,
-          name: 'Bot$i',
-          hand: const [4, 5, 6],
-          roundScore: i * 3,
-          totalScore: i == 7 ? 108 : 20 + i,
-          isEliminated: i == 7,
-        ),
-    ];
-    await pump(tester, roundEnd(players: players), textScale: 2);
+    await pump(tester, roundEnd(players: longTable(out: {6, 7})), textScale: 2);
     await at(tester, 100);
+    // Its own scroll does not skip it.
     expect(find.byKey(elimination), findsOneWidget);
-    final row = tester.getRect(find.byKey(GameRoundEnd.playerKey(7)));
-    final footer = tester.getRect(find.byKey(const Key('roundEndFooter')));
-    expect(row.bottom, lessThanOrEqualTo(footer.top));
+    final view = tester.getRect(
+      find.descendant(
+        of: find.byKey(const Key('roundOver')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    for (final index in [6, 7]) {
+      final row = tester.getRect(find.byKey(GameRoundEnd.playerKey(index)));
+      expect(row.top, greaterThanOrEqualTo(view.top), reason: 'row $index');
+      expect(row.bottom, lessThanOrEqualTo(view.bottom), reason: 'row $index');
+    }
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a wheel or trackpad scroll skips them: they aim at the rows', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      roundEnd(players: longTable(), caller: 'Bot0'),
+      textScale: 2,
+    );
+    await at(tester, 300);
+    expect(find.byKey(held), findsOneWidget);
+    // No pointer down: a signal, as a mouse wheel sends.
+    final position = tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(const Key('roundOver')),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position;
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: const Offset(180, 300),
+        scrollDelta: const Offset(0, 80),
+      ),
+    );
+    await tester.pump();
+    expect(position.pixels, greaterThan(0));
+    expect(find.byKey(held), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a resize or a rotation skips them', (tester) async {
+    await pump(tester, roundEnd(players: heldPlayers, caller: 'HardBot1'));
+    await at(tester, 300);
+    expect(find.byKey(held), findsOneWidget);
+    tester.view.physicalSize = const Size(740, 360);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(held), findsNothing);
+    expect(find.byKey(elimination), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('"ZAPZAP!" drops in left to right in Arabic too', (tester) async {
+    await pump(
+      tester,
+      roundEnd(players: heldPlayers.take(2).toList(), caller: 'HardBot1'),
+      locale: 'ar',
+    );
+    await at(tester, 900);
+    Finder letter(String text) =>
+        find.descendant(of: find.byKey(held), matching: find.text(text));
+    double x(Finder finder) => tester.getCenter(finder).dx;
+    final zeds = letter('Z').evaluate().map((e) => x(find.byWidget(e.widget)));
+    final bang = x(letter('!').first);
+    expect(zeds, isNotEmpty);
+    for (final z in zeds) {
+      expect(z, lessThan(bang));
+    }
+    expect(x(letter('Z').first), lessThan(x(letter('A').first)));
+  });
+
+  test('the bolt starts inside the area, from the side the icon faces', () {
+    const target = Offset(340, 60);
+    final rtl = HeldBoltPhase.boltOrigin(target, 360, TextDirection.rtl);
+    expect(rtl.dx, lessThan(target.dx - 39));
+    expect(rtl.dx, greaterThanOrEqualTo(8));
+    final ltr = HeldBoltPhase.boltOrigin(target, 360, TextDirection.ltr);
+    expect(ltr.dx, lessThanOrEqualTo(352), reason: 'clamped inside');
+    final left = HeldBoltPhase.boltOrigin(
+      const Offset(20, 60),
+      360,
+      TextDirection.ltr,
+    );
+    expect(left.dx, greaterThan(59));
+  });
+
+  test('two adjacent rows share one hole in the veil', () {
+    const size = Size(360, 740);
+    final path = spotPath(size, const [
+      Rect.fromLTWH(0, 100, 360, 50),
+      Rect.fromLTWH(0, 150, 360, 50),
+    ]);
+    // Where the two holes, grown by 2 px, overlap: not darkened again.
+    expect(path.contains(const Offset(180, 150)), isFalse);
+    expect(path.contains(const Offset(180, 101)), isFalse);
+    expect(path.contains(const Offset(180, 199)), isFalse);
+    expect(path.contains(const Offset(180, 40)), isTrue);
+    expect(path.contains(const Offset(180, 260)), isTrue);
+  });
+
+  testWidgets('a counteracted caller losing in Golden Score gets the tape, '
+      'not a gauge past 100', (tester) async {
+    const players = [
+      RoundEndPlayer(
+        playerIndex: 1,
+        name: 'EasyBot1',
+        hand: [13],
+        roundScore: 0,
+        totalScore: 90,
+        isLowestHand: true,
+      ),
+      RoundEndPlayer(
+        playerIndex: 0,
+        name: 'Vincent',
+        hand: [0, 52],
+        roundScore: 31,
+        totalScore: 98,
+        isEliminated: true,
+        isZapZapCaller: true,
+        isMe: true,
+      ),
+    ];
+    await pump(
+      tester,
+      roundEnd(players: players, caller: 'Vincent', wasCounterActed: true),
+    );
+    await at(tester, 1200);
+    // The stamp counts the caller's total, not a gauge.
+    expect(totalOf(tester, 0), '98');
+    await at(tester, 1000);
+    expect(find.byKey(elimination), findsOneWidget);
+    expect(find.byKey(const Key('eliminationGauge')), findsNothing);
+    await at(tester, 1100);
+    expect(find.textContaining('ÉLIMINÉ ×'), findsOneWidget);
+    expect(badgeShown(tester, 0), isFalse);
+    await at(tester, 1000);
+    expect(badgeShown(tester, 0), isTrue);
+    expect(totalOf(tester, 0), '98');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the hidden badge is read out all along', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await pump(tester, roundEnd(players: heldPlayers, caller: 'HardBot1'));
+    await at(tester, 300);
+    expect(badgeShown(tester, 1), isFalse);
+    expect(find.bySemanticsLabel('Éliminé'), findsOneWidget);
+    await tester.pumpAndSettle();
+    semantics.dispose();
+  });
+
+  testWidgets('the table is shaken only while a shake runs, and not repainted '
+      'by the clock', (tester) async {
+    await pump(
+      tester,
+      roundEnd(players: heldPlayers.take(2).toList(), caller: 'HardBot1'),
+    );
+    final table = find.byKey(const Key('roundEndTable'));
+    await at(tester, 200);
+    final shaken = tester.getTopLeft(table);
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find
+          .descendant(
+            of: find.byType(FxShake).first,
+            matching: find.byType(RepaintBoundary),
+          )
+          .first,
+    );
+    await at(tester, 800);
+    final still = tester.getTopLeft(table);
+    // A repaint records new pictures into the boundary's layer.
+    final picture = boundary.debugLayer!.firstChild;
+    for (var i = 0; i < 6; i++) {
+      await at(tester, 100);
+    }
+    expect(identical(boundary.debugLayer!.firstChild, picture), isTrue);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(table), still);
+    expect(shaken, isNot(still));
+  });
+
+  testWidgets('the stamp is painted once, then only moved', (tester) async {
+    const players = [
+      RoundEndPlayer(
+        playerIndex: 1,
+        name: 'EasyBot1',
+        hand: [13],
+        roundScore: 0,
+        totalScore: 30,
+      ),
+      RoundEndPlayer(
+        playerIndex: 0,
+        name: 'Vincent',
+        hand: [0, 52],
+        roundScore: 41,
+        totalScore: 61,
+        isZapZapCaller: true,
+      ),
+    ];
+    await pump(
+      tester,
+      roundEnd(players: players, caller: 'Vincent', wasCounterActed: true),
+    );
+    await at(tester, 100);
+    final stamp = tester.renderObject<RenderRepaintBoundary>(
+      find
+          .descendant(
+            of: find.byKey(countered),
+            matching: find.byType(RepaintBoundary),
+          )
+          .first,
+    );
+    // A repaint records a new picture into the stamp's layer.
+    final picture = stamp.debugLayer!.firstChild;
+    expect(picture, isNotNull);
+    // It falls, bounces and lifts: moved, never painted again.
+    for (var i = 0; i < 16; i++) {
+      await at(tester, 100);
+      expect(identical(stamp.debugLayer!.firstChild, picture), isTrue);
+    }
+    await tester.pumpAndSettle();
   });
 }

@@ -46,9 +46,6 @@ class CounteredStampPhase extends RoundEndPhase {
   final bool countsCallerTotal;
 
   @override
-  Key get key => animationKey;
-
-  @override
   double get nominal => 1920;
 
   @override
@@ -217,6 +214,7 @@ class CounteredStampPhase extends RoundEndPhase {
         : kf(t, 300, 250, const [0.8, 0]);
     final scale = kf(t, 0, 300, const [1.5, 1], ease: FxCurves.slam.transform);
     return Positioned.fromRect(
+      key: const ValueKey('stampShadow'),
       rect: box,
       child: Opacity(
         opacity: opacity.clamp(0.0, 1.0),
@@ -268,6 +266,7 @@ class CounteredStampPhase extends RoundEndPhase {
       scale = kf(t, 1560, 360, const [1, 1.08], ease: lift);
     }
     return Positioned.fromRect(
+      key: const ValueKey('stamp'),
       rect: box,
       child: Opacity(
         opacity: opacity.clamp(0.0, 1.0),
@@ -276,8 +275,11 @@ class CounteredStampPhase extends RoundEndPhase {
           transform: Matrix4.translationValues(0, dy, 0)
             ..rotateZ(tilt)
             ..scaleByDouble(scale, scale, 1, 1),
-          child: CustomPaint(
-            painter: _StampPainter(title, line, textDirection, textStyle),
+          // Its own layer: the face is painted once, then only moved.
+          child: RepaintBoundary(
+            child: CustomPaint(
+              painter: _StampPainter(title, line, textDirection, textStyle),
+            ),
           ),
         ),
       ),
@@ -292,6 +294,7 @@ class CounteredStampPhase extends RoundEndPhase {
         kf(t, _hit, 1000, values, offsets: offsets, ease: ease);
     final scale = at(const [0.4, 1.15, 1, 0.9]);
     return Positioned(
+      key: const ValueKey('penalty'),
       left: cell.center.dx - 40,
       top: cell.top - 32,
       width: 80,
@@ -426,5 +429,8 @@ class _StampPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StampPainter old) =>
-      old.title != title || old.line != line;
+      old.title != title ||
+      old.line != line ||
+      old.textDirection != textDirection ||
+      old.base != base;
 }

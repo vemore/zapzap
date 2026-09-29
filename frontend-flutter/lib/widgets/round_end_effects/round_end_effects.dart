@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../utils/app_theme.dart';
@@ -20,7 +21,9 @@ export 'round_end_phase.dart' show RoundEndPhase, RowLook;
 /// Each overlay starts when the one before has said what it had to (its
 /// `nominal` time), their last sparks overlapping. The table under them
 /// stays live: a touch anywhere reaches it and skips what is left, so the
-/// button is never out of reach. Built only when animations are on
+/// button is never out of reach. The overlays aim at where the table's
+/// widgets were when they started: a scroll (a wheel or a trackpad
+/// included) or a resize skips them too. Built only when animations are on
 /// (`GameRoundEnd` leaves it out under `MediaQuery.disableAnimations`).
 class RoundEndEffects extends StatefulWidget {
   const RoundEndEffects({
@@ -73,14 +76,20 @@ class _RoundEndEffectsState extends State<RoundEndEffects>
     super.dispose();
   }
 
-  Widget _shaken(Widget child) {
-    final shake = _fx.shake;
-    return Transform(
-      alignment: Alignment.center,
-      transform: Matrix4.translationValues(shake.dx, shake.dy, 0)
-        ..rotateZ(_fx.tilt),
-      child: child,
-    );
+  Widget _shaken(Widget child) => FxShake(controller: _fx, child: child);
+
+  /// A scroll the overlays did not ask for moves the table under them.
+  bool _onScroll(ScrollUpdateNotification notification) {
+    if (!_fx.revealing) _fx.skip();
+    return false;
+  }
+
+  /// Sent during layout: the skip waits for the frame to end.
+  bool _onResize(SizeChangedLayoutNotification notification) {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fx.skip();
+    });
+    return false;
   }
 
   @override
@@ -90,12 +99,19 @@ class _RoundEndEffectsState extends State<RoundEndEffects>
     child: ClipRect(
       child: Stack(
         children: [
-          RoundEndFx(
-            controller: _fx,
-            child: ListenableBuilder(
-              listenable: _fx,
-              builder: (context, child) => _shaken(child!),
-              child: widget.child,
+          NotificationListener<ScrollUpdateNotification>(
+            onNotification: _onScroll,
+            child: NotificationListener<SizeChangedLayoutNotification>(
+              onNotification: _onResize,
+              child: RoundEndFx(
+                controller: _fx,
+                child: _shaken(
+                  // Its own layer: a shake moves it, never repaints it.
+                  RepaintBoundary(
+                    child: SizeChangedLayoutNotifier(child: widget.child),
+                  ),
+                ),
+              ),
             ),
           ),
           if (!_fx.finished)
@@ -163,6 +179,11 @@ class RoundEndFxController extends ChangeNotifier {
   late final AnimationController _clock;
   final _waiting = <RoundEndPhase>{};
 
+  /// An overlay is scrolling the table to its rows: that scroll does not
+  /// skip it.
+  bool get revealing => _revealing;
+  bool _revealing = false;
+
   bool get isEmpty => _timeline.isEmpty;
 
   /// Every overlay is over, or was skipped.
@@ -171,9 +192,6 @@ class RoundEndFxController extends ChangeNotifier {
 
   /// Milliseconds since the first overlay started.
   double get t => _clock.value * _length;
-
-  /// The whole run, the overlays' tails included.
-  Duration get duration => _clock.duration!;
 
   void start() {
     if (_timeline.isEmpty) {
@@ -207,7 +225,12 @@ class RoundEndFxController extends ChangeNotifier {
   void _measure(RoundEndPhase phase, {required bool canScroll}) {
     final origin = this.origin();
     if (origin == null) return;
-    if (phase.measure(FxMeasure(origin, keys, canScroll: canScroll))) return;
+    _revealing = true;
+    final measured = phase.measure(
+      FxMeasure(origin, keys, canScroll: canScroll),
+    );
+    _revealing = false;
+    if (measured) return;
     // It scrolled the table to its rows: measured again once laid out.
     _waiting.add(phase);
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -300,6 +323,61 @@ class RoundEndFx extends InheritedWidget {
   @override
   bool updateShouldNotify(RoundEndFx oldWidget) =>
       oldWidget.controller != controller;
+}
+
+/// Shakes [child] with the overlays (`s.shake` of the whole screen): a
+/// transform set on its render object at each tick, identity — nothing
+/// pushed, nothing rebuilt — while no overlay shakes.
+class FxShake extends SingleChildRenderObjectWidget {
+  const FxShake({super.key, required this.controller, super.child});
+
+  final RoundEndFxController controller;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      RenderFxShake(controller);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderFxShake renderObject) =>
+      renderObject.controller = controller;
+}
+
+/// The render object of [FxShake].
+class RenderFxShake extends RenderTransform {
+  RenderFxShake(this._controller)
+    : super(transform: Matrix4.identity(), alignment: Alignment.center);
+
+  RoundEndFxController _controller;
+
+  set controller(RoundEndFxController value) {
+    if (value == _controller) return;
+    if (attached) _controller.removeListener(_update);
+    _controller = value;
+    if (attached) {
+      _controller.addListener(_update);
+      _update();
+    }
+  }
+
+  void _update() {
+    final shake = _controller.shake, tilt = _controller.tilt;
+    transform = shake == Offset.zero && tilt == 0
+        ? Matrix4.identity()
+        : (Matrix4.translationValues(shake.dx, shake.dy, 0)..rotateZ(tilt));
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _controller.addListener(_update);
+    _update();
+  }
+
+  @override
+  void detach() {
+    _controller.removeListener(_update);
+    super.detach();
+  }
 }
 
 enum _Target { banner, bannerIcon, table }

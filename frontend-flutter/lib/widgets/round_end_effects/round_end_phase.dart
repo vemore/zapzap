@@ -41,20 +41,34 @@ class FxMeasure {
     return topLeft & box.size;
   }
 
-  /// Scrolls [key]'s widget into the middle of its scroll view when part of
-  /// it lies outside; true when it did, and the geometry is stale until the
-  /// next frame.
-  bool reveal(GlobalKey key) {
-    final context = key.currentContext;
-    final target = rect(key);
-    if (!canScroll || context == null || target == null) return false;
+  /// Scrolls the widgets of [keys] into their scroll view when part of them
+  /// lies outside: all of them centred when they fit, else the first at the
+  /// top. True when it scrolled, and the geometry is stale until the next
+  /// frame.
+  bool reveal(List<GlobalKey> keys) {
+    if (!canScroll || keys.isEmpty) return false;
+    final context = keys.first.currentContext;
+    final rects = [for (final key in keys) rect(key)];
+    if (context == null || rects.contains(null)) return false;
+    final span = rects.cast<Rect>().reduce((a, b) => a.expandToInclude(b));
     final scrollable = Scrollable.maybeOf(context);
     final viewport = scrollable?.context.findRenderObject();
-    if (viewport is! RenderBox || !viewport.hasSize) return false;
+    if (scrollable == null || viewport is! RenderBox || !viewport.hasSize) {
+      return false;
+    }
     final view =
         viewport.localToGlobal(Offset.zero, ancestor: origin) & viewport.size;
-    if (view.top <= target.top && target.bottom <= view.bottom) return false;
-    Scrollable.ensureVisible(context, alignment: 0.5);
+    if (view.top <= span.top && span.bottom <= view.bottom) return false;
+    final position = scrollable.position;
+    final delta = span.height <= view.height
+        ? span.center.dy - view.center.dy
+        : span.top - view.top;
+    final target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) return false;
+    position.jumpTo(target);
     return true;
   }
 }
@@ -89,9 +103,6 @@ class RowLook {
 /// its start. Every method takes any `t`, before its start and after its
 /// end included, and answers from it alone.
 abstract class RoundEndPhase {
-  /// The key its overlay carries while it plays.
-  Key get key;
-
   /// When the next overlay may start: the figure of the entry.
   double get nominal;
 

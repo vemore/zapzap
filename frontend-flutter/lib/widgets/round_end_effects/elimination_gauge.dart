@@ -6,7 +6,7 @@ import '../../utils/app_theme.dart';
 import 'fx_core.dart';
 import 'round_end_phase.dart';
 
-/// A player the round put out: their total went past 100.
+/// A player the round put out.
 class EliminatedFx {
   const EliminatedFx({
     required this.playerIndex,
@@ -19,6 +19,10 @@ class EliminatedFx {
   final String name;
   final int previousTotal;
   final int total;
+
+  /// Whether their total went past 100. A counteracted caller in Golden
+  /// Score loses the game under it (`GAME_RULES.md`, Golden Score rule 2).
+  bool get crosses => previousTotal <= 100 && total > 100;
 }
 
 /// An elimination — "Surchauffe", option C of the proposals (`elimGauge`,
@@ -27,19 +31,27 @@ class EliminatedFx {
 /// as it passes the 100 mark; a red "ÉLIMINÉ ×" tape slams across the row,
 /// the gauge shrinks back into the bar, the tape leaves and the Eliminated
 /// badge pops. Several players out share the one pass: the gauge climbs
-/// for each in turn, and each row gets its tape.
+/// for each in turn, and each row gets its tape. A player put out without
+/// passing 100 (Golden Score) gets the spotlight, the tape and the badge,
+/// no gauge: it would claim a crossing that did not happen.
 class EliminationGaugePhase extends RoundEndPhase {
   EliminationGaugePhase({
     required this.players,
     required this.tapeLabel,
     required this.textDirection,
-  }) : assert(players.isNotEmpty) {
+  }) : assert(players.isNotEmpty),
+       _climbers = [
+         for (final p in players)
+           if (p.crosses) p,
+       ] {
     for (final (i, player) in players.indexed) {
       _rowShakes[player.playerIndex] = Shake(301 + i, 3, 240, delay: 1300);
+    }
+    for (final (i, player) in _climbers.indexed) {
       final (start, span) = _window(i);
       final from = player.previousTotal, to = player.total;
       // When the climb reaches 100: the inverse of its easing.
-      final target = to == from ? 1.0 : (100 - from) / (to - from);
+      final target = (100 - from) / (to - from);
       var lo = 0.0, hi = 1.0;
       for (var k = 0; k < 30; k++) {
         final mid = (lo + hi) / 2;
@@ -59,12 +71,12 @@ class EliminationGaugePhase extends RoundEndPhase {
   /// In the order of the table, top first.
   final List<EliminatedFx> players;
 
+  /// Those whose total passed 100: the gauge climbs for them.
+  final List<EliminatedFx> _climbers;
+
   /// "ÉLIMINÉ", in the player's language.
   final String tapeLabel;
   final TextDirection textDirection;
-
-  @override
-  Key get key => animationKey;
 
   @override
   double get nominal => 2200;
@@ -76,7 +88,7 @@ class EliminationGaugePhase extends RoundEndPhase {
   Set<int> get rows => {for (final p in players) p.playerIndex};
 
   @override
-  Set<int> get totals => rows;
+  Set<int> get totals => {for (final p in _climbers) p.playerIndex};
 
   static const _climbFrom = 300.0;
   static const _climb = 720.0;
@@ -93,7 +105,7 @@ class EliminationGaugePhase extends RoundEndPhase {
   /// proposal, unless a total goes further.
   late final double _max = math.max(
     115.0,
-    players.map((p) => p.total).reduce(math.max) + 5.0,
+    _climbers.map((p) => p.total).fold(0, math.max) + 5.0,
   );
 
   List<Rect>? _rows;
@@ -109,47 +121,48 @@ class EliminationGaugePhase extends RoundEndPhase {
   @override
   bool measure(FxMeasure measure) {
     final keys = measure.keys;
-    if (measure.reveal(keys.row(players.first.playerIndex))) return false;
+    final rowKeys = [for (final p in players) keys.row(p.playerIndex)];
+    if (measure.reveal(rowKeys)) return false;
     final rows = <Rect>[];
-    final bars = <Rect>[];
-    for (final p in players) {
-      final row = measure.rect(keys.row(p.playerIndex));
-      final bar = measure.rect(keys.bar(p.playerIndex));
-      if (row == null || bar == null) return true;
+    for (final key in rowKeys) {
+      final row = measure.rect(key);
+      if (row == null) return true;
       rows.add(row);
-      bars.add(bar);
     }
-    final size = measure.size;
-    final first = rows.first;
-    _above = first.top - 100 >= 8;
-    final top = _above ? first.top - 100 : first.bottom + 14;
-    _gauge = Rect.fromLTWH(16, top, size.width - 32, _gaugeHeight);
-    _drop = _above
-        ? bars.first.top - _gauge.bottom
-        : bars.first.bottom - _gauge.top;
-    final limit = _limit();
-    _sparks = [
-      for (var i = 0; i < players.length; i++)
-        Sparks(
-          seed: 321 + i,
-          at: limit,
-          count: 48,
-          speed: (2, 6),
-          angle: (-math.pi * 0.95, -math.pi * 0.05),
-          colours: FxPalette.fire,
-          gravity: 0.16,
-        ),
-    ];
-    _flashes = [
-      for (var i = 0; i < players.length; i++)
-        Flash(
-          at: limit,
-          radius: 90,
-          life: 320,
-          peak: 0.8,
-          colour: const Color(0xFFFDBA74),
-        ),
-    ];
+    if (_climbers.isNotEmpty) {
+      final index = players.indexOf(_climbers.first);
+      final bar = measure.rect(keys.bar(_climbers.first.playerIndex));
+      if (bar == null) return true;
+      final size = measure.size;
+      final first = rows[index];
+      _above = first.top - 100 >= 8;
+      final top = _above ? first.top - 100 : first.bottom + 14;
+      _gauge = Rect.fromLTWH(16, top, size.width - 32, _gaugeHeight);
+      _drop = _above ? bar.top - _gauge.bottom : bar.bottom - _gauge.top;
+      final limit = _limit();
+      _sparks = [
+        for (var i = 0; i < _climbers.length; i++)
+          Sparks(
+            seed: 321 + i,
+            at: limit,
+            count: 48,
+            speed: (2, 6),
+            angle: (-math.pi * 0.95, -math.pi * 0.05),
+            colours: FxPalette.fire,
+            gravity: 0.16,
+          ),
+      ];
+      _flashes = [
+        for (var i = 0; i < _climbers.length; i++)
+          Flash(
+            at: limit,
+            radius: 90,
+            life: 320,
+            peak: 0.8,
+            colour: const Color(0xFFFDBA74),
+          ),
+      ];
+    }
     _rows = rows;
     return true;
   }
@@ -160,17 +173,17 @@ class EliminationGaugePhase extends RoundEndPhase {
     _gauge.top + 10 + 32 + 8 + 7,
   );
 
-  /// When [i]'s total climbs, and for how long.
+  /// When climber [i]'s total climbs, and for how long.
   (double, double) _window(int i) {
-    final span = _climb / players.length;
+    final span = _climb / _climbers.length;
     return (_climbFrom + span * i, span);
   }
 
   double _value(int i, double t) {
     final (start, span) = _window(i);
     return kf(t, start, span, [
-      players[i].previousTotal.toDouble(),
-      players[i].total.toDouble(),
+      _climbers[i].previousTotal.toDouble(),
+      _climbers[i].total.toDouble(),
     ], ease: inOut3);
   }
 
@@ -195,7 +208,7 @@ class EliminationGaugePhase extends RoundEndPhase {
 
   @override
   int total(int playerIndex, double t) {
-    final i = players.indexWhere((p) => p.playerIndex == playerIndex);
+    final i = _climbers.indexWhere((p) => p.playerIndex == playerIndex);
     return _value(i, t).round();
   }
 
@@ -220,7 +233,7 @@ class EliminationGaugePhase extends RoundEndPhase {
                   ),
                 ),
               ),
-              if (t < _gaugeOut + 260) _gaugeCard(t),
+              if (_climbers.isNotEmpty && t < _gaugeOut + 260) _gaugeCard(t),
               if (t >= _tapeIn && t < _reveal + 320)
                 for (final row in rows) _tape(t, row),
             ],
@@ -228,7 +241,7 @@ class EliminationGaugePhase extends RoundEndPhase {
         ),
         CustomPaint(
           painter: FxPainter((canvas, size) {
-            for (var i = 0; i < players.length; i++) {
+            for (var i = 0; i < _climbers.length; i++) {
               _flashes[i].paint(canvas, size, t - _crossings[i]);
               _sparks[i].paint(canvas, t - _crossings[i]);
             }
@@ -242,9 +255,9 @@ class EliminationGaugePhase extends RoundEndPhase {
   Widget _gaugeCard(double t) {
     final i = t < _climbFrom
         ? 0
-        : ((t - _climbFrom) / (_climb / players.length)).floor().clamp(
+        : ((t - _climbFrom) / (_climb / _climbers.length)).floor().clamp(
             0,
-            players.length - 1,
+            _climbers.length - 1,
           );
     final value = _value(i, t);
     final hot = value >= 95, out = value >= 100;
@@ -269,6 +282,7 @@ class EliminationGaugePhase extends RoundEndPhase {
         : 1.0;
 
     return Positioned.fromRect(
+      key: const Key('eliminationGauge'),
       rect: _gauge,
       child: Opacity(
         opacity: grown.clamp(0.0, 1.0),
@@ -283,7 +297,7 @@ class EliminationGaugePhase extends RoundEndPhase {
                 ..rotateZ(shake.angle(t))
                 ..scaleByDouble(0.5 + 0.5 * grown, 0.15 + 0.85 * grown, 1, 1),
           child: _GaugeCard(
-            name: players[i].name,
+            name: _climbers[i].name,
             value: value,
             max: _max,
             hot: hot,
@@ -318,6 +332,7 @@ class EliminationGaugePhase extends RoundEndPhase {
     final scroll = kf(t, _tapeIn, 2200, const [0, -0.25]);
     final rtl = textDirection == TextDirection.rtl;
     return Positioned(
+      key: ValueKey(row),
       left: row.left - row.width * 0.1,
       width: width,
       top: row.center.dy - 13,

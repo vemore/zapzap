@@ -150,11 +150,14 @@ class GameRoundEnd extends StatelessWidget {
     final celebrate = gameFinished && winnerIsMe && animate;
     final eliminated = [
       for (final player in players)
-        // Put out by this round: over 100 now, not before. A seat that
-        // left or was ejected goes without.
+        // Put out by this round: past 100, or — in Golden Score — a
+        // counteracted caller, whatever the total. A seat out before the
+        // round was dealt no cards (`select_hand_size.rs`), nor holds a
+        // seat that was given up (`forfeit_seat`): no overlay for them.
         if (player.isEliminated &&
-            player.previousTotal <= RoundEndScoreBar.limit &&
-            player.totalScore > RoundEndScoreBar.limit)
+            (player.hand.isNotEmpty ||
+                (player.previousTotal <= RoundEndScoreBar.limit &&
+                    player.totalScore > RoundEndScoreBar.limit)))
           EliminatedFx(
             playerIndex: player.playerIndex,
             name: player.name,
@@ -223,7 +226,7 @@ class GameRoundEnd extends StatelessWidget {
     final caller = players.where((p) => p.isZapZapCaller).firstOrNull;
     return [
       if (zapZapCallerName != null && !wasCounterActed)
-        HeldBoltPhase(word: l10n.gameFxZapZap),
+        HeldBoltPhase(word: l10n.gameFxZapZap, textDirection: direction),
       if (zapZapCallerName != null && wasCounterActed)
         CounteredStampPhase(
           title: l10n.gameFxCountered,
@@ -247,9 +250,12 @@ class GameRoundEnd extends StatelessWidget {
           penaltyLabel: l10n.gameRoundEndRoundPoints(
             caller?.roundScore ?? callerRoundScore ?? 0,
           ),
+          // Unless the gauge climbs it past 100.
           countsCallerTotal:
               caller != null &&
-              !eliminated.any((e) => e.playerIndex == caller.playerIndex),
+              !eliminated.any(
+                (e) => e.playerIndex == caller.playerIndex && e.crosses,
+              ),
         ),
       if (eliminated.isNotEmpty)
         EliminationGaugePhase(
@@ -811,6 +817,8 @@ class _PlayerRow extends StatelessWidget {
           // Hidden until the elimination overlay pops it.
           child: Opacity(
             opacity: look.badgeScale > 0 ? 1 : 0,
+            // Read out from the start: the badge is information.
+            alwaysIncludeSemantics: true,
             child: Transform.scale(
               scale: math.max(look.badgeScale, 0.01),
               child: _Badge(

@@ -12,15 +12,28 @@ import 'round_end_phase.dart';
 /// over the table, then shrinks into the banner while arcs crawl along its
 /// border.
 class HeldBoltPhase extends RoundEndPhase {
-  HeldBoltPhase({required this.word});
+  HeldBoltPhase({required this.word, this.textDirection = TextDirection.ltr});
 
   static const animationKey = Key('zapzapHeldAnimation');
 
   /// "ZAPZAP !", in the player's language.
   final String word;
 
-  @override
-  Key get key => animationKey;
+  /// The bolt comes in from the side the banner's icon faces.
+  final TextDirection textDirection;
+
+  /// Where the bolt starts: above [target], 40 to 80 px towards the middle
+  /// of the area (right of the icon, or left of it right to left), and
+  /// never outside the [width].
+  static Offset boltOrigin(
+    Offset target,
+    double width,
+    TextDirection direction,
+  ) {
+    final side = direction == TextDirection.rtl ? -1 : 1;
+    final dx = target.dx + side * rnd(math.Random(7), 40, 80);
+    return Offset(dx.clamp(8, math.max(8, width - 8)).toDouble(), -8);
+  }
 
   @override
   double get nominal => 1700;
@@ -53,7 +66,7 @@ class HeldBoltPhase extends RoundEndPhase {
     _banner = banner;
     _size = measure.size;
     _target = icon.center + const Offset(1, 0);
-    final from = Offset(_target.dx + rnd(math.Random(7), 40, 80), -8);
+    final from = boltOrigin(_target, measure.size.width, textDirection);
     _wordY = table.top + 70;
     _bolt = Lightning(
       seed: 11,
@@ -166,6 +179,7 @@ class HeldBoltPhase extends RoundEndPhase {
       banner.center.dy - _wordY,
     );
     return Positioned(
+      key: const ValueKey('word'),
       left: 0,
       right: 0,
       top: _wordY,
@@ -183,6 +197,9 @@ class HeldBoltPhase extends RoundEndPhase {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Row(
+                  // A word of Latin letters, dropped in left to right in
+                  // every language: an Arabic row would read "!PAZPAZ".
+                  textDirection: TextDirection.ltr,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     for (var i = 0; i < letters.length; i++)

@@ -215,13 +215,19 @@ change. A failed refresh leaves it on screen under the stale banner, as any othe
   into a gauge climbing past 100 with sparks, a red "ÉLIMINÉ ×" tape, the badge popping).
   Order: the ZapZap overlay, then the elimination — several players out share one pass, the
   gauge climbing for each in turn —, then the confetti. Each starts at the previous one's
-  nominal time, their last sparks overlapping. Eliminated here means put out *by this round*
-  (total before ≤ 100 < total after): a seat out earlier, or ejected, gets none. While they
+  nominal time, their last sparks overlapping. Eliminated here means put out *by this round*:
+  out now and dealt cards this round (a seat out earlier, or given up, holds none), so a
+  counteracted caller losing in Golden Score (`GAME_RULES.md`, rule 2) counts too, with the
+  spotlight, the tape and the badge but no gauge, since their total did not pass 100. While they
   play, the overlays drive the widgets they aim at through `RoundEndFx` (the rows' shake,
   red wash, total and badge; the banner's squash and glow; the whole table's shake): a
   total an overlay counts up waits for it, the Eliminated badge is hidden until the gauge
   pops it. The table stays live under them: a touch anywhere reaches it and skips to the
-  end state, so Next round is never out of reach. Nothing is built under
+  end state, so Next round is never out of reach. The overlays aim at where the widgets were
+  when each started: a scroll they did not make (a wheel or trackpad included) or a resize
+  skips them as well; the gauge scrolls its rows into view first. The table sits in its own
+  layer under a shake set on its render object (`FxShake`), identity when nothing shakes; the
+  stamp's face is painted once. Nothing is built under
   `MediaQuery.disableAnimations`. Ported from the proposals' HTML (every piece a pure
   function of its clock and a seed: `fx_core.dart`); `test/round_end_effects_test.dart`.
 - Every name is `Flexible` inside its `Row` and every figure a `FittedBox`: a `Row` that

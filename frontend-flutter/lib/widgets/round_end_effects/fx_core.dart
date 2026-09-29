@@ -22,9 +22,6 @@ double rnd(math.Random r, double a, double b) => a + r.nextDouble() * (b - a);
 /// `1 − (1 − t)³`.
 double out3(double t) => 1 - math.pow(1 - t, 3).toDouble();
 
-/// `t²`.
-double in2(double t) => t * t;
-
 /// The cubic ease in and out.
 double inOut3(double t) =>
     t < 0.5 ? 4 * t * t * t : 1 - math.pow(-2 * t + 2, 3).toDouble() / 2;
@@ -440,9 +437,6 @@ class Sparks {
   final bool additive;
   final _sparks = <_Spark>[];
 
-  /// The longest a spark lives.
-  double get life => _sparks.fold(0.0, (m, s) => math.max(m, s.life));
-
   void paint(Canvas canvas, double t) {
     if (t < 0) return;
     final k = -math.log(drag);
@@ -634,17 +628,29 @@ void paintDim(Canvas canvas, Size size, double opacity) {
 /// The veil with holes (`s.spot`): everything but [holes] darkened.
 void paintSpot(Canvas canvas, Size size, List<Rect> holes, double darkness) {
   if (darkness <= 0) return;
-  final path = Path()
-    ..fillType = PathFillType.evenOdd
-    ..addRect((Offset.zero & size).inflate(24));
+  canvas.drawPath(
+    spotPath(size, holes),
+    Paint()..color = const Color(0xFF020617).withValues(alpha: darkness),
+  );
+}
+
+/// The veil less the union of [holes], each grown by 2 px: two adjacent
+/// rows' holes overlap, and must not darken where they do.
+Path spotPath(Size size, List<Rect> holes) {
+  var cut = Path();
   for (final hole in holes) {
-    path.addRRect(
-      RRect.fromRectAndRadius(hole.inflate(2), const Radius.circular(6)),
+    cut = Path.combine(
+      PathOperation.union,
+      cut,
+      Path()..addRRect(
+        RRect.fromRectAndRadius(hole.inflate(2), const Radius.circular(6)),
+      ),
     );
   }
-  canvas.drawPath(
-    path,
-    Paint()..color = const Color(0xFF020617).withValues(alpha: darkness),
+  return Path.combine(
+    PathOperation.difference,
+    Path()..addRect((Offset.zero & size).inflate(24)),
+    cut,
   );
 }
 
