@@ -31,7 +31,7 @@ Load this file first. Then read only the pages your task touches.
 | [[GameRules]] | Where each rule of `GAME_RULES.md` is implemented, the turn time limit included | 2026-09-29 |
 | [[Backend]] | `zapzap-rust/`: layout, AppState, environment, auth and account changes, SSE, bots trigger, turn timer, versioned game-state writes, schema and migrations, `seed`, `reset-password` | 2026-09-29 |
 | [[Api]] | Every route, its auth and failure codes (typed), the zapzap/state/nextRound response contracts | 2026-09-29 |
-| [[Bots]] | Bot types and Rust strategies, LLM bot, parameter files in `data/` | 2026-09-28 |
+| [[Bots]] | Bot types and Rust strategies, the LLM bot (Converse or Ollama chat, one JSON answer a turn, its benchmark), parameter files in `data/` | 2026-09-29 |
 | [[Frontend]] | The React client, removed 2026-09-29: what replaced it, its redirected URLs, where its code can still be read | 2026-09-29 |
 | [[FrontendFlutter]] | `frontend-flutter/`, the Flutter client (Android + PWA under `/app/`) hub: status, stack, lib layout, ApiConfig, API layer, theme, wide screens, build and tests | 2026-09-29 |
 | [[FlutterAuth]] | Flutter session and token storage, login and register screens, routing guard, Google sign-in (web + Android OAuth client) | 2026-09-29 |

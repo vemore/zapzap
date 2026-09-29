@@ -6,10 +6,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
-use crate::domain::services::COUNTERACT_PENALTY_PER_OPPONENT;
 use crate::infrastructure::bot::llm_memory::{
     Decision, LlmBotMemory, StrategyCategory, StrategyContext,
 };
+use crate::infrastructure::bot::strategies::LlmBotStrategy;
 use crate::infrastructure::services::LlmService;
 
 /// Round outcome information
@@ -132,36 +132,35 @@ impl ReflectOnRound {
         }
     }
 
-    /// Build system prompt for reflection
+    /// Build system prompt for reflection: the play prompt's rules and card notation, so
+    /// that an insight reads the same when the play prompt quotes it back
     fn build_system_prompt() -> String {
-        r#"Tu es un expert du jeu de cartes ZapZap qui analyse ses propres décisions pour s'améliorer.
+        format!(
+            r#"You are an expert ZapZap player looking back on your own decisions to play better.
 
-## Règles de ZapZap (rappel)
-- But: réduire la valeur de sa main et appeler ZapZap quand ≤5 points
-- Valeurs: A=1, 2-10=face, J=11, Q=12, K=13, Joker=0 (ou 25 si pénalité)
-- Coups valides: cartes seules, paires/brelans, suites (3+ cartes même couleur)
-- Si contre: +main + (joueurs-1)×{PENALITE} points de pénalité
+{}
 
-## Ta tâche
-Analyser les décisions d'un round et générer 0-1 insight stratégique.
+## Your task
+Read one round's decisions and draw at most one strategic insight from them.
 
-## Format de réponse
-- Si nouvel insight: [catégorie] insight (max 100 caractères)
-- Si pas de nouvel insight: NO_NEW_INSIGHTS
+## Answer
+- A new insight: one line, [category] insight (100 characters at most)
+- No new insight: NO_NEW_INSIGHTS
 
-Catégories valides:
-- play_strategy: stratégie de jeu de cartes
-- zapzap_timing: timing pour appeler ZapZap
-- draw_decision: choix entre pioche et défausse
-- golden_score: stratégie en Golden Score
+Categories:
+- play_strategy: which cards to play
+- zapzap_timing: when to call ZapZap
+- draw_decision: deck or played cards
+- golden_score: the two-player final round
 
-Exemples:
-[play_strategy] Jouer les figures (V,D,R) en priorité réduit la main plus vite
-[zapzap_timing] Appeler ZapZap à 5pts quand adversaires ont 2-3 cartes = risqué
-[draw_decision] Prendre les Jokers de la défausse est toujours rentable
+Examples:
+[play_strategy] Shedding J, Q and K first lowers the hand fastest
+[zapzap_timing] Calling ZapZap at 5 when opponents hold 2-3 cards is risky
+[draw_decision] Taking a joker from the played cards always pays
 
-Sois concis et actionnable. Un seul insight maximum."#
-            .replace("{PENALITE}", &COUNTERACT_PENALTY_PER_OPPONENT.to_string())
+Be concise and actionable. One insight at most."#,
+            LlmBotStrategy::rules_text()
+        )
     }
 
     /// Build reflection prompt with round context
@@ -171,22 +170,22 @@ Sois concis et actionnable. Un seul insight maximum."#
         decisions: &[Decision],
     ) -> String {
         let mut lines = vec![
-            format!("## Résumé du Round {}", round_number),
-            format!("- Résultat: {}", Self::outcome_to_text(outcome)),
+            format!("## Round {} summary", round_number),
+            format!("- Result: {}", Self::outcome_to_text(outcome)),
             format!(
-                "- Score ce round: {}{}  points",
+                "- Points this round: {}{}",
                 if outcome.score_change >= 0 { "+" } else { "" },
                 outcome.score_change
             ),
-            format!("- Valeur main finale: {} points", outcome.hand_points),
+            format!("- Final hand value: {} points", outcome.hand_points),
             format!(
-                "- Main finale: {}",
-                Self::cards_to_text(&outcome.final_hand)
+                "- Final hand: {}",
+                LlmBotStrategy::cards_to_names(&outcome.final_hand)
             ),
         ];
 
         lines.push(String::new());
-        lines.push("## Tes décisions ce round".to_string());
+        lines.push("## Your decisions this round".to_string());
 
         for decision in decisions {
             lines.push(Self::decision_to_text(decision));
@@ -194,13 +193,13 @@ Sois concis et actionnable. Un seul insight maximum."#
 
         if outcome.is_golden_score {
             lines.push(String::new());
-            lines.push("## Contexte: Golden Score (2 joueurs restants)".to_string());
+            lines.push("## Context: Golden Score (two players left)".to_string());
         }
 
         lines.push(String::new());
-        lines.push("## Analyse".to_string());
-        lines.push("Quelle décision a le plus impacté ce résultat ?".to_string());
-        lines.push("Y a-t-il un pattern à retenir pour les prochaines parties ?".to_string());
+        lines.push("## Analysis".to_string());
+        lines.push("Which decision weighed most on this result?".to_string());
+        lines.push("Is there a pattern worth keeping for the next games?".to_string());
 
         lines.join("\n")
     }
@@ -208,38 +207,12 @@ Sois concis et actionnable. Un seul insight maximum."#
     /// Convert outcome to readable text
     fn outcome_to_text(outcome: &RoundOutcome) -> &'static str {
         if outcome.counteracted {
-            "CONTRÉ (ZapZap échoué)"
+            "COUNTERACTED (your ZapZap failed)"
         } else if outcome.won {
-            "GAGNÉ (meilleure main ou ZapZap réussi)"
+            "WON (lowest hand, or a ZapZap that held)"
         } else {
-            "PERDU (main trop haute)"
+            "LOST (hand too high)"
         }
-    }
-
-    /// Convert cards to readable text
-    fn cards_to_text(cards: &[u8]) -> String {
-        if cards.is_empty() {
-            return "aucune".to_string();
-        }
-
-        const SUITS: [&str; 4] = ["P", "C", "T", "K"]; // Pique, Coeur, Trèfle, Carreau
-        const RANKS: [&str; 13] = [
-            "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "V", "D", "R",
-        ];
-
-        cards
-            .iter()
-            .map(|&id| {
-                if id >= 52 {
-                    "JKR".to_string()
-                } else {
-                    let suit = SUITS[(id / 13) as usize];
-                    let rank = RANKS[(id % 13) as usize];
-                    format!("{}{}", rank, suit)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
     }
 
     /// Convert decision to readable text
@@ -251,30 +224,36 @@ Sois concis et actionnable. Un seul insight maximum."#
                 let cards = d
                     .cards
                     .as_ref()
-                    .map(|c| Self::cards_to_text(c))
+                    .map(|c| LlmBotStrategy::cards_to_names(c))
                     .unwrap_or_else(|| "?".to_string());
                 let hand_before = d.hand_before.unwrap_or(0);
                 let hand_after = d.hand_after.unwrap_or(0);
                 format!(
-                    "- JOUÉ: {} (main: {}→{} pts)",
+                    "- PLAYED: {} (hand: {} -> {} points)",
                     cards, hand_before, hand_after
                 )
             }
             "draw" => {
                 let source = d.source.as_deref().unwrap_or("?");
-                if source == "deck" {
-                    "- PIOCHÉ: pioche".to_string()
-                } else {
-                    format!("- PIOCHÉ: défausse ({})", source)
+                match source.strip_prefix("discard:").map(str::parse::<u8>) {
+                    Some(Ok(card)) => format!(
+                        "- DREW: {} from the played cards",
+                        LlmBotStrategy::card_to_name(card)
+                    ),
+                    _ if source == "deck" => "- DREW: from the deck".to_string(),
+                    _ => format!("- DREW: {}", source),
                 }
             }
             "zapzap" => {
                 let hand_value = d.hand_value.unwrap_or(0);
-                let success = d.success.map(|s| if s { "RÉUSSI" } else { "CONTRÉ" });
+                let success = d.success.map(|s| if s { "HELD" } else { "COUNTERACTED" });
                 if let Some(success_str) = success {
-                    format!("- ZAPZAP: appelé à {} pts → {}", hand_value, success_str)
+                    format!(
+                        "- ZAPZAP: called at {} points -> {}",
+                        hand_value, success_str
+                    )
                 } else {
-                    format!("- ZAPZAP: appelé à {} pts", hand_value)
+                    format!("- ZAPZAP: called at {} points", hand_value)
                 }
             }
             _ => format!("- {}: {:?}", decision.decision_type, d),
@@ -338,12 +317,11 @@ mod tests {
 
     #[test]
     fn test_parse_insights() {
-        let response =
-            "[play_strategy] Jouer les figures en priorité réduit la main plus rapidement";
+        let response = "[play_strategy] Shedding J, Q and K first lowers the hand fastest";
         let insights = ReflectOnRound::parse_insights(response);
         assert_eq!(insights.len(), 1);
         assert_eq!(insights[0].category, StrategyCategory::PlayStrategy);
-        assert!(insights[0].text.contains("Jouer les figures"));
+        assert!(insights[0].text.contains("Shedding J, Q and K"));
     }
 
     #[test]
@@ -354,10 +332,33 @@ mod tests {
     }
 
     #[test]
-    fn test_cards_to_text() {
-        assert_eq!(ReflectOnRound::cards_to_text(&[0]), "AP");
-        assert_eq!(ReflectOnRound::cards_to_text(&[52]), "JKR");
-        assert_eq!(ReflectOnRound::cards_to_text(&[0, 13]), "AP, AC");
+    fn test_reflection_speaks_the_play_prompt_notation() {
+        // The insight goes back into the play prompt: the same suits (C is clubs there)
+        let outcome = RoundOutcome {
+            won: false,
+            counteracted: false,
+            score_change: 14,
+            hand_points: 14,
+            final_hand: vec![0, 13, 38, 52],
+            is_golden_score: false,
+        };
+        let draw = Decision {
+            decision_type: "draw".to_string(),
+            details: DecisionDetails {
+                source: Some("discard:26".to_string()),
+                ..Default::default()
+            },
+            timestamp: 0,
+        };
+        let prompt = ReflectOnRound::build_reflection_prompt(3, &outcome, &[draw]);
+        assert!(prompt.contains("- Final hand: AS, AH, KC, JKR"), "{prompt}");
+        assert!(
+            prompt.contains("- DREW: AC from the played cards"),
+            "{prompt}"
+        );
+
+        let system = ReflectOnRound::build_system_prompt();
+        assert!(system.contains(&LlmBotStrategy::rules_text()));
     }
 
     use crate::infrastructure::bot::llm_memory::DecisionDetails;
@@ -377,7 +378,7 @@ mod tests {
         async fn invoke(&self, _system: &str, _user: &str) -> Result<String, LlmError> {
             self.called.notify_one();
             self.release.notified().await;
-            Ok("[play_strategy] Jouer les figures en premier vide la main plus vite".to_string())
+            Ok("[play_strategy] Shedding the face cards first empties the hand faster".to_string())
         }
 
         async fn health_check(&self) -> bool {
@@ -456,7 +457,7 @@ mod tests {
     #[async_trait]
     impl LlmService for QuickLlm {
         async fn invoke(&self, _system: &str, _user: &str) -> Result<String, LlmError> {
-            Ok("[zapzap_timing] Annoncer ZapZap tôt quand la main vaut deux".to_string())
+            Ok("[zapzap_timing] Call ZapZap early when the hand is worth two".to_string())
         }
 
         async fn health_check(&self) -> bool {

@@ -1,19 +1,22 @@
 //! LLM Bot Strategy
 //!
-//! Bot strategy using LLM (Ollama/Bedrock) for decision-making.
-//! Uses HardBotStrategy as fallback when LLM is unavailable or fails.
+//! Bot strategy using an LLM (Ollama/Bedrock) for its decisions: one question a turn, the
+//! plays and the drawable cards listed and numbered, answered with one JSON object that
+//! names them by number. Uses HardBotStrategy for any decision the answer does not settle
+//! (no service, a failed call, malformed JSON, a number off the list).
 //! Supports strategic memory to learn from previous games.
 
-use std::sync::Arc;
+use serde_json::{Map, Value};
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::{BotAction, BotStrategy, DrawSource, HardBotStrategy};
 use crate::domain::services::{counteract_penalty, COUNTERACT_PENALTY_PER_OPPONENT};
 use crate::domain::value_objects::GameState;
 use crate::infrastructure::bot::card_analyzer::{
-    calculate_hand_value, can_call_zapzap, find_all_valid_plays, get_card_points, is_valid_play,
-    would_complete_pair, would_complete_sequence,
+    calculate_hand_score, calculate_hand_value, can_call_zapzap, find_plays_without_lone_jokers,
+    is_valid_play,
 };
 use crate::infrastructure::bot::llm_memory::{Decision, DecisionDetails, LlmBotMemory};
 use crate::infrastructure::services::LlmService;
@@ -24,6 +27,59 @@ const RANKS: [&str; 13] = [
     "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
 ];
 
+/// A turn's question: the situation as the model reads it, and what its numbers stand for
+#[derive(Debug, Clone)]
+struct TurnQuestion {
+    text: String,
+    /// The plays offered, numbered from 1
+    plays: Vec<Vec<u8>>,
+    /// The cards drawable after the play, numbered from 1
+    drawable: Vec<u8>,
+    /// Whether ZapZap is offered (the hand is worth 5 or less)
+    zapzap: bool,
+}
+
+/// Where the answer says to draw from
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DrawChoice {
+    Deck,
+    Card(u8),
+}
+
+/// A turn's answer, one field per decision: `None` where the answer does not settle it,
+/// which that decision's fallback then takes
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TurnAnswer {
+    zapzap: Option<bool>,
+    play: Option<Vec<u8>>,
+    draw: Option<DrawChoice>,
+}
+
+/// The draw an answer planned with its play, for the hand that play leaves
+#[derive(Debug, Clone)]
+struct DrawPlan {
+    round: u16,
+    /// The hand after the play, sorted
+    hand: Vec<u8>,
+    draw: Option<DrawChoice>,
+}
+
+/// What the strategy keeps between the calls of one turn: the ZapZap check, the play and
+/// the draw read one answer
+#[derive(Debug, Default)]
+struct TurnMemo {
+    /// The last question asked, and its answer
+    answered: Option<(String, TurnAnswer)>,
+    /// The draw planned with the play made
+    draw: Option<DrawPlan>,
+}
+
+/// The start of a model's answer, for a log line: 200 characters at most, cut on a
+/// character boundary (a byte slice would panic inside a multi-byte one)
+fn excerpt(text: &str) -> String {
+    text.chars().take(200).collect()
+}
+
 /// LLM Bot Strategy
 pub struct LlmBotStrategy {
     llm_service: Option<Arc<dyn LlmService>>,
@@ -32,6 +88,7 @@ pub struct LlmBotStrategy {
     system_prompt: String,
     /// The party this instance plays in: its decisions are kept per party and round
     party_id: String,
+    turn: Mutex<TurnMemo>,
 }
 
 impl LlmBotStrategy {
@@ -47,6 +104,7 @@ impl LlmBotStrategy {
             memory,
             system_prompt,
             party_id: String::new(),
+            turn: Mutex::new(TurnMemo::default()),
         }
     }
 
@@ -71,73 +129,34 @@ impl LlmBotStrategy {
         self.memory.clone()
     }
 
-    /// Build the base system prompt with game rules
-    fn build_system_prompt_base() -> String {
-        r#"You are an expert ZapZap card game player bot. Your goal is to win by minimizing your hand value and calling ZapZap at the optimal time.
-
-## Game Rules
-
-### Card Values (for ZapZap eligibility and hand scoring)
-- Ace (A): 1 point
-- 2-10: Face value (2=2, 3=3, ..., 10=10)
-- Jack (J): 11 points
-- Queen (Q): 12 points
-- King (K): 13 points
-- Joker: 0 points for ZapZap eligibility, but 25 points penalty in final scoring if you don't have the lowest hand
-
-### Card Notation
-Cards are written as RankSuit, for example:
-- AS = Ace of Spades
-- 10H = 10 of Hearts
-- KC = King of Clubs
-- QD = Queen of Diamonds
-- JKR = Joker
-
-### Valid Plays
-1. **Single card**: Any single card can be played alone
-2. **Pairs/Sets**: 2 or more cards of the same rank (e.g., KS KH = pair of Kings)
-3. **Sequences**: 3 or more consecutive cards of the same suit (e.g., 5S 6S 7S)
-4. **Jokers**: Can substitute any card in pairs or sequences
-
-### Turn Structure
-Each turn has two phases:
-1. **PLAY phase**: You must play a valid card combination from your hand
-2. **DRAW phase**: Draw one card from the deck OR pick a card from the discard pile
-
-### ZapZap Rules
-- You can call ZapZap when your hand value is 5 points or less (Joker = 0 for this check)
-- If you have the lowest hand value: You score 0, all other players score their hand value (Joker = 25 points penalty)
-- If someone else has equal or lower hand value: You are COUNTERACTED and score {COUNTERACT_RULE}
-
-### Winning
-- Players are eliminated when their total score exceeds 100 points
-- When only 2 players remain: "Golden Score" final round begins
-- The winner is the last player with 100 points or less
-
-## Strategy Guidelines
-1. **Minimize hand value quickly** to be able to call ZapZap early
-2. **Multi-card plays are more efficient** than playing single cards
-3. **Track what opponents pick from discard** - they likely need those cards
-4. **In Golden Score (2 players)**: NEVER play Jokers - hoard them to deny your opponent
-5. **Be cautious calling ZapZap** when opponents have few cards (higher counter risk)
-6. **Prefer playing high-value cards** (J, Q, K) to reduce hand value faster
-7. **Consider discard pile** - pick cards that help form pairs/sequences
-
-## Response Format
-You must respond with ONLY the requested information:
-- For play decisions: List the cards to play (e.g., "KS, KH" or "5C, 6C, 7C")
-- For ZapZap decisions: Answer "YES" or "NO"
-- For draw decisions: Answer "DECK" or "DISCARD"
-
-Be concise and direct in your responses."#
-            .replace("{COUNTERACT_RULE}", &Self::counteract_rule_text())
+    /// The rules of ZapZap as GAME_RULES.md states them, in the prompts' card notation
+    pub(crate) fn rules_text() -> String {
+        format!(
+            r#"## Rules of ZapZap
+- 54 cards: A, 2-10, J, Q, K in four suits, and 2 jokers. A card is written rank then suit (S, H, C, D): AS, 10H, KC. JKR is a joker.
+- Points: A = 1, 2-10 = face value, J = 11, Q = 12, K = 13, joker = 0.
+- On your turn you play one combination from your hand, then draw one card: the top of the deck (unseen), or any one of the cards the previous player just played (seen by all).
+- Combinations: one card; two or more cards of the same rank; three or more cards of one suit that follow each other (A is low: A 2 3, never Q K A). A joker stands for any card of a combination.
+- ZapZap: at the start of your turn, instead of playing, you may call ZapZap if your hand is worth 5 points or less (jokers 0). The round ends and every hand is counted, jokers 0:
+  - if another player's hand is worth as much as yours or less, you are counteracted: you score your hand, each joker counting 25, plus {penalty} points per other player still in the game;
+  - otherwise the lowest hand scores 0 (every hand tied at the lowest too), and every other player scores their hand, each joker counting 25.
+- Scores add up over the rounds. A player past 100 points is out; the last player in wins the game.
+- Golden Score: with two players left, the next ZapZap ends the game. The lowest hand wins it; a counteracted caller (tied hands included) loses it.
+- The deck holds about 6.7 points a card on average."#,
+            penalty = COUNTERACT_PENALTY_PER_OPPONENT
+        )
     }
 
-    /// The counteract penalty as the rules state it, built from the constant scoring uses
-    fn counteract_rule_text() -> String {
+    /// Build the base system prompt: the rules and the answer's form
+    fn build_system_prompt_base() -> String {
         format!(
-            "your hand value (Jokers = 25) plus a penalty of {} points per other active player",
-            COUNTERACT_PENALTY_PER_OPPONENT
+            r#"You are a bot playing ZapZap, a rummy-like card game, to win the game: keep your score low, and call ZapZap when no other hand is likely to be as low as yours.
+
+{}
+
+## Your answer
+Each turn lists the plays you may make and the cards you may draw, each with a number. Think it through, then answer with one JSON object and nothing else, naming them by number, in the form the turn asks for."#,
+            Self::rules_text()
         )
     }
 
@@ -163,7 +182,7 @@ Be concise and direct in your responses."#
     }
 
     /// Convert card ID to human-readable name
-    fn card_to_name(card_id: u8) -> String {
+    pub(crate) fn card_to_name(card_id: u8) -> String {
         if card_id >= 52 {
             return "JKR".to_string();
         }
@@ -173,7 +192,7 @@ Be concise and direct in your responses."#
     }
 
     /// Convert array of card IDs to human-readable names
-    fn cards_to_names(cards: &[u8]) -> String {
+    pub(crate) fn cards_to_names(cards: &[u8]) -> String {
         if cards.is_empty() {
             return "none".to_string();
         }
@@ -184,126 +203,243 @@ Be concise and direct in your responses."#
             .join(", ")
     }
 
-    /// Build game state context for LLM prompt
-    fn build_game_state_context(state: &GameState, player_index: u8) -> String {
-        let hand = state.get_hand(player_index);
-        let hand_value = calculate_hand_value(hand);
-
-        let mut lines = vec![
-            "## Current Game Situation".to_string(),
-            format!("Round: {}", state.round_number),
-            format!("Your player index: {}", player_index),
-            format!(
-                "Golden Score mode: {}",
-                if state.is_golden_score {
-                    "YES (final 2-player round!)"
-                } else {
-                    "NO"
-                }
-            ),
-            String::new(),
-            "### Your Hand".to_string(),
-            format!("Cards: {}", Self::cards_to_names(hand)),
-            format!("Hand value: {} points", hand_value),
-            format!(
-                "Can call ZapZap: {}",
-                if hand_value <= 5 { "YES" } else { "NO" }
-            ),
-            String::new(),
-            "### Opponent Information".to_string(),
-        ];
-
-        for i in 0..state.player_count {
-            if i == player_index {
-                continue;
-            }
-            if state.is_eliminated(i) {
-                lines.push(format!("Player {}: ELIMINATED", i));
-            } else {
-                let opponent_hand = state.get_hand(i);
-                lines.push(format!(
-                    "Player {}: {} cards, score: {}",
-                    i,
-                    opponent_hand.len(),
-                    state.scores[i as usize]
-                ));
-            }
-        }
-
-        lines.push(String::new());
-        lines.push("### Your Score".to_string());
-        lines.push(format!(
-            "Your total score: {} points",
-            state.scores[player_index as usize]
-        ));
-
-        if !state.last_cards_played.is_empty() {
-            lines.push(String::new());
-            lines.push("### Discard Pile (available to pick)".to_string());
-            lines.push(Self::cards_to_names(&state.last_cards_played));
+    /// The cards the player on turn may draw once they have played: the previous player's
+    /// play, or on the round's first play the card turned up at the deal
+    /// (`execute_play`, `game_service.rs`)
+    fn drawable_after_play(state: &GameState) -> &[u8] {
+        if state.cards_played.is_empty() {
+            &state.last_cards_played
         } else {
-            lines.push(String::new());
-            lines.push("### Discard Pile".to_string());
-            lines.push("Empty".to_string());
+            &state.cards_played
         }
-
-        lines.push(String::new());
-        lines.push("### Deck Status".to_string());
-        lines.push(format!("Cards remaining in deck: {}", state.deck.len()));
-
-        lines.join("\n")
     }
 
-    /// Parse LLM response to extract card IDs
-    fn parse_play_response(response: &str, hand: &[u8]) -> Option<Vec<u8>> {
-        let upper = response.to_uppercase();
-        let mut found_cards = Vec::new();
+    /// The turn's question, for the player on turn before they play
+    fn turn_question(state: &GameState, player_index: u8) -> TurnQuestion {
+        let hand = state.get_hand(player_index);
+        let hand_value = calculate_hand_value(hand);
+        let plays: Vec<Vec<u8>> = find_plays_without_lone_jokers(hand)
+            .into_iter()
+            .map(|play| play.to_vec())
+            .collect();
+        let drawable = Self::drawable_after_play(state).to_vec();
+        let zapzap = can_call_zapzap(hand);
 
-        // Pattern: RankSuit (e.g., "KS", "10H", "AC")
-        let patterns = [
-            ("A", 0),
-            ("2", 1),
-            ("3", 2),
-            ("4", 3),
-            ("5", 4),
-            ("6", 5),
-            ("7", 6),
-            ("8", 7),
-            ("9", 8),
-            ("10", 9),
-            ("J", 10),
-            ("Q", 11),
-            ("K", 12),
-        ];
+        let mut lines = vec![format!(
+            "Round {}{}. You are player {}, your score is {}.",
+            state.round_number,
+            if state.is_golden_score {
+                ", Golden Score"
+            } else {
+                ""
+            },
+            player_index,
+            state.scores[player_index as usize]
+        )];
+        lines.push(format!(
+            "Your hand: {} (worth {} points, jokers 0).",
+            Self::cards_to_names(hand),
+            hand_value
+        ));
+        lines.push("Opponents:".to_string());
+        for i in (0..state.player_count).filter(|&i| i != player_index) {
+            if state.is_eliminated(i) {
+                lines.push(format!("- Player {}: out.", i));
+                continue;
+            }
+            let known = state.get_player_known_cards(i);
+            let known = if known.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", holds {} (taken from the played cards)",
+                    Self::cards_to_names(&known)
+                )
+            };
+            lines.push(format!(
+                "- Player {}: score {}, {} cards in hand{}.",
+                i,
+                state.scores[i as usize],
+                state.get_hand(i).len(),
+                known
+            ));
+        }
+        lines.push(format!("Deck: {} cards.", state.deck.len()));
+        lines.push(String::new());
 
-        let suits = [("S", 0), ("H", 1), ("C", 2), ("D", 3)];
+        lines.push("Plays you may make (number: cards -> your hand after it):".to_string());
+        for (n, play) in plays.iter().enumerate() {
+            let remaining: Vec<u8> = hand.iter().copied().filter(|c| !play.contains(c)).collect();
+            lines.push(format!(
+                "{}: {} -> {} points",
+                n + 1,
+                Self::cards_to_names(play),
+                calculate_hand_value(&remaining)
+            ));
+        }
+        lines.push(String::new());
+        lines.push(format!(
+            "Then you draw \"deck\" (an unseen card){}",
+            if drawable.is_empty() {
+                ".".to_string()
+            } else {
+                format!(
+                    ", or one of the cards {} (number: card):",
+                    if state.cards_played.is_empty() {
+                        "turned up at the deal"
+                    } else {
+                        "the previous player played"
+                    }
+                )
+            }
+        ));
+        for (n, &card) in drawable.iter().enumerate() {
+            lines.push(format!("{}: {}", n + 1, Self::card_to_name(card)));
+        }
+        lines.push(String::new());
 
-        for (rank_str, rank_idx) in &patterns {
-            for (suit_str, suit_idx) in &suits {
-                let pattern = format!("{}{}", rank_str, suit_str);
-                if upper.contains(&pattern) {
-                    let card_id = (suit_idx * 13 + rank_idx) as u8;
-                    if hand.contains(&card_id) && !found_cards.contains(&card_id) {
-                        found_cards.push(card_id);
+        let play_form = r#""play": <play number>, "draw": "deck" or <card number>"#;
+        if zapzap {
+            let counteracted =
+                calculate_hand_score(hand, false) + counteract_penalty(state.active_player_count());
+            lines.push(format!(
+                "Your hand is worth {} points: you may call ZapZap instead of playing. {}",
+                hand_value,
+                if state.is_golden_score {
+                    "Counteracted, you lose the game.".to_string()
+                } else {
+                    format!("Counteracted, you score {} points.", counteracted)
+                }
+            ));
+            lines.push(format!(
+                "Answer {{\"zapzap\": true}} to call it, or {{\"zapzap\": false, {}}}.",
+                play_form
+            ));
+        } else {
+            lines.push(format!("Answer {{{}}}.", play_form));
+        }
+
+        TurnQuestion {
+            text: lines.join("\n"),
+            plays,
+            drawable,
+            zapzap,
+        }
+    }
+
+    /// The JSON object an answer holds: the text from its first `{` to its last `}` (a
+    /// code fence or a sentence around it is left out), which must parse as one object
+    fn answer_object(text: &str) -> Option<Map<String, Value>> {
+        let start = text.find('{')?;
+        let end = text.rfind('}')?;
+        if end < start {
+            return None;
+        }
+        match serde_json::from_str(&text[start..=end]) {
+            Ok(Value::Object(object)) => Some(object),
+            _ => None,
+        }
+    }
+
+    /// The item numbered `value` (from 1) of `count`: an integer in range, or a string of
+    /// one (`"1"`, as gpt-oss writes a draw now and then); nothing else
+    fn numbered(value: &Value, count: usize) -> Option<usize> {
+        let n = match value {
+            Value::String(s) => s.trim().parse::<u64>().ok()?,
+            _ => value.as_u64()?,
+        };
+        (1..=count as u64).contains(&n).then(|| n as usize - 1)
+    }
+
+    /// Read an answer against its question: each decision it settles, strictly (the types
+    /// and numbers the question asked for), the others `None`
+    fn parse_turn_answer(text: &str, question: &TurnQuestion) -> TurnAnswer {
+        let Some(object) = Self::answer_object(text) else {
+            return TurnAnswer::default();
+        };
+        let zapzap = if question.zapzap {
+            object.get("zapzap").and_then(Value::as_bool)
+        } else {
+            None
+        };
+        let play = object
+            .get("play")
+            .and_then(|v| Self::numbered(v, question.plays.len()))
+            .map(|n| question.plays[n].clone())
+            .filter(|cards| is_valid_play(cards));
+        let draw = match object.get("draw") {
+            Some(Value::String(s)) if s.eq_ignore_ascii_case("deck") => Some(DrawChoice::Deck),
+            Some(v) => Self::numbered(v, question.drawable.len())
+                .map(|n| DrawChoice::Card(question.drawable[n])),
+            None => None,
+        };
+        TurnAnswer { zapzap, play, draw }
+    }
+
+    /// The answer for the turn `state` shows: the one already given to this very question
+    /// (the ZapZap check and the play ask the same), else the model's
+    async fn turn_answer(
+        &self,
+        llm_service: &Arc<dyn LlmService>,
+        state: &GameState,
+        player_index: u8,
+    ) -> TurnAnswer {
+        let question = Self::turn_question(state, player_index);
+        if let Some((asked, answer)) = &self.turn_memo().answered {
+            if *asked == question.text {
+                return answer.clone();
+            }
+        }
+
+        let system_prompt = self.build_system_prompt().await;
+        debug!("LLM turn question:\n{}", question.text);
+        let answer = match llm_service.invoke(&system_prompt, &question.text).await {
+            Ok(response) => {
+                let answer = Self::parse_turn_answer(&response, &question);
+                info!(
+                    "LLM turn answer: {:?} (response: {})",
+                    answer,
+                    excerpt(&response)
+                );
+                if answer.zapzap != Some(true) {
+                    if answer.play.is_none() {
+                        warn!(
+                            "LLM answer names no listed play, the play falls back: {}",
+                            excerpt(&response)
+                        );
+                    } else if answer.draw.is_none() {
+                        warn!(
+                            "LLM answer names no listed draw, the draw falls back: {}",
+                            excerpt(&response)
+                        );
                     }
                 }
+                answer
             }
-        }
-
-        // Check for Joker
-        if upper.contains("JOKER") || upper.contains("JKR") {
-            for &card_id in hand {
-                if card_id >= 52 && !found_cards.contains(&card_id) {
-                    found_cards.push(card_id);
-                    break;
-                }
+            Err(e) => {
+                error!("LLM turn question failed: {}", e);
+                TurnAnswer::default()
             }
-        }
+        };
+        self.turn_memo().answered = Some((question.text, answer.clone()));
+        answer
+    }
 
-        if found_cards.is_empty() {
-            None
-        } else {
-            Some(found_cards)
+    fn turn_memo(&self) -> std::sync::MutexGuard<'_, TurnMemo> {
+        self.turn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn track(&self, round: u16, decision_type: &str, details: DecisionDetails) {
+        if let Some(ref memory) = self.memory {
+            let decision = Decision {
+                decision_type: decision_type.to_string(),
+                details,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+            };
+            memory
+                .write()
+                .await
+                .track_decision(&self.party_id, round as u32, decision);
         }
     }
 
@@ -319,97 +455,31 @@ Be concise and direct in your responses."#
             return self.fallback.select_cards(state, player_index);
         };
 
-        // Build prompt
-        let valid_plays = find_all_valid_plays(hand);
-        let plays_desc: Vec<String> = valid_plays
+        let answer = self.turn_answer(llm_service, state, player_index).await;
+        let Some(cards) = answer.play else {
+            self.turn_memo().draw = None;
+            return self.fallback.select_cards(state, player_index);
+        };
+
+        let mut remaining: Vec<u8> = hand
             .iter()
-            .map(|play| {
-                let remaining: Vec<u8> =
-                    hand.iter().copied().filter(|c| !play.contains(c)).collect();
-                let remaining_value = calculate_hand_value(&remaining);
-                format!(
-                    "- {} (remaining hand: {} points)",
-                    Self::cards_to_names(play),
-                    remaining_value
-                )
-            })
+            .copied()
+            .filter(|c| !cards.contains(c))
             .collect();
-
-        let context = Self::build_game_state_context(state, player_index);
-        let system_prompt = self.build_system_prompt().await;
-
-        let user_prompt = format!(
-            r#"{}
-
-### Valid Plays Available
-{}
-
-Based on the current game state and optimal strategy, which cards should I play?
-Consider:
-1. Minimizing remaining hand value
-2. Setting up for ZapZap if close
-3. Playing multi-card combinations when beneficial
-4. In Golden Score: NEVER play Jokers
-
-Respond with ONLY the cards to play (e.g., "KS, KH" for a pair of Kings)."#,
-            context,
-            plays_desc.join("\n")
-        );
-
-        match llm_service.invoke(&system_prompt, &user_prompt).await {
-            Ok(response) => {
-                if let Some(cards) = Self::parse_play_response(&response, hand) {
-                    if is_valid_play(&cards) {
-                        info!(
-                            "LLM selected play: {} (response: {})",
-                            Self::cards_to_names(&cards),
-                            &response[..response.len().min(100)]
-                        );
-
-                        // Track decision if memory is available
-                        if let Some(ref memory) = self.memory {
-                            let hand_before = calculate_hand_value(hand);
-                            let remaining: Vec<u8> = hand
-                                .iter()
-                                .copied()
-                                .filter(|c| !cards.contains(c))
-                                .collect();
-                            let hand_after = calculate_hand_value(&remaining);
-
-                            let decision = Decision {
-                                decision_type: "play".to_string(),
-                                details: DecisionDetails {
-                                    cards: Some(cards.clone()),
-                                    hand_before: Some(hand_before),
-                                    hand_after: Some(hand_after),
-                                    ..Default::default()
-                                },
-                                timestamp: chrono::Utc::now().timestamp_millis(),
-                            };
-
-                            let mut memory = memory.write().await;
-                            memory.track_decision(
-                                &self.party_id,
-                                state.round_number as u32,
-                                decision,
-                            );
-                        }
-
-                        return cards;
-                    }
-                }
-
-                warn!(
-                    "LLM response invalid, using fallback: {}",
-                    &response[..response.len().min(200)]
-                );
-                self.fallback.select_cards(state, player_index)
-            }
-            Err(e) => {
-                error!("LLM play selection failed: {}", e);
-                self.fallback.select_cards(state, player_index)
-            }
-        }
+        let details = DecisionDetails {
+            cards: Some(cards.clone()),
+            hand_before: Some(calculate_hand_value(hand)),
+            hand_after: Some(calculate_hand_value(&remaining)),
+            ..Default::default()
+        };
+        remaining.sort_unstable();
+        self.turn_memo().draw = Some(DrawPlan {
+            round: state.round_number,
+            hand: remaining,
+            draw: answer.draw,
+        });
+        self.track(state.round_number, "play", details).await;
+        cards
     }
 
     /// Async ZapZap decision using LLM
@@ -433,207 +503,59 @@ Respond with ONLY the cards to play (e.g., "KS, KH" for a pair of Kings)."#,
             return self.fallback.should_call_zapzap(state, player_index);
         };
 
-        // Calculate opponent info
-        let active_opponents: Vec<usize> = (0..state.player_count as usize)
-            .filter(|&i| i != player_index as usize && !state.is_eliminated(i as u8))
-            .collect();
-
-        let avg_opponent_cards = if active_opponents.is_empty() {
-            0.0
-        } else {
-            active_opponents
-                .iter()
-                .map(|&i| state.get_hand(i as u8).len() as f32)
-                .sum::<f32>()
-                / active_opponents.len() as f32
+        let answer = self.turn_answer(llm_service, state, player_index).await;
+        let Some(call) = answer.zapzap else {
+            return self.fallback.should_call_zapzap(state, player_index);
         };
-
-        let context = Self::build_game_state_context(state, player_index);
-        let system_prompt = self.build_system_prompt().await;
-
-        let user_prompt = format!(
-            r#"{}
-
-### ZapZap Decision
-Your hand value is {} points, which is eligible for ZapZap (<=5).
-Average opponent hand size: {:.1} cards
-
-Should you call ZapZap now?
-
-Consider:
-1. Opponents with few cards (1-3) have higher chance of having low hands = counter risk
-2. Opponents with many cards (5+) likely have high hands = safer to ZapZap
-3. Your current score vs opponents - risk tolerance
-4. If counteracted: +{} penalty plus your hand value
-
-Respond with ONLY "YES" or "NO"."#,
-            context,
-            hand_value,
-            avg_opponent_cards,
-            counteract_penalty(state.active_player_count())
-        );
-
-        match llm_service.invoke(&system_prompt, &user_prompt).await {
-            Ok(response) => {
-                let should_call = response.to_uppercase().contains("YES");
-                info!(
-                    "LLM ZapZap decision: {} (hand_value: {}, response: {})",
-                    should_call,
-                    hand_value,
-                    &response[..response.len().min(50)]
-                );
-
-                // Track decision if memory is available
-                if let Some(ref memory) = self.memory {
-                    let decision = Decision {
-                        decision_type: "zapzap".to_string(),
-                        details: DecisionDetails {
-                            hand_value: Some(hand_value),
-                            success: None, // Will be updated after result
-                            ..Default::default()
-                        },
-                        timestamp: chrono::Utc::now().timestamp_millis(),
-                    };
-
-                    let mut memory = memory.write().await;
-                    memory.track_decision(&self.party_id, state.round_number as u32, decision);
-                }
-
-                should_call
-            }
-            Err(e) => {
-                error!("LLM ZapZap decision failed: {}", e);
-                self.fallback.should_call_zapzap(state, player_index)
-            }
+        info!("LLM ZapZap decision: {} (hand_value: {})", call, hand_value);
+        if call {
+            let details = DecisionDetails {
+                hand_value: Some(hand_value),
+                success: None, // Will be updated after result
+                ..Default::default()
+            };
+            self.track(state.round_number, "zapzap", details).await;
         }
+        call
     }
 
-    /// Async draw source selection using LLM
+    /// Async draw source selection: the draw the answer planned with the play made
     pub async fn decide_draw_source_async(
         &self,
         state: &GameState,
         player_index: u8,
     ) -> DrawSource {
-        let hand = state.get_hand(player_index);
-
         // If discard is empty, must draw from deck
         if state.last_cards_played.is_empty() {
             return DrawSource::Deck;
         }
 
-        // If no LLM service, use fallback
-        let Some(ref llm_service) = self.llm_service else {
-            return self.fallback.decide_draw_source(state, player_index);
+        let plan = self.turn_memo().draw.take();
+        let mut hand = state.get_hand(player_index).to_vec();
+        hand.sort_unstable();
+        let planned = plan
+            .filter(|plan| plan.round == state.round_number && plan.hand == hand)
+            .and_then(|plan| plan.draw);
+        let source = match planned {
+            Some(DrawChoice::Deck) => DrawSource::Deck,
+            Some(DrawChoice::Card(card)) if state.last_cards_played.contains(&card) => {
+                DrawSource::Discard(card)
+            }
+            // No plan for this hand (no service, a play that fell back, a restart since the
+            // play), or a card no longer there
+            _ => return self.fallback.decide_draw_source(state, player_index),
         };
 
-        // Analyze discard options
-        let discard_analysis: Vec<String> = state
-            .last_cards_played
-            .iter()
-            .map(|&card| {
-                let is_joker = card >= 52;
-                let enables_pair = would_complete_pair(hand, card);
-                let enables_seq = would_complete_sequence(hand, card);
-
-                let card_name = Self::card_to_name(card);
-                if is_joker {
-                    format!("{}: JOKER (valuable!)", card_name)
-                } else if enables_pair || enables_seq {
-                    format!("{}: enables multi-card play", card_name)
-                } else {
-                    format!("{}: {} points", card_name, get_card_points(card))
-                }
-            })
-            .collect();
-
-        let context = Self::build_game_state_context(state, player_index);
-        let system_prompt = self.build_system_prompt().await;
-
-        let user_prompt = format!(
-            r#"{}
-
-### Draw Decision
-You must draw a card. Options:
-
-1. **DECK**: Draw unknown card from deck ({} cards remaining)
-
-2. **DISCARD**: Pick from discard pile:
-{}
-
-Which option is better for your current hand?
-
-Consider:
-1. Does any discard card complete a pair or sequence with your hand?
-2. Is there a Joker in discard? (Always valuable to grab!)
-3. Picking from discard reveals information to opponents about your strategy
-4. In Golden Score: Grabbing Joker denies it from opponent
-
-Respond with ONLY "DECK" or "DISCARD"."#,
-            context,
-            state.deck.len(),
-            discard_analysis.join("\n")
-        );
-
-        match llm_service.invoke(&system_prompt, &user_prompt).await {
-            Ok(response) => {
-                let source = if response.to_uppercase().contains("DISCARD") {
-                    // Pick the best card from discard
-                    let best_card = state
-                        .last_cards_played
-                        .iter()
-                        .max_by_key(|&&card| {
-                            let mut score = 0i32;
-                            if card >= 52 {
-                                score += 100; // Jokers are always good
-                            }
-                            if would_complete_pair(hand, card) {
-                                score += 50;
-                            }
-                            if would_complete_sequence(hand, card) {
-                                score += 40;
-                            }
-                            score -= get_card_points(card) as i32;
-                            score
-                        })
-                        .copied()
-                        .unwrap_or(state.last_cards_played[0]);
-
-                    DrawSource::Discard(best_card)
-                } else {
-                    DrawSource::Deck
-                };
-
-                info!(
-                    "LLM draw decision: {:?} (response: {})",
-                    source,
-                    &response[..response.len().min(50)]
-                );
-
-                // Track decision if memory is available
-                if let Some(ref memory) = self.memory {
-                    let decision = Decision {
-                        decision_type: "draw".to_string(),
-                        details: DecisionDetails {
-                            source: Some(match &source {
-                                DrawSource::Deck => "deck".to_string(),
-                                DrawSource::Discard(card) => format!("discard:{}", card),
-                            }),
-                            ..Default::default()
-                        },
-                        timestamp: chrono::Utc::now().timestamp_millis(),
-                    };
-
-                    let mut memory = memory.write().await;
-                    memory.track_decision(&self.party_id, state.round_number as u32, decision);
-                }
-
-                source
-            }
-            Err(e) => {
-                error!("LLM draw decision failed: {}", e);
-                self.fallback.decide_draw_source(state, player_index)
-            }
-        }
+        info!("LLM draw decision: {:?}", source);
+        let details = DecisionDetails {
+            source: Some(match &source {
+                DrawSource::Deck => "deck".to_string(),
+                DrawSource::Discard(card) => format!("discard:{}", card),
+            }),
+            ..Default::default()
+        };
+        self.track(state.round_number, "draw", details).await;
+        source
     }
 }
 
@@ -670,6 +592,78 @@ impl BotStrategy for LlmBotStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::services::execute_play;
+    use crate::domain::value_objects::GameAction;
+    use crate::infrastructure::services::{LlmError, MockLlmService};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // Card ids: suit * 13 + rank, S 0, H 13, C 26, D 39; jokers 52, 53
+    const AS: u8 = 0;
+    const TWO_S: u8 = 1;
+    const FIVE_S: u8 = 4;
+    const SIX_S: u8 = 5;
+    const KS: u8 = 12;
+    const AH: u8 = 13;
+    const TWO_H: u8 = 14;
+    const SEVEN_H: u8 = 19;
+    const KH: u8 = 25;
+    const SEVEN_C: u8 = 32;
+    const NINE_D: u8 = 47;
+    const JKR: u8 = 52;
+
+    /// Three players, seat 0 to play `hand`, the previous player's play `played` to draw
+    /// from after it
+    fn table(hand: &[u8], played: &[u8]) -> GameState {
+        let mut state = GameState::new(3);
+        state.hands[0] = hand.iter().copied().collect();
+        state.hands[1] = [30, 31, 33, 34].into_iter().collect();
+        state.hands[2] = [40, 41, 42, 43, 44].into_iter().collect();
+        state.last_cards_played = [NINE_D].into_iter().collect();
+        state.cards_played = played.iter().copied().collect();
+        state.deck = (6..12).collect();
+        state.current_turn = 0;
+        state.current_action = GameAction::Play;
+        state
+    }
+
+    /// A service answering `answer`, counting its calls
+    struct Counted {
+        answer: String,
+        calls: AtomicUsize,
+    }
+
+    impl Counted {
+        fn new(answer: &str) -> Arc<Self> {
+            Arc::new(Self {
+                answer: answer.to_string(),
+                calls: AtomicUsize::new(0),
+            })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmService for Counted {
+        async fn invoke(&self, _: &str, _: &str) -> Result<String, LlmError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.answer.clone())
+        }
+
+        async fn health_check(&self) -> bool {
+            true
+        }
+    }
+
+    fn bot(answer: &str) -> LlmBotStrategy {
+        LlmBotStrategy::with_service(Arc::new(MockLlmService::new(answer)))
+    }
+
+    #[test]
+    fn test_excerpt_cuts_on_a_character_boundary() {
+        // A byte slice at 200 would cut the arrow's three bytes and panic
+        let answer = format!("{}→ {{\"play\": 1}}", "a".repeat(199));
+        assert_eq!(excerpt(&answer).chars().count(), 200);
+        assert!(excerpt(&answer).ends_with('→'));
+    }
 
     #[test]
     fn test_card_to_name() {
@@ -680,34 +674,14 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_play_response() {
-        let hand = vec![0, 12, 13, 25, 52]; // AS, KS, AH, KH, Joker
-
-        // Single card
-        let result = LlmBotStrategy::parse_play_response("Play KS", &hand);
-        assert_eq!(result, Some(vec![12]));
-
-        // Pair
-        let result = LlmBotStrategy::parse_play_response("KS, KH", &hand);
-        assert!(result.is_some());
-        let cards = result.unwrap();
-        assert!(cards.contains(&12) && cards.contains(&25));
-
-        // Joker
-        let result = LlmBotStrategy::parse_play_response("Play the Joker", &hand);
-        assert_eq!(result, Some(vec![52]));
-    }
-
-    #[test]
     fn test_prompt_counteract_penalty_matches_scoring() {
         let prompt = LlmBotStrategy::build_system_prompt_base();
-        assert!(!prompt.contains("{COUNTERACT_RULE}"));
         assert!(
             !prompt.contains("+20"),
             "the penalty depends on the player count"
         );
         assert!(prompt.contains(&format!(
-            "a penalty of {} points per other active player",
+            "plus {} points per other player still in the game",
             COUNTERACT_PENALTY_PER_OPPONENT
         )));
 
@@ -718,5 +692,217 @@ mod tests {
                 (active as u16 - 1) * COUNTERACT_PENALTY_PER_OPPONENT
             );
         }
+    }
+
+    #[test]
+    fn test_turn_question_numbers_the_plays_and_the_drawable_cards() {
+        // KS KH JKR, the previous player played 5S 6S
+        let state = table(&[KS, KH, JKR, AS], &[FIVE_S, SIX_S]);
+        let question = LlmBotStrategy::turn_question(&state, 0);
+
+        // No lone joker is offered (a joker pair neither)
+        assert!(question.plays.iter().all(|p| p.iter().any(|&c| c != JKR)));
+        assert!(question.plays.contains(&vec![KS, KH]));
+        assert_eq!(question.drawable, vec![FIVE_S, SIX_S]);
+        assert!(!question.zapzap);
+        assert!(question
+            .text
+            .contains("Your hand: KS, KH, JKR, AS (worth 27 points"));
+        assert!(question.text.contains("1: 5S\n2: 6S"));
+        assert!(question.text.contains("the previous player played"));
+        assert!(question
+            .text
+            .ends_with(r#"Answer {"play": <play number>, "draw": "deck" or <card number>}."#));
+        assert!(!question.text.contains("<|"));
+
+        // On the round's first play, the card turned up at the deal is the one to draw
+        let first = table(&[KS, KH, AS], &[]);
+        let question = LlmBotStrategy::turn_question(&first, 0);
+        assert_eq!(question.drawable, vec![NINE_D]);
+        assert!(question.text.contains("turned up at the deal"));
+    }
+
+    #[test]
+    fn test_turn_question_offers_zapzap_with_its_cost() {
+        // AS 2S JKR: worth 3; counteracted it scores 1 + 2 + 25 + 2 × 5
+        let state = table(&[AS, TWO_S, JKR], &[FIVE_S]);
+        let question = LlmBotStrategy::turn_question(&state, 0);
+
+        assert!(question.zapzap);
+        assert!(question.text.contains("Counteracted, you score 38 points."));
+        assert!(question
+            .text
+            .contains(r#"Answer {"zapzap": true} to call it"#));
+    }
+
+    #[test]
+    fn test_parse_turn_answer_reads_numbers_strictly() {
+        let state = table(&[KS, KH, AS], &[FIVE_S, SIX_S]);
+        let question = LlmBotStrategy::turn_question(&state, 0);
+        let pair = question
+            .plays
+            .iter()
+            .position(|p| *p == vec![KS, KH])
+            .unwrap()
+            + 1;
+
+        let answer = LlmBotStrategy::parse_turn_answer(
+            &format!("```json\n{{\"play\": {pair}, \"draw\": 2}}\n```"),
+            &question,
+        );
+        assert_eq!(answer.play, Some(vec![KS, KH]));
+        assert_eq!(answer.draw, Some(DrawChoice::Card(SIX_S)));
+        assert_eq!(answer.zapzap, None, "not offered");
+
+        let answer = LlmBotStrategy::parse_turn_answer(r#"{"play": 1, "draw": "deck"}"#, &question);
+        assert_eq!(answer.draw, Some(DrawChoice::Deck));
+
+        // A number written as a string is still that number
+        let answer = LlmBotStrategy::parse_turn_answer(
+            &format!(r#"{{"play": "{pair}", "draw": "1"}}"#),
+            &question,
+        );
+        assert_eq!(answer.play, Some(vec![KS, KH]));
+        assert_eq!(answer.draw, Some(DrawChoice::Card(FIVE_S)));
+
+        // Off the list, of the wrong type, or no JSON: nothing settled
+        for text in [
+            r#"{"play": 0, "draw": 3}"#,
+            r#"{"play": 99, "draw": -1}"#,
+            r#"{"play": "first", "draw": "discard"}"#,
+            r#"{"play": true, "draw": "5S"}"#,
+            r#"{"play": 1.5}"#,
+            "KS, KH then DISCARD",
+            "{play: 1}",
+        ] {
+            let answer = LlmBotStrategy::parse_turn_answer(text, &question);
+            assert_eq!(answer.play, None, "{text}");
+            assert_eq!(answer.draw, None, "{text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_turn_is_one_question() {
+        // Eligible for ZapZap (AS 2S AH: 4 points): the check, the play and the draw read
+        // one answer
+        let llm = Counted::new(r#"{"zapzap": false, "play": 1, "draw": 1}"#);
+        let strategy = LlmBotStrategy::with_service(llm.clone());
+        let mut state = table(&[AS, TWO_S, AH], &[SEVEN_H]);
+
+        assert!(!strategy.should_call_zapzap_async(&state, 0).await);
+        let cards = strategy.select_cards_async(&state, 0).await;
+        let first = LlmBotStrategy::turn_question(&state, 0).plays[0].clone();
+        assert_eq!(cards, first);
+        execute_play(&mut state, &cards).unwrap();
+        assert_eq!(
+            strategy.decide_draw_source_async(&state, 0).await,
+            DrawSource::Discard(SEVEN_H)
+        );
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
+
+        // Another situation is another question
+        state.current_action = GameAction::Play;
+        state.hands[0] = [KS, KH, NINE_D].into_iter().collect();
+        strategy.select_cards_async(&state, 0).await;
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_an_invalid_play_falls_back_to_hard_bot() {
+        let state = table(&[KS, KH, AS, SEVEN_C], &[FIVE_S]);
+        let hard = HardBotStrategy::new().select_cards(&state, 0);
+
+        for answer in [
+            r#"{"play": 99, "draw": "deck"}"#,
+            r#"{"play": 0}"#,
+            "I play KS and KH",
+            r#"{"play": 1"#,
+        ] {
+            let cards = bot(answer).select_cards_async(&state, 0).await;
+            assert_eq!(cards, hard, "{answer}");
+        }
+        // A valid answer is the model's, not the fallback's
+        let question = LlmBotStrategy::turn_question(&state, 0);
+        let other = question.plays.iter().position(|p| *p != hard).unwrap() + 1;
+        let cards = bot(&format!(r#"{{"play": {other}}}"#))
+            .select_cards_async(&state, 0)
+            .await;
+        assert_ne!(cards, hard);
+    }
+
+    #[tokio::test]
+    async fn test_an_invalid_zapzap_answer_falls_back_to_hard_bot() {
+        // AS AH: worth 2, where HardBot calls
+        let state = table(&[AS, AH], &[FIVE_S]);
+        assert!(HardBotStrategy::new().should_call_zapzap(&state, 0));
+
+        for answer in [
+            r#"{"zapzap": "yes"}"#,
+            r#"{"zapzap": 1}"#,
+            "YES",
+            r#"{"play": 1, "draw": "deck"}"#,
+        ] {
+            assert!(
+                bot(answer).should_call_zapzap_async(&state, 0).await,
+                "{answer}"
+            );
+        }
+        // The model's own no is followed
+        assert!(
+            !bot(r#"{"zapzap": false, "play": 1, "draw": "deck"}"#)
+                .should_call_zapzap_async(&state, 0)
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn test_an_invalid_draw_falls_back_to_hard_bot() {
+        // The previous player played 2H, which pairs the 2S kept: HardBot takes it
+        let hand = [TWO_S, KS, KH, NINE_D];
+        let hard = {
+            let mut state = table(&hand, &[TWO_H]);
+            execute_play(&mut state, &[KS, KH]).unwrap();
+            HardBotStrategy::new().decide_draw_source(&state, 0)
+        };
+        assert_eq!(hard, DrawSource::Discard(TWO_H));
+
+        let question = LlmBotStrategy::turn_question(&table(&hand, &[TWO_H]), 0);
+        let kings = question
+            .plays
+            .iter()
+            .position(|p| *p == vec![KS, KH])
+            .unwrap()
+            + 1;
+        for draw in ["2", "0", "\"discard\"", "\"2H\"", "null"] {
+            let answer = format!(r#"{{"play": {kings}, "draw": {draw}}}"#);
+            let strategy = bot(&answer);
+            let mut state = table(&hand, &[TWO_H]);
+            let cards = strategy.select_cards_async(&state, 0).await;
+            assert_eq!(cards, vec![KS, KH], "{answer}");
+            execute_play(&mut state, &cards).unwrap();
+            assert_eq!(
+                strategy.decide_draw_source_async(&state, 0).await,
+                hard,
+                "{answer}"
+            );
+        }
+
+        // Malformed: the play and the draw both fall back
+        let strategy = bot("{\"play\": ");
+        let mut state = table(&hand, &[TWO_H]);
+        let cards = strategy.select_cards_async(&state, 0).await;
+        execute_play(&mut state, &cards).unwrap();
+        let fallback = HardBotStrategy::new().decide_draw_source(&state, 0);
+        assert_eq!(strategy.decide_draw_source_async(&state, 0).await, fallback);
+
+        // The model's own deck draw is followed
+        let strategy = bot(&format!(r#"{{"play": {kings}, "draw": "deck"}}"#));
+        let mut state = table(&hand, &[TWO_H]);
+        let cards = strategy.select_cards_async(&state, 0).await;
+        execute_play(&mut state, &cards).unwrap();
+        assert_eq!(
+            strategy.decide_draw_source_async(&state, 0).await,
+            DrawSource::Deck
+        );
     }
 }

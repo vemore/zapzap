@@ -37,6 +37,8 @@ services:
       # LLM bots (.llmwiki/Bots.md): passed only when set in .env, because a variable that
       # is present, even empty, changes what the backend does — AWS_BEDROCK_ENABLED decides
       # alone when present, and an empty AWS_BEDROCK_REGION would replace the default.
+      # Unset, AWS_BEDROCK_MODEL_ID is gpt-oss-120b (openai.gpt-oss-120b-1:0) and
+      # AWS_BEDROCK_REGION us-east-1, which serves it; any Converse model id works (.env.example).
       - AWS_BEDROCK_ENABLED
       - AWS_BEDROCK_REGION
       - AWS_BEDROCK_MODEL_ID

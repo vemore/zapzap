@@ -58,7 +58,12 @@ should_implement_trait = "allow"
 
 [features]
 default = []
-bedrock = ["aws-config", "aws-sdk-bedrockruntime"]
+bedrock = ["aws-config", "aws-sdk-bedrockruntime", "aws-smithy-types"]
+
+# The LLM bot against HardBots on Bedrock, paid: .llmwiki/Bots.md § LLM bot
+[[example]]
+name = "llm_benchmark"
+required-features = ["bedrock"]
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -72,6 +77,11 @@ features = ["behavior-version-latest"]
 optional = true
 
 [dependencies.aws-sdk-bedrockruntime]
+version = "1"
+optional = true
+
+# The Converse API's `additionalModelRequestFields` (a gpt-oss model's reasoning effort)
+[dependencies.aws-smithy-types]
 version = "1"
 optional = true
 
