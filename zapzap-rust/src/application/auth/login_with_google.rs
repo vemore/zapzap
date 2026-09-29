@@ -91,7 +91,7 @@ impl LoginWithGoogle {
             // Node gives up after counter 1000 (GoogleOAuthService.generateUniqueUsername)
             for counter in 0..1000 {
                 let candidate = username_candidate(&base, counter);
-                if !self.user_repo.exists_by_username(&candidate).await? {
+                if !self.user_repo.exists_by_username_ci(&candidate).await? {
                     username = Some(candidate);
                     break;
                 }

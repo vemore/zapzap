@@ -385,6 +385,28 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
+    fn a_generated_username_passes_the_sign_up_rules() {
+        use crate::application::auth::validate_username;
+        for (email, name) in [
+            ("j@b.c", "Jean-Émile de la Fontaine"),
+            ("j@b.c", "李小龍"),
+            ("j@b.c", &"Ünïcödé ".repeat(10)),
+            ("x@b.c", ""),
+        ] {
+            let username = generate_username(email, name);
+            assert_eq!(
+                validate_username(&username),
+                Ok(()),
+                "{name:?} -> {username}"
+            );
+        }
+        assert_eq!(
+            generate_username("j@b.c", "Jean-Émile de la Fontaine"),
+            "jean-_mile_de_la_fontaine"
+        );
+    }
+
+    #[test]
     fn username_from_name_is_sanitised() {
         assert_eq!(generate_username("a@b.c", "Jean Dupont"), "jean_dupont");
         assert_eq!(
