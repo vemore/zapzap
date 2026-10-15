@@ -5,14 +5,14 @@
 > The procedure is the `release-android` skill (its §3b, the pruning pass of the process, runs
 > before each build); testing on the phone is `flutter-device-test`.
 > Related: [[FrontendFlutter]] · [[Testing]] · [[Hooks]]
-> Updated: 2026-09-29
+> Updated: 2026-10-15
 
 ## Facts
 
 ### The app
 
 - Package `com.zapzap.app` (`frontend-flutter/android/app/build.gradle.kts`), label `ZapZap`.
-- Version `frontend-flutter/pubspec.yaml` `version: 1.0.2+3`: the part after `+` is the
+- Version `frontend-flutter/pubspec.yaml` `version: 1.0.3+4`: the part after `+` is the
   `versionCode`, which must rise above every version code on every Play track.
 - `targetSdk` is `flutter.targetSdkVersion`, 36 with Flutter 3.47.2 — Play refuses an update
   below 36 since 2026-08-31. `scripts/verify_aab.sh` checks it on every bundle.
@@ -93,6 +93,7 @@ Both recorded 2026-09-25; the app signing key's SHA-1 corrected 2026-09-27.
 | 1.0.1 (2) | closed (`alpha`) | 2026-09-27 | `1.0.1+2` |
 | 1.0.2 (3) | closed (`alpha`) | 2026-09-28 | `1.0.2+3` |
 | 1.0.3 (4) | closed (`alpha`) | 2026-09-29 | `1.0.3+4` |
+| 1.0.3 (4) | production, 100 % (sent for review) | 2026-10-15 | `1.0.3+4` (same) |
 
 ## Decisions & History
 
@@ -120,3 +121,12 @@ Both recorded 2026-09-25; the app signing key's SHA-1 corrected 2026-09-27.
   and `CLAUDE.md` rule without evidence since the last tag is proposed for removal, with the
   wiki lint, the delivery and agent metrics against the baseline, and the evals before and
   after. The proposal is its own pull request, never a reason to hold the release.
+- **2026-10-15: first production release, 100 % at once.** Play granted production access;
+  the same 1.0.3 (4) held on the closed track was promoted to production from the Console.
+  `play_publish.py publish --track production --promote --rollout 0.2` fails
+  `edits.validate` with `The first release on a track cannot be staged`: the first release on a
+  track goes to everyone, and the script refuses a fraction of 1.0. Done in the Console instead:
+  production's countries had to be added first (178, the Console's whole list — "Create release"
+  stays greyed out until then), then the draft release got the bundle from the library and the
+  fr-FR and en-US notes, and the 3 changes were sent for review. No tag or GitHub release
+  was added: `1.0.3+4` already marks the build.
